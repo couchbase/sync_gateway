@@ -14,7 +14,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1504,64 +1503,69 @@ func TestReplicatorRevocations(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	revocationTester, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		revocationTester, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		revocationTester.addRole("user", "foo")
+		revocationTester.addRoleChannel("foo", "chanA")
+
+		resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "chanA"}`)
+		RequireStatus(t, resp, http.StatusCreated)
+
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	revocationTester.addRole("user", "foo")
-	revocationTester.addRoleChannel("foo", "chanA")
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "chanA"}`)
-	RequireStatus(t, resp, http.StatusCreated)
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
 
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		revocationTester.removeRole("user", "foo")
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusNotFound)
 	})
-	require.NoError(t, err)
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	revocationTester.removeRole("user", "foo")
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
@@ -1569,68 +1573,73 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	revocationTester, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		revocationTester, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		revocationTester.addRole("user", "foo")
+		revocationTester.addRoleChannel("foo", "chanA")
+
+		const doc1ID = "doc1"
+		doc1Version := rt2.PutDoc(doc1ID, `{"channels": "chanA"}`)
+		rt2.WaitForPendingChanges()
+
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	revocationTester.addRole("user", "foo")
-	revocationTester.addRoleChannel("foo", "chanA")
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	const doc1ID = "doc1"
-	doc1Version := rt2.PutDoc(doc1ID, `{"channels": "chanA"}`)
-	rt2.WaitForPendingChanges()
+		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
 
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		revocationTester.removeRole("user", "foo")
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": "chanA", "mutate": "val"}`)
+		rt2.WaitForPendingChanges()
 
-	passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusNotFound)
 	})
-	require.NoError(t, err)
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	revocationTester.removeRole("user", "foo")
-
-	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": "chanA", "mutate": "val"}`)
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
@@ -1638,74 +1647,79 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	revocationTester, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
+	sgrRunne := NewSGRTestRunner(t)
+	sgrRunne.Run(func(t *testing.T) {
+		// Passive
+		revocationTester, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		revocationTester.addRole("user", "foo")
+		revocationTester.addRoleChannel("foo", "chanA")
+
+		resp := rt2.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
+		RequireStatus(t, resp, http.StatusCreated)
+
+		revocationTester.addRole("user", "foo2")
+		revocationTester.addRoleChannel("foo2", "chanB")
+
+		const doc1ID = "doc1"
+		doc1Version := rt2.PutDoc(doc1ID, `{"channels": ["chanA", "chanB"]}`)
+		rt2.WaitForPendingChanges()
+
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunne.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	revocationTester.addRole("user", "foo")
-	revocationTester.addRoleChannel("foo", "chanA")
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
-	RequireStatus(t, resp, http.StatusCreated)
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
 
-	revocationTester.addRole("user", "foo2")
-	revocationTester.addRoleChannel("foo2", "chanB")
+		revocationTester.removeRole("user", "foo")
 
-	const doc1ID = "doc1"
-	doc1Version := rt2.PutDoc(doc1ID, `{"channels": ["chanA", "chanB"]}`)
-	rt2.WaitForPendingChanges()
+		_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": ["chanA", "chanB"], "mutate": "val"}`)
+		rt2.WaitForPendingChanges()
 
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-
-	passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
 	})
-	require.NoError(t, err)
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	revocationTester.removeRole("user", "foo")
-
-	_ = rt2.UpdateDoc(doc1ID, doc1Version, `{"channels": ["chanA", "chanB"], "mutate": "val"}`)
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
-
-	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, resp, http.StatusOK)
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
@@ -1713,123 +1727,127 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	// Passive
-	revocationTester, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		revocationTester, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			DatabaseConfig: &DatabaseConfig{
-				DbConfig: DbConfig{
-					Name: "active",
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				DatabaseConfig: &DatabaseConfig{
+					DbConfig: DbConfig{
+						Name: "active",
+					},
 				},
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+				GuestEnabled:     true,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/" + rt2.GetDatabase().Name)
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword(revocationTestUser, RestTesterDefaultUserPassword)
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		revocationTester.addRole(revocationTestUser, revocationTestRole)
+		rt2.WaitForPendingChanges()
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
 			},
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
-			GuestEnabled:     true,
+			Continuous:             true,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		defer func() {
+			require.NoError(t, ar.Stop())
+		}()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/" + rt2.GetDatabase().Name)
-	require.NoError(t, err)
+		// perform role grant to allow for all channels
+		resp := rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B", "C"}))
 
-	passiveDBURL.User = url.UserPassword(revocationTestUser, RestTesterDefaultUserPassword)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
+		RequireStatus(t, resp, http.StatusOK)
+		_ = rt2.PutDoc("docAB", `{"channels": ["A", "B"]}`)
+		RequireStatus(t, resp, http.StatusOK)
+		_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
+		RequireStatus(t, resp, http.StatusOK)
+		_ = rt2.PutDoc("docABC", `{"channels": ["A", "B", "C"]}`)
+		RequireStatus(t, resp, http.StatusOK)
+		_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
+		RequireStatus(t, resp, http.StatusOK)
 
-	revocationTester.addRole(revocationTestUser, revocationTestRole)
-	rt2.WaitForPendingChanges()
+		// Wait for docs to turn up on local / rt1
+		rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
+		// Revoke C and ensure docC gets purged from local
+		resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B"}))
+		RequireStatus(t, resp, http.StatusOK)
+		rt2.WaitForPendingChanges()
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
+			return resp.Code == http.StatusNotFound
+		})
+		require.NoError(t, err)
+
+		// Revoke B and ensure docB gets purged from local
+		resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A"}))
+		RequireStatus(t, resp, http.StatusOK)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
+			return resp.Code == http.StatusNotFound
+		})
+		require.NoError(t, err)
+
+		// Revoke A and ensure docA, docAB, docABC gets purged from local
+		resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{}))
+		RequireStatus(t, resp, http.StatusOK)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusNotFound
+		})
+		require.NoError(t, err)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
+			return resp.Code == http.StatusNotFound
+		})
+		require.NoError(t, err)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
+			return resp.Code == http.StatusNotFound
+		})
+		require.NoError(t, err)
 	})
-	require.NoError(t, err)
-	require.NoError(t, ar.Start(ctx1))
-
-	defer func() {
-		assert.NoError(t, ar.Stop())
-	}()
-
-	// perform role grant to allow for all channels
-	resp := rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B", "C"}))
-
-	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
-	RequireStatus(t, resp, http.StatusOK)
-	_ = rt2.PutDoc("docAB", `{"channels": ["A", "B"]}`)
-	RequireStatus(t, resp, http.StatusOK)
-	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
-	RequireStatus(t, resp, http.StatusOK)
-	_ = rt2.PutDoc("docABC", `{"channels": ["A", "B", "C"]}`)
-	RequireStatus(t, resp, http.StatusOK)
-	_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
-	RequireStatus(t, resp, http.StatusOK)
-
-	// Wait for docs to turn up on local / rt1
-	rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	// Revoke C and ensure docC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A", "B"}))
-	RequireStatus(t, resp, http.StatusOK)
-	rt2.WaitForPendingChanges()
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	// Revoke B and ensure docB gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A"}))
-	RequireStatus(t, resp, http.StatusOK)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	// Revoke A and ensure docA, docAB, docABC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{}))
-	RequireStatus(t, resp, http.StatusOK)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
 }
 
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
@@ -1839,94 +1857,99 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	_, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		_, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", "letmein")
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
+		const docAID = "docA"
+		const docA1ID = "docA1"
+		docAVersion := rt2.PutDoc(docAID, `{"channels": ["A"]}`)
+		docA1Version := rt2.PutDoc(docA1ID, `{"channels": ["A"]}`)
+		_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
 
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
+		require.NoError(t, ar.Stop())
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+		rt2.DeleteDoc(docAID, docAVersion)
+		rt2.DeleteDoc(docA1ID, docA1Version)
+
+		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		require.NoError(t, ar.Start(ctx1))
+
+		defer func() {
+			assert.NoError(t, ar.Stop())
+		}()
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 	})
-	require.NoError(t, err)
-
-	const docAID = "docA"
-	const docA1ID = "docA1"
-	docAVersion := rt2.PutDoc(docAID, `{"channels": ["A"]}`)
-	docA1Version := rt2.PutDoc(docA1ID, `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
-
-	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
-
-	require.NoError(t, ar.Start(ctx1))
-
-	rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	require.NoError(t, ar.Stop())
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	rt2.DeleteDoc(docAID, docAVersion)
-	rt2.DeleteDoc(docA1ID, docA1Version)
-
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-
-	require.NoError(t, ar.Start(ctx1))
-
-	defer func() {
-		assert.NoError(t, ar.Stop())
-	}()
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
 }
 
 func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
@@ -1934,79 +1957,84 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	_, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		_, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		SyncFn: channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t, &RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+		})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+		const (
+			username = "user"
+			password = RestTesterDefaultUserPassword
+		)
+
+		id := SafeDocumentName(t, t.Name())
+		passiveDBURL.User = url.UserPassword(username, password)
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
+		rt2.WaitForPendingChanges()
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			FilterChannels:         []string{"ABC"},
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+
+		resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{"ABC"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		rt2.WaitForPendingChanges()
+		require.NoError(t, ar.Start(ctx1))
+
+		defer func() {
+			assert.NoError(t, ar.Stop())
+		}()
+
+		// Wait for docs to turn up on local / rt1
+		rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
+		resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		require.NoError(t, ar.Stop())
+
+		require.NoError(t, ar.Start(ctx1))
+
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 	})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
-
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	const (
-		username = "user"
-		password = RestTesterDefaultUserPassword
-	)
-
-	passiveDBURL.User = url.UserPassword(username, password)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
-	rt2.WaitForPendingChanges()
-
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		FilterChannels:      []string{"ABC"},
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
-	})
-	require.NoError(t, err)
-
-	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{"ABC"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-
-	rt2.WaitForPendingChanges()
-	require.NoError(t, ar.Start(ctx1))
-
-	defer func() {
-		assert.NoError(t, ar.Stop())
-	}()
-
-	// Wait for docs to turn up on local / rt1
-	rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
-	resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-
-	require.NoError(t, ar.Stop())
-
-	require.NoError(t, ar.Start(ctx1))
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
 }
 
 func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
@@ -2016,92 +2044,97 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
 
-	// Passive
-	_, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		_, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
+		_ = rt2.PutDoc("docAB", `{"channels": ["A","B"]}`)
+		_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
+		_ = rt2.PutDoc("docABC", `{"channels": ["A","B", "C"]}`)
+		_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
+		rt2.WaitForPendingChanges()
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             false,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{"*"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+		rt2.WaitForPendingChanges()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		defer func() {
+			assert.NoError(t, ar.Stop())
+		}()
 
-	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docAB", `{"channels": ["A","B"]}`)
-	_ = rt2.PutDoc("docB", `{"channels": ["B"]}`)
-	_ = rt2.PutDoc("docABC", `{"channels": ["A","B", "C"]}`)
-	_ = rt2.PutDoc("docC", `{"channels": ["C"]}`)
-	rt2.WaitForPendingChanges()
+		// Wait for docs to turn up on local / rt1
+		rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
-	})
-	require.NoError(t, err)
+		// Revoke A and ensure docA, docAB, docABC get purged from local
+		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{}, nil))
+		RequireStatus(t, resp, http.StatusOK)
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{"*"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-
-	defer func() {
 		assert.NoError(t, ar.Stop())
-	}()
 
-	// Wait for docs to turn up on local / rt1
-	rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
+		require.NoError(t, ar.Start(ctx1))
 
-	// Revoke A and ensure docA, docAB, docABC get purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{}, nil))
-	RequireStatus(t, resp, http.StatusOK)
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 
-	assert.NoError(t, ar.Stop())
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 
-	require.NoError(t, ar.Start(ctx1))
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
 }
 
 func TestReplicatorRevocationsFromZero(t *testing.T) {
@@ -2111,109 +2144,113 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	_, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		_, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", "letmein")
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		activeReplCfg := &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:          false,
+			PurgeOnRemoval:      true,
+			ReplicationStatsMap: dbstats,
+			CollectionsEnabled:  base.TestsUseNamedCollections(),
+		}
+
+		ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
+		require.NoError(t, err)
+
+		_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
+		_ = rt2.PutDoc("docA1", `{"channels": ["A"]}`)
+		_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
+		rt2.WaitForPendingChanges()
+
+		require.NoError(t, ar.Start(ctx1))
+
+		rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+		// Be sure docs have arrived
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusOK
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		assert.NoError(t, err)
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
+			return resp.Code == http.StatusOK
+		})
+		assert.NoError(t, err)
 
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
+			return resp.Code == http.StatusOK
+		})
+		assert.NoError(t, err)
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		// Reset checkpoint (since 0)
+		require.NoError(t, ar.Reset())
 
-	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
 
-	activeReplCfg := &db.ActiveReplicatorConfig{
-		ID:          strings.ReplaceAll(t.Name(), "/", ""),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          false,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
-	}
+		require.NoError(t, ar.Start(ctx1))
 
-	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
-	require.NoError(t, err)
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docA1", `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
-	rt2.WaitForPendingChanges()
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 
-	require.NoError(t, ar.Start(ctx1))
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 
-	rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	// Be sure docs have arrived
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusOK
+		err = rt1.WaitForCondition(func() bool {
+			resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
+			return resp.Code == http.StatusNotFound
+		})
+		assert.NoError(t, err)
 	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusOK
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusOK
-	})
-	assert.NoError(t, err)
-
-	// Reset checkpoint (since 0)
-	require.NoError(t, ar.Reset())
-
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-
-	require.NoError(t, ar.Start(ctx1))
-
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
 }
 
 func TestRevocationMessage(t *testing.T) {
@@ -2514,129 +2551,135 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	_, rt2 := InitScenario(t, nil)
-	defer rt2.Close()
-	rt2ds := rt2.GetSingleDataStore()
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		_, rt2 := InitScenario(t, nil)
+		defer rt2.Close()
+		rt2ds := rt2.GetSingleDataStore()
 
-	// Active
-	rt1 := NewRestTester(t,
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-			SyncFn:           channels.DocChannelsSyncFunction,
+		// Active
+		rt1 := NewRestTester(t,
+			&RestTesterConfig{
+				CustomTestBucket: base.GetTestBucket(t),
+				SyncFn:           channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
+
+		resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
+		RequireStatus(t, resp, http.StatusOK)
+
+		// Setup replicator
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
+
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+
+		passiveDBURL.User = url.UserPassword("user", "letmein")
+		id := SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
+		for i := 0; i < 10; i++ {
+			_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
+		}
 
-	// Setup replicator
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		for i := 0; i < 7; i++ {
+			_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		}
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		rt2.WaitForPendingChanges()
 
-	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
-	})
-	require.NoError(t, err)
+		changesResults := rt1.WaitForChanges(17, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	for i := 0; i < 10; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
-	}
+		// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
+		// to hit CBG-1591
+		require.NoError(t, ar.Stop())
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	for i := 0; i < 7; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
-	}
-
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-
-	changesResults := rt1.WaitForChanges(17, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
-	// to hit CBG-1591
-	require.NoError(t, ar.Stop())
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
-	RequireStatus(t, resp, http.StatusOK)
-
-	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
-	// not processed by the rt1 receiver.
-	for i := 7; i < 15; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
-	}
-
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
-
-	changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
-
-	require.NoError(t, ar.Stop())
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err = sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  base.TestsUseNamedCollections(),
-	})
-	require.NoError(t, err)
-
-	// Send a doc to act as a 'marker' so we know when replication has completed
-	_ = rt2.PutDoc("docMarker", `{"channels": ["B"]}`)
-
-	require.NoError(t, ar.Start(ctx1))
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
-
-	// Validate none of the documents are purged after flipping option
-	rt2.WaitForPendingChanges()
-
-	changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
-
-	for i := 0; i < 10; i++ {
-		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docA%d", i), "")
+		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
 		RequireStatus(t, resp, http.StatusOK)
-	}
 
-	for i := 0; i < 7; i++ {
-		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docB%d", i), "")
-		RequireStatus(t, resp, http.StatusOK)
-	}
+		// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
+		// not processed by the rt1 receiver.
+		for i := 7; i < 15; i++ {
+			_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		}
 
-	// Shutdown replicator to close out
-	require.NoError(t, ar.Stop())
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+		rt2.WaitForPendingChanges()
+
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+		changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
+
+		require.NoError(t, ar.Stop())
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+		sgwStats, err = base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err = sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     base.TestsUseNamedCollections(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+
+		// Send a doc to act as a 'marker' so we know when replication has completed
+		_ = rt2.PutDoc("docMarker", `{"channels": ["B"]}`)
+
+		require.NoError(t, ar.Start(ctx1))
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+		// Validate none of the documents are purged after flipping option
+		rt2.WaitForPendingChanges()
+
+		changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
+
+		for i := 0; i < 10; i++ {
+			resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docA%d", i), "")
+			RequireStatus(t, resp, http.StatusOK)
+		}
+
+		for i := 0; i < 7; i++ {
+			resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docB%d", i), "")
+			RequireStatus(t, resp, http.StatusOK)
+		}
+
+		// Shutdown replicator to close out
+		require.NoError(t, ar.Stop())
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+	})
 }
 
 func TestRevocationDeletedRole(t *testing.T) {

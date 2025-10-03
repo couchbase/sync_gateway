@@ -2610,15 +2610,18 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 		activeCtx := activeRT.Context()
-		remoteURL, _ := url.Parse(remoteURLString)
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+
+		replicationID := SafeDocumentName(t, t.Name())
 
 		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
 		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
+		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-			ID:                     t.Name(),
+			ID:                     replicationID,
 			Direction:              db.ActiveReplicatorTypePull,
 			ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
 			RemoteDBURL:            remoteURL,
@@ -2643,7 +2646,6 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		defer func() { require.NoError(t, ar.Stop()) }()
 
 		activeRT.WaitForPendingChanges()
-		//activeRT.WaitForVersion(docID, version)
 		sgrRunner.WaitForVersion(docID, activeRT, version)
 
 		base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)

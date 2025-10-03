@@ -42,260 +42,279 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyReplicate)
 
-	const (
-		rt1DbName            = "rt1_active"
-		rt2DbName            = "rt2_passive"
-		numCollections       = 3
-		numDocsPerCollection = 9 // 3 in each channel (a, b, c)
-	)
-	channels := []string{"a", "b", "c"}
-
-	base.RequireNumTestDataStores(t, numCollections)
-
-	// rt2 passive
-	rt2 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
-		SyncFn: `function(doc) { channel(doc.chan) }`,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Name: rt2DbName,
-			},
-		}}, numCollections)
-	defer rt2.Close()
-
-	rt2Collections := rt2.GetDbCollections()
-	require.Len(t, rt2Collections, 3)
-	passiveKeyspace1 := rt2Collections[0].ScopeName + "." + rt2Collections[0].Name
-	passiveKeyspace2 := rt2Collections[1].ScopeName + "." + rt2Collections[1].Name
-	passiveKeyspace3 := rt2Collections[2].ScopeName + "." + rt2Collections[2].Name
-
-	// rt1 active
-	rt1 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
-		SyncFn: `function(doc) { channel(doc.chan) }`,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Name: rt1DbName,
-			},
-		}}, numCollections)
-	defer rt1.Close()
-
-	rt1Collections := rt1.GetDbCollections()
-	require.Len(t, rt1Collections, 3)
-	activeKeyspace1 := rt1Collections[0].ScopeName + "." + rt1Collections[0].Name
-	activeKeyspace2 := rt1Collections[1].ScopeName + "." + rt1Collections[1].Name
-	activeKeyspace3 := rt1Collections[2].ScopeName + "." + rt1Collections[2].Name
-
-	t.Logf("remapping active %q to passive %q", activeKeyspace1, passiveKeyspace2)
-	t.Logf("not remapping active %q", activeKeyspace3)
-	localCollections := []string{activeKeyspace1, activeKeyspace3}
-	remoteCollections := []string{passiveKeyspace2, ""}
-	t.Logf("not replicating active %q", activeKeyspace2)
-	nonReplicatedLocalCollections := []string{activeKeyspace2}
-	t.Logf("not replicating passive %q", passiveKeyspace1)
-	nonReplicatedRemoteCollections := []string{passiveKeyspace1}
-
-	collectionsFilter := [][]string{{"b"}, {"a", "c"}}
-	t.Logf("filtering to channels: %q", collectionsFilter)
-
-	var resp *rest.TestResponse
-
-	// create docs in all collections
-	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
-		for j := 1; j <= numDocsPerCollection; j++ {
-			chanName := channels[j%len(channels)]
-			resp = rt1.SendAdminRequest(http.MethodPut,
-				fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, j),
-				fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":"%s"}`,
-					rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name, chanName))
-			rest.RequireStatus(t, resp, http.StatusCreated)
-
-			resp = rt2.SendAdminRequest(http.MethodPut,
-				fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, j),
-				fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":"%s"}`,
-					rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name, chanName))
-			rest.RequireStatus(t, resp, http.StatusCreated)
-		}
-	}
-
-	rt1.WaitForPendingChanges()
-	rt2.WaitForPendingChanges()
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestAdminHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/" + rt2DbName)
-	require.NoError(t, err)
-
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	// The mapping of `""` for activeKeyspace3 requires that these two collections are the same name.
-	assert.Equal(t, activeKeyspace3, passiveKeyspace3)
-
-	ctx1 := rt1.Context()
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
+	testCases := []struct {
+		name            string
+		protocolVersion string
+	}{
+		{
+			name:            "v3",
+			protocolVersion: db.CBMobileReplicationV3.SubprotocolString(),
 		},
-		ChangesBatchSize:         200,
-		Continuous:               true,
-		ReplicationStatsMap:      dbstats,
-		CollectionsEnabled:       true,
-		CollectionsLocal:         localCollections,
-		CollectionsRemote:        remoteCollections,
-		Filter:                   base.ByChannelFilter,
-		CollectionsChannelFilter: collectionsFilter,
-	})
-	require.NoError(t, err)
+		{
+			name:            "v4",
+			protocolVersion: db.CBMobileReplicationV4.SubprotocolString(),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
+			const (
+				rt1DbName            = "rt1_active"
+				rt2DbName            = "rt2_passive"
+				numCollections       = 3
+				numDocsPerCollection = 9 // 3 in each channel (a, b, c)
+			)
+			channels := []string{"a", "b", "c"}
 
-	// Start the replicator (implicit connect)
-	require.NoError(t, ar.Start(ctx1))
+			base.RequireNumTestDataStores(t, numCollections)
 
-	// check all expected docs were pushed and pulled
-	for i, localCollection := range localCollections {
-		remoteCollection := remoteCollections[i]
-		if remoteCollection == "" {
-			remoteCollection = localCollection
-		}
+			// rt2 passive
+			rt2 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				SyncFn: `function(doc) { channel(doc.chan) }`,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: rt2DbName,
+					},
+				}}, numCollections)
+			defer rt2.Close()
 
-		// local set
-		expectedNumDocs := numDocsPerCollection
-		if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
-			slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
-			// only one set of docs for non-replicated collections
-		} else {
-			// plus docs for filtered channels
-			expectedNumDocs += (numDocsPerCollection / len(channels)) * len(collectionsFilter[i])
-		}
+			rt2Collections := rt2.GetDbCollections()
+			require.Len(t, rt2Collections, 3)
+			passiveKeyspace1 := rt2Collections[0].ScopeName + "." + rt2Collections[0].Name
+			passiveKeyspace2 := rt2Collections[1].ScopeName + "." + rt2Collections[1].Name
+			passiveKeyspace3 := rt2Collections[2].ScopeName + "." + rt2Collections[2].Name
 
-		localKeyspace := rt1DbName + "." + localCollection
-		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
+			// rt1 active
+			rt1 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				SyncFn: `function(doc) { channel(doc.chan) }`,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Name: rt1DbName,
+					},
+				}}, numCollections)
+			defer rt1.Close()
 
-		remoteKeyspace := rt2DbName + "." + remoteCollection
-		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+			rt1Collections := rt1.GetDbCollections()
+			require.Len(t, rt1Collections, 3)
+			activeKeyspace1 := rt1Collections[0].ScopeName + "." + rt1Collections[0].Name
+			activeKeyspace2 := rt1Collections[1].ScopeName + "." + rt1Collections[1].Name
+			activeKeyspace3 := rt1Collections[2].ScopeName + "." + rt1Collections[2].Name
 
-		for j := 1; j <= numDocsPerCollection; j++ {
-			expectedStatus := http.StatusOK
-			if !slices.Contains(collectionsFilter[i], channels[j%len(channels)]) {
-				// doc doesn't match channel filter
-				expectedStatus = http.StatusNotFound
+			t.Logf("remapping active %q to passive %q", activeKeyspace1, passiveKeyspace2)
+			t.Logf("not remapping active %q", activeKeyspace3)
+			localCollections := []string{activeKeyspace1, activeKeyspace3}
+			remoteCollections := []string{passiveKeyspace2, ""}
+			t.Logf("not replicating active %q", activeKeyspace2)
+			nonReplicatedLocalCollections := []string{activeKeyspace2}
+			t.Logf("not replicating passive %q", passiveKeyspace1)
+			nonReplicatedRemoteCollections := []string{passiveKeyspace1}
+
+			collectionsFilter := [][]string{{"b"}, {"a", "c"}}
+			t.Logf("filtering to channels: %q", collectionsFilter)
+
+			var resp *rest.TestResponse
+
+			// create docs in all collections
+			for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
+				for j := 1; j <= numDocsPerCollection; j++ {
+					chanName := channels[j%len(channels)]
+					resp = rt1.SendAdminRequest(http.MethodPut,
+						fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, j),
+						fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":"%s"}`,
+							rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name, chanName))
+					rest.RequireStatus(t, resp, http.StatusCreated)
+
+					resp = rt2.SendAdminRequest(http.MethodPut,
+						fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, j),
+						fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":"%s"}`,
+							rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name, chanName))
+					rest.RequireStatus(t, resp, http.StatusCreated)
+				}
 			}
 
-			// check rt1 for passive docs (pull)
-			resp = rt1.SendAdminRequest(http.MethodGet,
-				fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
-			rest.AssertStatus(t, resp, expectedStatus)
-			if resp.Code == http.StatusOK {
-				var docBody db.Body
-				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
-				assert.Equal(t, "passive", docBody["source"])
-				assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
+			rt1.WaitForPendingChanges()
+			rt2.WaitForPendingChanges()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(rt2.TestAdminHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/" + rt2DbName)
+			require.NoError(t, err)
+
+			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+			require.NoError(t, err)
+			dbstats, err := stats.DBReplicatorStats(t.Name())
+			require.NoError(t, err)
+
+			// The mapping of `""` for activeKeyspace3 requires that these two collections are the same name.
+			assert.Equal(t, activeKeyspace3, passiveKeyspace3)
+
+			ctx1 := rt1.Context()
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:         200,
+				Continuous:               true,
+				ReplicationStatsMap:      dbstats,
+				CollectionsEnabled:       true,
+				CollectionsLocal:         localCollections,
+				CollectionsRemote:        remoteCollections,
+				Filter:                   base.ByChannelFilter,
+				CollectionsChannelFilter: collectionsFilter,
+				SupportedBLIPProtocols:   []string{tc.protocolVersion},
+			})
+			require.NoError(t, err)
+
+			assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
+
+			// Start the replicator (implicit connect)
+			require.NoError(t, ar.Start(ctx1))
+
+			// check all expected docs were pushed and pulled
+			for i, localCollection := range localCollections {
+				remoteCollection := remoteCollections[i]
+				if remoteCollection == "" {
+					remoteCollection = localCollection
+				}
+
+				// local set
+				expectedNumDocs := numDocsPerCollection
+				if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
+					slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
+					// only one set of docs for non-replicated collections
+				} else {
+					// plus docs for filtered channels
+					expectedNumDocs += (numDocsPerCollection / len(channels)) * len(collectionsFilter[i])
+				}
+
+				localKeyspace := rt1DbName + "." + localCollection
+				rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
+
+				remoteKeyspace := rt2DbName + "." + remoteCollection
+				rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+
+				for j := 1; j <= numDocsPerCollection; j++ {
+					expectedStatus := http.StatusOK
+					if !slices.Contains(collectionsFilter[i], channels[j%len(channels)]) {
+						// doc doesn't match channel filter
+						expectedStatus = http.StatusNotFound
+					}
+
+					// check rt1 for passive docs (pull)
+					resp = rt1.SendAdminRequest(http.MethodGet,
+						fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
+					rest.AssertStatus(t, resp, expectedStatus)
+					if resp.Code == http.StatusOK {
+						var docBody db.Body
+						require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
+						assert.Equal(t, "passive", docBody["source"])
+						assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
+					}
+
+					// check rt2 for active docs (push)
+					resp = rt2.SendAdminRequest(http.MethodGet,
+						fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
+					rest.AssertStatus(t, resp, expectedStatus)
+					if resp.Code == http.StatusOK {
+						var docBody db.Body
+						require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
+						assert.Equal(t, "active", docBody["source"])
+						assert.Equal(t, localCollection, docBody["sourceKeyspace"])
+					}
+				}
 			}
 
-			// check rt2 for active docs (push)
-			resp = rt2.SendAdminRequest(http.MethodGet,
-				fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
-			rest.AssertStatus(t, resp, expectedStatus)
-			if resp.Code == http.StatusOK {
-				var docBody db.Body
-				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
-				assert.Equal(t, "active", docBody["source"])
-				assert.Equal(t, localCollection, docBody["sourceKeyspace"])
+			// Stop the replication
+			err = ar.Stop()
+			require.NoError(t, err)
+
+			//  create one more doc on each collection and make sure we're able to resume from the checkpoint.
+			for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
+				resp = rt1.SendAdminRequest(http.MethodPut,
+					fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, numDocsPerCollection+1),
+					fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
+						rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+
+				resp = rt2.SendAdminRequest(http.MethodPut,
+					fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, numDocsPerCollection+1),
+					fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
+						rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name))
+				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
-		}
-	}
 
-	// Stop the replication
-	err = ar.Stop()
-	require.NoError(t, err)
+			rt1.WaitForPendingChanges()
+			rt2.WaitForPendingChanges()
 
-	//  create one more doc on each collection and make sure we're able to resume from the checkpoint.
-	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
-		resp = rt1.SendAdminRequest(http.MethodPut,
-			fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, numDocsPerCollection+1),
-			fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
-				rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name))
-		rest.RequireStatus(t, resp, http.StatusCreated)
+			err = ar.Start(ctx1)
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, ar.Stop()) }()
 
-		resp = rt2.SendAdminRequest(http.MethodPut,
-			fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, numDocsPerCollection+1),
-			fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
-				rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name))
-		rest.RequireStatus(t, resp, http.StatusCreated)
-	}
+			// check all expected docs were pushed and pulled
+			for i, localCollection := range localCollections {
+				remoteCollection := remoteCollections[i]
+				if remoteCollection == "" {
+					remoteCollection = localCollection
+				}
 
-	rt1.WaitForPendingChanges()
-	rt2.WaitForPendingChanges()
+				// local set
+				expectedNumDocs := numDocsPerCollection + 1
+				if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
+					slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
+					// only one set of docs for non-replicated collections
+				} else {
+					// plus docs for filtered channels
+					expectedNumDocs += 1 + (numDocsPerCollection/len(channels))*len(collectionsFilter[i])
+				}
 
-	err = ar.Start(ctx1)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
+				localKeyspace := rt1DbName + "." + localCollection
+				rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 
-	// check all expected docs were pushed and pulled
-	for i, localCollection := range localCollections {
-		remoteCollection := remoteCollections[i]
-		if remoteCollection == "" {
-			remoteCollection = localCollection
-		}
+				remoteKeyspace := rt2DbName + "." + remoteCollection
+				rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 
-		// local set
-		expectedNumDocs := numDocsPerCollection + 1
-		if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
-			slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
-			// only one set of docs for non-replicated collections
-		} else {
-			// plus docs for filtered channels
-			expectedNumDocs += 1 + (numDocsPerCollection/len(channels))*len(collectionsFilter[i])
-		}
+				// check rt1 for passive docs (pull)
+				resp = rt1.SendAdminRequest(http.MethodGet,
+					fmt.Sprintf("/%s/passive-doc%d", localKeyspace, numDocsPerCollection+1), "")
+				if rest.AssertStatus(t, resp, http.StatusOK) {
+					var docBody db.Body
+					require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
+					assert.Equal(t, "passive", docBody["source"])
+					assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
+				}
 
-		localKeyspace := rt1DbName + "." + localCollection
-		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
+				// check rt2 for active docs (push)
+				resp = rt2.SendAdminRequest(http.MethodGet,
+					fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, numDocsPerCollection+1), "")
+				if rest.AssertStatus(t, resp, http.StatusOK) {
+					var docBody db.Body
+					require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
+					assert.Equal(t, "active", docBody["source"])
+					assert.Equal(t, localCollection, docBody["sourceKeyspace"])
+				}
+			}
 
-		remoteKeyspace := rt2DbName + "." + remoteCollection
-		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+			// and check we _didn't_ replicate docs in the absent collection
+			for _, localCollection := range nonReplicatedLocalCollections {
 
-		// check rt1 for passive docs (pull)
-		resp = rt1.SendAdminRequest(http.MethodGet,
-			fmt.Sprintf("/%s/passive-doc%d", localKeyspace, numDocsPerCollection+1), "")
-		if rest.AssertStatus(t, resp, http.StatusOK) {
-			var docBody db.Body
-			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
-			assert.Equal(t, "passive", docBody["source"])
-			assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
-		}
+				expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
 
-		// check rt2 for active docs (push)
-		resp = rt2.SendAdminRequest(http.MethodGet,
-			fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, numDocsPerCollection+1), "")
-		if rest.AssertStatus(t, resp, http.StatusOK) {
-			var docBody db.Body
-			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
-			assert.Equal(t, "active", docBody["source"])
-			assert.Equal(t, localCollection, docBody["sourceKeyspace"])
-		}
-	}
+				localKeyspace := rt1DbName + "." + localCollection
+				rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
+			}
+			for _, remoteCollection := range nonReplicatedRemoteCollections {
 
-	// and check we _didn't_ replicate docs in the absent collection
-	for _, localCollection := range nonReplicatedLocalCollections {
+				expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
 
-		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
-
-		localKeyspace := rt1DbName + "." + localCollection
-		rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
-	}
-	for _, remoteCollection := range nonReplicatedRemoteCollections {
-
-		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
-
-		remoteKeyspace := rt2DbName + "." + remoteCollection
-		rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+				remoteKeyspace := rt2DbName + "." + remoteCollection
+				rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+			}
+		})
 	}
 }
 

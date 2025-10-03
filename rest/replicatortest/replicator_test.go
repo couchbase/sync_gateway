@@ -482,7 +482,7 @@ func TestPushReplicationAPI(t *testing.T) {
 
 		// Create push replication, verify running
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// wait for document originally written to rt1 to arrive at rt2
@@ -527,7 +527,7 @@ func TestPullReplicationAPI(t *testing.T) {
 
 		// Create pull replication, verify running
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// wait for document originally written to rt2 to arrive at rt1
@@ -571,17 +571,17 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 
 		// create two replications to take us to the limit
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		rt1.WaitForActiveReplicatorInitialization(2)
 
 		// try create a new replication to take it beyond the threshold set by runtime config call
 		// assert it enter error state
 		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 		// change limit to 0 (turning limiting off) and assert that the replications currently running continue as normal and reject any new ones being added
@@ -592,7 +592,7 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 		rt2.WaitForActiveReplicatorCount(2)
 		// assert we still can create a new replication given that originally the limit was 2 replications
 		replicationID = rest.SafeDocumentName(t, t.Name()+"3")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 	})
 }
@@ -616,10 +616,10 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 		}
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		rt1.WaitForActiveReplicatorInitialization(2)
@@ -635,7 +635,7 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 
 		// assert we can create a new replication as count has decreased below threshold
 		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 	})
 }
@@ -660,17 +660,17 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 		// create two replications to take us to the limit
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		rt1.WaitForActiveReplicatorInitialization(2)
 
 		// try create a new replication to take it beyond the threshold set by runtime config call
 		// assert it enter error state
 		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 		// change limit to 1 and assert that the replications currently running continue as normal and reject any new ones being added
@@ -681,7 +681,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 		rt2.WaitForActiveReplicatorCount(2)
 		// assert we still can't create a new replication
 		replicationID = rest.SafeDocumentName(t, t.Name()+"3")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 		// stop one of the replicators currently running
@@ -694,7 +694,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 		// assert we still can't create new replication (new limit is 1)
 		replicationID = rest.SafeDocumentName(t, t.Name()+"4")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 	})
 }
@@ -722,7 +722,7 @@ func TestReplicationStatusActions(t *testing.T) {
 
 		// Create pull replication, verify running
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
@@ -810,7 +810,7 @@ func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 
 		// Put replication on remote RT where sg replicate is off, so will not get assigned a node
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		remoteRT.CreateReplication(replicationID, activeDBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+		remoteRT.CreateReplication(replicationID, activeDBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault, "")
 
 		remoteRT.WaitForAssignedReplications(0)
 
@@ -845,8 +845,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 		_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
 		// Create pull replications, verify running
-		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
-		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForAssignedReplications(2)
 		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
@@ -952,8 +952,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 		activeRT.WaitForPendingChanges()
 
 		// Create push replications, verify running
-		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
@@ -1059,7 +1059,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 		// Create oneshot replication, verify running
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// wait for documents originally written to rt2 to arrive at rt1
@@ -1105,8 +1105,8 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 		// Create push replications, verify running, also verify active replicators are created
-		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 		activeRT.WaitForActiveReplicatorInitialization(2)
@@ -1760,8 +1760,8 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
 		// Create pull replications, verify running
-		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
-		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForAssignedReplications(2)
 		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
@@ -1876,7 +1876,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	db1Config.Bucket = base.Ptr(tb2.GetName())
 	rest.RequireStatus(t, rt.CreateDatabase(db1, db1Config), http.StatusCreated)
 
-	rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+	rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 	rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 
 	// Wait for document to replicate from db to db2 to confirm replication start
@@ -1894,7 +1894,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
-		rt.CreateReplicationForDB(db1, "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt.CreateReplicationForDB(db1, "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt.WaitForReplicationStatusForDB(db1, "repl1", db.ReplicationStateRunning)
 	}
 
@@ -1922,7 +1922,7 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 
 		// Create push replication, verify running
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// wait for document originally written to rt1 to arrive at rt2
@@ -1957,7 +1957,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 		// Create push replication, verify running
 		replicationID := t.Name()
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		// wait for document originally written to rt1 to arrive at rt2
@@ -2072,71 +2072,63 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	const (
-		// test url encoding of username/password with these
-		username = "AL_1c.e-@"
-		password = rest.RestTesterDefaultUserPassword
-	)
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
 
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+
+		const (
+			// test url encoding of username/password with these
+			username = "AL_1c.e-@"
+			password = rest.RestTesterDefaultUserPassword
+		)
+
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
+
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		ctx1 := rt1.Context()
+
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt2.Close()
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
 
-	rt2.CreateUser(username, []string{username})
+		assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
 
-	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
 
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		// wait for the document originally written to rt2 to arrive at rt1
+		sgrRunner.WaitForVersion(docID, rt1, version)
 
-	// Active
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPull)
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
-
-	// Start the replicator (implicit connect)
-	require.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPull)
 }
 
 // TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
@@ -2156,124 +2148,126 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeyChanges, base.KeyReplicate)
 
-	defer db.SuspendSequenceBatching()()
-
 	// Passive
 	const (
 		username = "alice"
 		password = rest.RestTesterDefaultUserPassword
 	)
 
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				CacheConfig: &rest.CacheConfig{
-					// shorten pending sequence handling to speed up test
-					ChannelCacheConfig: &rest.ChannelCacheConfig{
-						MaxWaitPending: base.Ptr(uint32(1)),
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		restartBatching := db.SuspendSequenceBatching()
+		t.Cleanup(restartBatching)
+
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					CacheConfig: &rest.CacheConfig{
+						// shorten pending sequence handling to speed up test
+						ChannelCacheConfig: &rest.ChannelCacheConfig{
+							MaxWaitPending: base.Ptr(uint32(1)),
+						},
 					},
-				},
-			}},
+				}},
+			},
 		})
-	defer rt2.Close()
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+		ctx1 := rt1.Context()
 
-	rt2.CreateUser(username, []string{"*"})
+		dbstats := dbReplicatorStats(t)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
 
-	dbstats := dbReplicatorStats(t)
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()+"rt2doc")
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		docID1 := docIDPrefix + "1"
+		doc1Version := rt2.PutDoc(docID1, `{"source":"rt2","channels":["`+username+`"]}`)
+		rt2.WaitForPendingChanges()
+
+		// Start the replicator (implicit connect)
+		assert.NoError(t, ar.Start(ctx1))
+
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+
+		// wait for the documents originally written to rt2 to arrive at rt1
+		sgrRunner.WaitForVersion(docID1, rt1, doc1Version)
+
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+		require.NoError(t, ar.Stop())
+
+		assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+		assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
+		assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+		assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
+
+		docID2 := docIDPrefix + "2"
+		rt2.PutDoc(docID2, `{"source":"rt2","channels":["`+username+`"]}`)
+
+		// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
+		_, err = rt2.MetadataStore().Incr(rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
+		require.NoError(t, err)
+
+		docID3 := docIDPrefix + "3"
+		rt2.PutDoc(docID3, `{"source":"rt2","channels":["`+username+`"]}`)
+		rt2.WaitForPendingChanges()
+
+		// Start the replicator (implicit connect)
+		assert.NoError(t, ar.Start(ctx1))
+
+		// restarted replicator has a new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
+
+		rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 2)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 2)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+		require.NoError(t, ar.Stop())
+
+		assert.Equal(t, int64(2), dbstats.ExpectedSequenceLen.Value())
+		assert.Equal(t, int64(2), dbstats.ProcessedSequenceLen.Value())
+		assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+		assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
+
+		docID4 := docIDPrefix + "4"
+		rt2.PutDoc(docID4, `{"source":"rt2","channels":["`+username+`"]}`)
+		rt2.WaitForPendingChanges()
+
+		require.NoError(t, ar.Start(ctx1))
+
+		// restarted replicator has a new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
+
+		rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
+		require.NoError(t, ar.Stop())
+
+		assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+		assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
+		assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+		assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	docIDPrefix := t.Name() + "rt2doc"
-
-	docID1 := docIDPrefix + "1"
-	doc1Version := rt2.PutDoc(docID1, `{"source":"rt2","channels":["`+username+`"]}`)
-	rt2.WaitForPendingChanges()
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
-
-	// wait for the documents originally written to rt2 to arrive at rt1
-	rt1.WaitForVersion(docID1, doc1Version)
-
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	require.NoError(t, ar.Stop())
-
-	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
-	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
-	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
-	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
-
-	docID2 := docIDPrefix + "2"
-	rt2.PutDoc(docID2, `{"source":"rt2","channels":["`+username+`"]}`)
-
-	// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
-	_, err = rt2.MetadataStore().Incr(rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
-	require.NoError(t, err)
-
-	docID3 := docIDPrefix + "3"
-	rt2.PutDoc(docID3, `{"source":"rt2","channels":["`+username+`"]}`)
-	rt2.WaitForPendingChanges()
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// restarted replicator has a new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
-
-	rt1.WaitForChanges(3, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 2)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 2)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	require.NoError(t, ar.Stop())
-
-	assert.Equal(t, int64(2), dbstats.ExpectedSequenceLen.Value())
-	assert.Equal(t, int64(2), dbstats.ProcessedSequenceLen.Value())
-	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
-	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
-
-	docID4 := docIDPrefix + "4"
-	rt2.PutDoc(docID4, `{"source":"rt2","channels":["`+username+`"]}`)
-	rt2.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-
-	// restarted replicator has a new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
-
-	rt1.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().AlreadyKnownSequenceCount)
-	require.NoError(t, ar.Stop())
-
-	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
-	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
-	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
-	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 }
 
 // TestReplicatorReconnectBehaviour tests the interactive values that configure replicator reconnection behaviour
@@ -2423,67 +2417,56 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
-	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Name: "passivert",
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+
+		id, err := base.GenerateRandomID()
+		require.NoError(t, err)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: userDBURL(passiveRT, "bob"),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
 			},
-		},
+			Continuous: true,
+			// aggressive reconnect intervals for testing purposes
+			TotalReconnectTimeout:  time.Millisecond * 10,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
+
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(activeRT.Context(), &arConfig)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
+
+		expectedErrMsg := "unexpected status code 401 from target database"
+		require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
+		activeRT.WaitForReplicationStatus(id, db.ReplicationStateError)
+
+		status, err := activeRT.GetDatabase().SGReplicateMgr.GetReplicationStatus(activeRT.Context(), id, db.DefaultReplicationStatusOptions())
+		require.NoError(t, err)
+		require.Equal(t, db.ReplicationStateError, status.Status)
+		require.Equal(t, expectedErrMsg, status.ErrorMessage)
+		// state is updated by the reconnect loop slightly before NumReconnectsAborted is set
+		base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
+		firstNumConnectAttempts := ar.Push.GetStats().NumConnectAttempts.Value()
+		require.GreaterOrEqual(t, firstNumConnectAttempts, int64(1))
+
+		// restart replicator to make sure we'll retry a reconnection, so the state can go back to reconnecting
+		require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			state, errMsg := ar.State(activeRT.Context())
+			assert.Equal(c, db.ReplicationStateError, state)
+			assert.Equal(c, expectedErrMsg, errMsg)
+			assert.Equal(c, int64(2), ar.Push.GetStats().NumReconnectsAborted.Value())
+		}, time.Second*10, time.Millisecond*100)
+		require.GreaterOrEqual(t, ar.Push.GetStats().NumConnectAttempts.Value(), firstNumConnectAttempts+1)
 	})
-	defer passiveRT.Close()
-
-	const username = "alice"
-	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Name: "activert",
-			},
-		},
-	})
-	defer activeRT.Close()
-	id, err := base.GenerateRandomID()
-	require.NoError(t, err)
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          id,
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: userDBURL(passiveRT, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous: true,
-		// aggressive reconnect intervals for testing purposes
-		TotalReconnectTimeout: time.Millisecond * 10,
-		ReplicationStatsMap:   dbReplicatorStats(t),
-		CollectionsEnabled:    !activeRT.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(activeRT.Context(), &arConfig)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
-
-	expectedErrMsg := "unexpected status code 401 from target database"
-	require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
-	activeRT.WaitForReplicationStatus(id, db.ReplicationStateError)
-
-	status, err := activeRT.GetDatabase().SGReplicateMgr.GetReplicationStatus(activeRT.Context(), id, db.DefaultReplicationStatusOptions())
-	require.NoError(t, err)
-	require.Equal(t, db.ReplicationStateError, status.Status)
-	require.Equal(t, expectedErrMsg, status.ErrorMessage)
-	// state is updated by the reconnect loop slightly before NumReconnectsAborted is set
-	base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
-	firstNumConnectAttempts := ar.Push.GetStats().NumConnectAttempts.Value()
-	require.GreaterOrEqual(t, firstNumConnectAttempts, int64(1))
-
-	// restart replicator to make sure we'll retry a reconnection, so the state can go back to reconnecting
-	require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		state, errMsg := ar.State(activeRT.Context())
-		assert.Equal(c, db.ReplicationStateError, state)
-		assert.Equal(c, expectedErrMsg, errMsg)
-		assert.Equal(c, int64(2), ar.Push.GetStats().NumReconnectsAborted.Value())
-	}, time.Second*10, time.Millisecond*100)
-	require.GreaterOrEqual(t, ar.Push.GetStats().NumConnectAttempts.Value(), firstNumConnectAttempts+1)
 }
 
 // TestTotalSyncTimeStat:
@@ -2506,7 +2489,7 @@ func TestTotalSyncTimeStat(t *testing.T) {
 		require.Equal(t, int64(0), startValue)
 
 		// create a replication to just make a long lived websocket connection between two rest testers
-		activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication(repName, remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(repName, db.ReplicationStateRunning)
 
 		// wait for active replication stat to pick up the replication connection
@@ -2602,86 +2585,78 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-		})
-
-	defer rt2.Close()
-
 	const (
 		username = "alice"
 	)
-	rt2.CreateUser(username, []string{username})
 
-	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
+	sgrRuunner := rest.NewSGRTestRunner(t)
+	sgrRuunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRuunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
 
-	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDoc(docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
+		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		version := rt2.PutDoc(docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		ctx1 := rt1.Context()
+
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRuunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+
+		assert.Equal(t, int64(0), ar.Pull.GetStats().GetAttachment.Value())
+
+		// Start the replicator (implicit connect)
+		assert.NoError(t, ar.Start(ctx1))
+
+		// wait for the document originally written to rt2 to arrive at rt1
+		sgrRuunner.WaitForVersion(docID, rt1, version)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
+
+		docID = rest.SafeDocumentName(t, t.Name()+"rt2doc2")
+		version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
+
+		// wait for the new document written to rt2 to arrive at rt1
+		sgrRuunner.WaitForVersion(docID, rt1, version)
+
+		doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err = doc2.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
+		// the attachment only once. However, targeting a Lithium node sends the attachment twice like
+		// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
+		// new storage model for attachment storage and retrieval.
+		assert.Equal(t, int64(2), ar.Pull.GetStats().GetAttachment.Value())
+		assert.Equal(t, int64(0), ar.Pull.GetStats().ProveAttachment.Value())
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, int64(0), ar.Pull.GetStats().GetAttachment.Value())
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
-
-	docID = t.Name() + "rt2doc2"
-	version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-
-	// wait for the new document written to rt2 to arrive at rt1
-	changesResults = rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[1].ID)
-
-	doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc2.ExtractDocVersion())
-
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
-	// the attachment only once. However, targeting a Lithium node sends the attachment twice like
-	// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
-	// new storage model for attachment storage and retrieval.
-	assert.Equal(t, int64(2), ar.Pull.GetStats().GetAttachment.Value())
-	assert.Equal(t, int64(0), ar.Pull.GetStats().ProveAttachment.Value())
 }
 
 // TestActiveReplicatorPullMergeConflictingAttachments:
@@ -2754,43 +2729,21 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Increase checkpoint persistence frequency for cross-node status verification
-			defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+	const username = "alice"
 
-			// Passive
-			rt2 := rest.NewRestTester(t,
-				&rest.RestTesterConfig{
-					SyncFn: channels.DocChannelsSyncFunction,
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				// Increase checkpoint persistence frequency for cross-node status verification
+				reduceCheckpoint := reduceTestCheckpointInterval(50 * time.Millisecond)
+				t.Cleanup(reduceCheckpoint)
+
+				rt1, rt2, remoteURL := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+					UserChannelAccess: []string{username},
 				})
-			defer rt2.Close()
-			const username = "alice"
-			rt2.CreateUser(username, []string{username})
 
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
-
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
-
-			// Add basic auth creds to target db URL
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-			// Active
-			rt1 := rest.NewRestTester(t,
-				&rest.RestTesterConfig{
-					SyncFn: channels.DocChannelsSyncFunction,
-					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-						Replications: map[string]*db.ReplicationConfig{
-							"repl1": {
-								Remote:                 passiveDBURL.String(),
-								Direction:              db.ActiveReplicatorTypePull,
-								CollectionsEnabled:     !rt2.GetDatabase().OnlyDefaultCollection(),
-								Continuous:             true,
-								ConflictResolutionType: db.ConflictResolverCustom,
-								ConflictResolutionFn: `
+				resolverCode := `
 					function(conflict) {
 						var mergedDoc = new Object();
 						mergedDoc.source = "merged";
@@ -2809,83 +2762,83 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 						mergedDoc.channels = ["alice"];
 
 						return mergedDoc;
-					}`},
-						},
-					}},
-					SgReplicateEnabled: true,
-				})
-			defer rt1.Close()
+					}`
 
-			rt1.WaitForAssignedReplications(1)
+				rt1.CreateReplication("repl1", remoteURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverCustom, resolverCode)
 
-			docID := test.name + "doc1"
-			version1 := rt2.PutDoc(docID, test.initialRevBody)
+				rt1.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-			// wait for the document originally written to rt2 to arrive at rt1
-			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			lastSeq := changesResults.Last_Seq.String()
+				docID := test.name + "doc1"
+				version1 := rt2.PutDoc(docID, test.initialRevBody)
 
-			resp := rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=stop", "")
-			rest.RequireStatus(t, resp, http.StatusOK)
+				// wait for the document originally written to rt2 to arrive at rt1
+				changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				lastSeq := changesResults.Last_Seq.String()
 
-			rt1.WaitForReplicationStatus("repl1", db.ReplicationStateStopped)
+				resp := rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=stop", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
 
-			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.localConflictingRevBody)
-			rest.RequireStatus(t, resp, http.StatusCreated)
+				rt1.WaitForReplicationStatus("repl1", db.ReplicationStateStopped)
 
-			rt1DocConflictVersion, _ := rt1.GetDoc(docID)
+				resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.localConflictingRevBody)
+				rest.RequireStatus(t, resp, http.StatusCreated)
 
-			changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			lastSeq = changesResults.Last_Seq.String()
+				rt1DocConflictVersion, _ := rt1.GetDoc(docID)
 
-			resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.remoteConflictingRevBody)
-			rest.RequireStatus(t, resp, http.StatusCreated)
+				changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				lastSeq = changesResults.Last_Seq.String()
 
-			rt2DocConflictVersion, _ := rt2.GetDoc(docID)
+				resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID, test.remoteConflictingRevBody)
+				rest.RequireStatus(t, resp, http.StatusCreated)
 
-			resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=start", "")
-			rest.RequireStatus(t, resp, http.StatusOK)
+				rt2DocConflictVersion, _ := rt2.GetDoc(docID)
 
-			rt1.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+				resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/repl1?action=start", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
 
-			changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			_ = changesResults.Last_Seq.String()
+				rt1.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-			ctx := base.TestCtx(t)
-			revGen, _ := db.ParseRevID(ctx, doc.SyncData.GetRevTreeID())
+				changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				_ = changesResults.Last_Seq.String()
 
-			assert.Equal(t, 3, revGen)
-			assert.Equal(t, "merged", doc.Body(ctx)["source"].(string))
+				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				ctx := base.TestCtx(t)
+				revGen, _ := db.ParseRevID(ctx, doc.SyncData.GetRevTreeID())
 
-			// assert on hlv
-			require.Len(t, doc.HLV.MergeVersions, 2)
-			val1, ok := doc.HLV.MergeVersions[rt1DocConflictVersion.CV.SourceID]
-			require.True(t, ok)
-			assert.Equal(t, rt1DocConflictVersion.CV.Value, val1)
-			val2, ok := doc.HLV.MergeVersions[rt2DocConflictVersion.CV.SourceID]
-			require.True(t, ok)
-			assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
-			assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
-			assert.Equal(t, doc.Cas, doc.HLV.Version)
+				assert.Equal(t, 3, revGen)
+				assert.Equal(t, "merged", doc.Body(ctx)["source"].(string))
 
-			assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
+				if sgrRunner.IsV4Protocol() {
+					// assert on hlv
+					require.Len(t, doc.HLV.MergeVersions, 2)
+					val1, ok := doc.HLV.MergeVersions[rt1DocConflictVersion.CV.SourceID]
+					require.True(t, ok)
+					assert.Equal(t, rt1DocConflictVersion.CV.Value, val1)
+					val2, ok := doc.HLV.MergeVersions[rt2DocConflictVersion.CV.SourceID]
+					require.True(t, ok)
+					assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
+					assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+					assert.Equal(t, doc.Cas, doc.HLV.Version)
+				}
 
-			assert.Len(t, doc.Attachments(), test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc, %#+v", doc.Attachments())
-			for attName, att := range doc.Attachments() {
-				attMap := att.(map[string]interface{})
-				assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
-				assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
-				assert.True(t, attMap["revpos"].(float64) >= 1, "attachment %q revpos should be at least 1", attName)
-				assert.True(t, attMap["length"].(float64) >= 1, "attachment %q length should be at least 1 byte", attName)
-			}
-		})
-	}
+				assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
+
+				assert.Len(t, doc.Attachments(), test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc, %#+v", doc.Attachments())
+				for attName, att := range doc.Attachments() {
+					attMap := att.(map[string]interface{})
+					assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
+					assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
+					assert.True(t, attMap["revpos"].(float64) >= 1, "attachment %q revpos should be at least 1", attName)
+					assert.True(t, attMap["length"].(float64) >= 1, "attachment %q length should be at least 1 byte", attName)
+				}
+			})
+		}
+	})
 }
 
 // TestActiveReplicatorPullFromCheckpoint:
@@ -2904,143 +2857,141 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		changesBatchSize  = 10
 		numRT2DocsInitial = 13 // 2 batches of changes
 		numRT2DocsTotal   = 24 // 2 more batches
+		username          = "alice"
 	)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer rt2.Close()
+		// Create first batch of docs
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		for i := 0; i < numRT2DocsInitial; i++ {
+			resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+		}
+		ctx1 := rt1.Context()
 
-	const username = "alice"
-	rt2.CreateUser(username, []string{username})
-	// Create first batch of docs
-	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numRT2DocsInitial; i++ {
-		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
-	}
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       changesBatchSize,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
 
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
-
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
-
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(numRT2DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
-	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsInitial; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
-
-		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
-		assert.Equal(t, "rt2", body["source"])
-	}
 
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+		startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+		require.NoError(t, ar.Start(ctx1))
 
-	// rev assertions
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numRT2DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numRT2DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numRT2DocsInitial)
+		// wait for all of the documents originally written to rt2 to arrive at rt1
+		changesResults := rt1.WaitForChanges(numRT2DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		docIDsSeen := make(map[string]bool, numRT2DocsInitial)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT2DocsInitial; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
 
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
 
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt2", body["source"])
+		}
 
-	assert.NoError(t, ar.Stop())
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	// Second batch of docs
-	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
-		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
-		rest.RequireStatus(t, resp, http.StatusCreated)
-	}
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
-	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-	assert.NoError(t, ar.Start(ctx1))
+		// rev assertions
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numRT2DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numRT2DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numRT2DocsInitial)
 
-	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults = rt1.WaitForChanges(numRT2DocsTotal, "/{{.keyspace}}/_changes?since=0", "", true)
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
 
-	docIDsSeen = make(map[string]bool, numRT2DocsTotal)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
+		require.NoError(t, ar.Stop())
 
-	rt1collection, rt1ctx = rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsTotal; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
+		// Second batch of docs
+		for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
+			resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+		}
 
-		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		// Create a new replicator using the same config, which should use the checkpoint set from the first.
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
-		assert.Equal(t, "rt2", body["source"])
-	}
+		defer func() {
+			require.NoError(t, ar.Stop())
+		}()
+		require.NoError(t, ar.Start(ctx1))
 
-	// Make sure we've not started any more since:0 replications on rt2 since the first one
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+		// new replicator - new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
-	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numRT2DocsTotal)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numRT2DocsTotal-numRT2DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numRT2DocsTotal-numRT2DocsInitial)
+		// wait for all of the documents originally written to rt2 to arrive at rt1
+		changesResults = rt1.WaitForChanges(numRT2DocsTotal, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	// assert the second active replicator stats
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
+		docIDsSeen = make(map[string]bool, numRT2DocsTotal)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
 
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+		rt1collection, rt1ctx = rt1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT2DocsTotal; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
+
+			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt2", body["source"])
+		}
+
+		// Make sure we've not started any more since:0 replications on rt2 since the first one
+		endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+
+		// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numRT2DocsTotal)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numRT2DocsTotal-numRT2DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numRT2DocsTotal-numRT2DocsInitial)
+
+		// assert the second active replicator stats
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
+
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+	})
 }
 
 // TestActiveReplicatorPullFromCheckpointIgnored:
@@ -3060,135 +3011,138 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		numRT2DocsTotal   = 24 // 2 more batches
 	)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-		})
-	defer rt2.Close()
-	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	// This test is not applicable for > 3 protocol versions given the CV's each side will be generated differently
+	// and thus pull replication will request changes.
+	sgrRunner.RunSubprotocolV3(func(t *testing.T) {
+		// Passive
+		rt2 := rest.NewRestTester(t,
+			&rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+			})
+		defer rt2.Close()
+		const username = "alice"
 
-	rt2.CreateUser(username, []string{username})
+		rt2.CreateUser(username, []string{username})
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		// Active
+		rt1 := rest.NewRestTester(t, nil)
+		defer rt1.Close()
+		ctx1 := rt1.Context()
 
-	// Create first batch of docs
-	docIDPrefix := t.Name() + "doc"
-	for i := 0; i < numRT2DocsInitial; i++ {
-		rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		rest.RequireDocRevTreeEqual(t, rt1Version, rt2Version)
-	}
+		// Create first batch of docs
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "doc"
+		for i := 0; i < numRT2DocsInitial; i++ {
+			rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
+			rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
+			rest.RequireDocRevTreeEqual(t, rt1Version, rt2Version)
+		}
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    changesBatchSize,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-		// This test is not applicable for > 3 protocol versions given the CV's each side will be generated differently
-		// and thus pull replication will request changes.
-		SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()},
-	}
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          t.Name(),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       changesBatchSize,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
 
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 
-	assert.NoError(t, ar.Start(ctx1))
+		assert.NoError(t, ar.Start(ctx1))
 
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
-	base.RequireWaitForStat(t, func() int64 {
-		return pullCheckpointer.Stats().AlreadyKnownSequenceCount
-	}, numRT2DocsInitial)
+		base.RequireWaitForStat(t, func() int64 {
+			return pullCheckpointer.Stats().AlreadyKnownSequenceCount
+		}, numRT2DocsInitial)
 
-	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(numRT2DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
-	docIDsSeen := make(map[string]bool, numRT2DocsInitial)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsInitial; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
+		// wait for all of the documents originally written to rt2 to arrive at rt1
+		changesResults := rt1.WaitForChanges(numRT2DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		docIDsSeen := make(map[string]bool, numRT2DocsInitial)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT2DocsInitial; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
 
-		_, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-	}
+			_, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+		}
 
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	// rev assertions
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 0)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 0)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 0)
+		// rev assertions
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 0)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 0)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 0)
 
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
 
-	assert.NoError(t, ar.Stop())
+		assert.NoError(t, ar.Stop())
 
-	// Second batch of docs
-	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
-		rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
-		// above docs CV's won't be equal, revIDs will though
-		rest.RequireDocRevTreeEqual(t, rt1Version, rt2Version)
-	}
+		// Second batch of docs
+		for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
+			rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
+			rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
+			// above docs CV's won't be equal, revIDs will though
+			rest.RequireDocRevTreeEqual(t, rt1Version, rt2Version)
+		}
 
-	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-	assert.NoError(t, ar.Start(ctx1))
+		// Create a new replicator using the same config, which should use the checkpoint set from the first.
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+		assert.NoError(t, ar.Start(ctx1))
 
-	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
+		// new replicator - new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
-	base.RequireWaitForStat(t, func() int64 {
-		return pullCheckpointer.Stats().AlreadyKnownSequenceCount
-	}, numRT2DocsTotal-numRT2DocsInitial)
+		base.RequireWaitForStat(t, func() int64 {
+			return pullCheckpointer.Stats().AlreadyKnownSequenceCount
+		}, numRT2DocsTotal-numRT2DocsInitial)
 
-	// Make sure we've not started any more since:0 replications on rt2 since the first one
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+		// Make sure we've not started any more since:0 replications on rt2 since the first one
+		endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
-	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 0)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 0)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 0)
+		// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, 0)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 0)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 0)
 
-	// assert the second active replicator stats
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
+		// assert the second active replicator stats
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+	})
 }
 
 // TestActiveReplicatorPullOneshot:
@@ -3202,39 +3156,40 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
 	const username = "alice"
-	rt2.CreateUser(username, []string{username})
 
-	docID := t.Name() + "rt2doc1"
-	rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
 
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+		ctx1 := rt1.Context()
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
+
+		assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
+
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
+
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPull)
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 // TestActiveReplicatorPushBasic:
@@ -3248,58 +3203,55 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+	const username = "alice"
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
+		ctx1 := rt1.Context()
 
-	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
+
+		assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
+
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
+
+		// wait for the document originally written to rt1 to arrive at rt2
+		sgrRunner.WaitForVersion(docID, rt2, version)
+
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+
+		assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
-
-	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 }
 
 // TestActiveReplicatorPushAttachments:
@@ -3314,81 +3266,76 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+	const username = "alice"
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		ctx1 := rt1.Context()
+		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
-	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		version := rt1.PutDoc(docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
-	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDoc(docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		assert.Equal(t, int64(0), ar.Push.GetStats().HandleGetAttachment.Value())
+
+		// Start the replicator (implicit connect)
+		assert.NoError(t, ar.Start(ctx1))
+
+		// wait for the document originally written to rt1 to arrive at rt2
+		sgrRunner.WaitForVersion(docID, rt2, version)
+
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+		assert.Equal(t, json.Number("1"), body["doc_num"])
+
+		assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
+
+		docID = rest.SafeDocumentName(t, t.Name()+"rt1doc2")
+		version = rt1.PutDoc(docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
+
+		// wait for the new document written to rt1 to arrive at rt2
+		sgrRunner.WaitForVersion(docID, rt2, version)
+
+		doc2, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err = doc2.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+		assert.Equal(t, json.Number("2"), body["doc_num"])
+
+		// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
+		// the attachment only once. However, targeting a Lithium node sends the attachment twice like
+		// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
+		// new storage model for attachment storage and retrieval.
+		assert.Equal(t, int64(2), ar.Push.GetStats().HandleGetAttachment.Value())
+		assert.Equal(t, int64(0), ar.Push.GetStats().HandleProveAttachment.Value())
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, int64(0), ar.Push.GetStats().HandleGetAttachment.Value())
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
-
-	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
-
-	docID = t.Name() + "rt1doc2"
-	version = rt1.PutDoc(docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
-
-	// wait for the new document written to rt1 to arrive at rt2
-	changesResults = rt2.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[1].ID)
-
-	doc2, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc2.ExtractDocVersion())
-
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
-
-	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
-	// the attachment only once. However, targeting a Lithium node sends the attachment twice like
-	// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
-	// new storage model for attachment storage and retrieval.
-	assert.Equal(t, int64(2), ar.Push.GetStats().HandleGetAttachment.Value())
-	assert.Equal(t, int64(0), ar.Push.GetStats().HandleProveAttachment.Value())
 }
 
 // TestActiveReplicatorPushFromCheckpoint:
@@ -3407,145 +3354,143 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		changesBatchSize  = 10
 		numRT1DocsInitial = 13 // 2 batches of changes
 		numRT1DocsTotal   = 24 // 2 more batches
+		username          = "alice"
 	)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
+		ctx1 := rt1.Context()
 
-	// Create first batch of docs
-	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numRT1DocsInitial; i++ {
-		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-	}
+		// Create first batch of docs
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		for i := 0; i < numRT1DocsInitial; i++ {
+			rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		}
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       changesBatchSize,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
-
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:         true,
-		ChangesBatchSize:   changesBatchSize,
-		CollectionsEnabled: !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull from seq:0
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
-
-	require.NoError(t, ar.Start(ctx1))
-
-	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
-	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsInitial; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
-
-		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		// Create the first active replicator to pull from seq:0
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-	}
-
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
-
-	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
-
-	// rev assertions
-	base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
-
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	require.NoError(t, ar.Stop())
-
-	// Second batch of docs
-	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
-		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-	}
-
-	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err = stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-	require.NoError(t, ar.Start(ctx1))
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	// new replicator - new checkpointer
-	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
-
-	// wait for all of the documents originally written to rt1 to arrive at rt2
-	changesResults = rt2.WaitForChanges(numRT1DocsTotal, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	docIDsSeen = make(map[string]bool, numRT1DocsTotal)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsTotal; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
-
-		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		dbstats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-	}
+		arConfig.ReplicationStatsMap = dbstats
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	// Make sure we've not started any more since:0 replications on rt1 since the first one
-	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+		startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
-	// make sure the new replicator has only sent new mutations
-	base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, numRT1DocsTotal-numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsTotal-numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsTotal-numRT1DocsInitial)
+		require.NoError(t, ar.Start(ctx1))
 
-	// assert the second active replicator stats
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
+		// wait for all of the documents originally written to rt1 to arrive at rt2
+		changesResults := rt2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		docIDsSeen := make(map[string]bool, numRT1DocsInitial)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT1DocsInitial; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
 
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt1", body["source"])
+		}
+
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+		pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
+
+		// rev assertions
+		base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
+
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
+
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		require.NoError(t, ar.Stop())
+
+		// Second batch of docs
+		for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
+			rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		}
+
+		// Create a new replicator using the same config, which should use the checkpoint set from the first.
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err = stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
+		defer func() { assert.NoError(t, ar.Stop()) }()
+
+		// new replicator - new checkpointer
+		pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
+
+		// wait for all of the documents originally written to rt1 to arrive at rt2
+		changesResults = rt2.WaitForChanges(numRT1DocsTotal, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		docIDsSeen = make(map[string]bool, numRT1DocsTotal)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT1DocsTotal; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
+
+			doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt1", body["source"])
+		}
+
+		// Make sure we've not started any more since:0 replications on rt1 since the first one
+		endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+
+		// make sure the new replicator has only sent new mutations
+		base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, numRT1DocsTotal-numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsTotal-numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsTotal-numRT1DocsInitial)
+
+		// assert the second active replicator stats
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
+
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+	})
 }
 
 // TestActiveReplicatorEdgeCheckpointNameCollisions:
@@ -3561,169 +3506,166 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	const (
 		changesBatchSize  = 10
 		numRT1DocsInitial = 13 // 2 batches of changes
+		username          = "alice"
 	)
-
-	// Central cluster
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		SyncFn: channels.DocChannelsSyncFunction,
-	})
-
-	defer rt1.Close()
-
-	username := "alice"
-	rt1.CreateUser(username, []string{username})
-
-	// Create first batch of docs
-	docIDPrefix := t.Name() + "rt1doc"
-	for i := 0; i < numRT1DocsInitial; i++ {
-		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
-	}
-
-	// Edge 1
-	edge1Bucket := base.GetTestBucket(t)
-	edge1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			CustomTestBucket: edge1Bucket,
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		_, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer edge1.Close()
-	ctx1 := edge1.Context()
+		// Create first batch of docs
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt1doc"
+		for i := 0; i < numRT1DocsInitial; i++ {
+			rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		}
 
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          "edge-repl",
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt1, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: edge1.GetDatabase(),
-		},
-		Continuous:         true,
-		ChangesBatchSize:   changesBatchSize,
-		CollectionsEnabled: !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-	arConfig.SetCheckpointPrefix(t, "cluster1:")
+		// Edge 1
+		edge1Bucket := base.GetTestBucket(t)
+		edge1 := rest.NewRestTester(t,
+			&rest.RestTesterConfig{
+				CustomTestBucket: edge1Bucket,
+			})
+		defer edge1.Close()
+		ctx1 := edge1.Context()
 
-	// Create the first active replicator to pull from seq:0
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	edge1Replicator, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          "edge-repl",
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: edge1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       changesBatchSize,
+			CollectionsEnabled:     !rt2.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
+		arConfig.SetCheckpointPrefix(t, "cluster1:")
 
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsHandledTotal := edge1Replicator.Pull.GetStats().HandleRevCount.Value()
-
-	assert.NoError(t, edge1Replicator.Start(ctx1))
-
-	// wait for all of the documents originally written to rt1 to arrive at edge1
-	changesResults := edge1.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
-	edge1LastSeq := changesResults.Last_Seq
-	require.Len(t, changesResults.Results, numRT1DocsInitial)
-	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-	edge1collection, edge1ctx := edge1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsInitial; i++ {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		assert.True(t, docIDsSeen[docID])
-
-		doc, err := edge1collection.GetDocument(edge1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		// Create the first active replicator to pull from seq:0
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-	}
+		dbstats, err := stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
+		edge1Replicator, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	edge1PullCheckpointer := edge1Replicator.Pull.GetSingleCollection(t).Checkpointer
-	edge1PullCheckpointer.CheckpointNow()
+		startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumRevsHandledTotal := edge1Replicator.Pull.GetStats().HandleRevCount.Value()
 
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+		require.NoError(t, edge1Replicator.Start(ctx1))
 
-	// rev assertions
-	base.RequireWaitForStat(t, edge1Replicator.Pull.GetStats().HandleRevCount.Value, startNumRevsHandledTotal+numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return edge1PullCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
-	base.RequireWaitForStat(t, func() int64 { return edge1PullCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
+		// wait for all of the documents originally written to rt1 to arrive at edge1
+		changesResults := edge1.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		edge1LastSeq := changesResults.Last_Seq
+		require.Len(t, changesResults.Results, numRT1DocsInitial)
+		docIDsSeen := make(map[string]bool, numRT1DocsInitial)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+		edge1collection, edge1ctx := edge1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numRT1DocsInitial; i++ {
+			docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+			assert.True(t, docIDsSeen[docID])
 
-	// checkpoint assertions
-	assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
+			doc, err := edge1collection.GetDocument(edge1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
 
-	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().SetCheckpointCount)
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt1", body["source"])
+		}
 
-	assert.NoError(t, edge1Replicator.Stop())
+		edge1PullCheckpointer := edge1Replicator.Pull.GetSingleCollection(t).Checkpointer
+		edge1PullCheckpointer.CheckpointNow()
 
-	// Edge 2
-	edge2Bucket := base.GetTestBucket(t)
-	edge2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			CustomTestBucket: edge2Bucket,
-		})
-	defer edge2.Close()
-	ctx2 := edge2.Context()
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
-	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err = stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	arConfig.ActiveDB = &db.Database{
-		DatabaseContext: edge2.GetDatabase(),
-	}
-	arConfig.SetCheckpointPrefix(t, "cluster2:")
-	edge2Replicator, err := db.NewActiveReplicator(ctx2, &arConfig)
-	require.NoError(t, err)
-	assert.NoError(t, edge2Replicator.Start(ctx2))
+		// rev assertions
+		base.RequireWaitForStat(t, edge1Replicator.Pull.GetStats().HandleRevCount.Value, startNumRevsHandledTotal+numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return edge1PullCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return edge1PullCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
 
-	changesResults = edge2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		// checkpoint assertions
+		assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
 
-	edge2PullCheckpointer := edge2Replicator.Pull.GetSingleCollection(t).Checkpointer
-	edge2PullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().SetCheckpointCount)
 
-	// make sure that edge 2 didn't use a checkpoint
-	assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
+		require.NoError(t, edge1Replicator.Stop())
 
-	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().SetCheckpointCount)
+		// Edge 2
+		edge2Bucket := base.GetTestBucket(t)
+		edge2 := rest.NewRestTester(t,
+			&rest.RestTesterConfig{
+				CustomTestBucket: edge2Bucket,
+			})
+		defer edge2.Close()
+		ctx2 := edge2.Context()
 
-	assert.NoError(t, edge2Replicator.Stop())
+		// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err = stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ActiveDB = &db.Database{
+			DatabaseContext: edge2.GetDatabase(),
+		}
+		arConfig.SetCheckpointPrefix(t, "cluster2:")
+		edge2Replicator, err := db.NewActiveReplicator(ctx2, &arConfig)
+		require.NoError(t, err)
+		require.NoError(t, edge2Replicator.Start(ctx2))
 
-	resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	rt1.WaitForPendingChanges()
+		changesResults = edge2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
 
-	// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
-	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err = stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	arConfig.ActiveDB = &db.Database{
-		DatabaseContext: edge1.GetDatabase(),
-	}
-	arConfig.SetCheckpointPrefix(t, "cluster1:")
+		edge2PullCheckpointer := edge2Replicator.Pull.GetSingleCollection(t).Checkpointer
+		edge2PullCheckpointer.CheckpointNow()
 
-	edge1Replicator2, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-	require.NoError(t, edge1Replicator2.Start(ctx1))
+		// make sure that edge 2 didn't use a checkpoint
+		assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
 
-	changesResults = edge1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", edge1LastSeq), "", true)
-	changesResults.RequireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
+		assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().SetCheckpointCount)
 
-	edge1Checkpointer2 := edge1Replicator2.Pull.GetSingleCollection(t).Checkpointer
-	edge1Checkpointer2.CheckpointNow()
-	if rt1.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(1), edge1Checkpointer2.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), edge1Checkpointer2.Stats().GetCheckpointMissCount)
-	}
+		require.NoError(t, edge2Replicator.Stop())
 
-	assert.Equal(t, int64(1), edge1Checkpointer2.Stats().SetCheckpointCount)
+		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, numRT1DocsInitial), `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt2.WaitForPendingChanges()
 
-	require.NoError(t, edge1Replicator2.Stop())
+		// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err = stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ActiveDB = &db.Database{
+			DatabaseContext: edge1.GetDatabase(),
+		}
+		arConfig.SetCheckpointPrefix(t, "cluster1:")
+
+		edge1Replicator2, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+		require.NoError(t, edge1Replicator2.Start(ctx1))
+
+		changesResults = edge1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", edge1LastSeq), "", true)
+		changesResults.RequireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
+
+		edge1Checkpointer2 := edge1Replicator2.Pull.GetSingleCollection(t).Checkpointer
+		edge1Checkpointer2.CheckpointNow()
+		if rt2.GetDatabase().OnlyDefaultCollection() {
+			assert.Equal(t, int64(1), edge1Checkpointer2.Stats().GetCheckpointHitCount)
+			assert.Equal(t, int64(0), edge1Checkpointer2.Stats().GetCheckpointMissCount)
+		}
+
+		assert.Equal(t, int64(1), edge1Checkpointer2.Stats().SetCheckpointCount)
+
+		require.NoError(t, edge1Replicator2.Stop())
+	})
 }
 
 // TestActiveReplicatorPushOneshot:
@@ -3737,57 +3679,53 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
 
-	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		ctx1 := rt1.Context()
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
 
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
 
-	ctx1 := rt1.Context()
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
+
+		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
+		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+
+		sgrRunner.WaitForVersion(docID, rt2, version)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+
+		assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
-	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
-
-	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 }
 
 // TestActiveReplicatorPullTombstone:
@@ -3800,72 +3738,56 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer rt2.Close()
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+		ctx1 := rt1.Context()
 
-	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
-
-	// Active
-
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
+
+		// wait for the document originally written to rt2 to arrive at rt1
+		sgrRunner.WaitForVersion(docID, rt1, version)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		// Tombstone the doc in rt2
+		deletedVersion := rt2.DeleteDoc(docID, version)
+
+		// wait for the tombstone written to rt2 to arrive at rt1
+		sgrRunner.WaitForTombstone(docID, rt1, deletedVersion)
+		doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+		assert.True(t, doc.IsDeleted())
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	// Tombstone the doc in rt2
-	deletedVersion := rt2.DeleteDoc(docID, version)
-
-	// wait for the tombstone written to rt2 to arrive at rt1
-	changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	assert.True(t, doc.IsDeleted())
-	rest.RequireDocVersionEqual(t, deletedVersion, doc.ExtractDocVersion())
 }
 
 // TestActiveReplicatorPullPurgeOnRemoval:
@@ -3880,71 +3802,61 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer rt2.Close()
+		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		ctx1 := rt1.Context()
 
-	docID := t.Name() + "rt2doc1"
-	version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: userDBURL(rt2, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			PurgeOnRemoval:         true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: userDBURL(rt2, username),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		PurgeOnRemoval:      true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		// wait for the document originally written to rt2 to arrive at rt1
+		sgrRunner.WaitForVersion(docID, rt1, version)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		_ = rt2.UpdateDoc(docID, version, `{"source":"rt2","channels":["bob"]}`)
+
+		// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
+		base.RequireWaitForStat(t, func() int64 {
+			stats := ar.GetStatus(ctx1)
+			return stats.DocsPurged
+		}, 1)
+
+		doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
+		assert.Nil(t, doc)
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	require.NoError(t, err)
-	require.Len(t, changesResults.Results, 1)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	_ = rt2.UpdateDoc(docID, version, `{"source":"rt2","channels":["bob"]}`)
-
-	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
-	base.RequireWaitForStat(t, func() int64 {
-		stats := ar.GetStatus(ctx1)
-		return stats.DocsPurged
-	}, 1)
-
-	doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.Error(t, err)
-	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
-	assert.Nil(t, doc)
 }
 
 // TestActiveReplicatorPullConflict:
@@ -4040,164 +3952,143 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		},
 	}
 
-	for _, test := range conflictResolutionTests {
-		t.Run(test.name, func(t *testing.T) {
-			base.RequireNumTestBuckets(t, 2)
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range conflictResolutionTests {
+			t.Run(test.name, func(t *testing.T) {
+				base.RequireNumTestBuckets(t, 2)
+				base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
-			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						Name: "passivedb",
-					},
-				},
-			})
-			defer rt2.Close()
-			username := "alice"
-			rt2.CreateUser(username, []string{"*"})
+				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				remoteURL, err := url.Parse(remoteURLString)
+				require.NoError(t, err)
 
-			// Create revision on rt2 (remote)
-			docID := test.name
-			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
+				// Create revision on rt2 (remote)
+				docID := test.name
+				rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, rest.EmptyDocVersion(), test.remoteRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
 
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
+				ctx1 := rt1.Context()
 
-			passiveDBURL, err := url.Parse(srv.URL + "/passivedb")
-			require.NoError(t, err)
+				// Create revision on rt1 (local)
+				rt1version := rt1.PutNewEditsFalse(docID, test.localVersion, rest.EmptyDocVersion(), test.localRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1version)
 
-			// Add basic auth creds to target db URL
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						Name: "activedb",
-					},
-				},
-			})
-			defer rt1.Close()
-			ctx1 := rt1.Context()
-
-			// Create revision on rt1 (local)
-			rt1version := rt1.PutNewEditsFalse(docID, test.localVersion, rest.EmptyDocVersion(), test.localRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1version)
-
-			var rt1CVVersion rest.DocVersion
-			if !test.tombstoneCase {
-				rt1CVVersion, _ = rt1.GetDoc(docID)
-			}
-
-			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
-			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			require.NoError(t, err)
-			replicationStats, err := stats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
-
-			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-				ID:          t.Name(),
-				Direction:   db.ActiveReplicatorTypePull,
-				RemoteDBURL: passiveDBURL,
-				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
-				},
-				ChangesBatchSize:           200,
-				ConflictResolverFunc:       customConflictResolver,
-				ConflictResolverFuncForHLV: customConflictResolver,
-				Continuous:                 true,
-				ReplicationStatsMap:        replicationStats,
-				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Stop()) }()
-
-			// Start the replicator (implicit connect)
-			assert.NoError(t, ar.Start(ctx1))
-
-			require.EventuallyWithTf(t, func(c *assert.CollectT) {
-				assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
-			}, 10*time.Second, 100*time.Millisecond, "Expecting DocsRead == 1: %+v", ar.GetStatus(ctx1))
-
-			switch test.expectedResolutionType {
-			case db.ConflictResolutionLocal:
-				assert.Equal(t, 1, int(replicationStats.ConflictResolvedLocalCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
-			case db.ConflictResolutionMerge:
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
-				assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
-			case db.ConflictResolutionRemote:
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
-				assert.Equal(t, 1, int(replicationStats.ConflictResolvedRemoteCount.Value()))
-			default:
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
-				assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
-			}
-			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
-
-			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
-			t.Logf("Changes response is %+v", changesResults)
-
-			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-			actualVersion := doc.ExtractDocVersion()
-			var expValue uint64
-			if test.localWinsHLV {
-				expValue = rt1CVVersion.CV.Value
-			} else {
-				expValue = doc.Cas
-			}
-			if test.newCVGenerated || test.localWinsHLV {
-				test.expectedLocalVersion.CV = db.Version{
-					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Value:    expValue,
+				var rt1CVVersion rest.DocVersion
+				if !test.tombstoneCase {
+					rt1CVVersion, _ = rt1.GetDoc(docID)
 				}
-			} else {
-				test.expectedLocalVersion.CV = rt2Version.CV
-			}
-			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, actualVersion)
 
-			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
-			// against
-			if !test.skipBodyAssertion {
-				requireBodyEqual(t, test.expectedLocalBody, doc)
-			}
-			t.Logf("Doc %s is %+v", docID, doc)
-			for revID, revInfo := range doc.SyncData.History {
-				t.Logf("doc revision [%s]: %+v", revID, revInfo)
-			}
+				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+				require.NoError(t, err)
+				stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+				require.NoError(t, err)
+				replicationStats, err := stats.DBReplicatorStats(t.Name())
+				require.NoError(t, err)
 
-			if !test.skipActiveLeafAssertion {
-				// Validate only one active leaf node remains after conflict resolution, and that all parents
-				// of leaves have empty bodies
-				activeCount := 0
-				for _, revID := range doc.SyncData.History.GetLeaves() {
-					revInfo, ok := doc.SyncData.History[revID]
-					require.True(t, ok)
-					if !revInfo.Deleted {
-						activeCount++
+				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+					ID:          rest.SafeDocumentName(t, t.Name()),
+					Direction:   db.ActiveReplicatorTypePull,
+					RemoteDBURL: remoteURL,
+					ActiveDB: &db.Database{
+						DatabaseContext: rt1.GetDatabase(),
+					},
+					ChangesBatchSize:           200,
+					ConflictResolverFunc:       customConflictResolver,
+					ConflictResolverFuncForHLV: customConflictResolver,
+					Continuous:                 true,
+					ReplicationStatsMap:        replicationStats,
+					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+					SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
+				})
+				require.NoError(t, err)
+				defer func() { require.NoError(t, ar.Stop()) }()
+
+				// Start the replicator (implicit connect)
+				require.NoError(t, ar.Start(ctx1))
+
+				require.EventuallyWithTf(t, func(c *assert.CollectT) {
+					assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
+				}, 10*time.Second, 100*time.Millisecond, "Expecting DocsRead == 1: %+v", ar.GetStatus(ctx1))
+
+				switch test.expectedResolutionType {
+				case db.ConflictResolutionLocal:
+					assert.Equal(t, 1, int(replicationStats.ConflictResolvedLocalCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
+				case db.ConflictResolutionMerge:
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
+					assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
+				case db.ConflictResolutionRemote:
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
+					assert.Equal(t, 1, int(replicationStats.ConflictResolvedRemoteCount.Value()))
+				default:
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
+					assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
+				}
+				// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
+
+				changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
+				t.Logf("Changes response is %+v", changesResults)
+
+				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				var expValue uint64
+				if sgrRunner.IsV4Protocol() {
+					if test.localWinsHLV {
+						expValue = rt1CVVersion.CV.Value
+					} else {
+						expValue = doc.Cas
 					}
-					if revInfo.Parent != "" {
-						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+					if test.newCVGenerated || test.localWinsHLV {
+						test.expectedLocalVersion.CV = db.Version{
+							SourceID: rt1.GetDatabase().EncodedSourceID,
+							Value:    expValue,
+						}
+					} else {
+						test.expectedLocalVersion.CV = rt2Version.CV
+					}
+				}
+				if !test.skipBodyAssertion {
+					sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
+					// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
+					// against
+					requireBodyEqual(t, test.expectedLocalBody, doc)
+				} else {
+					sgrRunner.WaitForTombstone(docID, rt1, test.expectedLocalVersion)
+				}
+				t.Logf("Doc %s is %+v", docID, doc)
+				for revID, revInfo := range doc.SyncData.History {
+					t.Logf("doc revision [%s]: %+v", revID, revInfo)
+				}
+
+				if !test.skipActiveLeafAssertion {
+					// Validate only one active leaf node remains after conflict resolution, and that all parents
+					// of leaves have empty bodies
+					activeCount := 0
+					for _, revID := range doc.SyncData.History.GetLeaves() {
+						revInfo, ok := doc.SyncData.History[revID]
 						require.True(t, ok)
-						assert.True(t, parentRevInfo.Body == nil)
+						if !revInfo.Deleted {
+							activeCount++
+						}
+						if revInfo.Parent != "" {
+							parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+							require.True(t, ok)
+							assert.True(t, parentRevInfo.Body == nil)
+						}
 					}
+					assert.Equal(t, 1, activeCount)
 				}
-				assert.Equal(t, 1, activeCount)
-			}
-		})
-	}
+			})
+		}
+	})
 }
 
 // TestActiveReplicatorPushAndPullConflict:
@@ -4285,197 +4176,185 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		},
 	}
 
-	for _, test := range conflictResolutionTests {
-		t.Run(test.name, func(t *testing.T) {
-			base.RequireNumTestBuckets(t, 2)
-			base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range conflictResolutionTests {
+			t.Run(test.name, func(t *testing.T) {
+				base.RequireNumTestBuckets(t, 2)
+				base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 
-			// Passive
-			rt2 := rest.NewRestTester(t, nil)
-			defer rt2.Close()
-			username := "alice"
-			rt2.CreateUser(username, []string{"*"})
+				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				remoteURL, err := url.Parse(remoteURLString)
+				require.NoError(t, err)
 
-			// Create revision on rt2 (remote)
-			docID := test.name
+				// Create revision on rt2 (remote)
+				docID := test.name
+				if test.commonAncestorVersion != nil {
+					t.Logf("Creating common ancestor revision on rt2")
+					rt2Version := rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
+					rest.RequireDocRevTreeEqual(t, *test.commonAncestorVersion, *rt2Version)
+				}
 
-			if test.commonAncestorVersion != nil {
-				t.Logf("Creating common ancestor revision on rt2")
-				rt2Version := rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
-				rest.RequireDocRevTreeEqual(t, *test.commonAncestorVersion, *rt2Version)
-			}
+				t.Logf("Creating remote revision on rt2")
+				rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
 
-			t.Logf("Creating remote revision on rt2")
-			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
+				rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+				remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalSync)
+				require.NoError(t, err)
 
-			rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-			remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalSync)
-			require.NoError(t, err)
+				ctx1 := rt1.Context()
+				// Create revision on rt1 (local)
+				if test.commonAncestorVersion != nil {
+					t.Logf("Creating common ancestor revision on rt1")
+					rt1version := rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.localRevisionBody)
+					rest.RequireDocRevTreeEqual(t, *test.commonAncestorVersion, *rt1version)
+				}
 
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
+				t.Logf("Creating local revision on rt1")
+				rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1Version)
 
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
+				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+				localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalSync)
+				require.NoError(t, err)
 
-			// Add basic auth creds to target db URL
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+				require.NoError(t, err)
 
-			// Active
-			rt1 := rest.NewRestTester(t, nil)
-			defer rt1.Close()
-			ctx1 := rt1.Context()
+				replicationID := rest.SafeDocumentName(t, t.Name())
+				stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+				require.NoError(t, err)
+				dbstats, err := stats.DBReplicatorStats(replicationID)
+				require.NoError(t, err)
 
-			// Create revision on rt1 (local)
-			if test.commonAncestorVersion != nil {
-				t.Logf("Creating common ancestor revision on rt1")
-				rt1version := rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.localRevisionBody)
-				rest.RequireDocRevTreeEqual(t, *test.commonAncestorVersion, *rt1version)
-			}
+				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+					ID:          replicationID,
+					Direction:   db.ActiveReplicatorTypePushAndPull,
+					RemoteDBURL: remoteURL,
+					ActiveDB: &db.Database{
+						DatabaseContext: rt1.GetDatabase(),
+					},
+					ChangesBatchSize:           200,
+					ConflictResolverFunc:       customConflictResolver,
+					ConflictResolverFuncForHLV: customConflictResolver,
+					Continuous:                 true,
+					ReplicationStatsMap:        dbstats,
+					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+					SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
+				})
+				require.NoError(t, err)
+				defer func() { assert.NoError(t, ar.Stop()) }()
 
-			t.Logf("Creating local revision on rt1")
-			rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1Version)
+				// Start the replicator (implicit connect)
+				t.Logf("Starting replicator")
+				require.NoError(t, ar.Start(ctx1))
+				t.Logf("Replicator started")
 
-			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-			localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalSync)
-			require.NoError(t, err)
+				// wait for both push and pull to complete:
+				// - the document originally written to rt2 to arrive at rt1
+				// - the document originally written to rt1 to get a conflict on push
+				// - if applicable: the resolved rev to be pushed up to rt2
+				require.EventuallyWithTf(t, func(c *assert.CollectT) {
+					status := ar.GetStatus(ctx1)
+					assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
+					assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
+					if test.expectedPushResolved {
+						assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
+					}
+				}, 10*time.Second, 100*time.Millisecond, "Expected both push and pull to be completed: %+v", ar.GetStatus(ctx1))
+				t.Logf("========================Replication should be done, checking with changes")
 
-			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
+				// Validate results on the local (rt1)
+				changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
+				t.Logf("Changes response is %+v", changesResults)
 
-			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			require.NoError(t, err)
-			dbstats, err := stats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
+				rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, "")
+				t.Logf("Raw response: %s", rawDocResponse.Body.Bytes())
 
-			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-				ID:          t.Name(),
-				Direction:   db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL: passiveDBURL,
-				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
-				},
-				ChangesBatchSize:           200,
-				ConflictResolverFunc:       customConflictResolver,
-				ConflictResolverFuncForHLV: customConflictResolver,
-				Continuous:                 true,
-				ReplicationStatsMap:        dbstats,
-				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+				docResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+				t.Logf("Non-raw response: %s", docResponse.Body.Bytes())
+
+				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				switch test.winner {
+				case merge:
+					test.expectedVersion.CV = db.Version{
+						SourceID: rt1.GetDatabase().EncodedSourceID,
+						Value:    doc.Cas,
+					}
+				case local:
+					test.expectedVersion.CV = rt1Version.CV
+				case remote:
+					test.expectedVersion.CV = rt2Version.CV
+				}
+				sgrRunner.WaitForVersion(docID, rt1, test.expectedVersion)
+				requireBodyEqual(t, test.expectedBody, doc)
+				t.Logf("Doc %s is %+v", docID, doc)
+				t.Logf("Doc %s attachments are %+v", docID, doc.Attachments())
+				for revID, revInfo := range doc.SyncData.History {
+					t.Logf("doc revision [%s]: %+v", revID, revInfo)
+				}
+
+				// Validate only one active leaf node remains after conflict resolution, and that all parents
+				// of leaves have empty bodies
+				activeCount := 0
+				for _, revID := range doc.SyncData.History.GetLeaves() {
+					revInfo, ok := doc.SyncData.History[revID]
+					require.True(t, ok)
+					if !revInfo.Deleted {
+						activeCount++
+					}
+					if revInfo.Parent != "" {
+						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+						require.True(t, ok)
+						assert.True(t, parentRevInfo.Body == nil)
+					}
+				}
+				assert.Equal(t, 1, activeCount)
+
+				// Validate results on the remote (rt2)
+				rt2Since := remoteDoc.Sequence
+				if test.expectedVersion.RevTreeID == test.remoteVersion.RevTreeID {
+					// no changes should have been pushed back up to rt2, because this rev won.
+					rt2Since = 0
+				}
+				changesResults = rt2.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", rt2Since), "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
+				t.Logf("Changes response is %+v", changesResults)
+
+				doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				sgrRunner.WaitForVersion(docID, rt2, test.expectedVersion)
+				requireBodyEqual(t, test.expectedBody, doc)
+				t.Logf("Remote Doc %s is %+v", docID, doc)
+				t.Logf("Remote Doc %s attachments are %+v", docID, doc.Attachments())
+				for revID, revInfo := range doc.SyncData.History {
+					t.Logf("doc revision [%s]: %+v", revID, revInfo)
+				}
+
+				// Validate only one active leaf node remains after conflict resolution, and that all parents
+				// of leaves have empty bodies
+				activeCount = 0
+				for _, revID := range doc.SyncData.History.GetLeaves() {
+					revInfo, ok := doc.SyncData.History[revID]
+					require.True(t, ok)
+					if !revInfo.Deleted {
+						activeCount++
+					}
+					if revInfo.Parent != "" {
+						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+						require.True(t, ok)
+						assert.True(t, parentRevInfo.Body == nil)
+					}
+				}
+				assert.Equal(t, 1, activeCount)
 			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Stop()) }()
-
-			// Start the replicator (implicit connect)
-			t.Logf("Starting replicator")
-			assert.NoError(t, ar.Start(ctx1))
-			t.Logf("Replicator started")
-
-			// wait for both push and pull to complete:
-			// - the document originally written to rt2 to arrive at rt1
-			// - the document originally written to rt1 to get a conflict on push
-			// - if applicable: the resolved rev to be pushed up to rt2
-			require.EventuallyWithTf(t, func(c *assert.CollectT) {
-				status := ar.GetStatus(ctx1)
-				assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
-				assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
-				if test.expectedPushResolved {
-					assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
-				}
-			}, 10*time.Second, 100*time.Millisecond, "Expected both push and pull to be completed: %+v", ar.GetStatus(ctx1))
-			t.Logf("========================Replication should be done, checking with changes")
-
-			// Validate results on the local (rt1)
-			changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
-			t.Logf("Changes response is %+v", changesResults)
-
-			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, "")
-			t.Logf("Raw response: %s", rawDocResponse.Body.Bytes())
-
-			docResponse := rt1.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
-			t.Logf("Non-raw response: %s", docResponse.Body.Bytes())
-
-			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-			switch test.winner {
-			case merge:
-				test.expectedVersion.CV = db.Version{
-					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Value:    doc.Cas,
-				}
-			case local:
-				test.expectedVersion.CV = rt1Version.CV
-			case remote:
-				test.expectedVersion.CV = rt2Version.CV
-			}
-			rest.RequireDocVersionEqual(t, test.expectedVersion, doc.ExtractDocVersion())
-			requireBodyEqual(t, test.expectedBody, doc)
-			t.Logf("Doc %s is %+v", docID, doc)
-			t.Logf("Doc %s attachments are %+v", docID, doc.Attachments())
-			for revID, revInfo := range doc.SyncData.History {
-				t.Logf("doc revision [%s]: %+v", revID, revInfo)
-			}
-
-			// Validate only one active leaf node remains after conflict resolution, and that all parents
-			// of leaves have empty bodies
-			activeCount := 0
-			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
-				if !revInfo.Deleted {
-					activeCount++
-				}
-				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-					require.True(t, ok)
-					assert.True(t, parentRevInfo.Body == nil)
-				}
-			}
-			assert.Equal(t, 1, activeCount)
-
-			// Validate results on the remote (rt2)
-			rt2Since := remoteDoc.Sequence
-			if test.expectedVersion.RevTreeID == test.remoteVersion.RevTreeID {
-				// no changes should have been pushed back up to rt2, because this rev won.
-				rt2Since = 0
-			}
-			changesResults = rt2.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", rt2Since), "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
-			t.Logf("Changes response is %+v", changesResults)
-
-			doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-			rest.RequireDocVersionEqual(t, test.expectedVersion, doc.ExtractDocVersion())
-			requireBodyEqual(t, test.expectedBody, doc)
-			t.Logf("Remote Doc %s is %+v", docID, doc)
-			t.Logf("Remote Doc %s attachments are %+v", docID, doc.Attachments())
-			for revID, revInfo := range doc.SyncData.History {
-				t.Logf("doc revision [%s]: %+v", revID, revInfo)
-			}
-
-			// Validate only one active leaf node remains after conflict resolution, and that all parents
-			// of leaves have empty bodies
-			activeCount = 0
-			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
-				if !revInfo.Deleted {
-					activeCount++
-				}
-				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-					require.True(t, ok)
-					assert.True(t, parentRevInfo.Body == nil)
-				}
-			}
-			assert.Equal(t, 1, activeCount)
-		})
-	}
+		}
+	})
 }
 
 // TestActiveReplicatorPushBasicWithInsecureSkipVerify:
@@ -4487,65 +4366,63 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
+		ctx1 := rt1.Context()
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
-	docID := t.Name() + "rt1doc1"
-	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+		srv := httptest.NewTLSServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		passiveDBURL, err := url.Parse(srv.URL + "/passivedb")
+		require.NoError(t, err)
 
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		// Add basic auth creds to target db URL
+		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		InsecureSkipVerify:  true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			InsecureSkipVerify:     true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
+
+		// wait for the document originally written to rt1 to arrive at rt2
+		sgrRunner.WaitForVersion(docID, rt2, version)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	// Start the replicator (implicit connect)
-	require.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
 }
 
 // TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled:
@@ -4557,53 +4434,53 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
+		ctx1 := rt1.Context()
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+		srv := httptest.NewTLSServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	docID := t.Name() + "rt1doc1"
-	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+		passiveDBURL, err := url.Parse(srv.URL + "/passivedb")
+		require.NoError(t, err)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Add basic auth creds to target db URL
+		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
 
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			InsecureSkipVerify:     false,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		ChangesBatchSize:    200,
-		InsecureSkipVerify:  false,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		// Start the replicator (implicit connect)
+		require.Error(t, ar.Start(ctx1), "Error certificate signed by unknown authority")
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-
-	// Start the replicator (implicit connect)
-	assert.Error(t, ar.Start(ctx1), "Error certificate signed by unknown authority")
 }
 
 // TestActiveReplicatorRecoverFromLocalFlush:
@@ -4619,146 +4496,153 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, // CBG-2379 test requires default collection
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-		})
-	defer rt2.Close()
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	// test will setup its own rest testers given we close one middle of the test
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		rt2 := rest.NewRestTester(t,
+			&rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+			})
+		defer rt2.Close()
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		rt2.CreateUser(username, []string{username})
 
-	// Create doc on rt2
-	docID := t.Name() + "rt2doc"
-	resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+		// Create doc on rt2
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-	rt2.WaitForPendingChanges()
+		rt2.WaitForPendingChanges()
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+		// Build passiveDBURL with basic auth creds
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil) // CBG-2379 test requires default collection
-	ctx1 := rt1.Context()
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		// Active
+		rt1 := rest.NewRestTester(t, nil)
+		ctx1 := rt1.Context()
 
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
+
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
+
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+
+		startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
+
+		require.NoError(t, ar.Start(ctx1))
+
+		// wait for document originally written to rt2 to arrive at rt1
+		changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
+
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+
+		// rev assertions
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+1)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
+
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+		require.NoError(t, ar.Stop())
+
+		// close rt1, and release the underlying bucket back to the pool.
+		rt1.Close()
+
+		// recreate rt1 with a new bucket
+		rt1 = rest.NewRestTester(t, nil)
+		defer rt1.Close()
+		ctx1 = rt1.Context()
+
+		// Create a new replicator using the same config, which should use the checkpoint set from the first.
+		// Have to re-set ActiveDB because we recreated it with the new rt1.
+		arConfig.ActiveDB = &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
+		}
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
+		// new replicator - new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
-	require.NoError(t, ar.Start(ctx1))
+		// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
 
-	// wait for document originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
+		// wait for document originally written to rt2 to arrive at rt1
+		changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		rt1collection, rt1ctx = rt1.GetSingleTestDatabaseCollection()
+		doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
+		body, err = doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
 
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+		// one _changes from seq:0 with initial number of docs sent
+		endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+		// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+2)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
 
-	// rev assertions
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+1)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
+		// assert the second active replicator stats
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
 
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
-	assert.NoError(t, ar.Stop())
-
-	// close rt1, and release the underlying bucket back to the pool.
-	rt1.Close()
-
-	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 = rt1.Context()
-
-	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	// Have to re-set ActiveDB because we recreated it with the new rt1.
-	arConfig.ActiveDB = &db.Database{
-		DatabaseContext: rt1.GetDatabase(),
-	}
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	assert.NoError(t, ar.Start(ctx1))
-
-	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
-
-	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-
-	// wait for document originally written to rt2 to arrive at rt1
-	changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	rt1collection, rt1ctx = rt1.GetSingleTestDatabaseCollection()
-	doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
-
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
-
-	// one _changes from seq:0 with initial number of docs sent
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
-
-	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+2)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
-
-	// assert the second active replicator stats
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
-
-	assert.NoError(t, ar.Stop())
+		require.NoError(t, ar.Stop())
+	})
 }
 
 // TestActiveReplicatorRecoverFromRemoteFlush:
@@ -4774,156 +4658,160 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	// test will setup its own rest testers given we close one middle of the test
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		rt2 := rest.NewRestTester(t, nil)
+		rt2.CreateUser(username, []string{username})
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Build passiveDBURL with basic auth creds
+		passiveDBURL, err := url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+		// Active
+		rt1 := rest.NewRestTester(t,
+			&rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+			})
+		defer rt1.Close()
+		ctx1 := rt1.Context()
 
-	// Active
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
-		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		// Create doc on rt1
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Create doc on rt1
-	docID := t.Name() + "rt1doc"
-	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+		rt1.WaitForPendingChanges()
 
-	rt1.WaitForPendingChanges()
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: passiveDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
 
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:         true,
-		CollectionsEnabled: !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
+		// Create the first active replicator to pull from seq:0
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	// Create the first active replicator to pull from seq:0
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		// startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
+		startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	// startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
-	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
+		require.NoError(t, ar.Start(ctx1))
 
-	assert.NoError(t, ar.Start(ctx1))
+		pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
-	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
+		// wait for document originally written to rt1 to arrive at rt2
+		changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	// wait for document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
 
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+		// rev assertions
+		base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+1)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, 1)
 
-	// rev assertions
-	base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+1)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, 1)
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+		require.NoError(t, ar.Stop())
 
-	assert.NoError(t, ar.Stop())
+		// close rt2, and release the underlying bucket back to the pool.
+		rt2.Close()
 
-	// close rt2, and release the underlying bucket back to the pool.
-	rt2.Close()
+		// recreate rt2 with a new bucket, http server and update target URL in the replicator
+		rt2 = rest.NewRestTester(t, nil)
+		defer rt2.Close()
 
-	// recreate rt2 with a new bucket, http server and update target URL in the replicator
-	rt2 = rest.NewRestTester(t, nil)
-	defer rt2.Close()
+		rt2.CreateUser(username, []string{username})
 
-	rt2.CreateUser(username, []string{username})
+		srv.Config.Handler = rt2.TestPublicHandler()
 
-	srv.Config.Handler = rt2.TestPublicHandler()
+		passiveDBURL, err = url.Parse(srv.URL + "/db")
+		require.NoError(t, err)
+		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+		arConfig.RemoteDBURL = passiveDBURL
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err = stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+		arConfig.ReplicationStatsMap = dbstats
 
-	passiveDBURL, err = url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	arConfig.RemoteDBURL = passiveDBURL
-	stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err = stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	arConfig.ReplicationStatsMap = dbstats
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		require.NoError(t, ar.Start(ctx1))
 
-	assert.NoError(t, ar.Start(ctx1))
+		pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
-	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
+		// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
 
-	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+		// wait for document originally written to rt1 to arrive at rt2
+		changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	// wait for document originally written to rt1 to arrive at rt2
-	changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
+		rt2collection, rt2ctx = rt2.GetSingleTestDatabaseCollection()
+		doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
 
-	rt2collection, rt2ctx = rt2.GetSingleTestDatabaseCollection()
-	doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
+		body, err = doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
+		// one _changes from seq:0 with initial number of docs sent
+		endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
-	// one _changes from seq:0 with initial number of docs sent
-	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
+		// make sure the replicator has resent the rev
+		base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+1)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, 1)
+		base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, 1)
 
-	// make sure the replicator has resent the rev
-	base.RequireWaitForStat(t, ar.Push.GetStats().SendRevCount.Value, startNumRevsSentTotal+1)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ProcessedSequenceCount }, 1)
-	base.RequireWaitForStat(t, func() int64 { return pushCheckpointer.Stats().ExpectedSequenceCount }, 1)
+		// assert the second active replicator stats
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-	// assert the second active replicator stats
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
-
-	assert.NoError(t, ar.Stop())
+		require.NoError(t, ar.Stop())
+	})
 }
 
 // TestActiveReplicatorRecoverFromRemoteRollback:
@@ -4938,154 +4826,148 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
-
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
-
-	ctx2 := rt2.Context()
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	// Active
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
 
-	// Create doc1 on rt1
-	docID := t.Name() + "rt1doc"
-	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+		ctx2 := rt2.Context()
+		ctx1 := rt1.Context()
 
-	rt1.WaitForPendingChanges()
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		// Create doc1 on rt1
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-		// CBG-4786: remove this protocol line in this ticket
-		SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()},
-	}
+		rt1.WaitForPendingChanges()
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
 
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:          true,
+			ReplicationStatsMap: dbstats,
+			CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+			// CBG-4786: remove this protocol line in this ticket
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
 
-	assert.NoError(t, ar.Start(ctx1))
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
+		require.NoError(t, ar.Start(ctx1))
 
-	base.RequireWaitForStat(t, func() int64 {
-		return ar.Push.GetStats().SendRevCount.Value()
-	}, 1)
+		pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
-	// wait for document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-	lastSeq := changesResults.Last_Seq.String()
+		base.RequireWaitForStat(t, func() int64 {
+			return ar.Push.GetStats().SendRevCount.Value()
+		}, 1)
 
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+		// wait for document originally written to rt1 to arrive at rt2
+		changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
+		lastSeq := changesResults.Last_Seq.String()
 
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
 
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 
-	cID := ar.Push.CheckpointID
-	checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 
-	var firstCheckpoint interface{}
-	_, err = rt2.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
-	require.NoError(t, err)
+		cID := ar.Push.CheckpointID
+		checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
-	// Create doc2 on rt1
-	resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+		var firstCheckpoint interface{}
+		_, err = rt2.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
+		require.NoError(t, err)
 
-	rt1.WaitForPendingChanges()
+		// Create doc2 on rt1
+		resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-	base.RequireWaitForStat(t, func() int64 {
-		return ar.Push.GetStats().SendRevCount.Value()
-	}, 2)
+		rt1.WaitForPendingChanges()
 
-	// wait for new document to arrive at rt2
-	changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
+		base.RequireWaitForStat(t, func() int64 {
+			return ar.Push.GetStats().SendRevCount.Value()
+		}, 2)
 
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
-	doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
+		// wait for new document to arrive at rt2
+		changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
+		doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
 
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(2), pushCheckpointer.Stats().SetCheckpointCount)
+		body, err = doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 
-	assert.NoError(t, ar.Stop())
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(2), pushCheckpointer.Stats().SetCheckpointCount)
 
-	// roll back checkpoint value to first one and remove the associated doc
-	err = rt2.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
-	assert.NoError(t, err)
+		require.NoError(t, ar.Stop())
 
-	// CBG-4786: request changes for 4.0 replicator to treat docs with no _sync differentially
-	err = rt2collection.Purge(rt2ctx, docID+"2", true)
-	assert.NoError(t, err)
+		// roll back checkpoint value to first one and remove the associated doc
+		err = rt2.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
+		assert.NoError(t, err)
 
-	require.NoError(t, rt2collection.FlushChannelCache(ctx2))
-	rt2.GetDatabase().FlushRevisionCacheForTest()
+		if !sgrRunner.IsV4Protocol() {
+			err = rt2collection.Purge(rt2ctx, docID+"2", true)
+			assert.NoError(t, err)
+		} else {
+			// we need to remove the _vv xattr for the doc to be re-replicated successfully, otherwise SG sees the existing _vv
+			// and incoming vv and determines no new version to add
+			err = rt2collection.GetCollectionDatastore().DeleteWithXattrs(rt2ctx, docID+"2", []string{base.SyncXattrName, base.VvXattrName})
+			require.NoError(t, err)
+		}
 
-	assert.NoError(t, ar.Start(ctx1))
+		require.NoError(t, rt2collection.FlushChannelCache(ctx2))
+		rt2.GetDatabase().FlushRevisionCacheForTest()
 
-	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
+		require.NoError(t, ar.Start(ctx1))
 
-	// wait for new document to arrive at rt2 again
-	changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
+		pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
-	doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
+		// wait for new document to arrive at rt2 again
+		changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
+		doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
 
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
-	assert.NoError(t, ar.Stop())
+		body, err = doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
+
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+		assert.NoError(t, ar.Stop())
+	})
 }
 
 // TestActiveReplicatorRecoverFromMismatchedRev:
@@ -5099,101 +4981,86 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		SgReplicateEnabled: true,
-		SyncFn:             channels.DocChannelsSyncFunction,
+	sgrRunner := rest.NewSGRTestRunner(t)
+	const username = "alice"
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
+		})
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+
+		ctx1 := rt1.Context()
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
+
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
+
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+
+		require.NoError(t, ar.Start(ctx1))
+
+		defer func() {
+			assert.NoError(t, ar.Stop())
+		}()
+
+		pushCheckpointID := ar.Push.CheckpointID
+		pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
+		err = rt2.GetSingleDataStore().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+		require.NoError(t, err)
+
+		pullCheckpointID := ar.Pull.CheckpointID
+		require.NoError(t, err)
+		pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
+		err = rt1.GetSingleDataStore().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+		require.NoError(t, err)
+
+		// Create doc1 on rt1
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt1.WaitForPendingChanges()
+
+		// wait for document originally written to rt1 to arrive at rt2
+		changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
+
+		// Create doc2 on rt2
+		docID = rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+		rt2.WaitForPendingChanges()
+
+		// wait for document originally written to rt2 to arrive at rt1
+		changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=1", "", true)
+		assert.Equal(t, docID, changesResults.Results[0].ID)
+
+		pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
+		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
+		pushCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
 	})
-
-	defer rt2.Close()
-
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		SgReplicateEnabled: true,
-		SyncFn:             channels.DocChannelsSyncFunction,
-	})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	require.NoError(t, ar.Start(ctx1))
-
-	defer func() {
-		assert.NoError(t, ar.Stop())
-	}()
-
-	pushCheckpointID := ar.Push.CheckpointID
-	pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
-	err = rt2.GetSingleDataStore().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
-	require.NoError(t, err)
-
-	pullCheckpointID := ar.Pull.CheckpointID
-	require.NoError(t, err)
-	pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
-	err = rt1.GetSingleDataStore().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
-	require.NoError(t, err)
-
-	// Create doc1 on rt1
-	docID := t.Name() + "rt1doc"
-	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	rt1.WaitForPendingChanges()
-
-	// wait for document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	// Create doc2 on rt2
-	docID = t.Name() + "rt2doc"
-	resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	rt2.WaitForPendingChanges()
-
-	// wait for document originally written to rt2 to arrive at rt1
-	changesResults = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=1", "", true)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-
-	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
-	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
-
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
-
 }
 
 // TestActiveReplicatorIgnoreNoConflicts ensures the IgnoreNoConflicts flag allows Hydrogen<-->Hydrogen replication with no_conflicts set.
@@ -5203,99 +5070,75 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
-	// Passive
-	rt2 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.Ptr(false),
-			}},
-			SyncFn: channels.DocChannelsSyncFunction,
+	const username = "alice"
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{username},
 		})
-	defer rt2.Close()
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+		ctx1 := rt1.Context()
 
-	username := "alice"
-	rt2.CreateUser(username, []string{username})
+		rt1docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
-	// Active
-	rt1 := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.Ptr(false),
-			}},
-			SyncFn: channels.DocChannelsSyncFunction,
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
 
-	rt1docID := t.Name() + "rt1doc1"
-	rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
+		assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx1))
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		// wait for the document originally written to rt1 to arrive at rt2
+		sgrRunner.WaitForVersion(rt1docID, rt2, rt1Version)
 
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
+		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
+		doc, err := rt2collection.GetDocument(rt2ctx, rt1docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+		// write a doc on rt2 ...
+		rt2docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		rt2Version := rt2.PutDoc(rt2docID, `{"source":"rt2","channels":["alice"]}`)
+
+		// ... and wait to arrive at rt1
+		sgrRunner.WaitForVersion(rt2docID, rt1, rt2Version)
+		changesResults := rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
+		assert.Equal(t, rt1docID, changesResults.Results[0].ID)
+		assert.Equal(t, rt2docID, changesResults.Results[1].ID)
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		doc, err = rt1collection.GetDocument(rt1ctx, rt2docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		body, err = doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
 
-	assert.Equal(t, "", ar.GetStatus(ctx1).LastSeqPush)
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
-
-	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	doc, err := rt2collection.GetDocument(rt2ctx, rt1docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, rt1Version, doc.ExtractDocVersion())
-
-	body, err := doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt1", body["source"])
-
-	// write a doc on rt2 ...
-	rt2docID := t.Name() + "rt2doc1"
-	rt2Version := rt2.PutDoc(rt2docID, `{"source":"rt2","channels":["alice"]}`)
-
-	// ... and wait to arrive at rt1
-	changesResults = rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
-	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
-	assert.Equal(t, rt2docID, changesResults.Results[1].ID)
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	doc, err = rt1collection.GetDocument(rt1ctx, rt2docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-
-	rest.RequireDocVersionEqual(t, rt2Version, doc.ExtractDocVersion())
-
-	body, err = doc.GetDeepMutableBody()
-	require.NoError(t, err)
-	assert.Equal(t, "rt2", body["source"])
 }
 
 // TestActiveReplicatorPullFromCheckpointModifiedHash:
@@ -5317,157 +5160,144 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		numChannels              = 2  // two channels
 	)
 
-	// Passive
-	// CBG-2759 needs channel filtering to use non-default collection
-	rt2 := rest.NewRestTesterDefaultCollection(t,
-		&rest.RestTesterConfig{
-			SyncFn: channels.DocChannelsSyncFunction,
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{"chan1", "chan2"},
 		})
-	defer rt2.Close()
-
-	username := "alice"
-	rt2.CreateUser(username, []string{"chan1", "chan2"})
-
-	// Create first batch of docs, creating numRT2DocsInitial in each channel
-	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numDocsPerChannelInitial; i++ {
-		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
-		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
-	}
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-	// Active
-	// CBG-2759 needs channel filtering to use non-default collection
-	rt1 := rest.NewRestTesterDefaultCollection(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    changesBatchSize,
-		Filter:              base.ByChannelFilter,
-		FilterChannels:      []string{"chan1"},
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull chan1 from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
-
-	assert.NoError(t, ar.Start(ctx1))
-
-	// wait for all of the documents originally written to rt2 to arrive at rt1
-	changesResults := rt1.WaitForChanges(numDocsPerChannelInitial, "/{{.keyspace}}/_changes?since=0", "", true)
-	docIDsSeen := make(map[string]bool, numDocsPerChannelInitial)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-	for i := 0; i < numDocsPerChannelInitial; i++ {
-		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i)
-		assert.True(t, docIDsSeen[docID])
-		doc := rt1.GetDocBody(docID)
-		assert.Equal(t, "rt2", doc["source"])
-	}
-
-	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
-
-	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
-
-	// rev assertions
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numDocsPerChannelInitial)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numDocsPerChannelInitial)
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numDocsPerChannelInitial)
-
-	// checkpoint assertions
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-
-	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
-
-	assert.NoError(t, ar.Stop())
-
-	// Second batch of docs, both channels
-	for i := numDocsPerChannelInitial; i < numDocsPerChannelTotal; i++ {
-		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
-		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
-	}
-
-	// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
-	arConfig.FilterChannels = []string{"chan2"}
-	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Stop()) }()
-	assert.NoError(t, ar.Start(ctx1))
-
-	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
-
-	// wait for all of the documents originally written to rt2 to arrive at rt1
-	expectedChan1Docs := numDocsPerChannelInitial
-	expectedChan2Docs := numDocsPerChannelTotal
-	expectedTotalDocs := expectedChan1Docs + expectedChan2Docs
-	changesResults = rt1.WaitForChanges(expectedTotalDocs, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	docIDsSeen = make(map[string]bool, expectedTotalDocs)
-	for _, result := range changesResults.Results {
-		docIDsSeen[result.ID] = true
-	}
-
-	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numDocsPerChannelTotal; i++ {
-		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i)
-		assert.True(t, docIDsSeen[docID])
-
-		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
+		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
-		assert.Equal(t, "rt2", body["source"])
-	}
 
-	// Should have two replications since zero
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	assert.Equal(t, startNumChangesRequestedFromZeroTotal+2, endNumChangesRequestedFromZeroTotal)
+		// Create first batch of docs, creating numRT2DocsInitial in each channel
+		docIDPrefix := rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		for i := 0; i < numDocsPerChannelInitial; i++ {
+			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+		}
 
-	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+int64(expectedTotalDocs))
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, int64(expectedChan2Docs))
-	base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, int64(expectedChan2Docs))
+		ctx1 := rt1.Context()
+		replicationID := rest.SafeDocumentName(t, t.Name())
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(replicationID)
+		require.NoError(t, err)
 
-	// assert the second active replicator stats
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
-	pullCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          replicationID,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       changesBatchSize,
+			Filter:                 base.ByChannelFilter,
+			FilterChannels:         []string{"chan1"},
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		}
+
+		// Create the first active replicator to pull chan1 from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+
+		startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
+
+		require.NoError(t, ar.Start(ctx1))
+
+		// wait for all of the documents originally written to rt2 to arrive at rt1
+		changesResults := rt1.WaitForChanges(numDocsPerChannelInitial, "/{{.keyspace}}/_changes?since=0", "", true)
+		docIDsSeen := make(map[string]bool, numDocsPerChannelInitial)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+		for i := 0; i < numDocsPerChannelInitial; i++ {
+			docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i)
+			assert.True(t, docIDsSeen[docID])
+			doc := rt1.GetDocBody(docID)
+			assert.Equal(t, "rt2", doc["source"])
+		}
+
+		// one _changes from seq:0 with initial number of docs sent
+		numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+
+		// rev assertions
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+numDocsPerChannelInitial)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, numDocsPerChannelInitial)
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, numDocsPerChannelInitial)
+
+		// checkpoint assertions
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
+		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+
+		require.NoError(t, ar.Stop())
+
+		// Second batch of docs, both channels
+		for i := numDocsPerChannelInitial; i < numDocsPerChannelTotal; i++ {
+			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+		}
+
+		// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
+		arConfig.FilterChannels = []string{"chan2"}
+		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+		require.NoError(t, ar.Start(ctx1))
+
+		// new replicator - new checkpointer
+		pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
+
+		// wait for all of the documents originally written to rt2 to arrive at rt1
+		expectedChan1Docs := numDocsPerChannelInitial
+		expectedChan2Docs := numDocsPerChannelTotal
+		expectedTotalDocs := expectedChan1Docs + expectedChan2Docs
+		changesResults = rt1.WaitForChanges(expectedTotalDocs, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		docIDsSeen = make(map[string]bool, expectedTotalDocs)
+		for _, result := range changesResults.Results {
+			docIDsSeen[result.ID] = true
+		}
+
+		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		for i := 0; i < numDocsPerChannelTotal; i++ {
+			docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i)
+			assert.True(t, docIDsSeen[docID])
+
+			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+
+			body, err := doc.GetDeepMutableBody()
+			require.NoError(t, err)
+			assert.Equal(t, "rt2", body["source"])
+		}
+
+		// Should have two replications since zero
+		endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+		assert.Equal(t, startNumChangesRequestedFromZeroTotal+2, endNumChangesRequestedFromZeroTotal)
+
+		// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+		base.RequireWaitForStat(t, rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value, startNumRevsSentTotal+int64(expectedTotalDocs))
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, int64(expectedChan2Docs))
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, int64(expectedChan2Docs))
+
+		// assert the second active replicator stats
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+		assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
+		pullCheckpointer.CheckpointNow()
+		assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
+	})
 }
 
 // TestActiveReplicatorReconnectOnStart ensures ActiveReplicators retry their initial connection for cases like:
@@ -5501,110 +5331,108 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			expectedErrorIsConnectionRefused: true,
 		},
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
 
-			var abortTimeout = time.Millisecond * 500
-			if runtime.GOOS == "windows" {
-				// A longer timeout is required on Windows as connection refused errors take approx 2 seconds vs. instantaneous on Linux.
-				abortTimeout = time.Second * 5
-			}
-			// test cases with and without a timeout. Ensure replicator retry loop is stopped in both cases.
-			timeoutVals := []time.Duration{
-				0,
-				abortTimeout,
-			}
+				var abortTimeout = time.Millisecond * 500
+				if runtime.GOOS == "windows" {
+					// A longer timeout is required on Windows as connection refused errors take approx 2 seconds vs. instantaneous on Linux.
+					abortTimeout = time.Second * 5
+				}
+				// test cases with and without a timeout. Ensure replicator retry loop is stopped in both cases.
+				timeoutVals := []time.Duration{
+					0,
+					abortTimeout,
+				}
 
-			for _, timeoutVal := range timeoutVals {
-				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
+				for _, timeoutVal := range timeoutVals {
+					t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
+						username := "alice"
+						rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+							UserChannelAccess: []string{username},
+						})
 
-					// Passive
-					rt2 := rest.NewRestTester(t, nil)
-					defer rt2.Close()
-					username := "alice"
-					rt2.CreateUser(username, []string{username})
+						// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+						srv := httptest.NewServer(rt2.TestPublicHandler())
+						defer srv.Close()
 
-					// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-					srv := httptest.NewServer(rt2.TestPublicHandler())
-					defer srv.Close()
+						// Build remoteDBURL with basic auth creds
+						remoteDBURL, err := url.Parse(srv.URL + "/db")
+						require.NoError(t, err)
 
-					// Build remoteDBURL with basic auth creds
-					remoteDBURL, err := url.Parse(srv.URL + "/db")
-					require.NoError(t, err)
+						// Add basic auth creds to target db URL
+						if test.usernameOverride != "" {
+							username = test.usernameOverride
+						}
+						remoteDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-					// Add basic auth creds to target db URL
-					if test.usernameOverride != "" {
-						username = test.usernameOverride
-					}
-					remoteDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+						if test.remoteURLHostOverride != "" {
+							remoteDBURL.Host = test.remoteURLHostOverride
+						}
+						ctx1 := rt1.Context()
 
-					if test.remoteURLHostOverride != "" {
-						remoteDBURL.Host = test.remoteURLHostOverride
-					}
+						id, err := base.GenerateRandomID()
+						require.NoError(t, err)
+						sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+						require.NoError(t, err)
+						dbstats, err := sgwStats.DBReplicatorStats(id)
+						require.NoError(t, err)
 
-					// Active
-					rt1 := rest.NewRestTester(t, nil)
-					defer rt1.Close()
-					ctx1 := rt1.Context()
+						arConfig := db.ActiveReplicatorConfig{
+							ID:          id,
+							Direction:   db.ActiveReplicatorTypePush,
+							RemoteDBURL: remoteDBURL,
+							ActiveDB: &db.Database{
+								DatabaseContext: rt1.GetDatabase(),
+							},
+							Continuous: true,
+							// aggressive reconnect intervals for testing purposes
+							InitialReconnectInterval: time.Millisecond,
+							MaxReconnectInterval:     time.Millisecond * 50,
+							TotalReconnectTimeout:    timeoutVal,
+							ReplicationStatsMap:      dbstats,
+							CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
+							SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
+						}
 
-					sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-					require.NoError(t, err)
-					dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-					require.NoError(t, err)
+						// Create the first active replicator to pull from seq:0
+						ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+						require.NoError(t, err)
 
-					id, err := base.GenerateRandomID()
-					require.NoError(t, err)
-					arConfig := db.ActiveReplicatorConfig{
-						ID:          id,
-						Direction:   db.ActiveReplicatorTypePush,
-						RemoteDBURL: remoteDBURL,
-						ActiveDB: &db.Database{
-							DatabaseContext: rt1.GetDatabase(),
-						},
-						Continuous: true,
-						// aggressive reconnect intervals for testing purposes
-						InitialReconnectInterval: time.Millisecond,
-						MaxReconnectInterval:     time.Millisecond * 50,
-						TotalReconnectTimeout:    timeoutVal,
-						ReplicationStatsMap:      dbstats,
-						CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
-					}
+						assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
 
-					// Create the first active replicator to pull from seq:0
-					ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-					require.NoError(t, err)
+						err = ar.Start(ctx1)
+						assert.Error(t, err, "expecting ar.Start() to return error, but it didn't")
+						defer func() { assert.NoError(t, ar.Stop()) }()
 
-					assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
+						if test.expectedErrorIsConnectionRefused {
+							assert.True(t, base.IsConnectionRefusedError(err))
+						}
 
-					err = ar.Start(ctx1)
-					assert.Error(t, err, "expecting ar.Start() to return error, but it didn't")
-					defer func() { assert.NoError(t, ar.Stop()) }()
+						if test.expectedErrorContains != "" {
+							assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
+						}
 
-					if test.expectedErrorIsConnectionRefused {
-						assert.True(t, base.IsConnectionRefusedError(err))
-					}
+						if timeoutVal > 0 {
+							// wait for an arbitrary number of reconnect attempts
+							require.EventuallyWithT(t, func(c *assert.CollectT) {
+								assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(2), "Expecting NumConnectAttempts > 2")
+							}, time.Second*5, time.Millisecond*100)
 
-					if test.expectedErrorContains != "" {
-						assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
-					}
+							time.Sleep(timeoutVal + time.Millisecond*250)
 
-					if timeoutVal > 0 {
-						// wait for an arbitrary number of reconnect attempts
-						require.EventuallyWithT(t, func(c *assert.CollectT) {
-							assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(2), "Expecting NumConnectAttempts > 2")
-						}, time.Second*5, time.Millisecond*100)
-
-						time.Sleep(timeoutVal + time.Millisecond*250)
-
-						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
-						require.EventuallyWithT(t, func(c *assert.CollectT) {
-							assert.Greaterf(c, ar.Push.GetStats().NumReconnectsAborted.Value(), int64(0), "Expecting NumReconnectsAborted > 0")
-						}, time.Second*5, time.Millisecond*100)
-					}
-				})
-			}
-		})
-	}
+							// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
+							require.EventuallyWithT(t, func(c *assert.CollectT) {
+								assert.Greaterf(c, ar.Push.GetStats().NumReconnectsAborted.Value(), int64(0), "Expecting NumReconnectsAborted > 0")
+							}, time.Second*5, time.Millisecond*100)
+						}
+					})
+				}
+			})
+		}
+	})
 }
 
 // TestActiveReplicatorReconnectOnStartEventualSuccess ensures an active replicator with invalid creds retries,
@@ -5616,78 +5444,77 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			AvoidUserCreation: true,
+		})
+		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+		srv := httptest.NewServer(rt2.TestPublicHandler())
+		defer srv.Close()
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Build remoteDBURL with basic auth creds
+		remoteDBURL, err := url.Parse(srv.URL + "/passivedb")
+		require.NoError(t, err)
 
-	// Build remoteDBURL with basic auth creds
-	remoteDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+		// Add basic auth creds to target db URL
+		remoteDBURL.User = url.UserPassword("alice", "pass")
+		ctx1 := rt1.Context()
 
-	// Add basic auth creds to target db URL
-	remoteDBURL.User = url.UserPassword("alice", "pass")
+		id, err := base.GenerateRandomID()
+		require.NoError(t, err)
+		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(id)
+		require.NoError(t, err)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
-
-	id, err := base.GenerateRandomID()
-	require.NoError(t, err)
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	arConfig := db.ActiveReplicatorConfig{
-		ID:          id,
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: remoteDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous: true,
-		// aggressive reconnect intervals for testing purposes
-		InitialReconnectInterval: time.Millisecond,
-		MaxReconnectInterval:     time.Millisecond * 50,
-		TotalReconnectTimeout:    time.Second * 30,
-		ReplicationStatsMap:      dbstats,
-		CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
-
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
-
-	assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
-
-	// expected error
-	msg401 := "unexpected status code 401 from target database"
-
-	err = ar.Start(ctx1)
-	defer func() { assert.NoError(t, ar.Stop()) }() // prevents panic if waiting for ar state running fails
-	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), msg401))
-
-	// wait for an arbitrary number of reconnect attempts
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(3), "Expecting NumConnectAttempts > 3")
-	}, time.Second*5, time.Millisecond*100)
-
-	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		state, errMsg := ar.State(ctx1)
-		if strings.TrimSpace(errMsg) != "" && !strings.Contains(errMsg, msg401) {
-			log.Println("unexpected replicator error:", errMsg)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: remoteDBURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous: true,
+			// aggressive reconnect intervals for testing purposes
+			InitialReconnectInterval: time.Millisecond,
+			MaxReconnectInterval:     time.Millisecond * 50,
+			TotalReconnectTimeout:    time.Second * 30,
+			ReplicationStatsMap:      dbstats,
+			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 		}
-		assert.Equal(c, db.ReplicationStateRunning, state, "Expecting replication state to be running")
-	}, time.Second*5, time.Millisecond*100)
+
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
+
+		assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
+
+		// expected error
+		msg401 := "unexpected status code 401 from target database"
+
+		err = ar.Start(ctx1)
+		defer func() { require.NoError(t, ar.Stop()) }() // prevents panic if waiting for ar state running fails
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), msg401))
+
+		// wait for an arbitrary number of reconnect attempts
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Greaterf(c, ar.Push.GetStats().NumConnectAttempts.Value(), int64(3), "Expecting NumConnectAttempts > 3")
+		}, time.Second*5, time.Millisecond*100)
+
+		resp := rt2.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"password":"pass"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			state, errMsg := ar.State(ctx1)
+			if strings.TrimSpace(errMsg) != "" && !strings.Contains(errMsg, msg401) {
+				log.Println("unexpected replicator error:", errMsg)
+			}
+			assert.Equal(c, db.ReplicationStateRunning, state, "Expecting replication state to be running")
+		}, time.Second*5, time.Millisecond*100)
+	})
 }
 
 // TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
@@ -5698,81 +5525,70 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		ctx1 := rt1.Context()
 
-	username := "alice"
-	rt2.CreateUser(username, []string{"*"})
+		id, err := base.GenerateRandomID()
+		require.NoError(t, err)
+		arConfig := db.ActiveReplicatorConfig{
+			ID:        id,
+			Direction: db.ActiveReplicatorTypePull,
+			// Add incorrect basic auth creds to target db URL
+			RemoteDBURL: userDBURL(rt2, "bob"),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous: true,
+			// aggressive reconnect intervals for testing purposes
+			InitialReconnectInterval: time.Millisecond,
+			MaxReconnectInterval:     time.Millisecond * 50,
+			TotalReconnectTimeout:    time.Second * 5,
+			ReplicationStatsMap:      dbReplicatorStats(t),
+			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
+		}
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+		// Create the first active replicator to pull from seq:0
+		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+		require.NoError(t, err)
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+		defer func() {
+			assert.NoError(t, ar.Stop())
+		}()
 
-	id, err := base.GenerateRandomID()
-	require.NoError(t, err)
-	arConfig := db.ActiveReplicatorConfig{
-		ID:        id,
-		Direction: db.ActiveReplicatorTypePull,
-		// Add incorrect basic auth creds to target db URL
-		RemoteDBURL: userDBURL(rt2, "bob"),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous: true,
-		// aggressive reconnect intervals for testing purposes
-		InitialReconnectInterval: time.Millisecond,
-		MaxReconnectInterval:     time.Millisecond * 50,
-		TotalReconnectTimeout:    time.Second * 5,
-		ReplicationStatsMap:      dbReplicatorStats(t),
-		CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
-	}
+		assert.Equal(t, int64(0), ar.Pull.GetStats().NumConnectAttempts.Value())
 
-	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
-	require.NoError(t, err)
+		err = ar.Start(ctx1)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "unexpected status code 401 from target database")
 
-	defer func() {
+		// wait for an arbitrary number of reconnect attempts
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), int64(3))
+		}, time.Second*20, time.Millisecond*100)
+
 		assert.NoError(t, ar.Stop())
-	}()
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+		}, time.Second*20, time.Millisecond*100)
 
-	assert.Equal(t, int64(0), ar.Pull.GetStats().NumConnectAttempts.Value())
+		// wait for a bit to see if the reconnect loop has stopped
+		reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
+		time.Sleep(time.Millisecond * 250)
+		assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
 
-	err = ar.Start(ctx1)
-	assert.Error(t, err)
-	assert.ErrorContains(t, err, "unexpected status code 401 from target database")
+		assert.NoError(t, ar.Reset())
+		assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
 
-	// wait for an arbitrary number of reconnect attempts
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), int64(3))
-	}, time.Second*20, time.Millisecond*100)
+		err = ar.Start(ctx1)
+		assert.ErrorContains(t, err, "unexpected status code 401 from target database")
 
-	assert.NoError(t, ar.Stop())
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
-	}, time.Second*20, time.Millisecond*100)
-
-	// wait for a bit to see if the reconnect loop has stopped
-	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
-	time.Sleep(time.Millisecond * 250)
-	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
-
-	assert.NoError(t, ar.Reset())
-	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
-
-	err = ar.Start(ctx1)
-	assert.ErrorContains(t, err, "unexpected status code 401 from target database")
-
-	// wait for another set of reconnect attempts
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), reconnectAttempts+int64(3))
-	}, time.Second*20, time.Millisecond*100)
-
+		// wait for another set of reconnect attempts
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Greater(c, ar.Pull.GetStats().NumConnectAttempts.Value(), reconnectAttempts+int64(3))
+		}, time.Second*20, time.Millisecond*100)
+	})
 }
 
 // TestActiveReplicatorPullConflictReadWriteIntlProps:
@@ -5936,122 +5752,108 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		},
 	}
 
-	for _, test := range conflictResolutionTests {
-		t.Run(test.name, func(t *testing.T) {
-			base.RequireNumTestBuckets(t, 2)
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range conflictResolutionTests {
+			t.Run(test.name, func(t *testing.T) {
+				base.RequireNumTestBuckets(t, 2)
+				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				passiveDBURL, err := url.Parse(remoteURLString)
+				require.NoError(t, err)
 
-			// Passive
-			rt2 := rest.NewRestTester(t, nil)
-			defer rt2.Close()
-
-			username := "alice"
-			rt2.CreateUser(username, []string{"*"})
-
-			// Create revision on rt2 (remote)
-			docID := test.name
-			if test.commonAncestorVersion != nil {
-				_ = rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
-			}
-			fmt.Println("remoteRevisionBody:", test.remoteRevisionBody)
-			rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
-
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
-
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
-
-			// Add basic auth creds to target db URL
-			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-
-			// Active
-			rt1 := rest.NewRestTester(t, nil)
-			defer rt1.Close()
-			ctx1 := rt1.Context()
-
-			// Create revision on rt1 (local)
-			if test.commonAncestorVersion != nil {
-				_ = rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
-				assert.NoError(t, err)
-			}
-			fmt.Println("localRevisionBody:", test.localRevisionBody)
-			rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
-			rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1Version)
-
-			customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
-			dbstats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			require.NoError(t, err)
-			replicationStats, err := dbstats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
-
-			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-				ID:          t.Name(),
-				Direction:   db.ActiveReplicatorTypePull,
-				RemoteDBURL: passiveDBURL,
-				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
-				},
-				ChangesBatchSize:           200,
-				ConflictResolverFunc:       customConflictResolver,
-				ConflictResolverFuncForHLV: customConflictResolver,
-				Continuous:                 true,
-				ReplicationStatsMap:        replicationStats,
-				CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Stop()) }()
-
-			// Start the replicator (implicit connect)
-			assert.NoError(t, ar.Start(ctx1))
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
-			}, time.Second*5, time.Millisecond*100)
-			assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
-
-			// Wait for the document originally written to rt2 to arrive at rt1.
-			// Should end up as winner under default conflict resolution.
-			changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?&since=0", "", true)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
-			t.Logf("Changes response is %+v", changesResults)
-
-			rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-			doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-			require.NoError(t, err)
-			test.expectedLocalVersion.CV = db.Version{
-				SourceID: rt1.GetDatabase().EncodedSourceID,
-				Value:    doc.Cas,
-			}
-			rest.RequireDocVersionEqual(t, test.expectedLocalVersion, doc.ExtractDocVersion())
-			ctx := base.TestCtx(t)
-			t.Logf("doc.Body(): %v", doc.Body(ctx))
-			assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
-			t.Logf("Doc %s is %+v", docID, doc)
-			for revID, revInfo := range doc.SyncData.History {
-				t.Logf("doc revision [%s]: %+v", revID, revInfo)
-			}
-
-			// Validate only one active leaf node remains after conflict resolution, and that all parents
-			// of leaves have empty bodies
-			activeCount := 0
-			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
-				if !revInfo.Deleted {
-					activeCount++
+				// Create revision on rt2 (remote)
+				docID := test.name
+				if test.commonAncestorVersion != nil {
+					_ = rt2.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
 				}
-				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+				fmt.Println("remoteRevisionBody:", test.remoteRevisionBody)
+				rt2Version := rt2.PutNewEditsFalse(docID, test.remoteVersion, test.commonAncestorVersion, test.remoteRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.remoteVersion, *rt2Version)
+				ctx1 := rt1.Context()
+
+				// Create revision on rt1 (local)
+				if test.commonAncestorVersion != nil {
+					_ = rt1.PutNewEditsFalse(docID, *test.commonAncestorVersion, nil, test.remoteRevisionBody)
+				}
+				fmt.Println("localRevisionBody:", test.localRevisionBody)
+				rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
+				rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1Version)
+
+				id := rest.SafeDocumentName(t, t.Name())
+				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
+				require.NoError(t, err)
+				dbstats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+				require.NoError(t, err)
+				replicationStats, err := dbstats.DBReplicatorStats(id)
+				require.NoError(t, err)
+
+				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+					ID:          id,
+					Direction:   db.ActiveReplicatorTypePull,
+					RemoteDBURL: passiveDBURL,
+					ActiveDB: &db.Database{
+						DatabaseContext: rt1.GetDatabase(),
+					},
+					ChangesBatchSize:           200,
+					ConflictResolverFunc:       customConflictResolver,
+					ConflictResolverFuncForHLV: customConflictResolver,
+					Continuous:                 true,
+					ReplicationStatsMap:        replicationStats,
+					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+					SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
+				})
+				require.NoError(t, err)
+				defer func() { assert.NoError(t, ar.Stop()) }()
+
+				// Start the replicator (implicit connect)
+				require.NoError(t, ar.Start(ctx1))
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.Equal(c, 1, int(ar.GetStatus(ctx1).DocsRead))
+				}, time.Second*5, time.Millisecond*100)
+				assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
+
+				// Wait for the document originally written to rt2 to arrive at rt1.
+				// Should end up as winner under default conflict resolution.
+				changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?&since=0", "", true)
+				assert.Equal(t, docID, changesResults.Results[0].ID)
+				rest.RequireChangeRev(t, test.expectedLocalVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
+				t.Logf("Changes response is %+v", changesResults)
+
+				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				test.expectedLocalVersion.CV = db.Version{
+					SourceID: rt1.GetDatabase().EncodedSourceID,
+					Value:    doc.Cas,
+				}
+				sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
+				ctx := base.TestCtx(t)
+				t.Logf("doc.Body(): %v", doc.Body(ctx))
+				assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
+				t.Logf("Doc %s is %+v", docID, doc)
+				for revID, revInfo := range doc.SyncData.History {
+					t.Logf("doc revision [%s]: %+v", revID, revInfo)
+				}
+
+				// Validate only one active leaf node remains after conflict resolution, and that all parents
+				// of leaves have empty bodies
+				activeCount := 0
+				for _, revID := range doc.SyncData.History.GetLeaves() {
+					revInfo, ok := doc.SyncData.History[revID]
 					require.True(t, ok)
-					assert.True(t, parentRevInfo.Body == nil)
+					if !revInfo.Deleted {
+						activeCount++
+					}
+					if revInfo.Parent != "" {
+						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+						require.True(t, ok)
+						assert.True(t, parentRevInfo.Body == nil)
+					}
 				}
-			}
-			assert.Equal(t, 1, activeCount)
-		})
-	}
+				assert.Equal(t, 1, activeCount)
+			})
+		}
+	})
 }
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
@@ -6659,7 +6461,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 				// Create replication, wait for initial revision to be replicated
 				replicationID := test.name
-				activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins)
+				activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins, "")
 				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 				sgrRunner.WaitForVersion(docID, remoteRT, newVersion)
@@ -6840,131 +6642,147 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			expectedAttachmentContent: "goodbye cruel world",
 		},
 	}
-	peers := rest.SetupISGRPeersWithOpts(t, rest.TestISGRPeerOpts{
-		ActivePeerSupportedBLIPSubProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()},
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		for _, test := range testCases {
+			t.Run(test.name, func(t *testing.T) {
+				activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+
+				docID := test.name
+
+				var newVersion rest.DocVersion
+				var parentVersion *rest.DocVersion
+				for gen := 1; gen <= 3; gen++ {
+					newVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-initial", gen))
+					parentVersion = activeRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
+				}
+
+				replicationID := "replication_" + rest.SafeDocumentName(t, t.Name())
+				activeRT.CreateReplication(replicationID, passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution, "")
+				defer activeRT.DeleteReplication(replicationID)
+				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+				passiveRT.WaitForVersion(docID, newVersion)
+
+				response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
+				rest.RequireStatus(t, response, http.StatusOK)
+				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+				nextGen := 4
+
+				localGen := nextGen
+				localParentVersion := newVersion
+				newLocalVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
+				_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
+				localParentVersion = newLocalVersion
+
+				localGen++
+				newLocalVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
+				_ = activeRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
+
+				remoteGen := nextGen
+				remoteParentVersion := newVersion
+				newRemoteVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
+				_ = passiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
+				remoteParentVersion = newRemoteVersion
+
+				remoteGen++
+				newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
+				remoteWinsVersion := passiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
+
+				response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
+				rest.RequireStatus(t, response, http.StatusOK)
+
+				expVersion := test.expectedFinalVersion
+				if sgrRunner.IsV4Protocol() {
+					if test.conflictResolution == db.ConflictResolverRemoteWins {
+						expVersion = *remoteWinsVersion
+					} else {
+						activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
+						doc, err := activeCollection.GetDocument(activeCtx, docID, db.DocUnmarshalAll)
+						require.NoError(t, err)
+						expVersion.CV = db.Version{
+							SourceID: activeRT.GetDatabase().EncodedSourceID,
+							Value:    doc.Cas,
+						}
+					}
+				}
+				activeRT.WaitForVersion(docID, expVersion)
+				passiveRT.WaitForVersion(docID, expVersion)
+
+				localDoc := activeRT.GetDocBody(docID)
+				localVersion := localDoc.ExtractRev()
+
+				remoteDoc := passiveRT.GetDocBody(docID)
+				remoteVersion := remoteDoc.ExtractRev()
+
+				assert.Equal(t, localVersion, remoteVersion)
+				remoteRevpos := getTestRevpos(t, remoteDoc, "attach")
+				assert.Equal(t, test.expectedRevPos, remoteRevpos)
+
+				response = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
+				assert.Equal(t, test.expectedAttachmentContent, string(response.BodyBytes()))
+			})
+		}
 	})
-
-	for _, test := range testCases {
-		peers.Run(t, test.name, func(t *testing.T) {
-			docID := test.name
-
-			var newVersion rest.DocVersion
-			var parentVersion *rest.DocVersion
-			for gen := 1; gen <= 3; gen++ {
-				newVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-initial", gen))
-				parentVersion = peers.ActiveRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
-			}
-
-			replicationID := "replication_" + rest.SafeDocumentName(t, t.Name())
-			peers.ActiveRT.CreateReplication(replicationID, peers.PassiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution)
-			defer peers.ActiveRT.DeleteReplication(replicationID)
-			peers.ActiveRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-
-			peers.PassiveRT.WaitForVersion(docID, newVersion)
-
-			response := peers.ActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-			peers.ActiveRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
-
-			nextGen := 4
-
-			localGen := nextGen
-			localParentVersion := newVersion
-			newLocalVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = peers.ActiveRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, `{"_attachments": {"attach": {"data":"aGVsbG8gd29ybGQ="}}}`)
-			localParentVersion = newLocalVersion
-
-			localGen++
-			newLocalVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-local", localGen))
-			_ = peers.ActiveRT.PutNewEditsFalse(docID, newLocalVersion, &localParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`, localGen-1))
-
-			remoteGen := nextGen
-			remoteParentVersion := newVersion
-			newRemoteVersion := rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = peers.PassiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, `{"_attachments": {"attach": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`)
-			remoteParentVersion = newRemoteVersion
-
-			remoteGen++
-			newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
-			_ = peers.PassiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
-
-			response = peers.ActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			peers.ActiveRT.WaitForVersion(docID, test.expectedFinalVersion)
-			peers.PassiveRT.WaitForVersion(docID, test.expectedFinalVersion)
-
-			localDoc := peers.ActiveRT.GetDocBody(docID)
-			localVersion := localDoc.ExtractRev()
-
-			remoteDoc := peers.PassiveRT.GetDocBody(docID)
-			remoteVersion := remoteDoc.ExtractRev()
-
-			assert.Equal(t, localVersion, remoteVersion)
-			remoteRevpos := getTestRevpos(t, remoteDoc, "attach")
-			assert.Equal(t, test.expectedRevPos, remoteRevpos)
-
-			response = peers.ActiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
-			assert.Equal(t, test.expectedAttachmentContent, string(response.BodyBytes()))
-		})
-	}
 }
 
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	// Passive
-	rt2 := rest.NewRestTester(t, nil)
-	defer rt2.Close()
 
-	// Active
-	rt1 := rest.NewRestTester(t, nil)
-	defer rt1.Close()
-	ctx1 := rt1.Context()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		// Passive
+		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		ctx1 := rt1.Context()
 
-	customConflictResolver, err := db.NewCustomConflictResolver(ctx1, `function(conflict){
+		customConflictResolver, err := db.NewCustomConflictResolver(ctx1, `function(conflict){
 			var mutatedLocal = conflict.LocalDocument;
 			mutatedLocal.source = "merged";
 			mutatedLocal["_deleted"] = true;
 			mutatedLocal["_rev"] = "";
 			return mutatedLocal;
 		}`, rt1.GetDatabase().Options.JavascriptTimeout)
-	require.NoError(t, err)
-
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePull,
-		RemoteDBURL: adminDBURL(rt2),
-		ActiveDB: &db.Database{
-			DatabaseContext: rt1.GetDatabase(),
-		},
-		Continuous:                 false,
-		ReplicationStatsMap:        dbstats,
-		ConflictResolutionType:     db.ConflictResolverCustom,
-		ConflictResolverFunc:       customConflictResolver,
-		ConflictResolverFuncForHLV: customConflictResolver,
-		CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-	})
-	require.NoError(t, err)
-
-	rt2.PutDoc("doc", "{}")
-	rt2.WaitForPendingChanges()
-	rt1.PutDoc("doc", `{"some_val": "val"}`)
-	rt1.WaitForPendingChanges()
-
-	require.NoError(t, ar.Start(ctx1))
-
-	base.RequireWaitForStat(t, func() int64 {
-		dbRepStats, err := base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID)
 		require.NoError(t, err)
-		return dbRepStats.PulledCount.Value()
-	}, 1)
 
-	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+		id := rest.SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: adminDBURL(rt2),
+			ActiveDB: &db.Database{
+				DatabaseContext: rt1.GetDatabase(),
+			},
+			Continuous:                 false,
+			ReplicationStatsMap:        dbstats,
+			ConflictResolutionType:     db.ConflictResolverCustom,
+			ConflictResolverFunc:       customConflictResolver,
+			ConflictResolverFuncForHLV: customConflictResolver,
+			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+
+		rt2.PutDoc("doc", "{}")
+		rt2.WaitForPendingChanges()
+		rt1.PutDoc("doc", `{"some_val": "val"}`)
+		rt1.WaitForPendingChanges()
+
+		require.NoError(t, ar.Start(ctx1))
+
+		base.RequireWaitForStat(t, func() int64 {
+			dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
+			require.NoError(t, err)
+			return dbRepStats.PulledCount.Value()
+		}, 1)
+
+		rt1.WaitForReplicationStatus(id, db.ReplicationStateStopped)
+	})
 }
 
 // CBG-1427 - ISGR should not try sending a delta when deltaSrc is a tombstone
@@ -6974,76 +6792,89 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	}
 
 	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	defer db.SuspendSequenceBatching()()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
 
-	// Passive //
-	passiveRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{
-				DbConfig: rest.DbConfig{
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
+		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			ActiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						DeltaSync: &rest.DeltaSyncConfig{
+							Enabled: base.Ptr(true),
+						},
+					},
+				},
+			},
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						DeltaSync: &rest.DeltaSyncConfig{
+							Enabled: base.Ptr(true),
+						},
 					},
 				},
 			},
 		})
-	defer passiveRT.Close()
+		activeCtx := activeRT.Context()
 
-	activeRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{
-				DbConfig: rest.DbConfig{
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				},
+		// Create a document //
+		version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
+		activeRT.WaitForVersion("test", version)
+
+		// Set-up replicator //
+		id := rest.SafeDocumentName(t, t.Name())
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := sgwStats.DBReplicatorStats(id)
+		require.NoError(t, err)
+
+		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: adminDBURL(passiveRT),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
 			},
+			Continuous:             true,
+			ChangesBatchSize:       1,
+			DeltasEnabled:          true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer activeRT.Close()
-	activeCtx := activeRT.Context()
+		require.NoError(t, err)
+		assert.Equal(t, "", ar.GetStatus(activeCtx).LastSeqPush)
+		require.NoError(t, ar.Start(activeCtx))
 
-	// Create a document //
-	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	activeRT.WaitForVersion("test", version)
+		// Wait for active to replicate to passive
+		sgrRunner.WaitForVersion("test", passiveRT, version)
 
-	// Set-up replicator //
-	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: adminDBURL(passiveRT),
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    1,
-		DeltasEnabled:       true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+		// Delete active document
+		deletedVersion := activeRT.DeleteDoc("test", version)
+
+		// Assert that the tombstone is replicated to passive
+		// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
+		sgrRunner.WaitForTombstone("test", passiveRT, deletedVersion)
+
+		// Resurrect tombstoned document
+		resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
+
+		// Replicate resurrection to passive
+		sgrRunner.WaitForVersion("test", passiveRT, resurrectedVersion)
+
+		dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
+		require.NoError(t, err)
+		base.RequireWaitForStat(t, func() int64 {
+			// should be 1 given delta is sent for delete, but not for resurrection
+			return dbRepStats.PushDeltaSentCount.Value()
+		}, 1)
+
+		// Shutdown replicator to close out
+		require.NoError(t, ar.Stop())
+		activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 	})
-	require.NoError(t, err)
-	assert.Equal(t, "", ar.GetStatus(activeCtx).LastSeqPush)
-	assert.NoError(t, ar.Start(activeCtx))
-
-	// Wait for active to replicate to passive
-	passiveRT.WaitForVersion("test", version)
-
-	// Delete active document
-	deletedVersion := activeRT.DeleteDoc("test", version)
-
-	// Assert that the tombstone is replicated to passive
-	// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
-	passiveRT.WaitForTombstone("test", deletedVersion)
-
-	// Resurrect tombstoned document
-	resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
-
-	// Replicate resurrection to passive
-	passiveRT.WaitForVersion("test", resurrectedVersion)
-
-	// Shutdown replicator to close out
-	require.NoError(t, ar.Stop())
-	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 }
 
 // CBG-1672 - Return 422 status for unprocessable deltas instead of 404 to use non-delta retry handling
@@ -7057,78 +6888,79 @@ func TestUnprocessableDeltas(t *testing.T) {
 	// need Sync debugging due to AssertLogContains below
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
 	base.RequireNumTestBuckets(t, 2)
-
-	defer db.SuspendSequenceBatching()()
-
-	// Passive //
-	passiveRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{
-				DbConfig: rest.DbConfig{
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		restartBatching := db.SuspendSequenceBatching()
+		t.Cleanup(restartBatching)
+		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			ActiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						DeltaSync: &rest.DeltaSyncConfig{
+							Enabled: base.Ptr(true),
+						},
+					},
+				},
+			},
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						DeltaSync: &rest.DeltaSyncConfig{
+							Enabled: base.Ptr(true),
+						},
 					},
 				},
 			},
 		})
-	defer passiveRT.Close()
 
-	activeRT := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			DatabaseConfig: &rest.DatabaseConfig{
-				DbConfig: rest.DbConfig{
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				},
+		activeCtx := activeRT.Context()
+
+		// Create a document //
+		version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
+		activeRT.WaitForVersion("test", version)
+
+		id := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: adminDBURL(passiveRT),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
 			},
+			Continuous:             true,
+			ChangesBatchSize:       200,
+			DeltasEnabled:          true,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
-	defer activeRT.Close()
-	activeCtx := activeRT.Context()
+		require.NoError(t, err)
+		assert.Equal(t, "", ar.GetStatus(activeCtx).LastSeqPush)
 
-	// Create a document //
-	version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
-	activeRT.WaitForVersion("test", version)
+		require.NoError(t, ar.Start(activeCtx))
 
-	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: adminDBURL(passiveRT),
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    200,
-		DeltasEnabled:       true,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "", ar.GetStatus(activeCtx).LastSeqPush)
+		sgrRunner.WaitForVersion("test", passiveRT, version)
 
-	assert.NoError(t, ar.Start(activeCtx))
+		require.NoError(t, ar.Stop())
 
-	passiveRT.WaitForVersion("test", version)
+		// Make 2nd revision
+		version2 := activeRT.UpdateDoc("test", version, `{"field1":"f1_2","field2":"f2_2"}`)
+		activeRT.WaitForPendingChanges()
 
-	assert.NoError(t, ar.Stop())
+		passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
+		rev, err := passiveRTCollection.GetRevisionCacheForTest().GetActive(passiveRTCtx, "test")
+		require.NoError(t, err)
+		// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
+		// Which should give a HTTP 422
+		rev.BodyBytes = []byte("{invalid}")
+		passiveRTCollection.GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
 
-	// Make 2nd revision
-	version2 := activeRT.UpdateDoc("test", version, `{"field1":"f1_2","field2":"f2_2"}`)
-	activeRT.WaitForPendingChanges()
-
-	passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
-	rev, err := passiveRTCollection.GetRevisionCacheForTest().GetActive(passiveRTCtx, "test")
-	require.NoError(t, err)
-	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
-	// Which should give a HTTP 422
-	rev.BodyBytes = []byte("{invalid}")
-	passiveRTCollection.GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
-
-	base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
-		assert.NoError(t, ar.Start(activeCtx))
-		// Check if it replicated
-		passiveRT.WaitForVersion("test", version2)
-		assert.NoError(t, ar.Stop())
+		base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
+			require.NoError(t, ar.Start(activeCtx))
+			// Check if it replicated
+			sgrRunner.WaitForVersion("test", passiveRT, version2)
+			require.NoError(t, ar.Stop())
+		})
 	})
 }
 
@@ -7139,57 +6971,58 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Copies the behaviour of TestGetRemovedAsUser but with replication and no user
-	defer db.SuspendSequenceBatching()()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		restartBatching := db.SuspendSequenceBatching()
+		t.Cleanup(restartBatching)
 
-	// Passive //
-	passiveRT := rest.NewRestTester(t, nil)
-	defer passiveRT.Close()
+		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		activeCtx := activeRT.Context()
+		collection, _ := activeRT.GetSingleTestDatabaseCollection()
 
-	activeRT := rest.NewRestTester(t, nil)
-	defer activeRT.Close()
-	activeCtx := activeRT.Context()
-	collection, _ := activeRT.GetSingleTestDatabaseCollection()
+		docID := rest.SafeDocumentName(t, t.Name())
+		// Create the docs //
+		// Doc rev 1
+		version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
+		sgrRunner.WaitForVersion(docID, activeRT, version1)
 
-	docID := t.Name()
-	// Create the docs //
-	// Doc rev 1
-	version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
-	activeRT.WaitForVersion(docID, version1)
+		// doc rev 2
+		version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
+		sgrRunner.WaitForVersion(docID, activeRT, version2)
 
-	// doc rev 2
-	version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
-	activeRT.WaitForVersion(docID, version2)
+		// Doc rev 3
+		version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
+		sgrRunner.WaitForVersion(docID, activeRT, version3)
 
-	// Doc rev 3
-	version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
-	activeRT.WaitForVersion(docID, version3)
+		activeRT.GetDatabase().FlushRevisionCacheForTest()
+		err := collection.PurgeOldRevisionJSON(activeCtx, docID, version2.RevTreeID)
+		require.NoError(t, err)
 
-	activeRT.GetDatabase().FlushRevisionCacheForTest()
-	err := collection.PurgeOldRevisionJSON(activeCtx, docID, version2.RevTreeID)
-	require.NoError(t, err)
+		id := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: adminDBURL(passiveRT),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			Continuous:             false,
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			PurgeOnRemoval:         false,
+			Filter:                 base.ByChannelFilter,
+			FilterChannels:         []string{"rev1chan"},
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		docWriteFailuresBefore := ar.GetStatus(activeCtx).DocWriteFailures
 
-	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: adminDBURL(passiveRT),
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous:          false,
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		PurgeOnRemoval:      false,
-		Filter:              base.ByChannelFilter,
-		FilterChannels:      []string{"rev1chan"},
-		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+		require.NoError(t, ar.Start(activeCtx))
+		activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+		assert.Equal(t, docWriteFailuresBefore, ar.GetStatus(activeCtx).DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
 	})
-	require.NoError(t, err)
-	docWriteFailuresBefore := ar.GetStatus(activeCtx).DocWriteFailures
-
-	assert.NoError(t, ar.Start(activeCtx))
-	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-
-	assert.Equal(t, docWriteFailuresBefore, ar.GetStatus(activeCtx).DocWriteFailures, "ISGR should ignore _remove:true bodies when purgeOnRemoval is disabled. CBG-1428 regression.")
 }
 
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
@@ -7197,86 +7030,88 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 func TestUnderscorePrefixSupport(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := rest.NewRestTester(t, nil)
-	defer passiveRT.Close()
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
 
-	activeRT := rest.NewRestTester(t, nil)
-	defer activeRT.Close()
-	activeCtx := activeRT.Context()
+		activeCtx := activeRT.Context()
 
-	// Create the document
-	docID := t.Name()
-	rawDoc := `{"_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
-	_ = activeRT.PutDoc(docID, rawDoc)
+		// Create the document
+		docID := rest.SafeDocumentName(t, t.Name())
+		rawDoc := `{"_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
+		_ = activeRT.PutDoc(docID, rawDoc)
 
-	// Set-up replicator
-	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePush,
-		RemoteDBURL: adminDBURL(passiveRT),
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous:          true,
-		ChangesBatchSize:    200,
-		ReplicationStatsMap: dbReplicatorStats(t),
-		PurgeOnRemoval:      false,
-		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+		// Set-up replicator
+		id := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+			ID:          id,
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: adminDBURL(passiveRT),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			Continuous:             true,
+			ChangesBatchSize:       200,
+			ReplicationStatsMap:    dbReplicatorStats(t),
+			PurgeOnRemoval:         false,
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ar.Stop()) }()
+
+		require.NoError(t, ar.Start(activeCtx))
+		activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+		// Confirm document is replicated
+		changesResults := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+
+		passiveRT.WaitForPendingChanges()
+
+		require.NoError(t, ar.Stop())
+
+		// Assert document was replicated successfully
+		doc := passiveRT.GetDocBody(docID)
+		assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
+		assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
+		assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
+		// Confirm attachment was created successfully
+		resp := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/bar", "")
+		rest.RequireStatus(t, resp, 200)
+
+		// Edit existing document
+		rev := doc["_rev"]
+		require.NotNil(t, rev)
+		rawDoc = fmt.Sprintf(`{"_rev": "%s","_foo": false, "test": true}`, rev)
+		_ = activeRT.PutDoc(docID, rawDoc)
+
+		// Replicate modified document
+		require.NoError(t, ar.Start(activeCtx))
+		activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+		changesResults = passiveRT.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
+
+		passiveRT.WaitForPendingChanges()
+
+		// Verify document replicated successfully
+		doc = passiveRT.GetDocBody(docID)
+		assert.NotEqualValues(t, doc["_rev"], rev) // Confirm rev got replaced with new rev
+		assert.EqualValues(t, false, doc["_foo"])  // Confirm user defined value got created
+		assert.EqualValues(t, true, doc["test"])
+		// Confirm attachment was removed successfully in latest revision
+		resp = passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/bar", "")
+		rest.RequireStatus(t, resp, 404)
+
+		// Add disallowed _removed tag in document
+		rawDoc = fmt.Sprintf(`{"_rev": "%s","_removed": false}`, doc["_rev"])
+		resp = activeRT.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, rawDoc)
+		rest.RequireStatus(t, resp, 404)
+
+		// Add disallowed _purged tag in document
+		rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
+		resp = activeRT.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, rawDoc)
+		rest.RequireStatus(t, resp, 400)
 	})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, ar.Stop()) }()
-
-	require.NoError(t, ar.Start(activeCtx))
-	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
-
-	// Confirm document is replicated
-	changesResults := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-
-	passiveRT.WaitForPendingChanges()
-
-	require.NoError(t, ar.Stop())
-
-	// Assert document was replicated successfully
-	doc := passiveRT.GetDocBody(docID)
-	assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
-	assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
-	assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
-	// Confirm attachment was created successfully
-	resp := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"/bar", "")
-	rest.RequireStatus(t, resp, 200)
-
-	// Edit existing document
-	rev := doc["_rev"]
-	require.NotNil(t, rev)
-	rawDoc = fmt.Sprintf(`{"_rev": "%s","_foo": false, "test": true}`, rev)
-	_ = activeRT.PutDoc(docID, rawDoc)
-
-	// Replicate modified document
-	require.NoError(t, ar.Start(activeCtx))
-	activeRT.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
-
-	changesResults = passiveRT.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
-
-	passiveRT.WaitForPendingChanges()
-
-	// Verify document replicated successfully
-	doc = passiveRT.GetDocBody(docID)
-	assert.NotEqualValues(t, doc["_rev"], rev) // Confirm rev got replaced with new rev
-	assert.EqualValues(t, false, doc["_foo"])  // Confirm user defined value got created
-	assert.EqualValues(t, true, doc["test"])
-	// Confirm attachment was removed successfully in latest revision
-	resp = passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/bar", "")
-	rest.RequireStatus(t, resp, 404)
-
-	// Add disallowed _removed tag in document
-	rawDoc = fmt.Sprintf(`{"_rev": "%s","_removed": false}`, doc["_rev"])
-	resp = activeRT.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, rawDoc)
-	rest.RequireStatus(t, resp, 404)
-
-	// Add disallowed _purged tag in document
-	rawDoc = fmt.Sprintf(`{"_rev": "%s","_purged": true}`, doc["_rev"])
-	resp = activeRT.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, rawDoc)
-	rest.RequireStatus(t, resp, 400)
 }
 
 // TestActiveReplicatorBlipsync uses an ActiveReplicator with another RestTester instance to connect and cleanly disconnect.
@@ -7285,68 +7120,56 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	passiveDBName := "passivedb"
-	username := "alice"
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Name: passiveDBName,
-			Users: map[string]*auth.PrincipalConfig{
-				username: {Password: base.Ptr(rest.RestTesterDefaultUserPassword)},
-			},
-		}},
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		_, rt, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+		remoteURL, err := url.Parse(passiveDBURL)
+		require.NoError(t, err)
+		ctx := rt.Context()
+
+		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+		require.NoError(t, err)
+		dbstats, err := stats.DBReplicatorStats(t.Name())
+		require.NoError(t, err)
+
+		id := rest.SafeDocumentName(t, t.Name())
+		ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
+			ID:                     id,
+			Direction:              db.ActiveReplicatorTypePushAndPull,
+			ActiveDB:               &db.Database{DatabaseContext: rt.GetDatabase()},
+			RemoteDBURL:            remoteURL,
+			Continuous:             true,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+
+		startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
+		startNumReplicationsActive := rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
+
+		// Start the replicator (implicit connect)
+		require.NoError(t, ar.Start(ctx))
+
+		// Check total stat
+		numReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
+		assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
+
+		// Check active stat
+		assert.Equal(t, startNumReplicationsActive+2, rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value())
+
+		// Close the replicator (implicit disconnect)
+		require.NoError(t, ar.Stop())
+
+		// Wait for active stat to drop to original value
+		base.RequireWaitForStat(t, func() int64 {
+			return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
+		}, startNumReplicationsActive)
+
+		// Verify total stat has not been decremented
+		numReplicationsTotal = rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
+		assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 	})
-	defer rt.Close()
-	ctx := rt.Context()
-
-	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
-	srv := httptest.NewServer(rt.TestPublicHandler())
-	defer srv.Close()
-
-	passiveDBURL, err := url.Parse(srv.URL + "/" + passiveDBName)
-	require.NoError(t, err)
-
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
-	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-
-	ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
-		ID:                  t.Name(),
-		Direction:           db.ActiveReplicatorTypePushAndPull,
-		ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
-		RemoteDBURL:         passiveDBURL,
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  !rt.GetDatabase().OnlyDefaultCollection(),
-	})
-	require.NoError(t, err)
-
-	startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
-	startNumReplicationsActive := rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
-
-	// Start the replicator (implicit connect)
-	assert.NoError(t, ar.Start(ctx))
-
-	// Check total stat
-	numReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
-	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
-
-	// Check active stat
-	assert.Equal(t, startNumReplicationsActive+2, rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value())
-
-	// Close the replicator (implicit disconnect)
-	assert.NoError(t, ar.Stop())
-
-	// Wait for active stat to drop to original value
-	base.RequireWaitForStat(t, func() int64 {
-		return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
-	}, startNumReplicationsActive)
-
-	// Verify total stat has not been decremented
-	numReplicationsTotal = rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
-	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 }
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
@@ -7471,7 +7294,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 		require.NoError(t, err)
 		seq := strconv.FormatUint(doc.Sequence, 10)
 
-		activeRT.CreateReplication(replicationID, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication(replicationID, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		sgrRunner.WaitForVersion("test", passiveRT, rest.DocVersion{RevTreeID: revID, CV: *doc.HLV.ExtractCurrentVersionFromHLV()})
@@ -8227,7 +8050,7 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 		activeRT, _, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		// create a replication and assert the updated at field is present in the config
-		activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+		activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 
 		activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
 
