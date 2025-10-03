@@ -18,14 +18,14 @@ licenses/APL2.txt.
 
     <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
-    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
+    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
     <default remote="couchbase" revision="master"/>
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
     <project name="build" path="cbbuild" remote="couchbase" revision="6b173f045016bf510d6d2076c97fb54d7df01a69">
-        <annotation name="VERSION" value="2.7.4"     keep="true"/>
+        <annotation name="VERSION" value="2.7.4" keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
@@ -46,8 +46,8 @@ licenses/APL2.txt.
 
     <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="fb2c298255fcbffc24f1cb824ef9d06defcda199"/>
 
-    <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="3ef76e777eaccded6a314950d1bc4b9326c75c28" />
-    <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="3ef76e777eaccded6a314950d1bc4b9326c75c28" />
+    <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="3ef76e777eaccded6a314950d1bc4b9326c75c28"/>
+    <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="3ef76e777eaccded6a314950d1bc4b9326c75c28"/>
 
     <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="45bfb9040dc54c0344f8182b5ae527cc88db2dac"/>
 
@@ -115,11 +115,11 @@ licenses/APL2.txt.
 
     <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="ca12da6727d4fb25c91d282beadc7706e28dfbc4"/>
 
-    <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8" />
+    <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8"/>
 
-    <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="82614adbe4d480de5675d8eee9b21a180a779222" />
+    <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="82614adbe4d480de5675d8eee9b21a180a779222"/>
 
-    <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="couchbasedeps" revision="dee209f2455f101a5e4e593dea94872d2c62d85d" />
+    <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="couchbasedeps" revision="dee209f2455f101a5e4e593dea94872d2c62d85d"/>
 
     <!-- Enterprise edition dependencies -->
     <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="2ed3f45fde8f1745eece72968cf673da69f0fd24"/>

@@ -27,13 +27,13 @@ licenses/APL2.txt.
     <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
     <remote fetch="https://github.com/satori/" name="satori"/>
 
-    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
+    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
     <default remote="couchbase" revision="master"/>
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="build" path="cbbuild" remote="couchbase" revision="2693c160e604c17daa838c151b35ffcf7ddcc1b6">
-        <annotation name="VERSION" value="1.5.2"     keep="true"/>
+        <annotation name="VERSION" value="1.5.2" keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
