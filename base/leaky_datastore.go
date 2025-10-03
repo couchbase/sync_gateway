@@ -85,7 +85,7 @@ func (lds *LeakyDataStore) GetCollectionID() uint32 {
 	return lds.dataStore.GetCollectionID()
 }
 
-func (lds *LeakyDataStore) Get(k string, rv interface{}) (cas uint64, err error) {
+func (lds *LeakyDataStore) Get(k string, rv any) (cas uint64, err error) {
 	return lds.dataStore.Get(k, rv)
 }
 
@@ -127,20 +127,18 @@ func (lds *LeakyDataStore) Touch(k string, exp uint32) (cas uint64, err error) {
 	}
 	return lds.dataStore.Touch(k, exp)
 }
-func (lds *LeakyDataStore) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+func (lds *LeakyDataStore) Add(k string, exp uint32, v any) (added bool, err error) {
 	return lds.dataStore.Add(k, exp, v)
 }
 func (lds *LeakyDataStore) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return lds.dataStore.AddRaw(k, exp, v)
 }
-func (lds *LeakyDataStore) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
+func (lds *LeakyDataStore) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
 	return lds.dataStore.Set(k, exp, opts, v)
 }
 func (lds *LeakyDataStore) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
-	for _, errorKey := range lds.config.ForceErrorSetRawKeys {
-		if k == errorKey {
-			return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
-		}
+	if slices.Contains(lds.config.ForceErrorSetRawKeys, k) {
+		return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
 	}
 	return lds.dataStore.SetRaw(k, exp, opts, v)
 }
@@ -150,7 +148,7 @@ func (lds *LeakyDataStore) Delete(k string) error {
 func (lds *LeakyDataStore) Remove(k string, cas uint64) (casOut uint64, err error) {
 	return lds.dataStore.Remove(k, cas)
 }
-func (lds *LeakyDataStore) WriteCas(k string, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+func (lds *LeakyDataStore) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (uint64, error) {
 	return lds.dataStore.WriteCas(k, exp, cas, v, opt)
 }
 func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
@@ -234,7 +232,7 @@ func (lds *LeakyDataStore) DeleteDDoc(docname string) error {
 	return vs.DeleteDDoc(docname)
 }
 
-func (lds *LeakyDataStore) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (lds *LeakyDataStore) View(ctx context.Context, ddoc, name string, params map[string]any) (sgbucket.ViewResult, error) {
 	vs, ok := AsViewStore(lds.dataStore)
 	if !ok {
 		return sgbucket.ViewResult{}, errors.New("bucket does not support views")
@@ -242,7 +240,7 @@ func (lds *LeakyDataStore) View(ctx context.Context, ddoc, name string, params m
 	return vs.View(ctx, ddoc, name, params)
 }
 
-func (lds *LeakyDataStore) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+func (lds *LeakyDataStore) ViewQuery(ctx context.Context, ddoc, name string, params map[string]any) (sgbucket.QueryResultIterator, error) {
 	vs, ok := AsViewStore(lds.dataStore)
 	if !ok {
 		return nil, errors.New("bucket does not support views")
@@ -310,7 +308,7 @@ func (lds *LeakyDataStore) DeleteSubDocPaths(ctx context.Context, k string, xatt
 	return lds.dataStore.DeleteSubDocPaths(ctx, k, xattrKeys...)
 }
 
-func (lds *LeakyDataStore) SubdocInsert(ctx context.Context, docID string, fieldPath string, cas uint64, value interface{}) error {
+func (lds *LeakyDataStore) SubdocInsert(ctx context.Context, docID string, fieldPath string, cas uint64, value any) error {
 	return lds.dataStore.SubdocInsert(ctx, docID, fieldPath, cas, value)
 }
 
@@ -434,7 +432,7 @@ func (lds *LeakyDataStore) DropIndex(ctx context.Context, indexName string) erro
 	return n1qlStore.DropIndex(ctx, indexName)
 }
 
-func (lds *LeakyDataStore) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+func (lds *LeakyDataStore) ExplainQuery(ctx context.Context, statement string, params map[string]any) (plan map[string]any, err error) {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return nil, err
@@ -458,7 +456,7 @@ func (lds *LeakyDataStore) GetIndexMeta(ctx context.Context, indexName string) (
 	return n1qlStore.GetIndexMeta(ctx, indexName)
 }
 
-func (lds *LeakyDataStore) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+func (lds *LeakyDataStore) Query(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return nil, err

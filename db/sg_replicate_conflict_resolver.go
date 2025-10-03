@@ -282,7 +282,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflic
 	switch result := result.(type) {
 	case Body:
 		return result, nil
-	case map[string]interface{}:
+	case map[string]any:
 		return result, nil
 	case error:
 		base.WarnfCtx(ctx, "conflictResolverRunner: "+result.Error())
@@ -335,7 +335,7 @@ func newConflictResolverRunner(ctx context.Context, funcSource string, timeout t
 		return ottoDefaultWinner
 	})
 
-	conflictResolverRunner.After = func(result otto.Value, err error) (interface{}, error) {
+	conflictResolverRunner.After = func(result otto.Value, err error) (any, error) {
 		nativeValue, _ := result.Export()
 		return nativeValue, err
 	}

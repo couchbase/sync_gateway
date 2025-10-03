@@ -104,7 +104,7 @@ func (c *Collection) PutDDoc(ctx context.Context, docname string, sgDesignDoc *s
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
-	worker := func() (bool, error, interface{}) {
+	worker := func() (bool, error, any) {
 		err := manager.UpsertDesignDocument(gocbDesignDoc, gocb.DesignDocumentNamespaceProduction, nil)
 		if err != nil {
 			WarnfCtx(ctx, "Got error from UpsertDesignDocument: %v - Retrying...", err)
@@ -189,7 +189,7 @@ func (c *Collection) DeleteDDoc(docname string) error {
 	return c.Collection.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 }
 
-func (c *Collection) View(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (c *Collection) View(ctx context.Context, ddoc, name string, params map[string]any) (sgbucket.ViewResult, error) {
 	var viewResult sgbucket.ViewResult
 	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
@@ -246,7 +246,7 @@ func unmarshalViewMetadata(viewResult *gocb.ViewResultRaw) (viewMetadata, error)
 	return viewMeta, err
 }
 
-func (c *Collection) ViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+func (c *Collection) ViewQuery(ctx context.Context, ddoc, name string, params map[string]any) (sgbucket.QueryResultIterator, error) {
 	gocbViewResult, err := c.executeViewQuery(ctx, ddoc, name, params)
 	if err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func (c *Collection) ViewQuery(ctx context.Context, ddoc, name string, params ma
 	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.Bucket.queryOps}, nil
 }
 
-func (c *Collection) executeViewQuery(ctx context.Context, ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
+func (c *Collection) executeViewQuery(ctx context.Context, ddoc, name string, params map[string]any) (*gocb.ViewResultRaw, error) {
 	viewResult := sgbucket.ViewResult{}
 	viewResult.Rows = sgbucket.ViewRows{}
 
@@ -279,7 +279,7 @@ func (c *Collection) executeViewQuery(ctx context.Context, ddoc, name string, pa
 }
 
 // Applies the viewquery options as specified in the params map to the gocb.ViewOptions
-func createViewOptions(ctx context.Context, params map[string]interface{}) (viewOpts *gocb.ViewOptions, err error) {
+func createViewOptions(ctx context.Context, params map[string]any) (viewOpts *gocb.ViewOptions, err error) {
 
 	viewOpts = &gocb.ViewOptions{}
 	for optionName, optionValue := range params {
@@ -330,7 +330,7 @@ func createViewOptions(ctx context.Context, params map[string]interface{}) (view
 	}
 
 	// Range: startkey, endkey, inclusiveend
-	var startKey, endKey interface{}
+	var startKey, endKey any
 	if _, ok := params[ViewQueryParamStartKey]; ok {
 		startKey = params[ViewQueryParamStartKey]
 	}
@@ -362,7 +362,7 @@ func createViewOptions(ctx context.Context, params map[string]interface{}) (view
 }
 
 // Used to convert the stale view parameter to a gocb ViewScanConsistency
-func asViewConsistency(ctx context.Context, value interface{}) gocb.ViewScanConsistency {
+func asViewConsistency(ctx context.Context, value any) gocb.ViewScanConsistency {
 
 	switch typeValue := value.(type) {
 	case string:

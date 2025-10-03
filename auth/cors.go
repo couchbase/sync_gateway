@@ -10,6 +10,7 @@ package auth
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -46,10 +47,8 @@ func MatchedOrigin(allowOrigins []string, rqOrigins []string) string {
 			}
 		}
 	}
-	for _, av := range allowOrigins {
-		if av == "*" {
-			return "*"
-		}
+	if slices.Contains(allowOrigins, "*") {
+		return "*"
 	}
 	return ""
 }

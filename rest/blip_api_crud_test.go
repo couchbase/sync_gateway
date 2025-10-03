@@ -54,7 +54,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	bt.restTester.GetDatabase().EnableAllowConflicts(bt.TB())
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
-	var changeList [][]interface{}
+	var changeList [][]any
 	changesRequest := bt.newRequest()
 	changesRequest.SetProfile("changes")
 	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
@@ -82,7 +82,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling response body")
 
 	// Call changes with a hypothetical new revision, assert that it returns last pushed revision
-	var changeList2 [][]interface{}
+	var changeList2 [][]any
 	changesRequest2 := bt.newRequest()
 	changesRequest2.SetProfile("changes")
 	changesRequest2.SetBody([]byte(`[["2", "foo", "2-xyz", false]]`)) // [sequence, docID, revID]
@@ -112,7 +112,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 		if string(body) != "null" {
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 			assert.Len(t, changeListReceived, 1)
@@ -127,7 +127,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
@@ -188,7 +188,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
@@ -221,7 +221,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
@@ -294,7 +294,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
@@ -327,7 +327,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
@@ -426,7 +426,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
@@ -469,7 +469,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
@@ -572,7 +572,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	body, err := proposeChangesResponse.Body()
 	assert.NoError(t, err, "Error getting changes response body")
 
-	var changeList [][]interface{}
+	var changeList [][]any
 	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error getting changes response body")
 
@@ -615,7 +615,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 		key           string
 		revID         string
 		parentRevID   string
-		expectedValue interface{}
+		expectedValue any
 	}
 
 	proposeChangesCases := []proposeChangesCase{
@@ -623,7 +623,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 			key:           "conflictingInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
-			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
+			expectedValue: map[string]any{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
 		},
 		proposeChangesCase{
 			key:           "newInsert",
@@ -641,7 +641,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 			key:           "conflictingUpdate",
 			revID:         "2-abc",
 			parentRevID:   conflictingUpdateRev1,
-			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
+			expectedValue: map[string]any{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
 		},
 		proposeChangesCase{
 			key:           "newUpdate",
@@ -663,9 +663,9 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
 
 	// proposedChanges entries are of the form: [docID, revID, parentRevID], where parentRevID is optional
-	proposedChanges := make([][]interface{}, 0)
+	proposedChanges := make([][]any, 0)
 	for _, c := range proposeChangesCases {
-		changeEntry := []interface{}{
+		changeEntry := []any{
 			c.key,
 			c.revID,
 		}
@@ -684,7 +684,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	bodyReader, err := proposeChangesResponse.BodyReader()
 	assert.NoError(t, err, "Error getting changes response body reader")
 
-	var changeList []interface{}
+	var changeList []any
 	decoder := base.JSONDecoder(bodyReader)
 	decodeErr := decoder.Decode(&changeList)
 	require.NoError(t, decodeErr)
@@ -856,13 +856,13 @@ function(doc, oldDoc) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
-		responseVal := [][]interface{}{}
+		responseVal := [][]any{}
 		if string(body) != "null" {
 
 			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
@@ -883,7 +883,7 @@ function(doc, oldDoc) {
 				}
 
 				revID := change[2].(string)
-				responseVal = append(responseVal, []interface{}{revID})
+				responseVal = append(responseVal, []any{revID})
 				changeCount++
 				receivedChangesWg.Done()
 			}
@@ -982,13 +982,13 @@ function(doc, oldDoc) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
-		responseVal := [][]interface{}{}
+		responseVal := [][]any{}
 		if string(body) != "null" {
 
 			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
-			changeListReceived := [][]interface{}{}
+			changeListReceived := [][]any{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
@@ -1009,7 +1009,7 @@ function(doc, oldDoc) {
 				}
 
 				revID := change[2].(string)
-				responseVal = append(responseVal, []interface{}{revID})
+				responseVal = append(responseVal, []any{revID})
 				changeCount++
 				receivedChangesWg.Done()
 			}
@@ -1062,7 +1062,7 @@ function(doc, oldDoc) {
 	// Sending revs may take a while if using views (GSI=false) due to the CBS views engine taking a while to execute the queries
 	// regarding rebuilding the users access grants (due to the constant invalidation of this).
 	// This blip tester is running as the user so the users access grants are rebuilt instantly when invalidated instead of the usual lazy-loading.
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docID := fmt.Sprintf("foo_%d", i)
 		bt.SendRev(
 			docID,
@@ -1151,7 +1151,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	wg.Add(concurrentSendRevNum)
-	for i := 0; i < concurrentSendRevNum; i++ {
+	for i := range concurrentSendRevNum {
 		docID := fmt.Sprintf("%s-%d", t.Name(), i)
 		go func() {
 			defer wg.Done()
@@ -1200,7 +1200,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	}
 }
 
-func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange ExpectedChange) {
+func AssertChangeEquals(t *testing.T, change []any, expectedChange ExpectedChange) {
 	if err := expectedChange.Equals(change); err != nil {
 		t.Errorf("Change %+v does not equal expected change: %+v.  Error: %v", change, expectedChange, err)
 	}
@@ -1246,7 +1246,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/checkpoint%252Ftestclient", "")
 	RequireStatus(t, response, 200)
-	var responseBody map[string]interface{}
+	var responseBody map[string]any
 	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	require.NoError(t, err)
 	assert.Equal(t, "1000", responseBody["client_seq"])
@@ -1796,7 +1796,7 @@ func TestMissingNoRev(t *testing.T) {
 	defer bt.Close()
 
 	// Create 5 docs
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("doc-%d", i)
 		docRev := fmt.Sprintf("1-abc%d", i)
 		bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
@@ -2228,15 +2228,15 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 		changesMsg := btc.getMostRecentChangesMessage()
 
-		var messageBody []interface{}
+		var messageBody []any
 		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 3)
 		require.Len(t, messageBody[0], 4) // Rev 2 of doc, being sent as removal from channel A
 		require.Len(t, messageBody[1], 4) // Rev 3 of doc, being sent as removal from channel B
 		require.Len(t, messageBody[2], 3)
 
-		deletedFlags, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
-		id := messageBody[0].([]interface{})[1]
+		deletedFlags, err := messageBody[0].([]any)[3].(json.Number).Int64()
+		id := messageBody[0].([]any)[1]
 		require.NoError(t, err)
 		assert.Equal(t, "doc", id)
 		assert.Equal(t, int64(4), deletedFlags)
@@ -2310,11 +2310,11 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		_ = btcRunner.WaitForVersion(btc.id, markerID, markerVersion)
 
 		changesMsg := btc.getMostRecentChangesMessage()
-		var messageBody []interface{}
+		var messageBody []any
 		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 1)
 		require.Len(t, messageBody[0], 3) // marker doc
-		require.Equal(t, "docmarker", messageBody[0].([]interface{})[1])
+		require.Equal(t, "docmarker", messageBody[0].([]any)[1])
 	})
 }
 
@@ -2339,7 +2339,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
@@ -2446,94 +2446,94 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 
 	testCases := []struct {
 		name                        string
-		inputBody                   map[string]interface{}
+		inputBody                   map[string]any
 		rejectMsg                   string
 		errorCode                   string
 		skipDocContentsVerification *bool
 	}{
 		{
 			name:      "Valid document",
-			inputBody: map[string]interface{}{"document": "is valid"},
+			inputBody: map[string]any{"document": "is valid"},
 		},
 		{
 			name:      "Valid document with special prop",
-			inputBody: map[string]interface{}{"_cookie": "is valid"},
+			inputBody: map[string]any{"_cookie": "is valid"},
 		},
 		{
 			name:      "Invalid _sync",
-			inputBody: map[string]interface{}{"_sync": true},
+			inputBody: map[string]any{"_sync": true},
 			errorCode: "404",
 			rejectMsg: "top-level property '_sync' is a reserved internal property",
 		},
 		{
 			name:      "Valid _id",
-			inputBody: map[string]interface{}{"_id": "documentid"},
+			inputBody: map[string]any{"_id": "documentid"},
 			errorCode: "404",
 			rejectMsg: "top-level property '_id' is a reserved internal property",
 		},
 		{
 			name:      "Valid _rev",
-			inputBody: map[string]interface{}{"_rev": "1-abc"},
+			inputBody: map[string]any{"_rev": "1-abc"},
 			errorCode: "404",
 			rejectMsg: "top-level property '_rev' is a reserved internal property",
 		},
 		{
 			name:      "Valid _deleted",
-			inputBody: map[string]interface{}{"_deleted": false},
+			inputBody: map[string]any{"_deleted": false},
 			errorCode: "404",
 			rejectMsg: "top-level property '_deleted' is a reserved internal property",
 		},
 		{
 			name:      "Invalid _attachments",
-			inputBody: map[string]interface{}{"_attachments": false},
+			inputBody: map[string]any{"_attachments": false},
 			errorCode: "400",
 			rejectMsg: "Invalid _attachments",
 		},
 		{
 			name:                        "Valid _attachments",
-			inputBody:                   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
+			inputBody:                   map[string]any{"_attachments": map[string]any{"attch": map[string]any{"data": "c2d3IGZ0dw=="}}},
 			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                        "_revisions",
-			inputBody:                   map[string]interface{}{"_revisions": false},
+			inputBody:                   map[string]any{"_revisions": false},
 			skipDocContentsVerification: base.Ptr(true),
 			rejectMsg:                   "top-level property '_revisions' is a reserved internal property",
 			errorCode:                   "404",
 		},
 		{
 			name:                        "Valid _exp",
-			inputBody:                   map[string]interface{}{"_exp": "123"},
+			inputBody:                   map[string]any{"_exp": "123"},
 			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:      "Invalid _exp",
-			inputBody: map[string]interface{}{"_exp": "abc"},
+			inputBody: map[string]any{"_exp": "abc"},
 			errorCode: "400",
 			rejectMsg: "Unable to parse expiry",
 		},
 		{
 			name:      "_purged",
-			inputBody: map[string]interface{}{"_purged": false},
+			inputBody: map[string]any{"_purged": false},
 			rejectMsg: "user defined top-level property '_purged' is not allowed",
 			errorCode: "400",
 		},
 		{
 			name:      "_removed",
-			inputBody: map[string]interface{}{"_removed": false},
+			inputBody: map[string]any{"_removed": false},
 			rejectMsg: "revision is not accessible",
 			errorCode: "404",
 		},
 		{
 			name:      "_sync_cookies",
-			inputBody: map[string]interface{}{"_sync_cookies": true},
+			inputBody: map[string]any{"_sync_cookies": true},
 			rejectMsg: "user defined top-level properties that start with '_sync_' are not allowed",
 			errorCode: "400",
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
 			// Known issue: _SYNC causes unmarshal error when not using xattrs
-			inputBody: map[string]interface{}{
+			inputBody: map[string]any{
 				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
 				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
 			},
@@ -2584,7 +2584,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				rt.WaitForPendingChanges()
 				changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
-				var bucketDoc map[string]interface{}
+				var bucketDoc map[string]any
 				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 				assert.NoError(t, err)
 				body := rt.GetDocBody(docID)

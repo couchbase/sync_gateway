@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -86,12 +87,8 @@ func getStats(logger *log.Logger) (StatDefinitions, error) {
 
 	// Merge the two maps
 	stats := make(StatDefinitions, len(globalStatsDefinitions)+len(dbStatDefinitions))
-	for k, v := range globalStatsDefinitions {
-		stats[k] = v
-	}
-	for k, v := range dbStatDefinitions {
-		stats[k] = v
-	}
+	maps.Copy(stats, globalStatsDefinitions)
+	maps.Copy(stats, dbStatDefinitions)
 
 	return stats, nil
 }

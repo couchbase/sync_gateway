@@ -90,7 +90,7 @@ func (c *Collection) GetName() string {
 
 // KV store
 
-func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
+func (c *Collection) Get(k string, rv any) (cas uint64, err error) {
 
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
@@ -149,7 +149,7 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 	return uint64(result.Cas()), nil
 }
 
-func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+func (c *Collection) Add(k string, exp uint32, v any) (added bool, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -187,7 +187,7 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 	return err == nil, err
 }
 
-func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v interface{}) error {
+func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -219,7 +219,7 @@ func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, 
 	return err
 }
 
-func (c *Collection) WriteCas(k string, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (c *Collection) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -470,7 +470,7 @@ func NewSGJSONTranscoder() *SGJSONTranscoder {
 
 // SGJSONTranscoder supports reading BinaryType documents as JSON, for backward
 // compatibility with legacy Sync Gateway data
-func (t *SGJSONTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error {
+func (t *SGJSONTranscoder) Decode(bytes []byte, flags uint32, out any) error {
 	valueType, compression := gocbcore.DecodeCommonFlags(flags)
 
 	// Make sure compression is disabled
@@ -483,7 +483,7 @@ func (t *SGJSONTranscoder) Decode(bytes []byte, flags uint32, out interface{}) e
 		case *[]byte:
 			*typedOut = bytes
 			return nil
-		case *interface{}:
+		case *any:
 			*typedOut = bytes
 			return nil
 		case *string:
@@ -507,7 +507,7 @@ func (t *SGJSONTranscoder) Decode(bytes []byte, flags uint32, out interface{}) e
 }
 
 // SGJSONTranscoder.Encode supports writing JSON as either raw bytes or an unmarshalled interface
-func (t *SGJSONTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
+func (t *SGJSONTranscoder) Encode(value any) ([]byte, uint32, error) {
 	switch value.(type) {
 	case []byte, *[]byte:
 		return gocb.NewRawJSONTranscoder().Encode(value)
@@ -527,7 +527,7 @@ func NewSGRawTranscoder() *SGRawTranscoder {
 }
 
 // Decode applies raw binary transcoding behaviour to decode into a Go type.
-func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error {
+func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out any) error {
 	valueType, compression := gocbcore.DecodeCommonFlags(flags)
 
 	// Make sure compression is disabled
@@ -548,7 +548,7 @@ func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out interface{}) er
 }
 
 // Encode applies raw binary transcoding behaviour to encode a Go type.
-func (t *SGRawTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
+func (t *SGRawTranscoder) Encode(value any) ([]byte, uint32, error) {
 	return gocb.NewRawBinaryTranscoder().Encode(value)
 
 }

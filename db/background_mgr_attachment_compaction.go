@@ -48,7 +48,7 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 	}
 }
 
-func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
 
@@ -102,7 +102,7 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 	return newRunInit()
 }
 
-func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	// Attachment compaction only needs to operate the default scope/collection,
@@ -131,7 +131,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	switch a.Phase {
 	case "mark", "":
 		a.SetPhase("mark")
-		worker := func() (shouldRetry bool, err error, value interface{}) {
+		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
 			_, a.VBUUIDs, metadataKeyPrefix, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
 			if err != nil {
@@ -159,7 +159,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		fallthrough
 	case "cleanup":
 		a.SetPhase("cleanup")
-		worker := func() (shouldRetry bool, err error, value interface{}) {
+		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
 			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
 			if err != nil {
@@ -182,7 +182,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
-func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]interface{}, dataStore base.DataStore, database *Database, err error, phase, keyPrefix string) (bool, error) {
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase, keyPrefix string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)

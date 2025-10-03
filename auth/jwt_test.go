@@ -115,21 +115,21 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid RSA", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), ""))
 
 	t.Run("valid EC", test(baseProvider, CreateTestJWT(t, jose.ES256, testECKeypair, JWTHeaders{
 		"kid": testECJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), ""))
 
 	t.Run("valid + expiry check", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"exp": time.Now().Add(time.Hour).Unix(),
@@ -139,7 +139,7 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid but expired", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		// 2000-01-01T00:00:00Z
@@ -148,7 +148,7 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid but issued in the future", test(providerWithExpiryCheck, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		// 3000-01-01T00:00:00Z
@@ -158,7 +158,7 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	invalidSignature := CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	})
@@ -167,21 +167,21 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid JWT signed with an unknown key", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testExtraJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), anyError))
 
 	t.Run("valid JWT signed with a mismatching KID", test(baseProvider, CreateTestJWT(t, jose.RS256, testExtraKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), anyError))
 
 	t.Run("valid RSA signed with key with use=enc", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testEncRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 	}), anyError))
@@ -195,7 +195,7 @@ func TestJWTVerifyToken(t *testing.T) {
 
 	t.Run("valid RSA with invalid issuer", test(baseProvider, CreateTestJWT(t, jose.RS256, testRSAKeypair, JWTHeaders{
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": "nonsense",
 		"aud": []string{testClientID},
 	}), "id token issued by a different provider"))

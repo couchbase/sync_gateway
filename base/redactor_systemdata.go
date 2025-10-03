@@ -51,7 +51,7 @@ func (sd SystemData) Redact() string {
 var _ Redactor = SystemData("")
 
 // SD returns a SystemData type for any given value.
-func SD(i interface{}) RedactorFunc {
+func SD(i any) RedactorFunc {
 	switch v := i.(type) {
 	case string:
 		return func() Redactor {

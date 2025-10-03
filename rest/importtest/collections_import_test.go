@@ -72,7 +72,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	// * not matching any import filter
 	// * matching importFilter2
 	mobileKey := "TestImportFilter1Valid"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
@@ -80,7 +80,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 	nonMobileKey := "TestImportFilterInvalid"
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
@@ -88,7 +88,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 	onPremKey := "TestImportFilter2Valid"
-	onPremBody := make(map[string]interface{})
+	onPremBody := make(map[string]any)
 	onPremBody["type"] = "onprem"
 	onPremBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
@@ -172,7 +172,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	// Write private doc
 	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
 	prvKey := "TestImportFilter3Valid"
-	prvBody := make(map[string]interface{})
+	prvBody := make(map[string]any)
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
@@ -214,7 +214,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	// Write private doc 2
 	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
 	prvKey = "TestImportFilter3Valid2"
-	prvBody = make(map[string]interface{})
+	prvBody = make(map[string]any)
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
@@ -291,11 +291,11 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	dataStores := []base.DataStore{dataStore2, dataStore1}
 
 	// write docs to both datastores
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["foo"] = "bar"
 	docCount := 10
 	for _, dataStore := range dataStores {
-		for j := 0; j < docCount; j++ {
+		for j := range docCount {
 			_, err := dataStore.Add(fmt.Sprintf("datastore%d", j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}
@@ -316,7 +316,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
 
 	for _, dataStore := range dataStores {
-		for j := 0; j < docCount; j++ {
+		for j := range docCount {
 			docName := fmt.Sprintf("datastore%d", j)
 			if dataStore == dataStore1 {
 				requireSyncData(rt, dataStore, docName, true)
@@ -342,7 +342,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
 
 	for _, dataStore := range dataStores {
-		for j := 0; j < docCount; j++ {
+		for j := range docCount {
 			docName := fmt.Sprintf("datastore%d", j)
 			requireSyncData(rt, dataStore, docName, true)
 		}
@@ -382,10 +382,10 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	docCount := 10
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["foo"] = "bar"
 	for i, dataStore := range []base.DataStore{dataStore1, dataStore2} {
-		for j := 0; j < docCount; j++ {
+		for j := range docCount {
 			_, err := dataStore.Add(fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}

@@ -469,13 +469,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}
 
 	caughtUp := false
-	pendingChanges := make([][]interface{}, 0, opts.batchSize)
+	pendingChanges := make([][]any, 0, opts.batchSize)
 	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
 			if err := bh.sendBatchOfChanges(sender, pendingChanges, opts.ignoreNoConflicts); err != nil {
 				return err
 			}
-			pendingChanges = make([][]interface{}, 0, opts.batchSize)
+			pendingChanges = make([][]any, 0, opts.batchSize)
 		}
 		return nil
 	}
@@ -554,8 +554,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	return (err == nil && !forceClose), err
 }
 
-func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion ChangeByVersionType) []interface{} {
-	var changeRow []interface{}
+func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion ChangeByVersionType) []any {
+	var changeRow []any
 
 	// change map should only have one entry
 	if len(changeVersion) > 1 {
@@ -575,13 +575,13 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 			deletedFlags |= changesDeletedFlagRemoved
 		}
 
-		changeRow = []interface{}{change.Seq, change.ID, rev, deletedFlags}
+		changeRow = []any{change.Seq, change.ID, rev, deletedFlags}
 		if deletedFlags == 0 {
 			changeRow = changeRow[0:3]
 		}
 
 	} else {
-		changeRow = []interface{}{change.Seq, change.ID, rev, change.Deleted}
+		changeRow = []any{change.Seq, change.ID, rev, change.Deleted}
 		if !change.Deleted {
 			changeRow = changeRow[0:3]
 		}
@@ -590,7 +590,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 	return changeRow
 }
 
-func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
+func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]any, ignoreNoConflicts bool) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	if ignoreNoConflicts {
@@ -625,7 +625,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]any, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
 			if err := bh.handleChangesResponse(bh.loggingCtx, sender, response, changeArray, sendTime, dbCollection, bh.collectionIdx); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
@@ -669,7 +669,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		return ErrUseProposeChanges
 	}
 
-	var changeList [][]interface{}
+	var changeList [][]any
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		base.WarnfCtx(bh.loggingCtx, "Handle changes got error: %v", err)
 		return err
@@ -822,7 +822,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		includeConflictRev = val == trueProperty
 	}
 
-	var changeList [][]interface{}
+	var changeList [][]any
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
 	}
@@ -1170,11 +1170,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = map[string]any(deltaSrcRev.Attachments)
 			injectedAttachmentsForDelta = true
 		}
 
-		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		deltaSrcMap := map[string]any(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, newDoc.Body(bh.loggingCtx))
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
@@ -1265,12 +1265,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 						// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 						// update to ensure it's fetched and uploaded
 						if minRevpos > 0 {
-							bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+							bodyAtts[name].(map[string]any)["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
 						}
 						continue
 					}
 
-					currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
+					currentAttachmentMeta, ok := currentAttachment.(map[string]any)
 					if !ok {
 						return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid, is not a json object")
 					}
@@ -1281,7 +1281,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 					}
 					currentDigests[name] = currentAttachmentDigest
 
-					incomingAttachmentMeta, ok := value.(map[string]interface{})
+					incomingAttachmentMeta, ok := value.(map[string]any)
 					if !ok {
 						return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment, expecting json object")
 					}
@@ -1308,7 +1308,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 						// digest is different we need to override the revpos and set it to the current revision to ensure
 						// the attachment is requested and stored
 						if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-							bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
+							bodyAtts[name].(map[string]any)["revpos"], _ = ParseRevID(bh.loggingCtx, rev)
 						}
 					}
 				}
@@ -1500,7 +1500,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 
 // sendGetAttachment requests the full attachment from the peer.
-func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
+func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]any) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageGetAttachment)
@@ -1611,7 +1611,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
-	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests, func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests, func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
 		// Request attachment if we don't have it
 		if knownData == nil {
 			return bh.sendGetAttachment(sender, docID, name, digest, meta)

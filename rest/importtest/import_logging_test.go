@@ -33,7 +33,7 @@ func TestImportFilterLogging(t *testing.T) {
 
 	// Add document to bucket
 	key := "ValidImport"
-	body := make(map[string]interface{})
+	body := make(map[string]any)
 	body["type"] = "mobile"
 	body["channels"] = "A"
 	ok, err := rt.GetSingleDataStore().Add(key, 0, body)

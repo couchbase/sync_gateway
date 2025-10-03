@@ -60,7 +60,7 @@ func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys 
 	}
 }
 
-func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	db := options["database"].(*Database)
 	resyncCollections := options["collections"].(ResyncCollections)
 
@@ -105,7 +105,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 	return nil
 }
 
-func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 	resyncCollections := options["collections"].(ResyncCollections)

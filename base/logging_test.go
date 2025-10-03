@@ -49,9 +49,8 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 	SetUpBenchmarkLogging(b, LevelInfo, KeyHTTP, KeyCRUD)
 
 	ctx := TestCtx(b)
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		DebugfCtx(ctx, KeyCRUD, "some crud'y message")
 		InfofCtx(ctx, KeyCRUD, "some crud'y message")
 		WarnfCtx(ctx, "some crud'y message")
@@ -135,7 +134,7 @@ func BenchmarkLogRotation(b *testing.B) {
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
 
 			bm.ResetTimer()
-			for i := 0; i < bm.N; i++ {
+			for bm.Loop() {
 				_, _ = logger.Write(data)
 				if test.rotate {
 					_ = logger.Rotate()
@@ -148,7 +147,7 @@ func BenchmarkLogRotation(b *testing.B) {
 			assert.NoError(bm, logger.Close())
 			ctx := TestCtx(bm)
 			err, _ := RetryLoop(ctx, "benchmark-logrotate-teardown",
-				func() (shouldRetry bool, err error, value interface{}) {
+				func() (shouldRetry bool, err error, value any) {
 					err = os.RemoveAll(logPath)
 					return err != nil, err, nil
 				},
@@ -193,7 +192,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = colorEnabled()
 		}
 	})
@@ -203,7 +202,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = colorEnabled()
 		}
 	})
@@ -213,7 +212,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 		require.NoError(b, os.Setenv("TERM", "dumb"))
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = colorEnabled()
 		}
 	})
@@ -244,7 +243,7 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 		t.Skip("Test does not work when a global test log level is set")
 	}
 
-	for i := LevelNone; i < levelCount; i++ {
+	for i := range levelCount {
 		t.Run(i.String(), func(t *testing.T) {
 			consoleLogger.Load().LogLevel.Set(i)
 			out := CaptureConsolefLogOutput(func() { LogSyncGatewayVersion(TestCtx(t)) })
@@ -312,7 +311,7 @@ func BenchmarkGetCallersName(b *testing.B) {
 	}
 	for _, tt := range tests {
 		b.Run(fmt.Sprintf("%v-%v", tt.depth, tt.includeLine), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				GetCallersName(tt.depth, tt.includeLine)
 			}
 		})

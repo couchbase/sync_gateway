@@ -104,18 +104,18 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 	result := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: any(nil)}, result.Rows[1])
 
 	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: any(nil)}, result.Rows[1])
 
 	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: any(nil)}, result.Rows[1])
 }
 
 func TestViewQueryWithParams(t *testing.T) {
@@ -135,13 +135,13 @@ func TestViewQueryWithParams(t *testing.T) {
 
 	result := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
 	require.Len(t, result.Rows, 2)
-	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
-	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: any(nil)})
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: any(nil)})
 
 	result = rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&conflicts=true&descending=false&keys=["test1", "test2"]`)
 	require.Len(t, result.Rows, 2)
-	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
-	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: any(nil)})
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: any(nil)})
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
@@ -215,22 +215,22 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: any(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_fname", ``)
 	RequireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: any(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_lname", ``)
 	RequireStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	require.Len(t, result.Rows, 2)
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
-	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: any(nil)}, result.Rows[0])
+	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: any(nil)}, result.Rows[1])
 }
 
 func TestUserViewQuery(t *testing.T) {
@@ -308,7 +308,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":0, "value":"0", "channel":"W"}`)
 		RequireStatus(t, response, http.StatusCreated)
@@ -360,7 +360,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
 		RequireStatus(t, response, http.StatusCreated)
@@ -397,7 +397,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), `{"key":"A", "value":1}`)
 		RequireStatus(t, response, http.StatusCreated)
@@ -546,7 +546,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		// Create docs:
 		response = rt.SendRequest(http.MethodPut, fmt.Sprintf("/db/doc%v", i), fmt.Sprintf(`{"key":["A",{},%v], "value":1}`, i))
 		RequireStatus(t, response, http.StatusCreated)

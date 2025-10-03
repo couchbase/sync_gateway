@@ -235,7 +235,7 @@ func (s *mockAuthServer) discoveryHandler(w http.ResponseWriter, r *http.Request
 // renderJSON renders the response data as "application/json" with the status code.
 // It may report status 500 Internal Server Error if there is any failure in converting the
 // response data to JSON document.
-func renderJSON(w http.ResponseWriter, r *http.Request, statusCode int, data interface{}) {
+func renderJSON(w http.ResponseWriter, r *http.Request, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
@@ -324,8 +324,8 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 
 // claimSet represents a set of public and private claim values.
 type claimSet struct {
-	primaryClaims   jwt.Claims             // primaryClaims represents public claim values.
-	secondaryClaims map[string]interface{} // secondaryClaims represents private claim values.
+	primaryClaims   jwt.Claims     // primaryClaims represents public claim values.
+	secondaryClaims map[string]any // secondaryClaims represents private claim values.
 }
 
 // makeToken creates a default token with an expiry of 5 minutes.
@@ -353,7 +353,7 @@ func claimsAuthentic() claimSet {
 		IssuedAt: jwt.NewNumericDate(time.Now()),
 		Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 	}
-	secondaryClaims := map[string]interface{}{"email": "noah@foo.com"}
+	secondaryClaims := map[string]any{"email": "noah@foo.com"}
 	return claimSet{
 		primaryClaims:   primaryClaims,
 		secondaryClaims: secondaryClaims,
@@ -362,7 +362,7 @@ func claimsAuthentic() claimSet {
 
 // claimsAuthenticWithUsernameClaim returns an authentic claim set after
 // setting the given secondary claims.
-func claimsAuthenticWithExtraClaims(extra map[string]interface{}) claimSet {
+func claimsAuthenticWithExtraClaims(extra map[string]any) claimSet {
 	claims := claimsAuthentic()
 	claims.secondaryClaims = extra
 	return claims
@@ -370,8 +370,8 @@ func claimsAuthenticWithExtraClaims(extra map[string]interface{}) claimSet {
 
 // claimsAuthenticWithUsernameClaim returns an authentic claim set after
 // setting the given claim key and value as secondary claims.
-func claimsAuthenticWithUsernameClaim(key string, value interface{}) claimSet {
-	return claimsAuthenticWithExtraClaims(map[string]interface{}{key: value})
+func claimsAuthenticWithUsernameClaim(key string, value any) claimSet {
+	return claimsAuthenticWithExtraClaims(map[string]any{key: value})
 }
 
 // keysHandler exposes a set of of a public keys in JWK format that enable clients
@@ -883,7 +883,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			}
 
 			// Query db endpoint with Bearer token
-			var responseBody map[string]interface{}
+			var responseBody map[string]any
 			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
@@ -1148,7 +1148,7 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 
 	createUser(t, restTester, "foo_noah")
 
-	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}}))
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"foo"}}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 
@@ -1171,7 +1171,7 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	// If we send some of these, we can at least compare JWTLastUpdated timestamps to ensure it hasn't changed.
 	const numChanges = 10
 	var observedUserUpdateCount int64
-	for i := 0; i < numChanges; i++ {
+	for range numChanges {
 		resp = restTester.SendRequestWithHeaders(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", docSeq), ``, map[string]string{"Authorization": BearerToken + " " + token})
 		RequireStatus(t, resp, http.StatusOK)
 		var changesResp ChangesResults
@@ -1193,7 +1193,7 @@ func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
 	assert.Equal(t, int64(lastSeq), int64(finalLastSeq))
 
 	// add new channel - expect user to be updated after using this new token
-	token, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo", "bar"}}))
+	token, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"foo", "bar"}}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 
@@ -1244,7 +1244,7 @@ func TestUserAPIReadOnlyFields(t *testing.T) {
 
 	createUser(t, restTester, "foo_noah")
 
-	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}, "roles": []string{"fooRole"}}))
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"foo"}, "roles": []string{"fooRole"}}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 
@@ -1312,7 +1312,7 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	response := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
-	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"foo"}}))
+	token, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"foo"}}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 
@@ -1334,7 +1334,7 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	requireJWTChannels(t, base.SetFromArray([]string{"foo"}), userConfig, ds)
 
 	// Update token to update the channels claim to 'bar'
-	updatedToken, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"bar"}}))
+	updatedToken, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"bar"}}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 	resp = restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + updatedToken})
@@ -1345,7 +1345,7 @@ func TestAdminAndJWTChannels(t *testing.T) {
 	requireJWTChannels(t, base.SetFromArray([]string{"bar"}), userConfig, ds)
 
 	// Update token with no channel claims, ensure it removes JWT channels and preserves admin channels
-	updatedToken, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{"otherClaim": "not a channel"}))
+	updatedToken, err = mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{"otherClaim": "not a channel"}))
 	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 	resp = restTester.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{"Authorization": BearerToken + " " + updatedToken})
@@ -1357,34 +1357,34 @@ func TestAdminAndJWTChannels(t *testing.T) {
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
 func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response, username string) {
-	var responseBodyExpected map[string]interface{}
+	var responseBodyExpected map[string]any
 	dataStore := rt.GetSingleDataStore()
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
-	var responseBodyActual map[string]interface{}
+	var responseBodyActual map[string]any
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBodyActual))
 	sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
 	require.NotNil(t, sessionCookie, "No session cookie found")
 	require.NoError(t, response.Body.Close(), "error closing response body")
 	if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
-		responseBodyExpected = map[string]interface{}{
-			"authentication_handlers": []interface{}{
+		responseBodyExpected = map[string]any{
+			"authentication_handlers": []any{
 				"default", "cookie",
 			},
 			"ok": true,
-			"userCtx": map[string]interface{}{
-				"channels": map[string]interface{}{"!": float64(1)},
+			"userCtx": map[string]any{
+				"channels": map[string]any{"!": float64(1)},
 				"name":     username,
 			},
 		}
 	} else {
-		responseBodyExpected = map[string]interface{}{
-			"authentication_handlers": []interface{}{
+		responseBodyExpected = map[string]any{
+			"authentication_handlers": []any{
 				"default", "cookie",
 			},
 			"ok": true,
-			"userCtx": map[string]interface{}{
-				"channels": interface{}(nil),
+			"userCtx": map[string]any{
+				"channels": any(nil),
 				"name":     username,
 			},
 		}
@@ -2350,7 +2350,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			assert.Equal(t, authResponseExpected.RefreshToken, authResponseActual.RefreshToken, "refresh_token mismatch")
 
 			// Query db endpoint with Bearer token
-			var responseBody map[string]interface{}
+			var responseBody map[string]any
 			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
@@ -2475,7 +2475,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			providers: auth.OIDCProviderMap{
 				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderChannelsClaim{"channels"}),
 			},
-			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{"fooChan"}}),
+			claims:          claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{"fooChan"}}),
 			testDocChannels: []string{"fooChan"},
 			expectAccess:    true,
 		},
@@ -2484,7 +2484,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			providers: auth.OIDCProviderMap{
 				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderChannelsClaim{"channels"}),
 			},
-			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"channels": []string{}}),
+			claims:          claimsAuthenticWithExtraClaims(map[string]any{"channels": []string{}}),
 			testDocChannels: []string{"fooChan"},
 			expectAccess:    false,
 		},
@@ -2493,7 +2493,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 			providers: auth.OIDCProviderMap{
 				defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}, mockProviderRolesClaim{"roles"}),
 			},
-			claims:          claimsAuthenticWithExtraClaims(map[string]interface{}{"roles": []string{"fooRole"}}),
+			claims:          claimsAuthenticWithExtraClaims(map[string]any{"roles": []string{"fooRole"}}),
 			roleChannels:    map[string][]string{"fooRole": {"barChan"}},
 			testDocChannels: []string{"barChan"},
 			expectAccess:    true,
@@ -2619,7 +2619,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	// Sanity check that we can authenticate properly
-	jwt, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]interface{}{
+	jwt, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{
 		usernameClaim: subject,
 		channelsClaim: []string{testChannelName},
 	}))
@@ -2635,7 +2635,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 
 	assert.Equal(t, subject, adminResult["name"])
 	assert.Equal(t, mockAuthServer.options.issuer, adminResult["jwt_issuer"])
-	assert.Equal(t, []interface{}{testChannelName}, adminResult["jwt_channels"])
+	assert.Equal(t, []any{testChannelName}, adminResult["jwt_channels"])
 	assert.NotEmpty(t, adminResult["jwt_last_updated"])
 	// check it's a valid time
 	_, err = time.Parse(time.RFC3339Nano, adminResult["jwt_last_updated"].(string))
@@ -2762,7 +2762,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	tdRes := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", rt1.DatabaseConfig.Name, testDocName), string(testDocJSON))
 	RequireStatus(t, tdRes, http.StatusCreated)
 
-	jwt, err := createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
+	jwt, err := createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]any{
 		"username": "frodo",
 		"channels": "foo",
 	})
@@ -2787,7 +2787,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode, "No access")
 
 	// Now sign in again with a different issuer but the same username
-	jwt, err = createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]interface{}{
+	jwt, err = createJWTWithExtraClaims(subject, fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name), AuthState{TokenTTL: time.Hour}, map[string]any{
 		"username": "frodo",
 	})
 	require.NoError(t, err, "Failed to create test JWT")

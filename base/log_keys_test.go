@@ -172,41 +172,41 @@ func BenchmarkLogKeyEnabled(b *testing.B) {
 func BenchmarkToggleLogKeys(b *testing.B) {
 	b.Run("Enable", func(bn *testing.B) {
 		logKeyMask := logKeyMask(KeyCRUD, KeyDCP, KeyReplicate)
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			logKeyMask.Enable(KeyHTTP)
 		}
 	})
 	b.Run("Disable", func(bn *testing.B) {
 		logKeyMask := logKeyMask(KeyCRUD, KeyDCP, KeyReplicate)
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			logKeyMask.Disable(KeyDCP)
 		}
 	})
 }
 
 func BenchmarkLogKeyName(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = KeyDCP.String()
 	}
 }
 
 func BenchmarkToLogKey(b *testing.B) {
 	ctx := TestCtx(b)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = ToLogKey(ctx, []string{"CRUD", "DCP", "Replicate"})
 	}
 }
 
 func BenchmarkEnabledLogKeys(b *testing.B) {
 	logKeys := logKeyMask(KeyCRUD, KeyDCP, KeyReplicate)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = logKeys.EnabledLogKeys()
 	}
 }
 
 func benchmarkLogKeyEnabled(b *testing.B, name string, logKey LogKey, logKeys *LogKeyMask) {
 	b.Run(name, func(bn *testing.B) {
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			logKeys.Enabled(logKey)
 		}
 	})

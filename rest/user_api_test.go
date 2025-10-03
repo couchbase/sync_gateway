@@ -69,7 +69,7 @@ func TestUsersAPI(t *testing.T) {
 		assert.Equal(t, i, len(responseUsers))
 
 		// validate no duplicate users returned in response
-		userMap := make(map[string]interface{})
+		userMap := make(map[string]any)
 		for _, name := range responseUsers {
 			_, ok := userMap[name]
 			assert.False(t, ok)
@@ -249,7 +249,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 			assert.Equal(t, testCase.expectedCount, len(responseUsers))
 
 			// validate no duplicate users returned in response
-			userMap := make(map[string]interface{})
+			userMap := make(map[string]any)
 			for _, principal := range responseUsers {
 				_, ok := userMap[*principal.Name]
 				assert.False(t, ok)
@@ -888,7 +888,7 @@ function(doc, oldDoc) {
 	}()
 
 	// Make bulk docs calls, 100 docs each, all triggering access grants to the list docs.
-	for j := 0; j < 1; j++ {
+	for j := range 1 {
 
 		input := `{"docs": [`
 		for i := 1; i <= 100; i++ {
@@ -1002,7 +1002,7 @@ func validateUsersNameOnlyFalse(t *testing.T, rt *RestTester) {
 		assert.Equal(t, i, len(responseUsers))
 
 		// Check property values, and validate no duplicate users returned in response
-		userMap := make(map[string]interface{})
+		userMap := make(map[string]any)
 		for _, principal := range responseUsers {
 			require.NotNil(t, principal.Name)
 			if *principal.Name != "user5" {

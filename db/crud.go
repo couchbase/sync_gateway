@@ -566,7 +566,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
 			DeleteAttachmentVersion(fromRevision.Attachments)
-			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
+			fromBodyCopy[BodyAttachments] = map[string]any(fromRevision.Attachments)
 		}
 
 		var toRevAttStorageMeta []AttachmentStorageMeta
@@ -574,7 +574,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			// Flatten the AttachmentsMeta into a list of digest version pairs.
 			toRevAttStorageMeta = ToAttachmentStorageMeta(toRevision.Attachments)
 			DeleteAttachmentVersion(toRevision.Attachments)
-			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
+			toBodyCopy[BodyAttachments] = map[string]any(toRevision.Attachments)
 		}
 
 		deltaBytes, err := base.Diff(fromBodyCopy, toBodyCopy)
@@ -719,14 +719,14 @@ func mergeAttachments(attachmentsA, attachmentsB AttachmentsMeta) AttachmentsMet
 			// we had the same attachment name in attachmentsB and in pre25Attachments.
 			// Use whichever has the highest revpos.
 			var attARevpos, attBRevpos int64
-			if attAMeta, ok := attA.(map[string]interface{}); ok {
+			if attAMeta, ok := attA.(map[string]any); ok {
 				attARevpos, ok = base.ToInt64(attAMeta["revpos"])
 				if !ok {
 					// There was no revpos in attachmentsA, so attachmentsB attachment will win.
 					continue
 				}
 			}
-			if attBMeta, ok := attB.(map[string]interface{}); ok {
+			if attBMeta, ok := attB.(map[string]any); ok {
 				// if attBRevpos can't be converted into an int64, pre25 revpos wins, so fall through with attBRevpos=0
 				attBRevpos, _ = base.ToInt64(attBMeta["revpos"])
 			}
@@ -760,7 +760,7 @@ func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cl
 		return nil, bodyBytes, body, nil
 	}
 
-	attsMap, ok := bodyAtts.(map[string]interface{})
+	attsMap, ok := bodyAtts.(map[string]any)
 	if !ok {
 		// "_attachments" in body was not valid attachment metadata
 		return nil, bodyBytes, body, nil
@@ -1929,7 +1929,7 @@ func localWinsConflictResolutionRevTreeHandling(ctx context.Context, localDoc, r
 		requiredAdditionalRevs := localGeneration - remoteGeneration
 		injectedRevBody := []byte("{}")
 		injectedGeneration := remoteGeneration
-		for i := 0; i < requiredAdditionalRevs; i++ {
+		for range requiredAdditionalRevs {
 			injectedGeneration++
 			remoteLeafRevID := docHistory[0]
 			injectedRevID := CreateRevIDWithBytes(injectedGeneration, remoteLeafRevID, injectedRevBody)
@@ -1964,7 +1964,7 @@ func localWinsConflictResolutionDocumentHandling(ctx context.Context, localDoc, 
 		// If attachment revpos is older than common ancestor, or common ancestor doesn't exist, set attachment's
 		// revpos to the generation of newRevID (i.e. treat as previously unknown to this revtree branch)
 		for _, value := range remoteDoc.Attachments() {
-			attachmentMeta, ok := value.(map[string]interface{})
+			attachmentMeta, ok := value.(map[string]any)
 			if !ok {
 				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.GetRevTreeID(), value)
 				continue
@@ -2026,7 +2026,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	// Move attachments from the merged body to the incoming DocAttachments for normal processing.
 	bodyAtts, ok := mergedBody[BodyAttachments]
 	if ok {
-		attsMap, ok := bodyAtts.(map[string]interface{})
+		attsMap, ok := bodyAtts.(map[string]any)
 		if ok {
 			remoteDoc.SetAttachments(attsMap)
 			delete(mergedBody, BodyAttachments)
@@ -2205,7 +2205,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 			prevCurrentRevGen, _ := ParseRevID(ctx, prevCurrentRev)
 			bodyAtts := make(AttachmentsMeta)
 			for attName, attMeta := range doc.Attachments() {
-				if attMetaMap, ok := attMeta.(map[string]interface{}); ok {
+				if attMetaMap, ok := attMeta.(map[string]any); ok {
 					var attRevposInt int
 					if attRevpos, ok := attMetaMap["revpos"].(int); ok {
 						attRevposInt = attRevpos
@@ -2257,7 +2257,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err = doc.GetMetaMap(db.userXattrKey())
 	if err != nil {
@@ -2287,7 +2287,7 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]any, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
@@ -2296,7 +2296,7 @@ func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Docume
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
-func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]interface{}, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
+func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]any, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
@@ -3029,9 +3029,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 		return nil, err
 	}
 
-	for docid, names := range currentAttachments {
-		leafAttachments[docid] = names
-	}
+	maps.Copy(leafAttachments, currentAttachments)
 
 	// Grab leaf revisions that have attachments and aren't the currently being added rev
 	// Currently handled rev won't have information set properly on it yet so we handle this above
@@ -3053,9 +3051,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 			return nil, err
 		}
 
-		for attachmentID, attachmentNames := range attachmentKeys {
-			leafAttachments[attachmentID] = attachmentNames
-		}
+		maps.Copy(leafAttachments, attachmentKeys)
 
 	}
 
@@ -3239,7 +3235,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
+func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]any, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -3324,11 +3320,11 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 }
 
 // Creates a userCtx object to be passed to the sync function
-func MakeUserCtx(user auth.User, scopeName string, collectionName string) map[string]interface{} {
+func MakeUserCtx(user auth.User, scopeName string, collectionName string) map[string]any {
 	if user == nil {
 		return nil
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
 		"channels": user.InheritedCollectionChannels(scopeName, collectionName).AllKeys(),

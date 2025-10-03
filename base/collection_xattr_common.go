@@ -308,7 +308,7 @@ func SetXattrs(ctx context.Context, store *Collection, k string, xvs map[string]
 
 // RemoveXattr performs a cas safe subdoc delete of the provided key. Will retry if a recoverable failure occurs.
 func RemoveXattrs(ctx context.Context, store *Collection, k string, xattrKeys []string, cas uint64) error {
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		writeErr := store.subdocDeleteXattrs(k, xattrKeys, cas)
 		if writeErr == nil {
 			return false, nil, nil
@@ -332,7 +332,7 @@ func RemoveXattrs(ctx context.Context, store *Collection, k string, xattrKeys []
 
 // removeSubdocPaths performs a subdoc delete of the provided keys. Retries any recoverable failures. Not cas safe.
 func removeSubdocPaths(ctx context.Context, store *Collection, k string, subdocPaths ...string) error {
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		writeErr := store.subdocRemovePaths(k, subdocPaths...)
 		if writeErr == nil {
 			return false, nil, nil

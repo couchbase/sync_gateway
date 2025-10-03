@@ -116,7 +116,7 @@ func BenchmarkSet_Union(b *testing.B) {
 	set1 := SetOf("2", "3", "5", "8", "13", "21", "34")
 	set2 := SetOf("2", "3", "5", "7", "11", "13", "17")
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		set1 = set1.Union(set2)
 	}
 }
@@ -125,7 +125,7 @@ func BenchmarkSet_Update(b *testing.B) {
 	set1 := SetOf("2", "3", "5", "8", "13", "21", "34")
 	set2 := SetOf("2", "3", "5", "7", "11", "13", "17")
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		set1 = set1.Update(set2)
 	}
 }

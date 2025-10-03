@@ -36,7 +36,7 @@ func (c *RosmarCluster) GetConfigBuckets() ([]string, error) {
 }
 
 // GetMetadataDocument returns a metadata document from the default collection for the specified bucket.
-func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr interface{}) (cas uint64, err error) {
+func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
@@ -47,7 +47,7 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 }
 
 // InsertMetadataDocument inserts a metadata document, and fails if it already exists.
-func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value interface{}) (newCAS uint64, err error) {
+func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
@@ -58,7 +58,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
-func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
+func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
@@ -151,7 +151,7 @@ func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (
 
 // GetDocument fetches a document from the default collection.  Does not use configPersistence - callers
 // requiring configPersistence handling should use GetMetadataDocument.
-func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID string, rv interface{}) (exists bool, err error) {
+func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID string, rv any) (exists bool, err error) {
 	bucket, err := rosmar.OpenBucket(c.serverURL, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
 		return false, err

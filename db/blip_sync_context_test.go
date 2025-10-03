@@ -94,7 +94,7 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 				loggingCtx:       base.TestCtx(b),
 			}
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				ctx.useDeltas = tt.startingCtxDeltas
 				ctx.sgCanUseDeltas = tt.sgCanUseDeltas
 				ctx.setUseDeltas(tt.clientCanUseDeltas)
@@ -106,7 +106,7 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 func TestKnownRevs(t *testing.T) {
 	testCases := []struct {
 		name           string
-		knownRevs      []interface{}
+		knownRevs      []any
 		expectedKnown  []string
 		isLegacyRev    bool
 		legacyProtocol bool
@@ -114,35 +114,35 @@ func TestKnownRevs(t *testing.T) {
 	}{
 		{
 			name:          "no known revs",
-			knownRevs:     []interface{}{},
+			knownRevs:     []any{},
 			expectedKnown: []string{},
 		},
 		{
 			name:           "< 4 subprotocol no known revs",
-			knownRevs:      []interface{}{},
+			knownRevs:      []any{},
 			legacyProtocol: true,
 			expectedKnown:  []string{},
 		},
 		{
 			name:           "< 4 subprotocol: client has known rev",
-			knownRevs:      []interface{}{"1-abc"},
+			knownRevs:      []any{"1-abc"},
 			expectedKnown:  []string{"1-abc"},
 			legacyProtocol: true,
 		},
 		{
 			name:          ">= 4 subprotocol: client has known rev",
-			knownRevs:     []interface{}{"123@src", "1-abc"},
+			knownRevs:     []any{"123@src", "1-abc"},
 			expectedKnown: []string{"123@src", "1-abc"},
 		},
 		{
 			name:          ">= 4 subprotocol: client has known rev and rev is legacy rev",
-			knownRevs:     []interface{}{"1-abc"},
+			knownRevs:     []any{"1-abc"},
 			expectedKnown: []string{"1-abc"},
 			isLegacyRev:   true,
 		},
 		{
 			name:      "invalid known revs",
-			knownRevs: []interface{}{"123@src1", "1-abc", "123@src2"},
+			knownRevs: []any{"123@src1", "1-abc", "123@src2"},
 			errorCase: true,
 		},
 	}

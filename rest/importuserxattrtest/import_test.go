@@ -97,7 +97,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
-	err = dataStore.Set(docKey, 0, nil, map[string]interface{}{})
+	err = dataStore.Set(docKey, 0, nil, map[string]any{})
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -346,7 +346,7 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 	}
 
 	// Write doc with user xattr defined and assert it correctly imports
-	val := make(map[string]interface{})
+	val := make(map[string]any)
 	val["test"] = "doc"
 	_, err := dataStore.WriteWithXattrs(ctx, docKey, 0, 0, base.MustJSONMarshal(t, val), userXattrVal, nil, nil)
 	require.NoError(t, err)

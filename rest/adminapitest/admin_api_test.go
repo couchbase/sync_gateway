@@ -85,7 +85,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			}
 			tr := rt.SendAdminRequest(testCase.method, "/{{.keyspace}}/"+testCase.pathDocID, testCase.body)
 			rest.RequireStatus(t, tr, testCase.expectedResp)
-			var body map[string]interface{}
+			var body map[string]any
 			err := json.Unmarshal(tr.BodyBytes(), &body)
 			assert.NoError(t, err)
 		})
@@ -102,7 +102,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 
 		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
 		rest.RequireStatus(t, tr, http.StatusOK)
-		var body map[string]interface{}
+		var body map[string]any
 		err = json.Unmarshal(tr.BodyBytes(), &body)
 		assert.NoError(t, err)
 	})
@@ -124,7 +124,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 
 	// Discover revision ID
 	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
-	var responseDoc map[string]interface{}
+	var responseDoc map[string]any
 	if err := base.JSONUnmarshal(response.Body.Bytes(), &responseDoc); err != nil {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
@@ -176,41 +176,41 @@ func TestLoggingKeys(t *testing.T) {
 
 	// Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]interface{}
+	var logKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]interface{}{}, logKeys)
+	assert.Equal(t, map[string]any{}, logKeys)
 
 	// Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var updatedLogKeys map[string]interface{}
+	var updatedLogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &updatedLogKeys))
-	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
+	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
 
 	// Disable Changes logKey which should also disable Changes+
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var deletedLogKeys map[string]interface{}
+	var deletedLogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &deletedLogKeys))
-	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, deletedLogKeys)
+	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, deletedLogKeys)
 
 	// Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var appendedLogKeys map[string]interface{}
+	var appendedLogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &appendedLogKeys))
-	assert.Equal(t, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
+	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
 
 	// Disable Changes++ (POST modifies logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabledLogKeys map[string]interface{}
+	var disabledLogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabledLogKeys))
-	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabledLogKeys)
+	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabledLogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -219,9 +219,9 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled2LogKeys map[string]interface{}
+	var disabled2LogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled2LogKeys))
-	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled2LogKeys)
+	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled2LogKeys)
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -230,17 +230,17 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled3LogKeys map[string]interface{}
+	var disabled3LogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled3LogKeys))
-	assert.Equal(t, map[string]interface{}{"Cache": true, "HTTP": true}, disabled3LogKeys)
+	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled3LogKeys)
 
 	// Disable all logKeys by using PUT with an empty channel list
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var noLogKeys map[string]interface{}
+	var noLogKeys map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &noLogKeys))
-	assert.Equal(t, map[string]interface{}{}, noLogKeys)
+	assert.Equal(t, map[string]any{}, noLogKeys)
 }
 
 func TestServerlessChangesEndpointLimit(t *testing.T) {
@@ -606,7 +606,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	// create documents in DB to cause resync to take a few seconds
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -656,7 +656,7 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 			scopeName := "sg_test_0"
 
 			// create documents in DB to cause resync to take a few seconds
-			for i := 0; i < 1000; i++ {
+			for i := range 1000 {
 				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
@@ -764,7 +764,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	const numDocs = 1000
 
 	// create some docs
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
@@ -889,7 +889,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	defer rt.Close()
 
 	numOfDocs := 1000
-	for i := 0; i < numOfDocs; i++ {
+	for i := range numOfDocs {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
@@ -1664,9 +1664,9 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":"list"}`)
 	rest.RequireStatus(t, response, 200)
 
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{}}, body)
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
@@ -1677,9 +1677,9 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":[]}`)
 	rest.RequireStatus(t, response, 200)
 
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{}}, body)
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
@@ -1690,9 +1690,9 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":["rev1","rev2"]}`)
 	rest.RequireStatus(t, response, 200)
 
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{}}, body)
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
@@ -1703,9 +1703,9 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":["rev1"]}`)
 	rest.RequireStatus(t, response, 200)
 
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{}}, body)
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
@@ -1716,9 +1716,9 @@ func TestPurgeWithStarRevision(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, response, 200)
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{"doc1": []any{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
@@ -1734,9 +1734,9 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"],"doc2":["*"]}`)
 	rest.RequireStatus(t, response, 200)
 
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{"doc1": []any{"*"}, "doc2": []any{"*"}}}, body)
 
 	// Create new versions of the docs without conflicts
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
@@ -1761,9 +1761,9 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{"doc1": []any{"*"}}}, body)
 
 	changes = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	assert.Equal(t, "doc2", changes.Results[0].ID)
@@ -1779,9 +1779,9 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
 	rest.RequireStatus(t, response, 200)
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
+	assert.Equal(t, map[string]any{"purged": map[string]any{"doc1": []any{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
@@ -1811,7 +1811,7 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, db.Body{"purged": map[string]any{"doc1": []interface{}{"*"}}}, body)
+	assert.Equal(t, db.Body{"purged": map[string]any{"doc1": []any{"*"}}}, body)
 
 	// inspect bucket doc to ensure SG's xattrs are gone
 	rawBody, rawXattrs, _, err = rt.GetSingleDataStore().GetWithXattrs(t.Context(), "doc1", []string{base.SyncXattrName, base.GlobalXattrName})
@@ -2131,11 +2131,11 @@ func TestHandleDBConfig(t *testing.T) {
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 
-	gotcache, ok := respBody["cache"].(map[string]interface{})
+	gotcache, ok := respBody["cache"].(map[string]any)
 	require.True(t, ok)
 	assert.NotNil(t, gotcache)
 
-	gotRevcache, ok := gotcache["rev_cache"].(map[string]interface{})
+	gotRevcache, ok := gotcache["rev_cache"].(map[string]any)
 	require.True(t, ok)
 	gotRevcacheSize, ok := gotRevcache["size"].(json.Number)
 	require.True(t, ok)
@@ -2182,7 +2182,7 @@ func TestHandleDeleteDB(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusNotFound)
 	rawResponseStr := resp.Body.String()
 	assert.Contains(t, rawResponseStr, "no such database")
-	var v map[string]interface{}
+	var v map[string]any
 	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", rawResponseStr)
 
 	// Create the database
@@ -2231,7 +2231,7 @@ func TestHandleGetRevTree(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	// Response now includes unpredictable CV values - just validate ids and revs...
 	// It's likely this test will be removed in 4.0, or shortly after, since we're never allowing new conflicts to be created
-	var bulkDocsResp []map[string]interface{}
+	var bulkDocsResp []map[string]any
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &bulkDocsResp))
 	require.Len(t, bulkDocsResp, 3)
 	for _, d := range bulkDocsResp {
@@ -3522,63 +3522,63 @@ func BootstrapWaitForDatabaseState(t *testing.T, sc *rest.ServerContext, dbName 
 func TestApiInternalPropertiesHandling(t *testing.T) {
 	testCases := []struct {
 		name                        string
-		inputBody                   map[string]interface{}
+		inputBody                   map[string]any
 		expectedErrorStatus         *int // If nil, will check for 201 Status Created
 		skipDocContentsVerification *bool
 	}{
 		{
 			name:      "Valid document with special prop",
-			inputBody: map[string]interface{}{"_cookie": "is valid"},
+			inputBody: map[string]any{"_cookie": "is valid"},
 		},
 		{
 			name:                "Invalid _sync",
-			inputBody:           map[string]interface{}{"_sync": true},
+			inputBody:           map[string]any{"_sync": true},
 			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
 		},
 		{
 			name:                "Valid _sync",
-			inputBody:           map[string]interface{}{"_sync": db.SyncData{}},
+			inputBody:           map[string]any{"_sync": db.SyncData{}},
 			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
 		},
 		{
 			name:                        "Valid _deleted",
-			inputBody:                   map[string]interface{}{"_deleted": false},
+			inputBody:                   map[string]any{"_deleted": false},
 			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                        "Valid _revisions",
-			inputBody:                   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
+			inputBody:                   map[string]any{"_revisions": map[string]any{"ids": "1-abc"}},
 			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                        "Valid _exp",
-			inputBody:                   map[string]interface{}{"_exp": "123"},
+			inputBody:                   map[string]any{"_exp": "123"},
 			skipDocContentsVerification: base.Ptr(true),
 		},
 		{
 			name:                "Invalid _exp",
-			inputBody:           map[string]interface{}{"_exp": "abc"},
+			inputBody:           map[string]any{"_exp": "abc"},
 			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
 		},
 		{
 			name:                "_purged",
-			inputBody:           map[string]interface{}{"_purged": false},
+			inputBody:           map[string]any{"_purged": false},
 			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
 		},
 		{
 			name:                "_removed",
-			inputBody:           map[string]interface{}{"_removed": false},
+			inputBody:           map[string]any{"_removed": false},
 			expectedErrorStatus: base.Ptr(http.StatusNotFound),
 		},
 		{
 			name:                "_sync_cookies",
-			inputBody:           map[string]interface{}{"_sync_cookies": true},
+			inputBody:           map[string]any{"_sync_cookies": true},
 			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
 			// Known issue: _SYNC causes unmarshal error when not using xattrs
-			inputBody: map[string]interface{}{
+			inputBody: map[string]any{
 				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
 				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
 			},
@@ -3601,7 +3601,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			}
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
-			var bucketDoc map[string]interface{}
+			var bucketDoc map[string]any
 			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDocBody(docID)
@@ -3842,14 +3842,14 @@ func TestDeleteDatabaseCBGTTeardown(t *testing.T) {
 	// Initialize database
 	_ = rt.GetDatabase()
 
-	for i := 0; i < 1; i++ {
+	for range 1 {
 		time.Sleep(1 * time.Second) // some time for polling
 	}
 
 	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		time.Sleep(1 * time.Second) // some time for polling
 	}
 }
@@ -3959,13 +3959,13 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/db/_config/audit?verbose=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resp.DumpBody()
-	var responseBody map[string]interface{}
+	var responseBody map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, false, responseBody["enabled"].(bool))
 	// check we got the verbose output
-	assert.NotEmpty(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(map[string]interface{})["description"].(string), "expected verbose output (event description, etc.)")
+	assert.NotEmpty(t, responseBody["events"].(map[string]any)[base.AuditIDPublicUserAuthenticated.String()].(map[string]any)["description"].(string), "expected verbose output (event description, etc.)")
 	// check that global event IDs were not present
-	assert.Nil(t, responseBody["events"].(map[string]interface{})[base.AuditIDSyncGatewayCollectInfoStart.String()], "expected global event ID to not be present")
+	assert.Nil(t, responseBody["events"].(map[string]any)[base.AuditIDSyncGatewayCollectInfoStart.String()], "expected global event ID to not be present")
 
 	// enable auditing on the database (upsert)
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
@@ -3978,7 +3978,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
-	eventsMap, ok := responseBody["events"].(map[string]interface{})
+	eventsMap, ok := responseBody["events"].(map[string]any)
 	require.True(t, ok)
 	assert.False(t, eventsMap[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should be disabled by default")
 	assert.True(t, eventsMap[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should be enabled by default")
@@ -4000,7 +4000,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	resp.DumpBody()
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
-	eventsMap, ok = responseBody["events"].(map[string]interface{})
+	eventsMap, ok = responseBody["events"].(map[string]any)
 	require.True(t, ok)
 	for id, val := range eventsMap {
 		assert.False(t, val.(bool), "event %s should be disabled", id)
@@ -4018,8 +4018,8 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 	responseBody = nil
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
 	assert.Equal(t, true, responseBody["enabled"].(bool))
-	assert.True(t, responseBody["events"].(map[string]interface{})[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should've been enabled via PUT")
-	assert.False(t, responseBody["events"].(map[string]interface{})[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
+	assert.True(t, responseBody["events"].(map[string]any)[base.AuditIDISGRStatus.String()].(bool), "audit enabled event should've been enabled via PUT")
+	assert.False(t, responseBody["events"].(map[string]any)[base.AuditIDPublicUserAuthenticated.String()].(bool), "public user authenticated event should've been disabled via PUT")
 
 	// Verify the audit config on the database
 	runtimeConfig := rt.RestTesterServerContext.GetDatabaseConfig("db")

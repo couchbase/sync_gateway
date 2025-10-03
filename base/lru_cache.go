@@ -27,7 +27,7 @@ type LRUCache struct {
 // The cache payload data. Stored as the Value of a list Element.
 type lruCacheValue struct {
 	key   string
-	value interface{}
+	value any
 }
 
 // Creates an LRU cache with the given capacity and an optional loader function.
@@ -44,7 +44,7 @@ func NewLRUCache(capacity int) (*LRUCache, error) {
 }
 
 // Looks up an entry from the cache.
-func (lc *LRUCache) Get(key string) (result interface{}, found bool) {
+func (lc *LRUCache) Get(key string) (result any, found bool) {
 	lc.lruLock.Lock()
 	defer lc.lruLock.Unlock()
 	if elem, ok := lc.cache[key]; ok {
@@ -57,7 +57,7 @@ func (lc *LRUCache) Get(key string) (result interface{}, found bool) {
 // Adds an entry to the cache if it's the first time seen, otherwise just updates the
 // position in the LRU cache but ignores the new value, since the entries in the cache
 // are treated as immutable.
-func (lc *LRUCache) Put(key string, value interface{}) {
+func (lc *LRUCache) Put(key string, value any) {
 
 	// If already present, move to front
 	if elem := lc.cache[key]; elem != nil {

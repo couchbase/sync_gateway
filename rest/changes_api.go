@@ -54,7 +54,7 @@ func (h *handler) handleRevsDiff() error {
 	for docid, revs := range input {
 		missing, possible := h.collection.RevDiff(h.ctx(), docid, revs)
 		if missing != nil {
-			docOutput := map[string]interface{}{"missing": missing}
+			docOutput := map[string]any{"missing": missing}
 			if possible != nil {
 				docOutput["possible_ancestors"] = possible
 			}
@@ -62,7 +62,7 @@ func (h *handler) handleRevsDiff() error {
 				_, _ = h.response.Write([]byte(",\n"))
 			}
 			first = false
-			_, _ = h.response.Write([]byte(fmt.Sprintf("%q:", docid)))
+			_, _ = h.response.Write(fmt.Appendf(nil, "%q:", docid))
 			err = h.addJSON(docOutput)
 			if err != nil {
 				return err

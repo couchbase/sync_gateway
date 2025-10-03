@@ -157,7 +157,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
 	var nodeWg sync.WaitGroup
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
@@ -171,7 +171,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 20)
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
@@ -202,7 +202,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
 	var replicationWg sync.WaitGroup
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		replicationWg.Add(1)
 		go func(i int) {
 			defer replicationWg.Done()
@@ -216,7 +216,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, replications, 20)
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		replicationWg.Add(1)
 		go func(i int) {
 			defer replicationWg.Done()
@@ -478,13 +478,13 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				QueryParams: []string{"ABC"},
 			},
 			updatedConfig: &ReplicationUpsertConfig{
-				QueryParams: map[string]interface{}{"ABC": true},
+				QueryParams: map[string]any{"ABC": true},
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:          "foo",
 				Remote:      "remote",
 				Direction:   "pull",
-				QueryParams: map[string]interface{}{"ABC": true},
+				QueryParams: map[string]any{"ABC": true},
 			},
 		},
 		{
@@ -501,7 +501,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				InitialState:           "a",
 				Continuous:             true,
 				Filter:                 "a",
-				QueryParams:            []interface{}{"ABC"},
+				QueryParams:            []any{"ABC"},
 			},
 			updatedConfig: &ReplicationUpsertConfig{
 				ID:                     "foo",
@@ -515,7 +515,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				InitialState:           base.Ptr("b"),
 				Continuous:             base.Ptr(false),
 				Filter:                 base.Ptr("b"),
-				QueryParams:            []interface{}{"DEF"},
+				QueryParams:            []any{"DEF"},
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:                     "foo",
@@ -529,7 +529,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				InitialState:           "b",
 				Continuous:             false,
 				Filter:                 "b",
-				QueryParams:            []interface{}{"DEF"},
+				QueryParams:            []any{"DEF"},
 			},
 		},
 	}
@@ -560,7 +560,7 @@ func TestIsCfgChanged(t *testing.T) {
 				InitialState:           "a",
 				Continuous:             true,
 				Filter:                 "a",
-				QueryParams:            []interface{}{"ABC"},
+				QueryParams:            []any{"ABC"},
 				Username:               "alice",
 				Password:               "password",
 				CollectionsLocal:       []string{"foo.bar"},

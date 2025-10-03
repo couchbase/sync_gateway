@@ -89,7 +89,7 @@ func TestRoleQuery(t *testing.T) {
 					defer func() {
 						require.NoError(t, results.Close())
 					}()
-					var row map[string]interface{}
+					var row map[string]any
 					rowCount := 0
 					for results.Next(ctx, &row) {
 						rowCount++
@@ -370,7 +370,7 @@ func TestInitializeIndexes(t *testing.T) {
 			}
 
 			// Make sure we can drop and reinitialize twice
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				dropErr := base.DropAllIndexes(ctx, n1qlStore)
 				require.NoError(t, dropErr, "Error dropping all indexes on bucket")
 
@@ -436,7 +436,7 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 	defer bucket.Close(base.TestCtx(t))
 	var wg sync.WaitGroup
 	wg.Add(numSGNodes)
-	for i := 0; i < numSGNodes; i++ {
+	for range numSGNodes {
 		go func() {
 			defer wg.Done()
 			setupIndexes(t, bucket, testIndexCreationOptions{

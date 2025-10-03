@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -111,7 +112,7 @@ type ReplicationConfig struct {
 	InitialState           string                    `json:"initial_state,omitempty"`
 	Continuous             bool                      `json:"continuous"`
 	Filter                 string                    `json:"filter,omitempty"`
-	QueryParams            interface{}               `json:"query_params,omitempty"`
+	QueryParams            any                       `json:"query_params,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
 	RunAs                  string                    `json:"run_as,omitempty"`
@@ -142,28 +143,28 @@ type ReplicationCfg struct {
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
 type ReplicationUpsertConfig struct {
-	ID                     string      `json:"replication_id"`
-	Remote                 *string     `json:"remote"`
-	CollectionsEnabled     *bool       `json:"collections_enabled,omitempty"`
-	CollectionsLocal       []string    `json:"collections_local,omitempty"`
-	CollectionsRemote      []string    `json:"collections_remote,omitempty"`
-	Username               *string     `json:"username,omitempty"` // Deprecated
-	Password               *string     `json:"password,omitempty"` // Deprecated
-	RemoteUsername         *string     `json:"remote_username,omitempty"`
-	RemotePassword         *string     `json:"remote_password,omitempty"`
-	Direction              *string     `json:"direction"`
-	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
-	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
-	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
-	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
-	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
-	InitialState           *string     `json:"initial_state,omitempty"`
-	Continuous             *bool       `json:"continuous"`
-	Filter                 *string     `json:"filter,omitempty"`
-	QueryParams            interface{} `json:"query_params,omitempty"`
-	Adhoc                  *bool       `json:"adhoc,omitempty"`
-	BatchSize              *int        `json:"batch_size,omitempty"`
-	RunAs                  *string     `json:"run_as,omitempty"`
+	ID                     string   `json:"replication_id"`
+	Remote                 *string  `json:"remote"`
+	CollectionsEnabled     *bool    `json:"collections_enabled,omitempty"`
+	CollectionsLocal       []string `json:"collections_local,omitempty"`
+	CollectionsRemote      []string `json:"collections_remote,omitempty"`
+	Username               *string  `json:"username,omitempty"` // Deprecated
+	Password               *string  `json:"password,omitempty"` // Deprecated
+	RemoteUsername         *string  `json:"remote_username,omitempty"`
+	RemotePassword         *string  `json:"remote_password,omitempty"`
+	Direction              *string  `json:"direction"`
+	ConflictResolutionType *string  `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   *string  `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         *bool    `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       *bool    `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             *int     `json:"max_backoff_time,omitempty"`
+	InitialState           *string  `json:"initial_state,omitempty"`
+	Continuous             *bool    `json:"continuous"`
+	Filter                 *string  `json:"filter,omitempty"`
+	QueryParams            any      `json:"query_params,omitempty"`
+	Adhoc                  *bool    `json:"adhoc,omitempty"`
+	BatchSize              *int     `json:"batch_size,omitempty"`
+	RunAs                  *string  `json:"run_as,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -344,15 +345,13 @@ func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertCon
 		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
 		// avoid later mutating c.QueryParams
 		switch qp := c.QueryParams.(type) {
-		case []interface{}:
-			newParams := make([]interface{}, len(qp))
+		case []any:
+			newParams := make([]any, len(qp))
 			copy(newParams, qp)
 			rc.QueryParams = newParams
-		case map[string]interface{}:
-			newParamMap := make(map[string]interface{})
-			for k, v := range qp {
-				newParamMap[k] = v
-			}
+		case map[string]any:
+			newParamMap := make(map[string]any)
+			maps.Copy(newParamMap, qp)
 			rc.QueryParams = newParamMap
 		default:
 			// unsupported query params type, don't upsert

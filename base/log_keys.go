@@ -185,7 +185,7 @@ func (keyMask *LogKeyMask) EnabledLogKeys() []string {
 		return []string{}
 	}
 	var logKeys = make([]string, 0, len(logKeyNames))
-	for i := 0; i < len(logKeyNames); i++ {
+	for i := range len(logKeyNames) {
 		if keyMask.enabled(LogKey(i), false) {
 			logKeys = append(logKeys, logKeyNames[i])
 		}

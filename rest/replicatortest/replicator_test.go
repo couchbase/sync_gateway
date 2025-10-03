@@ -556,7 +556,7 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
 	}
 
@@ -600,7 +600,7 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
 	}
 
@@ -641,7 +641,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
 	}
 
@@ -1022,7 +1022,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	// Create 20 docs on rt2
 	docCount := 20
 	docIDs := make([]string, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		docID := fmt.Sprintf("%s%s%d", t.Name(), "rt2doc", i)
 		_ = remoteRT.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 		docIDs[i] = docID
@@ -1265,7 +1265,7 @@ func TestValidateReplication(t *testing.T) {
 				RemoteUsername: "alice",
 				RemotePassword: "pass",
 				Filter:         base.ByChannelFilter,
-				QueryParams:    map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				QueryParams:    map[string]any{"channels": []any{"E", "A", "D", "G", "B", "e"}},
 				Direction:      db.ActiveReplicatorTypePull,
 			},
 		},
@@ -1274,7 +1274,7 @@ func TestValidateReplication(t *testing.T) {
 			replicationConfig: db.ReplicationConfig{
 				Remote:      "http://bob:pass@remote:4984/db",
 				Filter:      base.ByChannelFilter,
-				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				QueryParams: map[string]any{"channels": []any{"E", "A", "D", "G", "B", "e"}},
 				Direction:   db.ActiveReplicatorTypePull,
 			},
 		},
@@ -1298,7 +1298,7 @@ func TestValidateReplication(t *testing.T) {
 			name: "replication config with unknown filter",
 			replicationConfig: db.ReplicationConfig{
 				Remote:      "http://bob:pass@remote:4984/db",
-				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				QueryParams: map[string]any{"channels": []any{"E", "A", "D", "G", "B", "e"}},
 				Direction:   db.ActiveReplicatorTypePull,
 				Filter:      "unknownFilter",
 			},
@@ -1518,7 +1518,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	var body []map[string]interface{}
+	var body []map[string]any
 	err := base.JSONUnmarshal(response.BodyBytes(), &body)
 	fmt.Println(string(response.BodyBytes()))
 	assert.NoError(t, err)
@@ -2357,7 +2357,7 @@ func TestReconnectReplicator(t *testing.T) {
 			activeRT.WaitForReplicationStatus(replicationName, db.ReplicationStateRunning)
 
 			// assert the replicator works and we replicate docs still after replicator reconnects
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				response := remoteRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "remote"}`)
 				rest.RequireStatus(t, response, http.StatusCreated)
 			}
@@ -2824,7 +2824,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			assert.Len(t, doc.Attachments(), test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc, %#+v", doc.Attachments())
 			for attName, att := range doc.Attachments() {
-				attMap := att.(map[string]interface{})
+				attMap := att.(map[string]any)
 				assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
 				assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
 				assert.True(t, attMap["revpos"].(float64) >= 1, "attachment %q revpos should be at least 1", attName)
@@ -2863,7 +2863,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	rt2.CreateUser(username, []string{username})
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numRT2DocsInitial; i++ {
+	for i := range numRT2DocsInitial {
 		resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
@@ -2901,7 +2901,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		docIDsSeen[result.ID] = true
 	}
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsInitial; i++ {
+	for i := range numRT2DocsInitial {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -2959,7 +2959,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	rt1collection, rt1ctx = rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsTotal; i++ {
+	for i := range numRT2DocsTotal {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -3023,7 +3023,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "doc"
-	for i := 0; i < numRT2DocsInitial; i++ {
+	for i := range numRT2DocsInitial {
 		rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
 		rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
 		rest.RequireDocRevTreeEqual(t, rt1Version, rt2Version)
@@ -3070,7 +3070,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		docIDsSeen[result.ID] = true
 	}
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT2DocsInitial; i++ {
+	for i := range numRT2DocsInitial {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -3362,7 +3362,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numRT1DocsInitial; i++ {
+	for i := range numRT1DocsInitial {
 		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 	}
 
@@ -3406,7 +3406,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		docIDsSeen[result.ID] = true
 	}
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsInitial; i++ {
+	for i := range numRT1DocsInitial {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -3464,7 +3464,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsTotal; i++ {
+	for i := range numRT1DocsTotal {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -3521,7 +3521,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Create first batch of docs
 	docIDPrefix := t.Name() + "rt1doc"
-	for i := 0; i < numRT1DocsInitial; i++ {
+	for i := range numRT1DocsInitial {
 		rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 	}
 
@@ -3570,7 +3570,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		docIDsSeen[result.ID] = true
 	}
 	edge1collection, edge1ctx := edge1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numRT1DocsInitial; i++ {
+	for i := range numRT1DocsInitial {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -4970,7 +4970,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	cID := ar.Push.CheckpointID
 	checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
-	var firstCheckpoint interface{}
+	var firstCheckpoint any
 	_, err = rt2.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
 	require.NoError(t, err)
 
@@ -5101,13 +5101,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
-	err = rt2.GetSingleDataStore().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt2.GetSingleDataStore().Set(pushCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
-	err = rt1.GetSingleDataStore().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt1.GetSingleDataStore().Set(pullCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	// Create doc1 on rt1
@@ -5276,7 +5276,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Create first batch of docs, creating numRT2DocsInitial in each channel
 	docIDPrefix := t.Name() + "rt2doc"
-	for i := 0; i < numDocsPerChannelInitial; i++ {
+	for i := range numDocsPerChannelInitial {
 		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
 		rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 	}
@@ -5330,7 +5330,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	for _, result := range changesResults.Results {
 		docIDsSeen[result.ID] = true
 	}
-	for i := 0; i < numDocsPerChannelInitial; i++ {
+	for i := range numDocsPerChannelInitial {
 		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i)
 		assert.True(t, docIDsSeen[docID])
 		doc := rt1.GetDocBody(docID)
@@ -5387,7 +5387,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	}
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
-	for i := 0; i < numDocsPerChannelTotal; i++ {
+	for i := range numDocsPerChannelTotal {
 		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i)
 		assert.True(t, docIDsSeen[docID])
 
@@ -5809,7 +5809,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc._attachments = mergedAttachments;
 				return mergedDoc;
 			}`,
-			expectedLocalBody: map[string]interface{}{
+			expectedLocalBody: map[string]any{
 				"source": "merged",
 			},
 			expectedLocalVersion: createVersion(2, "1-b", db.Body{
@@ -6072,7 +6072,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		} else {
 			require.NoError(t, err)
 			require.Len(t, rawBody, 1)
-			rawSyncData, ok := rawBody[base.SyncPropertyName].(map[string]interface{})
+			rawSyncData, ok := rawBody[base.SyncPropertyName].(map[string]any)
 			require.True(t, ok)
 			val, ok := rawSyncData["flags"].(float64)
 			require.True(t, ok)
@@ -6167,7 +6167,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 			// Resurrect Doc
-			updatedBody := make(map[string]interface{})
+			updatedBody := make(map[string]any)
 			updatedBody["resurrection"] = true
 			if test.resurrectLocal {
 				if test.sdkResurrect {
@@ -7502,7 +7502,7 @@ func TestGroupIDReplications(t *testing.T) {
 			Remote:                 passiveDBURL.String(),
 			Direction:              db.ActiveReplicatorTypePush,
 			Filter:                 base.ByChannelFilter,
-			QueryParams:            map[string]interface{}{"channels": channelFilter},
+			QueryParams:            map[string]any{"channels": channelFilter},
 			Continuous:             true,
 			InitialState:           db.ReplicationStateRunning,
 			ConflictResolutionType: db.ConflictResolverDefault,

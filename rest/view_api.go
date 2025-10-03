@@ -24,7 +24,7 @@ import (
 // HTTP handler for GET _design/$ddoc
 func (h *handler) handleGetDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	var result interface{}
+	var result any
 	if ddocID == db.DesignDocSyncGateway() {
 		// we serve this content here so that CouchDB 1.2 has something to
 		// hash into the replication-id, to correspond to our filter.
@@ -106,7 +106,7 @@ func (h *handler) handleView() error {
 	// JSON options:
 	for _, name := range []string{"startkey", "endkey", "key", "keys"} {
 		if rawVal := h.getQuery(name); "" != rawVal {
-			var val interface{}
+			var val any
 			if err := base.JSONUnmarshal([]byte(rawVal), &val); err != nil {
 				return err
 			}

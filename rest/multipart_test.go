@@ -150,8 +150,8 @@ Content-Disposition: attachment; filename=att.txt
 	assert.Equal(t, "foo", body["key"])
 	assert.Equal(t, "bar", body["value"])
 
-	attachments := body["_attachments"].(map[string]interface{})
-	attachment := attachments["att.txt"].(map[string]interface{})
+	attachments := body["_attachments"].(map[string]any)
+	attachment := attachments["att.txt"].(map[string]any)
 	assert.Equal(t, float64(35), attachment["length"])
 	assert.Equal(t, float64(1), attachment["revpos"])
 	assert.True(t, attachment["stub"].(bool))

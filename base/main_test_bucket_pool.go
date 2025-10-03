@@ -279,7 +279,7 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 }
 
 func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, bucketName string, c chan struct{}) {
-	if err, _ := RetryLoop(ctx, bucketName+"-emptyViewOps", func() (bool, error, interface{}) {
+	if err, _ := RetryLoop(ctx, bucketName+"-emptyViewOps", func() (bool, error, any) {
 		if len(c) > 0 {
 			return true, fmt.Errorf("view op queue not cleared. remaining: %d", len(c)), nil
 		}
@@ -567,7 +567,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 
 	url := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
 	// retry for 1 minute to get this bucket setting, MB-63675
-	err, _ := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, interface{}) {
+	err, _ := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, any) {
 		output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
 		if err != nil {
 			tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %w output: %s", statusCode, err, string(output))
@@ -622,7 +622,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 	bucketNameTimestamp := time.Now().UnixNano()
 
 	// create required number of buckets (skipping any already existing ones)
-	for i := 0; i < numBuckets; i++ {
+	for i := range numBuckets {
 		bucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
 		ctx := BucketNameCtx(ctx, bucketName)
 
@@ -653,7 +653,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
 
 			itemName := "bucket"
-			err, _ = RetryLoop(ctx, bucket.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
+			err, _ = RetryLoop(ctx, bucket.GetName()+"bucketInitRetry", func() (bool, error, any) {
 				tbp.Logf(ctx, "Running %s through init function", itemName)
 				err := bucketInitFunc(ctx, bucket, tbp)
 				if err != nil {
@@ -718,7 +718,7 @@ loop:
 					return
 				}
 
-				err, _ = RetryLoop(ctx, b.GetName()+"bucketReadierRetry", func() (bool, error, interface{}) {
+				err, _ = RetryLoop(ctx, b.GetName()+"bucketReadierRetry", func() (bool, error, any) {
 					tbp.Logf(ctx, "Running bucket through readier function")
 					err = bucketReadierFunc(ctx, b, tbp)
 					if err != nil {

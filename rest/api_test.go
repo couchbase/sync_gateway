@@ -936,7 +936,7 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	)
 
 	// create a bunch of identical large-ish docs
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		resp := rt.SendAdminRequest(http.MethodPut,
 			"/{{.keyspace}}/"+docKeyPrefix+strconv.Itoa(i), doc)
 		RequireStatus(t, resp, http.StatusCreated)
@@ -1115,12 +1115,12 @@ func TestOpenRevs(t *testing.T) {
 	response = rt.SendAdminRequestWithHeaders("GET", `/{{.keyspace}}/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	RequireStatus(t, response, 200)
 
-	var respBody []map[string]interface{}
+	var respBody []map[string]any
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 
 	assert.Len(t, respBody, 2)
 
-	ok := respBody[0]["ok"].(map[string]interface{})
+	ok := respBody[0]["ok"].(map[string]any)
 	assert.NotNil(t, ok)
 	assert.Equal(t, "or1", ok[db.BodyId])
 	assert.Equal(t, "12-abc", ok[db.BodyRev])
@@ -1220,7 +1220,7 @@ readerLoop:
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
-		partJSON := map[string]interface{}{}
+		partJSON := map[string]any{}
 		err = base.JSONUnmarshal(partBytes, &partJSON)
 		assert.NoError(t, err, "Unexpected error")
 
@@ -1243,8 +1243,8 @@ readerLoop:
 			t.Error("unrecognised part in response")
 		}
 
-		revisions := partJSON[db.BodyRevisions].(map[string]interface{})
-		assert.Equal(t, exp, len(revisions[db.RevisionsIds].([]interface{})))
+		revisions := partJSON[db.BodyRevisions].(map[string]any)
+		assert.Equal(t, exp, len(revisions[db.RevisionsIds].([]any)))
 	}
 
 }
@@ -1340,7 +1340,7 @@ func TestLocalDocExpiry(t *testing.T) {
 func TestResponseEncoding(t *testing.T) {
 	// Make a doc longer than 1k so the HTTP response will be compressed:
 	str := "DORKY "
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		str = str + str
 	}
 	docJSON := fmt.Sprintf(`{"long": %q}`, str)
@@ -1599,7 +1599,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 	revId := body["rev"]
 
 	// Update 10 times
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		str := fmt.Sprintf(`{"_rev":%q}`, revId)
 		response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", str)
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1614,12 +1614,12 @@ func TestBulkGetRevPruning(t *testing.T) {
 	// Spin up several goroutines to all try to do a _bulk_get on the latest revision.
 	// Since they will be pruning the same shared rev history, it will cause a data race
 	wg := sync.WaitGroup{}
-	for i := 0; i < numPruningBulkGetGoroutines; i++ {
+	for range numPruningBulkGetGoroutines {
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
-			for j := 0; j < maxIterationsPerBulkGetGoroutine; j++ {
+			for range maxIterationsPerBulkGetGoroutine {
 				bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "doc1", "rev": "%v"}]}`, revId)
 				bulkGetResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
 				if bulkGetResponse.Code != 200 {
@@ -1773,7 +1773,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocsBody)
 	log.Printf("Response: %s", response.Body)
 
-	bulkDocsResponse := []map[string]interface{}{}
+	bulkDocsResponse := []map[string]any{}
 	err := base.JSONUnmarshal(response.Body.Bytes(), &bulkDocsResponse)
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("bulkDocsResponse: %+v", bulkDocsResponse)
@@ -1965,7 +1965,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	})
 	defer rt.Close()
 
-	responseBody := make(map[string]interface{})
+	responseBody := make(map[string]any)
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"value":"a value", "channels":["a"]}`)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
@@ -2053,7 +2053,7 @@ func TestWebhookProperties(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		wg.Add(1)
-		body := make(map[string]interface{})
+		body := make(map[string]any)
 		body["foo"] = "bar"
 		added, err := rt.GetSingleDataStore().Add("doc2", 0, body)
 		assert.True(t, added)
@@ -2171,7 +2171,7 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	keys := make([]string, 5000)
-	for i := 0; i < 5000; i++ {
+	for i := range 5000 {
 		key := fmt.Sprintf("doc%d", i)
 		keys[i] = key
 		rt.SendRequest("PUT", "/{{.keyspace}}/"+key, `{"prop":true}`)
@@ -2445,7 +2445,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/fake", "")
 	RequireStatus(t, response, http.StatusNotFound)
 
-	var body map[string]interface{}
+	var body map[string]any
 	_, err := rt.GetSingleDataStore().Get("fake", &body)
 
 	if base.TestUseXattrs() {
@@ -2474,7 +2474,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, http.StatusNotFound)
 
-	var doc map[string]interface{}
+	var doc map[string]any
 	_, err := rt.GetSingleDataStore().Get("doc1", &doc)
 
 	if base.TestUseXattrs() {
@@ -2514,7 +2514,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	var body map[string]interface{}
+	var body map[string]any
 	_, err := rt.GetSingleDataStore().Get(t.Name(), &body)
 
 	if base.TestUseXattrs() {
@@ -2548,7 +2548,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	}
 
 	dataStore := rt.GetSingleDataStore()
-	_, err := dataStore.Add(t.Name(), 0, map[string]interface{}{"val": "val"})
+	_, err := dataStore.Add(t.Name(), 0, map[string]any{"val": "val"})
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"`+t.Name()+`": ["*"]}`)
@@ -2557,7 +2557,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	var body map[string]interface{}
+	var body map[string]any
 	_, err = dataStore.Get(t.Name(), &body)
 
 	assert.Error(t, err)
@@ -2588,7 +2588,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	}
 
 	// Create the document to trigger cas failure
-	value := make(map[string]interface{})
+	value := make(map[string]any)
 	value["foo"] = "bar"
 	insCas, err := bucket.DefaultDataStore().WriteCas(t.Name(), 0, 0, value, 0)
 	require.NoError(t, err)
@@ -2600,7 +2600,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	var body map[string]interface{}
+	var body map[string]any
 	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
 
 	assert.Error(t, err)
@@ -2811,7 +2811,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 	const docID = "doc"
 	version := rt.PutDoc(docID, `{"channels": ["a"]}`)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		version = rt.UpdateDoc(docID, version, `{"channels": []}`)
 		version = rt.UpdateDoc(docID, version, `{"channels": ["a"]}`)
 	}
@@ -2855,7 +2855,7 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 	xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(20)
 	newXattrVal := map[string][]byte{
@@ -3144,7 +3144,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	// force compaction
 	rt.GetDatabase().Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docID := fmt.Sprintf("doc%d", i)
 		version := rt.PutDoc(docID, "{}")
 		rt.DeleteDoc(docID, version)

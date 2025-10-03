@@ -39,18 +39,18 @@ type Identity struct {
 	Expiry   time.Time
 	IssuedAt time.Time
 	Email    string
-	Claims   map[string]interface{}
+	Claims   map[string]any
 }
 
 type IdentityJson struct {
-	Issuer    string                 `json:"iss"`
-	Subject   string                 `json:"sub"`
-	Audience  audience               `json:"aud"`
-	Expiry    jsonTime               `json:"exp"`
-	IssuedAt  jsonTime               `json:"iat"`
-	NotBefore *jsonTime              `json:"nbf"`
-	Email     string                 `json:"email"`
-	Claims    map[string]interface{} `json:"-"`
+	Issuer    string         `json:"iss"`
+	Subject   string         `json:"sub"`
+	Audience  audience       `json:"aud"`
+	Expiry    jsonTime       `json:"exp"`
+	IssuedAt  jsonTime       `json:"iat"`
+	NotBefore *jsonTime      `json:"nbf"`
+	Email     string         `json:"email"`
+	Claims    map[string]any `json:"-"`
 }
 
 func (i IdentityJson) ToClaims() jwt.Claims {
@@ -206,7 +206,7 @@ func getIdentity(idToken *oidc.IDToken) (identity *Identity, ok bool, identityEr
 		Expiry:   idToken.Expiry,
 		IssuedAt: idToken.IssuedAt,
 	}
-	claims := map[string]interface{}{}
+	claims := map[string]any{}
 	if err := idToken.Claims(&claims); err != nil {
 		identityErr = pkgerrors.Wrap(err, "failed to extract identity claims from token")
 	}

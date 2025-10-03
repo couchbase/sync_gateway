@@ -91,7 +91,7 @@ func (r *boostrapResponse) RequireResponse(status int, body string) {
 }
 
 // Unmarshal unmarshals the response body into the given interface. Fails the test if unmarshalling fails.
-func (r *boostrapResponse) Unmarshal(v interface{}) {
+func (r *boostrapResponse) Unmarshal(v any) {
 	err := base.JSONUnmarshal([]byte(r.Body), &v)
 	require.NoError(r.t, err, "Error unmarshalling bootstrap response body")
 }

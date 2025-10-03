@@ -149,7 +149,7 @@ func Test_parseKeyspace(t *testing.T) {
 
 func Benchmark_parseKeyspace(b *testing.B) {
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _, _, _ = ParseKeyspace("d.s.c")
 	}
 }

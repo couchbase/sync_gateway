@@ -535,7 +535,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	response := rt.SendUserRequest("POST", "/db/_bulk_docs", input, "user1")
 	RequireStatus(t, response, 201)
 
-	var docs []interface{}
+	var docs []any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 2)
 	assert.NotContains(t, response.BodyString(), `missing channel access`)

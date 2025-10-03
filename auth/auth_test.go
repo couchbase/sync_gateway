@@ -1121,7 +1121,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 
-		claimEmail := map[string]interface{}{"email": wantUserEmail}
+		claimEmail := map[string]any{"email": wantUserEmail}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
@@ -1162,7 +1162,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 
-		claimEmail := map[string]interface{}{"email": "emily@"}
+		claimEmail := map[string]any{"email": "emily@"}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
@@ -1197,7 +1197,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
 
-		claimEmail := map[string]interface{}{"email": "layla@"}
+		claimEmail := map[string]any{"email": "layla@"}
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")

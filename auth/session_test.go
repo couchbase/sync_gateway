@@ -279,7 +279,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NotNil(t, user)
 	require.NoError(t, auth.Save(user))
 
-	var rawUser map[string]interface{}
+	var rawUser map[string]any
 	_, err = auth.datastore.Get(user.DocID(), &rawUser)
 	require.NoError(t, err)
 

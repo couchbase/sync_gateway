@@ -24,7 +24,7 @@ func TestRequireUser(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireUser(oldDoc._names) }`
 	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
-	var result interface{}
+	var result any
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_names": "alpha"}`), emptyMetaMap(), parse(t, `{"name": "alpha"}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_names": ["beta", "gamma"]}`), emptyMetaMap(), parse(t, `{"name": "beta"}`))
@@ -38,7 +38,7 @@ func TestRequireRole(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireRole(oldDoc._roles) }`
 	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
-	var result interface{}
+	var result any
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_roles": ["alpha"]}`), emptyMetaMap(), parse(t, `{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_roles": ["beta", "gamma"]}`), emptyMetaMap(), parse(t, `{"name": "", "roles": {"beta": ""}}`))
@@ -52,7 +52,7 @@ func TestRequireAccess(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAccess(oldDoc._access) }`
 	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
-	var result interface{}
+	var result any
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_access": ["alpha"]}`), emptyMetaMap(), parse(t, `{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{"_access": ["beta", "gamma"]}`), emptyMetaMap(), parse(t, `{"name": "", "channels": ["beta"]}`))
@@ -66,7 +66,7 @@ func TestRequireAdmin(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
 	runner, err := NewSyncRunner(ctx, funcSource, 0)
 	require.NoError(t, err)
-	var result interface{}
+	var result any
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{}`), emptyMetaMap(), parse(t, `{}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(ctx, parse(t, `{}`), parse(t, `{}`), emptyMetaMap(), parse(t, `{"name": ""}`))
@@ -78,13 +78,13 @@ func TestRequireAdmin(t *testing.T) {
 }
 
 // Helpers
-func assertRejected(t *testing.T, result interface{}, err *base.HTTPError) {
+func assertRejected(t *testing.T, result any, err *base.HTTPError) {
 	r, ok := result.(*ChannelMapperOutput)
 	assert.True(t, ok)
 	assert.Equal(t, r.Rejection, err)
 }
 
-func assertNotRejected(t *testing.T, result interface{}) {
+func assertNotRejected(t *testing.T, result any) {
 	r, ok := result.(*ChannelMapperOutput)
 	assert.True(t, ok)
 	assert.NoError(t, r.Rejection)

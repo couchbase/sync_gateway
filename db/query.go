@@ -155,7 +155,7 @@ var QuerySequences = SGQuery{
 
 type QueryChannelsRow struct {
 	Id         string                  `json:"id,omitempty"`
-	Rev        channels.RevAndVersion  `json:"rev,omitempty"`
+	Rev        channels.RevAndVersion  `json:"rev"`
 	Sequence   uint64                  `json:"seq,omitempty"`
 	Flags      uint8                   `json:"flags,omitempty"`
 	RemovalRev *channels.RevAndVersion `json:"rRev,omitempty"`
@@ -370,7 +370,7 @@ const (
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
+func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName string, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := slowQueryWarningThreshold; threshold > 0 {
@@ -400,7 +400,7 @@ func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName
 }
 
 // ViewQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, dataStore base.DataStore, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
+func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, dataStore base.DataStore, ddoc string, viewName string, params map[string]any) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
@@ -429,7 +429,7 @@ func (c *DatabaseCollection) QueryAccess(ctx context.Context, username string) (
 
 	// View Query
 	if c.useViews() {
-		opts := map[string]interface{}{"stale": false, "key": username}
+		opts := map[string]any{"stale": false, "key": username}
 		return c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncGateway(), ViewAccess, opts)
 	}
 
@@ -439,7 +439,7 @@ func (c *DatabaseCollection) QueryAccess(ctx context.Context, username string) (
 		return &EmptyResultIterator{}, nil
 	}
 	accessQueryStatement := c.buildAccessQuery(username)
-	params := make(map[string]interface{}, 0)
+	params := make(map[string]any, 0)
 	params[QueryParamUserName] = username
 
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
@@ -461,7 +461,7 @@ func (c *DatabaseCollection) QueryRoleAccess(ctx context.Context, username strin
 
 	// View Query
 	if c.useViews() {
-		opts := map[string]interface{}{"stale": false, "key": username}
+		opts := map[string]any{"stale": false, "key": username}
 		return c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncGateway(), ViewRoleAccess, opts)
 	}
 
@@ -472,7 +472,7 @@ func (c *DatabaseCollection) QueryRoleAccess(ctx context.Context, username strin
 	}
 
 	accessQueryStatement := c.buildRoleAccessQuery(username)
-	params := make(map[string]interface{}, 0)
+	params := make(map[string]any, 0)
 	params[QueryParamUserName] = username
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
@@ -506,7 +506,7 @@ func (c *DatabaseCollection) QueryChannels(ctx context.Context, channelName stri
 
 // buildsChannelsQuery constructs the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
-func (c *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
+func (c *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]any) {
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
@@ -523,7 +523,7 @@ func (c *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uin
 	}
 
 	// Channel queries use a prepared query
-	params = make(map[string]interface{}, 3)
+	params = make(map[string]any, 3)
 	params[QueryParamChannelName] = channelName
 	params[QueryParamStartSeq] = N1QLSafeUint64(startSeq)
 	// If endSeq isn't defined, set to max int64.
@@ -555,7 +555,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 
 	// View Query
 	if context.Options.UseViews {
-		opts := map[string]interface{}{"stale": false}
+		opts := map[string]any{"stale": false}
 
 		if limit > 0 {
 			opts[QueryParamLimit] = limit
@@ -570,7 +570,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
 	if limit > 0 {
@@ -597,7 +597,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 
 // BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
+func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]any) {
 	var queryStatement string
 	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs(), context.numIndexPartitions())
@@ -605,7 +605,7 @@ func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (str
 		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
 	if limit > 0 {
@@ -619,7 +619,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 
 	// View Query
 	if context.Options.UseViews {
-		opts := map[string]interface{}{"stale": false}
+		opts := map[string]any{"stale": false}
 
 		if limit > 0 {
 			opts[QueryParamLimit] = limit
@@ -640,7 +640,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 
 // BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
+func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]any) {
 
 	var queryStatement string
 	if !context.UseLegacySyncDocsIndex() {
@@ -649,7 +649,7 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
 	if limit > 0 {
@@ -674,7 +674,7 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
 	}
 
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
 	if limit > 0 {
@@ -720,7 +720,7 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, c.UseXattrs())
 	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
 
-	params := make(map[string]interface{}, 0)
+	params := make(map[string]any, 0)
 	if startKey != "" {
 		allDocsQueryStatement = fmt.Sprintf("%s AND META(%s).id >= $startkey",
 			allDocsQueryStatement, base.KeyspaceQueryAlias)
@@ -760,21 +760,21 @@ func (c *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time
 		tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
 	}
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		QueryParamOlderThan: olderThan.Unix(),
 	}
 
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
 
-func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {
-	endKey := []interface{}{channelName, endSeq}
+func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]any {
+	endKey := []any{channelName, endSeq}
 	if endSeq == 0 {
-		endKey[1] = map[string]interface{}{} // infinity
+		endKey[1] = map[string]any{} // infinity
 	}
-	optMap := map[string]interface{}{
+	optMap := map[string]any{
 		"stale":            false,
-		QueryParamStartKey: []interface{}{channelName, startSeq},
+		QueryParamStartKey: []any{channelName, startSeq},
 		QueryParamEndKey:   endKey,
 	}
 	if limit > 0 {
@@ -785,11 +785,11 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 
 type EmptyResultIterator struct{}
 
-func (e *EmptyResultIterator) One(_ context.Context, valuePtr interface{}) error {
+func (e *EmptyResultIterator) One(_ context.Context, valuePtr any) error {
 	return nil
 }
 
-func (e *EmptyResultIterator) Next(_ context.Context, valuePtr interface{}) bool {
+func (e *EmptyResultIterator) Next(_ context.Context, valuePtr any) bool {
 	return false
 }
 

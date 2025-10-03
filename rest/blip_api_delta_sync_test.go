@@ -257,9 +257,9 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		respBody := rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
-		greetings := respBody["greetings"].([]interface{})
+		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
+		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[0])
 
 		require.Equal(t, db.AttachmentMap{
 			"hello.txt": {
@@ -1026,11 +1026,11 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 		respBody := rt.GetDocVersion(docID, newRev)
 		assert.Equal(t, "doc1", respBody[db.BodyId])
-		greetings := respBody["greetings"].([]interface{})
+		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 3)
-		assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
-		assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
+		assert.Equal(t, map[string]any{"hello": "world!"}, greetings[0])
+		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[1])
+		assert.Equal(t, map[string]any{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
 		deletedVersion := rt.DeleteDoc(docID, newRev)
@@ -1142,7 +1142,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 
 		fullBody := rt.GetDocVersion("doc1", version2)
-		require.Equal(t, "bob", fullBody["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
+		require.Equal(t, "bob", fullBody["greetings"].([]any)[2].(map[string]any)["howdy"])
 	})
 }
 

@@ -31,6 +31,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -156,18 +157,18 @@ func randCryptoHex(sizeBits int) (string, error) {
 // like db.Body. Thus, db.Body has a special FixJSONNumbers method -- call that instead.
 // TODO: In Go 1.1 we will be able to use a new option in the JSON parser that converts numbers
 // to a special number type that preserves the exact formatting.
-func FixJSONNumbers(value interface{}) interface{} {
+func FixJSONNumbers(value any) any {
 	switch value := value.(type) {
 	case float64:
 		var asInt int64 = int64(value)
 		if float64(asInt) == value {
 			return asInt // Representable as int, so return it as such
 		}
-	case map[string]interface{}:
+	case map[string]any:
 		for k, v := range value {
 			value[k] = FixJSONNumbers(v)
 		}
-	case []interface{}:
+	case []any:
 		for i, v := range value {
 			value[i] = FixJSONNumbers(v)
 		}
@@ -212,15 +213,15 @@ func MergeStringArrays(arrays ...[]string) (merged []string) {
 	return
 }
 
-func ToArrayOfInterface(arrayOfString []string) []interface{} {
-	arrayOfInterface := make([]interface{}, len(arrayOfString))
+func ToArrayOfInterface(arrayOfString []string) []any {
+	arrayOfInterface := make([]any, len(arrayOfString))
 	for i, v := range arrayOfString {
 		arrayOfInterface[i] = v
 	}
 	return arrayOfInterface
 }
 
-func ToInt64(value interface{}) (int64, bool) {
+func ToInt64(value any) (int64, bool) {
 	switch value := value.(type) {
 	case int64:
 		return value, true
@@ -358,7 +359,7 @@ func CbsExpiryToDuration(expiry uint32) time.Duration {
 //  3. String JSON values that are numbers are converted to int32 and returned as-is
 //  4. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
 //  5. Null JSON values return 0
-func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
+func ReflectExpiry(rawExpiry any) (*uint32, error) {
 	switch expiry := rawExpiry.(type) {
 	case int64:
 		return ValidateUint32Expiry(expiry)
@@ -687,14 +688,14 @@ func SyncSourceFromURL(u *url.URL) string {
 // Convert string or array into a string array, otherwise return nil. If
 // the input slice contains entries of mixed type, all string entries would
 // be collected and returned as a slice and non-string entries as another.
-func ValueToStringArray(value interface{}) ([]string, []interface{}) {
-	var nonStrings []interface{}
+func ValueToStringArray(value any) ([]string, []any) {
+	var nonStrings []any
 	switch valueType := value.(type) {
 	case string:
 		return []string{valueType}, nil
 	case []string:
 		return valueType, nil
-	case []interface{}:
+	case []any:
 		result := make([]string, 0, len(valueType))
 		for _, item := range valueType {
 			if str, ok := item.(string); ok {
@@ -926,23 +927,18 @@ func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {
 }
 
 func StringSliceContains(set []string, target string) bool {
-	for _, val := range set {
-		if val == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(set, target)
 }
 
-func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err error) {
+func ConvertToEmptyInterfaceSlice(i any) (result []any, err error) {
 	switch v := i.(type) {
 	case []string:
-		result = make([]interface{}, len(v))
+		result = make([]any, len(v))
 		for index, value := range v {
 			result[index] = value
 		}
 		return result, nil
-	case []interface{}:
+	case []any:
 		return v, nil
 	default:
 		return nil, fmt.Errorf("Unexpected type passed to ConvertToEmptyInterfaceSlice: %T", i)
@@ -1174,12 +1170,7 @@ func (e FleeceDeltaError) Error() string { return e.e.Error() }
 func (e FleeceDeltaError) Unwrap() error { return e.e }
 
 func ContainsString(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, e)
 }
 
 // AtomicBool is a bool that can be set or read atomically
@@ -1221,7 +1212,7 @@ func (ab *AtomicBool) CompareAndSwap(old bool, new bool) bool {
 
 // CASRetry attempts to retry CompareAndSwap for up to 1 second before returning the result.
 func (ab *AtomicBool) CASRetry(old bool, new bool) bool {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if ab.CompareAndSwap(old, new) {
 			return true
 		}
@@ -1297,7 +1288,7 @@ func Sha1HashString(str string, salt string) string {
 // KVPair represents a single KV pair to be used in InjectJSONProperties
 type KVPair struct {
 	Key string
-	Val interface{}
+	Val any
 }
 
 // InjectJSONProperties takes the given JSON byte slice, and for each KV pair, marshals the value and inserts into
@@ -1459,7 +1450,7 @@ func (iterErr *JSONIterError) Error() string {
 type JSONDecoderI interface {
 	UseNumber()
 	DisallowUnknownFields()
-	Decode(v interface{}) error
+	Decode(v any) error
 	Buffered() io.Reader
 	// Token() (json.Token, error) // Not implemented by jsoniter
 	More() bool
@@ -1467,7 +1458,7 @@ type JSONDecoderI interface {
 
 // JSONEncoderI is the common interface between json.Encoder and jsoniter.Encoder
 type JSONEncoderI interface {
-	Encode(v interface{}) error
+	Encode(v any) error
 	SetIndent(prefix, indent string)
 	SetEscapeHTML(on bool)
 }
@@ -1668,7 +1659,7 @@ func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 }
 
 func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
-	var v interface{}
+	var v any
 	if err := JSONUnmarshal(b, &v); err != nil {
 		return err
 	}
@@ -1753,7 +1744,7 @@ func safeCutAfter(s, sep string) (value, remainder string) {
 }
 
 // AllOrNoneNil returns true if either all of its arguments are nil, or none are.
-func AllOrNoneNil(vals ...interface{}) bool {
+func AllOrNoneNil(vals ...any) bool {
 	nonNil := 0
 	for _, val := range vals {
 		// slow path reflect for typed nils
@@ -1769,7 +1760,7 @@ func AllOrNoneNil(vals ...interface{}) bool {
 
 // WaitForNoError runs the callback until it no longer returns an error.
 func WaitForNoError(ctx context.Context, callback func() error) error {
-	err, _ := RetryLoop(ctx, "wait for no error", func() (bool, error, interface{}) {
+	err, _ := RetryLoop(ctx, "wait for no error", func() (bool, error, any) {
 		callbackErr := callback()
 		return callbackErr != nil, callbackErr, nil
 	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))

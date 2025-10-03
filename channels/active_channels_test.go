@@ -30,7 +30,7 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 	MNOChan := NewID("MNO", base.DefaultCollectionID)
 	ctx := base.TestCtx(t)
 	// Concurrent Incr, Decr
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -53,7 +53,7 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 	assert.Equal(t, int64(3), activeChannelStat.Value())
 
 	// Concurrent UpdateChanged
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

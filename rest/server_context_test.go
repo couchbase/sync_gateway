@@ -700,7 +700,7 @@ func TestLogFlush(t *testing.T) {
 			// Concurrent calls to FlushLogBuffers should not cause data race or wait group reuse issues
 			// Wait for concurrent calls so they don't cause issues with SetupAndValidateLogging from next t.Run
 			var flushCallsWg = sync.WaitGroup{}
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				flushCallsWg.Add(1)
 				go func() {
 					defer flushCallsWg.Done()
@@ -712,7 +712,7 @@ func TestLogFlush(t *testing.T) {
 
 			// Check that the expected number of log files are created
 			var files []string
-			worker := func() (shouldRetry bool, err error, value interface{}) {
+			worker := func() (shouldRetry bool, err error, value any) {
 				files = []string{}
 				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
 					if tempPath != path {

@@ -36,18 +36,18 @@ func TestAttachmentMark(t *testing.T) {
 	collectionID := databaseCollection.GetCollectionID()
 	dataStore := databaseCollection.dataStore
 
-	body := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < 10; i++ {
+	body := map[string]any{"foo": "bar"}
+	for i := range 10 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, _, err := databaseCollection.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
 	attKeys := make([]string, 0, 11)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attBody := map[string]any{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, databaseCollection, docID, []byte("{}"), attKey, attJSONBody))
@@ -75,7 +75,7 @@ func TestAttachmentMark(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, compactIDSection)
 
-		_, ok = compactIDSection.(map[string]interface{})[t.Name()]
+		_, ok = compactIDSection.(map[string]any)[t.Name()]
 		assert.True(t, ok)
 	}
 }
@@ -106,19 +106,19 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	// Make docs that are marked - ie. They have a doc referencing them so don't purge
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
 		makeMarkedDoc(docID, t.Name())
 	}
 
 	// Make docs that are marked but with an old compact ID - ie. They have lost the doc that was referencing them so purge
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oldMarked", i)
 		makeMarkedDoc(docID, "old")
 	}
 
 	// Make docs that are unmarked - ie. Never been marked so purge
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 	}
@@ -149,7 +149,7 @@ func TestAttachmentCleanup(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	makeMultiMarkedDoc := func(docid string, compactIDs map[string]interface{}) {
+	makeMultiMarkedDoc := func(docid string, compactIDs map[string]any) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
@@ -161,7 +161,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	singleMarkedAttIDs := make([]string, 0, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
 		makeMarkedDoc(docID, t.Name())
 		singleMarkedAttIDs = append(singleMarkedAttIDs, docID)
@@ -169,9 +169,9 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	// Make multi-mark where all are recent - should result in only current compactID being purged
 	recentMultiMarkedAttIDs := make([]string, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "recentMultiMarked", i)
-		makeMultiMarkedDoc(docID, map[string]interface{}{
+		makeMultiMarkedDoc(docID, map[string]any{
 			t.Name(): int(time.Now().Unix()),
 			"rand":   int(time.Now().Unix()),
 		})
@@ -180,9 +180,9 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	// Make multi-mark where there is an old entry - should result in all compactionIDs being purged
 	oldMultiMarkedAttIDs := make([]string, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oldMultiMarked", i)
-		makeMultiMarkedDoc(docID, map[string]interface{}{
+		makeMultiMarkedDoc(docID, map[string]any{
 			t.Name(): int(time.Now().Unix()),
 			"rand":   int(time.Now().UTC().Add(-1 * time.Hour * 24 * 30).Unix()),
 		})
@@ -190,9 +190,9 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	oneRecentOneOldMultiMarkedAttIDs := make([]string, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "oneRecentOldOldMultiMarked", i)
-		makeMultiMarkedDoc(docID, map[string]interface{}{
+		makeMultiMarkedDoc(docID, map[string]any{
 			t.Name(): int(time.Now().Unix()),
 			"recent": int(time.Now().Unix()),
 			"old":    int(time.Now().UTC().Add(-1 * time.Hour * 24 * 30).Unix()),
@@ -269,7 +269,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	// create some marked attachments
 	singleMarkedAttIDs := make([]string, 0, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "marked", i)
 		makeMarkedDoc(docID, t.Name())
 		singleMarkedAttIDs = append(singleMarkedAttIDs, docID)
@@ -299,7 +299,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	testDb.AttachmentCompactionManager.Process = &manager
 
 	terminator := base.NewSafeTerminator()
-	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]interface{}{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
+	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]any{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
 	require.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -337,10 +337,10 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	attKeys := make([]string, 0, 15)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attKey := fmt.Sprintf("att-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attBody := map[string]any{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody))
@@ -352,7 +352,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		attKeys = append(attKeys, docid)
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 	}
@@ -367,7 +367,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	assert.Equal(t, int64(5), attachmentsPurged)
 
 	for _, attDocKey := range attKeys {
-		var back interface{}
+		var back any
 		_, err = dataStore.Get(attDocKey, &back)
 		if strings.Contains(attDocKey, "unmarked") {
 			assert.Error(t, err)
@@ -387,7 +387,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
-		var back interface{}
+		var back any
 		_, err = dataStore.Get(attDocKey, &back)
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
@@ -421,7 +421,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	triggerStopCallback := false
 	lds.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -436,7 +436,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -461,7 +461,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -487,7 +487,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -506,7 +506,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -567,7 +567,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	triggerStopCallback := false
 	lds.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
+			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "Process already running")
 			triggerCallback = false
@@ -582,7 +582,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
 	triggerStopCallback = true
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -607,7 +607,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
 	err = WaitForConditionWithOptions(t, func() bool {
@@ -633,15 +633,15 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	// Trigger start with immediate stop (stopped from db2)
 	triggerStopCallback = true
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
 	// Kick off another run with an attempted start, verify we don't get 'process already running' error
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	// Hitting this error may be racy (depending on when heartbeat is polled from previous stop), but we should never
 	// get a 'process already running' error
 	if err != nil {
-		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
+		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
 		assert.NotContains(t, err.Error(), "Process already running")
 	}
 }
@@ -664,7 +664,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	collection, ctx1 := GetSingleDatabaseCollectionWithUser(ctx1, t, testDB1)
 	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
-	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
 	var status AttachmentManagerResponse
@@ -710,7 +710,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
+	waitForSuccess := func() (shouldRetry bool, err error, value any) {
 		if successFunc() {
 			return false, nil, nil
 		}
@@ -745,8 +745,8 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	require.NoError(t, err)
 
 	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
-		attachmentSyncData := map[string]interface{}{
-			attID: map[string]interface{}{
+		attachmentSyncData := map[string]any{
+			attID: map[string]any{
 				"content_type": "application/json",
 				"digest":       attDigest,
 				"length":       len(attBody),
@@ -909,8 +909,8 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 	require.NoError(t, err)
 
 	_, err = db.dataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
-		attachmentSyncData := map[string]interface{}{
-			attID: map[string]interface{}{
+		attachmentSyncData := map[string]any{
+			attID: map[string]any{
 				"content_type": "application/json",
 				"digest":       attDigest,
 				"length":       len(attBody),
@@ -957,16 +957,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	// Create the docs that will be marked and not swept
-	body := map[string]interface{}{"foo": "bar"}
+	body := map[string]any{"foo": "bar"}
 	t.Logf("Creating %d docs - may take a while...", docsToCreate)
-	for i := 0; i < docsToCreate; i++ {
+	for i := range docsToCreate {
 		iStr := strconv.Itoa(i)
 		_, _, err := collection.Put(ctx, t.Name()+"_"+iStr, body)
 		require.NoError(t, err)
 	}
 
 	t.Logf("Creating %d legacy attachment docs - may take a while...", docsToCreate)
-	for i := 0; i < docsToCreate; i++ {
+	for i := range docsToCreate {
 		iStr := strconv.Itoa(i)
 		CreateLegacyAttachmentDoc(t, ctx, collection, "testDoc-"+iStr, []byte("{}"), "att-"+iStr, []byte(`{"value":`+iStr+`}`))
 	}
@@ -981,14 +981,14 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
+	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value any) {
 		if stat.Value() == 0 {
 			return true, nil, nil
 		}
 		return false, nil, nil
 	}
 
-	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value interface{}) {
+	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value any) {
 		if atomic.LoadInt64(&count) == 0 {
 			return true, nil, nil
 		}

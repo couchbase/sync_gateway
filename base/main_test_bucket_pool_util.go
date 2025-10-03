@@ -17,13 +17,13 @@ import (
 )
 
 // Fatalf logs and exits.
-func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...interface{}) {
+func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...any) {
 	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
 	FatalfCtx(ctx, format, args...)
 }
 
 // Logf formats the given test bucket logging and logs to stderr.
-func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
+func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...any) {
 	if tbp != nil && !tbp.verbose.IsTrue() {
 		return
 	}

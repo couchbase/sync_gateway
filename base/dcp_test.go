@@ -445,7 +445,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	var managerWg sync.WaitGroup
 	managerWg.Add(managerCount)
 
-	for i := 0; i < managerCount; i++ {
+	for i := range managerCount {
 		go func(i int, terminatorChan chan struct{}) {
 			// random sleep to hit race conditions that depend on initial creation
 			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)

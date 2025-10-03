@@ -553,14 +553,14 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
-	s, ok := couchbaseDoc[base.SyncPropertyName].(map[string]interface{})
+	s, ok := couchbaseDoc[base.SyncPropertyName].(map[string]any)
 	require.True(t, ok)
-	couchbaseDoc["_attachments"], ok = s["attachments"].(map[string]interface{})
+	couchbaseDoc["_attachments"], ok = s["attachments"].(map[string]any)
 	require.True(t, ok)
-	attachments, ok := couchbaseDoc["_attachments"].(map[string]interface{})
+	attachments, ok := couchbaseDoc["_attachments"].(map[string]any)
 	require.True(t, ok)
 
-	attach1, ok := attachments[attachmentName].(map[string]interface{})
+	attach1, ok := attachments[attachmentName].(map[string]any)
 	require.True(t, ok)
 
 	delete(attach1, "digest")
@@ -655,7 +655,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
-		partJson := map[string]interface{}{}
+		partJson := map[string]any{}
 		err = base.JSONUnmarshal(partBytes, &partJson)
 		assert.NoError(t, err, "Unexpected error")
 
@@ -731,9 +731,9 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	parentRevList := [3]string{"foo3", "foo2", versionDigest}
 	body["_rev"] = "3-foo3"
 	body["rev"] = "3-foo3"
-	body["_revisions"].(map[string]interface{})["ids"] = parentRevList
-	body["_revisions"].(map[string]interface{})["start"] = 3
-	delete(body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{}), "digest")
+	body["_revisions"].(map[string]any)["ids"] = parentRevList
+	body["_revisions"].(map[string]any)["start"] = 3
+	delete(body["_attachments"].(map[string]any)["attach1"].(map[string]any), "digest")
 
 	// Prepare changed doc
 	temp, err := base.JSONMarshal(body)
@@ -961,8 +961,8 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 
 		if strings.HasPrefix(body[db.BodyRev].(string), "2-") {
 			assert.Equal(t, "2-6433ff70e11791fcb7fdf16746f4b9e7", body[db.BodyRev])
-			attachments := body[db.BodyAttachments].(map[string]interface{})
-			attachment1 := attachments["attach1"].(map[string]interface{})
+			attachments := body[db.BodyAttachments].(map[string]any)
+			attachment1 := attachments["attach1"].(map[string]any)
 			assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", attachment1["digest"])
 			assert.Equal(t, float64(30), attachment1["length"])
 			assert.Equal(t, float64(2), attachment1["revpos"])
@@ -2150,7 +2150,7 @@ func TestAttachmentsMissing(t *testing.T) {
 	version2.CV = db.Version{}
 
 	body := rt.GetDocVersion(docID, version2)
-	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
+	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]any)["hello.txt"].(map[string]any)["digest"])
 }
 
 func TestAttachmentsMissingNoBody(t *testing.T) {
@@ -2176,7 +2176,7 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	version2.CV = db.Version{}
 
 	body := rt.GetDocVersion(docID, version2)
-	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]interface{})["hello.txt"].(map[string]interface{})["digest"])
+	require.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", body["_attachments"].(map[string]any)["hello.txt"].(map[string]any)["digest"])
 }
 
 func TestAttachmentDeleteOnPurge(t *testing.T) {
@@ -2373,7 +2373,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		doc1, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalAll)
 		require.NoError(t, err)
 
-		assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments()["attachment"].(map[string]interface{})["digest"])
+		assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments()["attachment"].(map[string]any)["digest"])
 
 		req := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 		assert.Equal(t, "attachmentB", string(req.BodyBytes()))
@@ -2411,7 +2411,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 		length, digest := btcRunner.saveAttachment(btc.id, attachmentAData)
 		// Update doc1, include reference to non-existing attachment with recent revpos
-		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"stub":true,"revpos":1}}}`, digest, length)))
+		doc1Version = btcRunner.AddRev(btc.id, doc1ID, &doc1Version, fmt.Appendf(nil, `{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"stub":true,"revpos":1}}}`, digest, length))
 
 		rt.WaitForVersion(doc1ID, doc1Version)
 
@@ -2707,9 +2707,9 @@ func CreateDocWithLegacyAttachmentNoMigration(t *testing.T, rt *RestTester, docI
 	require.NoError(t, err)
 }
 
-func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]interface{}) {
+func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta map[string]any) {
 	body := rt.GetDocBody(docID)
-	attachments, ok := body["_attachments"].(map[string]interface{})
+	attachments, ok := body["_attachments"].(map[string]any)
 	require.True(t, ok)
 	return attachments
 }
@@ -2718,7 +2718,7 @@ func retrieveAttachmentMeta(t *testing.T, rt *RestTester, docID string) (attMeta
 func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
 	latestSeq, err := rt.GetDatabase().NextSequence(rt.Context())
 	require.NoError(rt.TB(), err)
-	return []byte(fmt.Sprintf(`{
+	return fmt.Appendf(nil, `{
    "_sync": {
       "rev": "1-5fc93bd36377008f96fdae2719c174ed",
       "sequence": %d,
@@ -2749,7 +2749,7 @@ func rawDocWithAttachmentAndSyncMeta(rt *RestTester) []byte {
       "time_saved": "2021-09-01T17:33:03.054227821Z"
    },
   "key": "value"
-}`, latestSeq, latestSeq))
+}`, latestSeq, latestSeq)
 }
 
 // attachmentHeaders returns the headers needed to store an attachment.

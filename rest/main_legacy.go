@@ -72,9 +72,9 @@ func legacyServerMain(ctx context.Context, osArgs []string, flagStartupConfig *S
 }
 
 type legacyConfigFlag struct {
-	config         interface{}
+	config         any
 	supersededFlag string
-	flagValue      interface{}
+	flagValue      any
 }
 
 func registerLegacyFlags(config *StartupConfig, fs *flag.FlagSet) map[string]legacyConfigFlag {

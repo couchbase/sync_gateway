@@ -87,7 +87,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	// add some docs (with xattr so they won't be ignored in the background job) to both collections
 	// we want to add large number of docs to stop the migration job from finishing before we can assert on state
 	bodyBytes := []byte(`{"some": "body"}`)
-	for i := 0; i < 4000; i++ {
+	for i := range 4000 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		xattrsInput := map[string][]byte{
 			"_xattr": []byte(`{"some":"xattr"}`),
@@ -195,7 +195,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 
 	// add some docs (with xattr so they won't be ignored in the background job) to both collections
 	bodyBytes := []byte(`{"some": "body"}`)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		xattrsInput := map[string][]byte{
 			"_xattr": []byte(`{"some":"xattr"}`),
@@ -303,7 +303,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 
 	// add some docs (with xattr so they won't be ignored in the background job) to both collections
 	bodyBytes := []byte(`{"some": "body"}`)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		xattrsInput := map[string][]byte{
 			"_xattr": []byte(`{"some":"xattr"}`),
@@ -394,7 +394,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	// we want to add large number of docs to stop the migration job from finishing before we can try start the job
 	// again (whilst already running)
 	bodyBytes := []byte(`{"some": "body"}`)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		xattrsInput := map[string][]byte{
 			"_xattr": []byte(`{"some":"xattr"}`),

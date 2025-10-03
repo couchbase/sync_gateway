@@ -14,6 +14,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ import (
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.
-type Body map[string]interface{}
+type Body map[string]any
 
 // BodyDeleted and related constants define special document body keys used for internal Sync Gateway metadata associated with a specific document.
 // They are usually present in the REST API, or sometimes inside the doc body during transport between API layers inside Sync Gateway.
@@ -48,7 +49,7 @@ const (
 //
 // Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
 // along with Body, and we don't need the overhead of allocating a new object
-type Revisions map[string]interface{}
+type Revisions map[string]any
 
 const (
 	RevisionsStart = "start"
@@ -97,9 +98,7 @@ func (body Body) ShallowCopy() Body {
 		return body
 	}
 	copied := make(Body, len(body))
-	for key, value := range body {
-		copied[key] = value
-	}
+	maps.Copy(copied, body)
 	return copied
 }
 
@@ -114,9 +113,7 @@ func (body Body) DeepCopy(ctx context.Context) Body {
 
 func (revisions Revisions) ShallowCopy() Revisions {
 	copied := make(Revisions, len(revisions))
-	for key, value := range revisions {
-		copied[key] = value
-	}
+	maps.Copy(copied, revisions)
 	return copied
 }
 
@@ -179,10 +176,10 @@ func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
 	return copyMap(attachments)
 }
 
-func copyMap(sourceMap map[string]interface{}) map[string]interface{} {
-	copy := make(map[string]interface{}, len(sourceMap))
+func copyMap(sourceMap map[string]any) map[string]any {
+	copy := make(map[string]any, len(sourceMap))
 	for k, v := range sourceMap {
-		if valueMap, ok := v.(map[string]interface{}); ok {
+		if valueMap, ok := v.(map[string]any); ok {
 			copiedValue := copyMap(valueMap)
 			copy[k] = copiedValue
 		} else {
@@ -451,14 +448,14 @@ func stripSpecialProperties(b Body, internalOnly bool) (sb Body, foundSpecialPro
 	}
 }
 
-func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
+func GetStringArrayProperty(body map[string]any, property string) ([]string, error) {
 	if raw, exists := body[property]; !exists {
 		return nil, nil
 	} else if strings, ok := raw.([]string); ok {
 		return strings, nil
-	} else if items, ok := raw.([]interface{}); ok {
+	} else if items, ok := raw.([]any); ok {
 		strings := make([]string, len(items))
-		for i := 0; i < len(items); i++ {
+		for i := range items {
 			strings[i], ok = items[i].(string)
 			if !ok {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, "%s must be a string array", property)

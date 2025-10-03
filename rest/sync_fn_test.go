@@ -421,7 +421,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	)
 	defer rt.Close()
 
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
@@ -472,7 +472,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	)
 	defer rt.Close()
 
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
@@ -520,7 +520,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	var body db.Body
 	var rawDocResponse RawDocResponse
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("doc%d", i)
 		rt.CreateTestDoc(docID)
 
@@ -594,7 +594,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.True(t, user1SeqAfter > user1SeqBefore)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := fmt.Sprintf("doc%d", i)
 
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)

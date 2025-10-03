@@ -52,7 +52,7 @@ func (ud UserData) Redact() string {
 var _ Redactor = UserData("")
 
 // UD returns a UserData type for any given value.
-func UD(i interface{}) RedactorFunc {
+func UD(i any) RedactorFunc {
 	switch v := i.(type) {
 	case string:
 		return func() Redactor {

@@ -100,7 +100,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 				t.Logf("TEST: created user %q", user.Name())
 			}
 
-			claims := map[string]interface{}{
+			claims := map[string]any{
 				"iss": testIssuer,
 				"sub": testSubject,
 				"aud": []string{testClientID},
@@ -263,7 +263,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	t.Run("valid - RSA", runTest(baseProvider, auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"sub": testSubject,
@@ -273,7 +273,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	t.Run("valid - EC", runTest(baseProvider, auth.CreateTestJWT(t, jose.ES256, testECKeypair, auth.JWTHeaders{
 		"alg": jose.ES256,
 		"kid": testECJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"sub": testSubject,
@@ -283,7 +283,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 	t.Run("valid - RSA from JWKS", runTest(jwksProvider, auth.CreateTestJWT(t, jose.RS256, testJWKSRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
 		"kid": testJWKSRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss": testIssuer,
 		"aud": []string{testClientID},
 		"sub": testSubject,
@@ -401,7 +401,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 		token := auth.CreateTestJWT(t, "RS256", testRSAKeypair, auth.JWTHeaders{
 			"kid": testRSAJWK.KeyID,
 			"alg": testRSAJWK.Algorithm,
-		}, map[string]interface{}{
+		}, map[string]any{
 			"iss": localIssuer,
 			"sub": subject,
 			"aud": []string{clientID},
@@ -454,7 +454,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
 		"kid": testRSAJWK.KeyID,
-	}, map[string]interface{}{
+	}, map[string]any{
 		"iss":      testIssuer,
 		"aud":      []string{testClientID},
 		"sub":      testSubject,

@@ -80,12 +80,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
 type StartupConfig struct {
-	Bootstrap   BootstrapConfig    `json:"bootstrap,omitempty"`
-	API         APIConfig          `json:"api,omitempty"`
-	Logging     base.LoggingConfig `json:"logging,omitempty"`
-	Auth        AuthConfig         `json:"auth,omitempty"`
-	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
-	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
+	Bootstrap   BootstrapConfig    `json:"bootstrap"`
+	API         APIConfig          `json:"api"`
+	Logging     base.LoggingConfig `json:"logging"`
+	Auth        AuthConfig         `json:"auth"`
+	Replicator  ReplicatorConfig   `json:"replicator"`
+	Unsupported UnsupportedConfig  `json:"unsupported"`
 
 	DatabaseCredentials PerDatabaseCredentialsConfig    `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in."`
 	BucketCredentials   base.PerBucketCredentialsConfig `json:"bucket_credentials,omitempty" help:"A map of bucket names to credentials, that can be used instead of the bootstrap ones."`
@@ -133,7 +133,7 @@ type APIConfig struct {
 	CompressResponses  *bool `json:"compress_responses,omitempty"   help:"If false, disables compression of HTTP responses"`
 	HideProductVersion *bool `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
 
-	HTTPS HTTPSConfig      `json:"https,omitempty"`
+	HTTPS HTTPSConfig      `json:"https"`
 	CORS  *auth.CORSConfig `json:"cors,omitempty"`
 }
 
@@ -158,7 +158,7 @@ type ReplicatorConfig struct {
 type UnsupportedConfig struct {
 	StatsLogFrequency       *base.ConfigDuration     `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON           *bool                    `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless              ServerlessConfig         `json:"serverless,omitempty"`
+	Serverless              ServerlessConfig         `json:"serverless"`
 	HTTP2                   *HTTP2Config             `json:"http2,omitempty"`
 	UserQueries             *bool                    `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
 	UseXattrConfig          *bool                    `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`

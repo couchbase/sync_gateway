@@ -99,7 +99,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 	for _, bm := range getBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			var getResponse *TestResponse
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
@@ -132,7 +132,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 	numDocs := int(revCacheSize + 1)
 	var revid string
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc1k_%d", i), doc1k_putDoc)
 		// revid will be the same for all docs
 		if i == 0 {
@@ -163,7 +163,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			var getResponse *TestResponse
 			rt.GetDatabase().FlushRevisionCacheForTest()
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				// update key in URI
 				docNum := i % numDocs
 				newDocID := fmt.Sprintf("doc1k_%d", docNum)
@@ -242,7 +242,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 	for _, bm := range changesBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			var changesResponse *TestResponse
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if bm.asUser == "" {
 					changesResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
@@ -300,7 +300,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 	for _, bm := range revsDiffBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			var getResponse *TestResponse
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("POST", bm.URI, revsDiffBody)
 				} else {

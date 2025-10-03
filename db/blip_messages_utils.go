@@ -18,7 +18,7 @@ import (
 )
 
 // setProperty will set the given property value.
-func setProperty(p blip.Properties, k string, v interface{}) {
+func setProperty(p blip.Properties, k string, v any) {
 	switch val := v.(type) {
 	case string:
 		p[k] = val
@@ -37,7 +37,7 @@ func setProperty(p blip.Properties, k string, v interface{}) {
 }
 
 // setOptionalProperty will set the given property value, if v is non-zero.
-func setOptionalProperty(p blip.Properties, k string, v interface{}) {
+func setOptionalProperty(p blip.Properties, k string, v any) {
 	switch val := v.(type) {
 	case *string:
 		if val != nil {
