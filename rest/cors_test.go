@@ -288,6 +288,24 @@ func TestCORSUserNoAccess(t *testing.T) {
 	}
 }
 
+// TestCORSResponseHeadersEmptyConfig ensures that an empty CORS config results in no CORS headers being set on the response.
+func TestCORSResponseHeadersEmptyConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	// RestTester initializes using defaultTestingCORSOrigin - override to empty for this test
+	rt.ServerContext().Config.API.CORS = &auth.CORSConfig{}
+	defer rt.Close()
+
+	reqHeaders := map[string]string{
+		"Origin": "http://example.com",
+	}
+	response := rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	assert.NotContains(t, response.Header(), "Access-Control-Allow-Origin")
+	assert.NotContains(t, response.Header(), "Access-Control-Allow-Credentials")
+	assert.NotContains(t, response.Header(), "Access-Control-Allow-Headers")
+}
+
 func TestCORSOriginPerDatabase(t *testing.T) {
 	// Override the default (example.com) CORS configuration in the DbConfig for /db:
 	const perDBMaxAge = 1234
