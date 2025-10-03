@@ -709,11 +709,11 @@ func TestReplicationStatusActions(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
-
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		// Increase checkpoint persistence frequency for cross-node status verification
+		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
+		t.Cleanup(reduceCheckpointInterval)
 		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		// Create doc1 on rt2
@@ -832,10 +832,11 @@ func TestReplicationRebalancePull(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		// Increase checkpoint persistence frequency for cross-node status verification
+		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
+		t.Cleanup(reduceCheckpointInterval)
 		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		// Create docs on remote
@@ -935,11 +936,11 @@ func TestReplicationRebalancePush(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
-
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		// Increase checkpoint persistence frequency for cross-node status verification
+		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
+		t.Cleanup(reduceCheckpointInterval)
 		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		// Create docs on active
@@ -1740,14 +1741,15 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		// Increase checkpoint persistence frequency for cross-node status verification
+		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
+		t.Cleanup(reduceCheckpointInterval)
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
@@ -1952,7 +1954,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		// Create initial doc on rt1
-		docID := t.Name() + "rt1doc"
+		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
 		_ = rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
 		// Create push replication, verify running
@@ -4826,7 +4828,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
@@ -5975,7 +5977,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
 				// Delete on the short branch and make another doc on the longer branch before deleting it
-				deleteVersion := rest.DocVersion{}
+				var deleteVersion rest.DocVersion
 				if test.longestBranchLocal {
 					// Delete doc on remote
 					deletedVersion := remotePassiveRT.DeleteDoc(doc2ID, doc2Version)
@@ -7281,7 +7283,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 		// increase checkpointing interval temporarily to ensure the checkpointer doesn't fire on an
 		// interval during the running of the test
-		defer reduceTestCheckpointInterval(9999 * time.Hour)()
+		reduceCheckpointInterval := reduceTestCheckpointInterval(9999 * time.Hour)
+		t.Cleanup(reduceCheckpointInterval)
 
 		collection, ctx := activeRT.GetSingleTestDatabaseCollectionWithUser()
 		revID, doc, err := collection.Put(ctx, "test", db.Body{})

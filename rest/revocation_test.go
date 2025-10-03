@@ -1647,8 +1647,8 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	sgrRunne := NewSGRTestRunner(t)
-	sgrRunne.Run(func(t *testing.T) {
+	sgrRunner := NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
 		// Passive
 		revocationTester, rt2 := InitScenario(t, nil)
 		defer rt2.Close()
@@ -1699,7 +1699,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 			PurgeOnRemoval:         true,
 			ReplicationStatsMap:    dbstats,
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
-			SupportedBLIPProtocols: sgrRunne.SupportedSubprotocols,
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
 		require.NoError(t, err)
 
