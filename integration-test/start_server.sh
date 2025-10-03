@@ -7,15 +7,16 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-set -eux -o pipefail
+set -eu -o pipefail
 
 function usage() {
     echo "Usage: $0 [-m] [-h] containername"
+    exit 1
 }
 
 if [ $# -gt 2 ]; then
     echo "Expected maximally two arguments"
-    exit 1
+    usage
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -26,8 +27,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h | --help)
-            echo "Usage: $0 [-m] [-h] containername"
-            exit 1
+            usage
             ;;
         --non-dockerhub)
             DOCKERHUB=false
@@ -41,10 +41,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 WORKSPACE_ROOT="$(pwd)"
-DOCKER_CBS_ROOT_DIR="$(pwd)"
-if [ "${CBS_ROOT_DIR:-}" != "" ]; then
-    DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
-fi
 
 set +e
 AMAZON_LINUX_2=$(grep 'Amazon Linux 2"' /etc/os-release)
@@ -54,36 +50,42 @@ if [[ -n "${AMAZON_LINUX_2}" ]]; then
 else
     DOCKER_COMPOSE="docker compose"
 fi
-cd -- "${BASH_SOURCE%/*}/"
-${DOCKER_COMPOSE} down || true
+echo "Stopping existing Couchbase Server container if it exists..."
 export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
-# Start CBS
-docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
-docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
-# --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
+cd -- "${BASH_SOURCE%/*}/"
+set +e # do not error on command failure
+set -x # Output all executed shell commands
+${DOCKER_COMPOSE} down
+docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME}
+docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME}
+set +x # Stop outputting all executed shell commands
+set -e # Abort on errors
 
 # use dockerhub if no registry is specified, allows for pre-release images from alternative registries
 if [[ ! "${COUCHBASE_DOCKER_IMAGE_NAME}" =~ ghcr.io/* && "${DOCKERHUB:-}" != "false" ]]; then
     COUCHBASE_DOCKER_IMAGE_NAME="couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
+echo "Creating Couchbase Server container with image: ${COUCHBASE_DOCKER_IMAGE_NAME}"
 if [ "${MULTI_NODE:-}" == "true" ]; then
+    set -x # Output all executed shell commands
     ${DOCKER_COMPOSE} up -d --force-recreate --renew-anon-volumes --remove-orphans
 else
+    set -x # Output all executed shell commands
     # single node
     docker run --rm -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8097:8091-8097 -p 9102:9102 -p 9123:9123 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18097:18091-18097 -p 19102:19102 "${COUCHBASE_DOCKER_IMAGE_NAME}"
 fi
 
 # Test to see if Couchbase Server is up
 # Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
-curl --retry-all-errors --connect-timeout 5 --max-time 10 --retry 20 --retry-delay 0 --retry-max-time 120 'http://127.0.0.1:8091'
+docker exec couchbase curl --fail --silent --retry-all-errors --connect-timeout 5 --max-time 10 --retry 20 --retry-delay 0 --retry-max-time 120 'http://127.0.0.1:8091'
 
 # Set up CBS
 
 docker exec couchbase couchbase-cli cluster-init --cluster-username Administrator --cluster-password password --cluster-ramsize 3072 --cluster-index-ramsize 3072 --cluster-fts-ramsize 256 --services data,index,query
 docker exec couchbase couchbase-cli setting-index --cluster couchbase://localhost --username Administrator --password password --index-threads 4 --index-log-level verbose --index-max-rollback-points 10 --index-storage-setting default --index-memory-snapshot-interval 150 --index-stable-snapshot-interval 40000
 
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
+docker exec couchbase curl -u Administrator:password http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
 
 if [ "${MULTI_NODE:-}" == "true" ]; then
     REPLICA1_NAME=couchbase-replica1
