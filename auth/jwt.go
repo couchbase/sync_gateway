@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/couchbase/sync_gateway/base"
@@ -86,12 +87,7 @@ func (j JWTConfigCommon) ValidFor(ctx context.Context, issuer string, audiences 
 	if *j.ClientID == "" {
 		return true
 	}
-	for _, aud := range audiences {
-		if aud == *j.ClientID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(audiences, *j.ClientID)
 }
 
 var ErrNoMatchingProvider = errors.New("no matching OIDC/JWT provider")
@@ -209,7 +205,7 @@ func (l *LocalJWTAuthProvider) verifyToken(ctx context.Context, token string, _ 
 	}
 	base.DebugfCtx(ctx, base.KeyAuth, "Local JWT ID Token successfully parsed and verified (iss: %v; sub: %v)", base.UD(idToken.Issuer), base.UD(idToken.Subject))
 
-	var claims map[string]interface{}
+	var claims map[string]any
 	if err := idToken.Claims(&claims); err != nil {
 		base.WarnfCtx(ctx, "Failed to unmarshal ID token claims: %v", err)
 	}

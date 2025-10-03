@@ -68,7 +68,7 @@ func (s SequenceID) intSeqToString() string {
 	}
 }
 
-func seqStr(ctx context.Context, seq interface{}) string {
+func seqStr(ctx context.Context, seq any) string {
 	switch seq := seq.(type) {
 	case string:
 		return seq
@@ -142,7 +142,7 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 	if s.TriggeredBy > 0 || s.LowSeq > 0 {
-		return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
+		return fmt.Appendf(nil, "\"%s\"", s.String()), nil
 	} else {
 		return []byte(strconv.FormatUint(s.Seq, 10)), nil
 	}

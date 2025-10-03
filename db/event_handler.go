@@ -50,7 +50,7 @@ const (
 )
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(ctx context.Context, url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
+func NewWebhook(ctx context.Context, url string, filterFnString string, timeout *uint64, options map[string]any) (*Webhook, error) {
 
 	var err error
 

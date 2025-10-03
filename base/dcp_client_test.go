@@ -40,8 +40,8 @@ func TestOneShotDCP(t *testing.T) {
 
 	numDocs := 1000
 	// write documents to bucket
-	body := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < numDocs; i++ {
+	body := map[string]any{"foo": "bar"}
+	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := dataStore.Set(key, 0, nil, body)
 		require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestOneShotDCP(t *testing.T) {
 	additionalDocsWg.Add(1)
 	go func() {
 		defer additionalDocsWg.Done()
-		updatedBody := map[string]interface{}{"foo": "bar"}
+		updatedBody := map[string]any{"foo": "bar"}
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
 			err := dataStore.Set(key, 0, nil, updatedBody)
@@ -146,8 +146,8 @@ func TestTerminateDCPFeed(t *testing.T) {
 	additionalDocsWg.Add(1)
 	go func() {
 		defer additionalDocsWg.Done()
-		updatedBody := map[string]interface{}{"foo": "bar"}
-		for i := 0; i < 10000; i++ {
+		updatedBody := map[string]any{"foo": "bar"}
+		for i := range 10000 {
 			if feedClosed.IsTrue() {
 				break
 			}
@@ -227,8 +227,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			feedID := t.Name()
 
 			// Add documents
-			updatedBody := map[string]interface{}{"foo": "bar"}
-			for i := 0; i < 10000; i++ {
+			updatedBody := map[string]any{"foo": "bar"}
+			for i := range 10000 {
 				key := fmt.Sprintf("%s_%d", t.Name(), i)
 				err := dataStore.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
@@ -383,8 +383,8 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// Add documents
 	const numDocs = 10000
-	updatedBody := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < numDocs; i++ {
+	updatedBody := map[string]any{"foo": "bar"}
+	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := dataStore.Set(key, 0, nil, updatedBody)
 		require.NoError(t, err)
@@ -476,8 +476,8 @@ func TestResumeStoppedFeed(t *testing.T) {
 	feedID := t.Name()
 
 	// Add documents
-	updatedBody := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < 10000; i++ {
+	updatedBody := map[string]any{"foo": "bar"}
+	for i := range 10000 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := dataStore.Set(key, 0, nil, updatedBody)
 		require.NoError(t, err)

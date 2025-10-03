@@ -552,14 +552,14 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
 
-		knownRevs := []interface{}{}
+		knownRevs := []any{}
 
 		if string(body) != "null" {
-			var changesReqs [][]interface{}
+			var changesReqs [][]any
 			err = base.JSONUnmarshal(body, &changesReqs)
 			require.NoError(btr.TB(), err)
 
-			knownRevs = make([]interface{}, len(changesReqs))
+			knownRevs = make([]any, len(changesReqs))
 			// changesReqs == [[sequence, docID, revID, {deleted}, {size (bytes)}], ...]
 		outer:
 			for i, changesReq := range changesReqs {
@@ -589,20 +589,20 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 					require.NoError(btr.TB(), err, "error converting revID %q to version: %v", revID, err)
 					localHLV := btcc.getHLV(docID)
 					if localHLV == nil {
-						knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
+						knownRevs[i] = []any{} // sending empty array means we've not seen the doc before, but still want it
 						continue
 					} else if localHLV.DominatesSource(changesVersion) {
 						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %s as we already have a newer version %#v", docID, changesVersion, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
 					} else {
 						// HLV clients only need to send the current version
-						knownRevs[i] = []interface{}{localHLV.GetCurrentVersionString()}
+						knownRevs[i] = []any{localHLV.GetCurrentVersionString()}
 					}
 					continue
 				}
 				allVersions := btcc.getAllRevisions(docID)
 				if len(allVersions) == 0 {
-					knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
+					knownRevs[i] = []any{} // sending empty array means we've not seen the doc before, but still want it
 					continue
 				}
 				for _, version := range allVersions {
@@ -712,7 +712,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 				deltaSrcVersion = DocVersion{RevTreeID: deltaSrc}
 			}
 			old := btcc.getBody(docID, deltaSrcVersion)
-			var oldMap = map[string]interface{}(old)
+			var oldMap = map[string]any(old)
 			err = base.Patch(&oldMap, delta)
 			require.NoError(btc.TB(), err)
 
@@ -729,14 +729,14 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			}
 
 			if atts, ok := bodyJSON[db.BodyAttachments]; ok {
-				attsMap, ok := atts.(map[string]interface{})
+				attsMap, ok := atts.(map[string]any)
 				require.True(btr.TB(), ok, "atts in doc wasn't map[string]interface{}")
 
 				var missingDigests []string
 				var knownDigests []string
 				btcc.attachmentsLock.RLock()
 				for _, attachment := range attsMap {
-					attMap, ok := attachment.(map[string]interface{})
+					attMap, ok := attachment.(map[string]any)
 					require.True(btr.TB(), ok, "att in doc wasn't map[string]interface{}")
 					digest := attMap["digest"].(string)
 
@@ -1724,16 +1724,16 @@ func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byt
 	if !bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
 		return inputBody
 	}
-	var newDocJSON map[string]interface{}
+	var newDocJSON map[string]any
 	require.NoError(btcc.TB(), base.JSONUnmarshal(inputBody, &newDocJSON))
 	attachments, ok := newDocJSON[db.BodyAttachments]
 	if !ok {
 		return inputBody
 	}
-	attachmentMap, ok := attachments.(map[string]interface{})
+	attachmentMap, ok := attachments.(map[string]any)
 	require.True(btcc.TB(), ok)
 	for attachmentName, inlineAttachment := range attachmentMap {
-		inlineAttachmentMap := inlineAttachment.(map[string]interface{})
+		inlineAttachmentMap := inlineAttachment.(map[string]any)
 		attachmentData, ok := inlineAttachmentMap["data"]
 		if !ok {
 			isStub, _ := inlineAttachmentMap["stub"].(bool)
@@ -1748,13 +1748,13 @@ func (btcc *BlipTesterCollectionClient) ProcessInlineAttachments(inputBody []byt
 
 		length, digest := btcc.saveAttachment(data)
 
-		attachmentMap[attachmentName] = map[string]interface{}{
+		attachmentMap[attachmentName] = map[string]any{
 			"digest": digest,
 			"length": length,
 			"stub":   true,
 		}
 		if !btcc.UseHLV() {
-			attachmentMap[attachmentName].(map[string]interface{})["revpos"] = revGen
+			attachmentMap[attachmentName].(map[string]any)["revpos"] = revGen
 		}
 		newDocJSON[db.BodyAttachments] = attachmentMap
 	}

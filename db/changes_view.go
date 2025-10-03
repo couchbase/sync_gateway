@@ -24,7 +24,7 @@ import (
 // One "changes" row in a channelsViewResult
 type channelsViewRow struct {
 	ID    string
-	Key   []interface{} // Actually [channelName, sequence]
+	Key   []any // Actually [channelName, sequence]
 	Value struct {
 		Rev   channels.RevAndVersion
 		Flags uint8

@@ -53,11 +53,11 @@ func TestView(t *testing.T) {
 	}()
 
 	// Put test docs
-	err = dataStore.Set("u1", 0, nil, map[string]interface{}{"type": "Circle"})
+	err = dataStore.Set("u1", 0, nil, map[string]any{"type": "Circle"})
 	assert.NoError(t, err)
-	err = dataStore.Set("u2", 0, nil, map[string]interface{}{"type": "Northern"})
+	err = dataStore.Set("u2", 0, nil, map[string]any{"type": "Northern"})
 	assert.NoError(t, err)
-	err = dataStore.Set("u3", 0, nil, map[string]interface{}{"type": "District"})
+	err = dataStore.Set("u3", 0, nil, map[string]any{"type": "District"})
 	assert.NoError(t, err)
 
 	// Confirm view availability
@@ -66,8 +66,8 @@ func TestView(t *testing.T) {
 	assert.NotNil(t, ddocCheck)
 
 	// wait for view readiness
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		viewParams := make(map[string]interface{})
+	worker := func() (shouldRetry bool, err error, value any) {
+		viewParams := make(map[string]any)
 		_, viewErr := viewStore.View(ctx, ddocName, viewName, viewParams)
 		if viewErr == nil {
 			return false, nil, nil
@@ -82,7 +82,7 @@ func TestView(t *testing.T) {
 	require.NoError(t, viewErr)
 
 	// stale=false
-	viewParams := make(map[string]interface{})
+	viewParams := make(map[string]any)
 	viewParams[ViewQueryParamStale] = false
 	result, viewErr := viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
@@ -113,7 +113,7 @@ func TestView(t *testing.T) {
 	assert.Equal(t, "District", result.Rows[0].Key)
 
 	// Descending
-	viewParams = make(map[string]interface{}) // clear previous
+	viewParams = make(map[string]any) // clear previous
 	viewParams[ViewQueryParamDescending] = true
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
@@ -130,7 +130,7 @@ func TestView(t *testing.T) {
 	}
 
 	// Key and keys
-	viewParams = make(map[string]interface{}) // clear previous
+	viewParams = make(map[string]any) // clear previous
 	viewParams[ViewQueryParamKey] = "District"
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
@@ -143,7 +143,7 @@ func TestView(t *testing.T) {
 	require.Len(t, result.Rows, 0)
 
 	delete(viewParams, ViewQueryParamKey)
-	viewParams[ViewQueryParamKeys] = []interface{}{"Central", "Circle"}
+	viewParams[ViewQueryParamKeys] = []any{"Central", "Circle"}
 	result, viewErr = viewStore.View(ctx, ddocName, viewName, viewParams)
 	require.NoError(t, viewErr)
 	require.Len(t, result.Rows, 1)
@@ -152,10 +152,10 @@ func TestView(t *testing.T) {
 	// ViewCustom
 
 	// ViewQuery, Next
-	viewQueryParams := make(map[string]interface{})
+	viewQueryParams := make(map[string]any)
 	iterator, viewQueryErr := viewStore.ViewQuery(ctx, ddocName, viewName, viewQueryParams)
 	require.NoError(t, viewQueryErr)
-	var value interface{}
+	var value any
 	rowCount := 0
 	for iterator.Next(ctx, &value) {
 		rowCount++

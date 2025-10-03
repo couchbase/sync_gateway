@@ -362,11 +362,11 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	// Start [workerCount] goroutines, each issuing [getChangesCount] changes queries against a random channel
 
 	var workerWg sync.WaitGroup
-	for w := 0; w < workerCount; w++ {
+	for range workerCount {
 		workerWg.Add(1)
 		go func() {
 			changesSuccessCount := 0
-			for i := 0; i < getChangesCount; i++ {
+			for range getChangesCount {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly(t)
@@ -437,11 +437,11 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	// Start [workerCount] goroutines, each issuing [getChangesCount] changes queries against a random channel
 
 	var workerWg sync.WaitGroup
-	for w := 0; w < workerCount; w++ {
+	for range workerCount {
 		workerWg.Add(1)
 		go func() {
 			changesSuccessCount := 0
-			for i := 0; i < getChangesCount; i++ {
+			for range getChangesCount {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly(t)

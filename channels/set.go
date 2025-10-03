@@ -172,7 +172,7 @@ func (s Set) String() string {
 	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
 }
 
-func (s Set) BuildRedactor(function func(interface{}) base.RedactorFunc) base.Redactor {
+func (s Set) BuildRedactor(function func(any) base.RedactorFunc) base.Redactor {
 	return RedactorSet{
 		set:          s,
 		redactorFunc: function,
@@ -181,7 +181,7 @@ func (s Set) BuildRedactor(function func(interface{}) base.RedactorFunc) base.Re
 
 type RedactorSet struct {
 	set          Set
-	redactorFunc func(interface{}) base.RedactorFunc
+	redactorFunc func(any) base.RedactorFunc
 }
 
 func (redactorSet RedactorSet) Redact() string {

@@ -345,7 +345,7 @@ func ConnectToBucket(ctx context.Context, spec base.BucketSpec, failFast bool) (
 	}
 
 	// start a retry loop to connect to the bucket backing off double the delay each time
-	worker := func() (bool, error, interface{}) {
+	worker := func() (bool, error, any) {
 		bucket, err := base.GetBucket(ctx, spec)
 
 		// Retry if there was a non-fatal error
@@ -710,10 +710,7 @@ func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Durat
 
 			// exponential backoff with max wait
 			if retryInterval < maxRetryInterval {
-				retryInterval = retryInterval * 2
-				if retryInterval > maxRetryInterval {
-					retryInterval = maxRetryInterval
-				}
+				retryInterval = min(retryInterval*2, maxRetryInterval)
 			}
 		}
 	}
@@ -2506,7 +2503,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 		}
 
 		createdPrincipal := true
-		worker := func() (shouldRetry bool, err error, value interface{}) {
+		worker := func() (shouldRetry bool, err error, value any) {
 			_, _, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {

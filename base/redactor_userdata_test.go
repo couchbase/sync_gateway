@@ -70,14 +70,14 @@ func BenchmarkUserDataRedact(b *testing.B) {
 	// We'd expect a minor performance hit when redaction is enabled.
 	b.Run("Enabled", func(bn *testing.B) {
 		RedactUserData = true
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			username.Redact()
 		}
 	})
 
 	b.Run("EnabledSlice", func(bn *testing.B) {
 		RedactUserData = true
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			usernameSlice.Redact()
 		}
 	})
@@ -85,7 +85,7 @@ func BenchmarkUserDataRedact(b *testing.B) {
 	// When redaction is disabled, we should see no performance hit.
 	b.Run("Disabled", func(bn *testing.B) {
 		RedactUserData = false
-		for i := 0; i < bn.N; i++ {
+		for bn.Loop() {
 			username.Redact()
 		}
 	})
@@ -106,7 +106,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 
 	b.Run("WarnPlain", func(b *testing.B) {
 		ctx := TestCtx(b)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			WarnfCtx(ctx, "Log: %s", "Fixed String")
 		}
 	})
@@ -114,7 +114,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = true
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
@@ -122,7 +122,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("WarnRedactTrueUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = true
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
@@ -130,7 +130,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			WarnfCtx(ctx, "Log: %s", FakeLogger{})
 		}
 	})
@@ -138,14 +138,14 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("WarnRedactFalseUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			WarnfCtx(ctx, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 
 	b.Run("DebugPlain", func(b *testing.B) {
 		ctx := TestCtx(b)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			DebugfCtx(ctx, KeyAll, "Log: %s", "Fixed String")
 		}
 	})
@@ -153,7 +153,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("DebugRedactTrueNotUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = true
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			DebugfCtx(ctx, KeyAll, "Log: %s", FakeLogger{})
 		}
 	})
@@ -161,7 +161,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("DebugRedactTrueUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = true
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			DebugfCtx(ctx, KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})
@@ -169,7 +169,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("DebugRedactFalseNotUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			DebugfCtx(ctx, KeyAll, "Log: %s", FakeLogger{})
 		}
 	})
@@ -177,7 +177,7 @@ func BenchmarkRedactOnLog(b *testing.B) {
 	b.Run("DebugRedactFalseUD", func(b *testing.B) {
 		ctx := TestCtx(b)
 		RedactUserData = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			DebugfCtx(ctx, KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})

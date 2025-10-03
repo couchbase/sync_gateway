@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -445,9 +446,7 @@ func (rm *RevMessage) SetCollection(val *int) {
 
 // setProperties will add the given properties to the blip message, overwriting any that already exist.
 func (rm *RevMessage) SetProperties(properties blip.Properties) {
-	for k, v := range properties {
-		rm.Properties[k] = v
-	}
+	maps.Copy(rm.Properties, properties)
 }
 
 func (rm *RevMessage) String() string {

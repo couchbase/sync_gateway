@@ -21,8 +21,8 @@ import (
 
 // configFlag stores the config value, and the corresponding flag value
 type configFlag struct {
-	config               interface{}
-	flagValue            interface{}
+	config               any
+	flagValue            any
 	disabled             bool   // disabled can be true to disable the flag - if set this will error and force users to stop using the flag.
 	disabledErrorMessage string // disabledErrorMessage can be set to provide additional error message information
 }

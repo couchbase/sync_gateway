@@ -352,7 +352,7 @@ func (x *couchbaseServerManager) waitForStoppedInLogFile(ctx context.Context) er
 		if err != nil {
 			return true, err, nil
 		}
-		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
 			timestamp := strings.Split(line, " ")[0]
 			if timestamp > x.startingTimestamp {
 				return false, nil, nil

@@ -380,7 +380,7 @@ const alphaNumeric = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 func CreateProperty(size int) (result string) {
 	resultBytes := make([]byte, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
 	}
 	return string(resultBytes)
@@ -673,7 +673,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 
 // Make a deep copy from src into dst.
 // Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
-func DeepCopyInefficient(dst interface{}, src interface{}) error {
+func DeepCopyInefficient(dst any, src any) error {
 	if dst == nil {
 		return fmt.Errorf("dst cannot be nil")
 	}
@@ -890,11 +890,11 @@ func LongRunningTest(t *testing.T) {
 	})
 }
 
-func AssertTimeGreaterThan(t *testing.T, e1, e2 time.Time, msgAndArgs ...interface{}) bool {
+func AssertTimeGreaterThan(t *testing.T, e1, e2 time.Time, msgAndArgs ...any) bool {
 	return AssertTimestampGreaterThan(t, e1.UnixNano(), e2.UnixNano(), msgAndArgs...)
 }
 
-func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...interface{}) bool {
+func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...any) bool {
 	// time.Nanoseconds has poor precision on Windows - equal is good enough there...
 	if runtime.GOOS == "windows" {
 		return assert.GreaterOrEqual(t, e1, e2, msgAndArgs...)
@@ -920,7 +920,7 @@ func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
 // MoveDocument moves the document from src to dst
 // Note: does not handle xattr contents
 func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
-	var data interface{}
+	var data any
 
 	srcCAS, err := src.Get(docID, &data)
 	require.NoError(t, err)
@@ -943,7 +943,7 @@ func FastRandBytes(t testing.TB, size int) []byte {
 }
 
 // MustJSONMarshal marshals the given value to JSON, and errors the test if it can not be turned into json.
-func MustJSONMarshal(t testing.TB, v interface{}) []byte {
+func MustJSONMarshal(t testing.TB, v any) []byte {
 	b, err := JSONMarshal(v)
 	require.NoError(t, err)
 	return b

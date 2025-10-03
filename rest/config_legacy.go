@@ -72,7 +72,7 @@ type LegacyServerConfig struct {
 
 // RemovedLegacyServerConfig are fields that used to be deprecated in a legacy config, but are now only present to log information about their removal.
 type RemovedLegacyServerConfig struct {
-	Replications interface{} `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
+	Replications any `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
 }
 
 type FacebookConfigLegacy struct {

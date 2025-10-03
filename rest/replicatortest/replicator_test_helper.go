@@ -91,7 +91,7 @@ func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int)
 	if attachments == nil {
 		return 0
 	}
-	attachment, ok := attachments[attachmentKey].(map[string]interface{})
+	attachment, ok := attachments[attachmentKey].(map[string]any)
 	assert.True(t, ok)
 	if !ok {
 		return 0

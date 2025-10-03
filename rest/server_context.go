@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -212,7 +213,7 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	numAttempts := int(timeout / interval)
 	ctx, cancelFn := context.WithTimeout(ctx, timeout)
 	defer cancelFn()
-	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value any) {
 		sc.lock.RLock()
 		defer sc.lock.RUnlock()
 		if len(sc._httpServers) == len(allServers) {
@@ -464,9 +465,7 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 
 	databases := make(map[string]*db.DatabaseContext, len(sc.databases_))
 
-	for name, database := range sc.databases_ {
-		databases[name] = database
-	}
+	maps.Copy(databases, sc.databases_)
 	return databases
 }
 
@@ -2090,7 +2089,7 @@ func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoint
 func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
 	retryCount := 0
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		endpointIdx := retryCount % len(endpoints)
 		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "", username, password, bytes.NewBuffer(requestBody))
 

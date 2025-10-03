@@ -658,7 +658,7 @@ type getCheckpointFn func() (checkpoint *replicationCheckpoint, err error)
 
 // setRetry is a retry loop for a setCheckpointFn, which will fetch a new RevID from a getCheckpointFn in the event of a write conflict.
 func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
-	for numAttempts := 0; numAttempts < 10; numAttempts++ {
+	for range 10 {
 		newRevID, err = setFn(checkpoint)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "409") {

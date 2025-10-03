@@ -118,7 +118,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 			}()
 			var out bytes.Buffer
 			enc := base.JSONEncoder(&out)
-			var row interface{}
+			var row any
 			for iter.Next(bh.loggingCtx, &row) {
 				if err = enc.Encode(row); err != nil { // always ends with a newline
 					return err

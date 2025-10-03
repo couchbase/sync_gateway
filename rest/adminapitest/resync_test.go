@@ -34,7 +34,7 @@ func TestResyncRollback(t *testing.T) {
 	defer rt.Close()
 
 	numDocs := 10
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 	assert.Equal(t, int64(numDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -91,7 +91,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	const corruptSequence = db.MaxSequencesToRelease + 1000
 
 	numDocs := 10
-	for i := 0; i < numDocs; i++ {
+	for i := range numDocs {
 		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 
@@ -100,7 +100,7 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	// corrupt the document sequence
-	var newSyncData map[string]interface{}
+	var newSyncData map[string]any
 	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = corruptSequence

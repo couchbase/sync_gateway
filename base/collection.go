@@ -18,6 +18,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -300,9 +301,7 @@ func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uu
 	genericStats := make(map[string]map[string]string)
 	for server, serverStats := range statsResult.Servers {
 		genericServerStats := make(map[string]string)
-		for k, v := range serverStats.Stats {
-			genericServerStats[k] = v
-		}
+		maps.Copy(genericServerStats, serverStats.Stats)
 		genericStats[server] = genericServerStats
 	}
 
@@ -406,7 +405,7 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 	}
 	bucketManager := b.cluster.Buckets()
 
-	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
+	workerFlush := func() (shouldRetry bool, err error, value any) {
 		if err := bucketManager.FlushBucket(b.GetName(), nil); err != nil {
 			WarnfCtx(ctx, "Error flushing bucket %s: %v  Will retry.", MD(b.GetName()).Redact(), err)
 			return true, err, nil
@@ -421,7 +420,7 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 	}
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		itemCount, err := b.BucketItemCount(ctx)
 		if err != nil {
 			return false, err, nil
@@ -741,7 +740,7 @@ func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.Metri
 	// filter duplicates from couchbase server or TextToMetricFamilies will fail MB-43772
 	lines := map[string]struct{}{}
 	filteredOutput := []string{}
-	for _, line := range strings.Split(string(resp), "\n") {
+	for line := range strings.SplitSeq(string(resp), "\n") {
 		_, ok := lines[line]
 		if ok {
 			continue

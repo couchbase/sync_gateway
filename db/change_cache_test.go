@@ -366,7 +366,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	var changesFeedsWg sync.WaitGroup
 	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
 	// Start 100 continuous changes feeds
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		changesFeedsWg.Add(1)
 		seq1Wg.Add(1)
 		seq2Wg.Add(1)
@@ -423,7 +423,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	// Write sequence 1 to all channels, wait for it on feed
 	channelSet := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		channelSet[i] = fmt.Sprintf("chan_%d", i)
 	}
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -916,7 +916,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	// Use changesWg to block until test goroutines are both complete
 	var changesWg sync.WaitGroup
 
-	postQueryCallback := func(ddoc, viewName string, params map[string]interface{}) {
+	postQueryCallback := func(ddoc, viewName string, params map[string]any) {
 		close(queryBlocked) // Notifies that a query is blocked, trigger to initiate second changes request
 		queryWg.Wait()      // Waits until second changes request attempts to make a view query
 	}
@@ -983,7 +983,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 
 	// wait for second goroutine to be queued for the view lock (based on expvar)
 	var pendingQueries int64
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		pendingQueries = db.DbStats.Cache().ChannelCachePendingQueries.Value()
 		if pendingQueries > initialPendingQueries {
 			break
@@ -1495,7 +1495,7 @@ func TestUnusedSequencesInSyncData(t *testing.T) {
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(6)
 	retrievedXattr["unused_sequences"] = []uint64{2, 3, 4, 5}
@@ -1532,7 +1532,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
 	// Write docs to non-queried channel first, to increase cache.nextSequence
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		channels := []string{"islands"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-ch-%d", i)
@@ -1547,7 +1547,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	assert.Equal(t, 0, changesCount)
 
 	// Write some documents to channel zero
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		channels := []string{"zero"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-z-%d", i)
@@ -1590,7 +1590,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Start writing docs
 	go func() {
-		for i := 0; i < docCount; i++ {
+		for i := range docCount {
 			channels := []string{"zero"}
 			body := Body{"serialnumber": int64(i), "channels": channels}
 			docID := fmt.Sprintf("loadCache-%d", i)
@@ -1718,7 +1718,7 @@ func NewTestProcessEntryFeed(numChannels int, numSources int) *testProcessEntryF
 	}
 
 	feed.channelMaps = make([]channels.ChannelMap, numChannels)
-	for i := 0; i < numChannels; i++ {
+	for i := range numChannels {
 		channelName := fmt.Sprintf("channel_%d", i)
 		feed.channelMaps[i] = channels.ChannelMap{
 			channelName: nil,
@@ -1845,7 +1845,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			bm.feed.reset()
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				entry := bm.feed.Next()
 				_ = changeCache.processEntry(ctx, entry)
 			}
@@ -1867,7 +1867,7 @@ func NewTestDocChangedFeed(numChannels int, numSources int) *testDocChangedFeed 
 		sources:   make([]uint64, numSources),
 	}
 	feed.channelNames = make([]string, numChannels)
-	for i := 0; i < numChannels; i++ {
+	for i := range numChannels {
 		feed.channelNames[i] = fmt.Sprintf("channel_%d", i)
 	}
 	feed.reset()
@@ -1905,7 +1905,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,
-		Key:          []byte(fmt.Sprintf("doc_%d", entrySeq)),
+		Key:          fmt.Appendf(nil, "doc_%d", entrySeq),
 		Value:        value,
 		DataType:     base.MemcachedDataTypeXattr,
 		Cas:          192335130121237, // 0x0000aeed831bd415
@@ -2005,7 +2005,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			bm.feed.reset()
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				feedEntry := bm.feed.Next()
 				changeCache.DocChanged(feedEntry, DocTypeDocument)
 			}
@@ -2076,7 +2076,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 
 	// process some sequences over cache
 	currNumSkippedSeqs := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	for j := 0; j < 10; j++ {
+	for range 10 {
 		en := feed.Next()
 		_ = testChangeCache.processEntry(ctx, en)
 		testChangeCache.updateStats(ctx)
@@ -2153,7 +2153,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	expSliceLen := []int64{2, 3, 4, 4, 3}
 
 	numSeqsInList := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
-	for j := 0; j < len(arrivingSeqs); j++ {
+	for j := range arrivingSeqs {
 		newEntry := &LogEntry{
 			DocID:    fmt.Sprintf("doc_%d", arrivingSeqs),
 			RevID:    "1-abcdefabcdefabcdef",
@@ -3148,7 +3148,7 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(20)
 	newXattrVal := map[string][]byte{
@@ -3199,7 +3199,7 @@ func pendingLogsAsString(pendingLogs LogPriorityQueue) string {
 	count := len(pendingLogs)
 	result := "{"
 	delimiter := ""
-	for i := 0; i < count; i++ {
+	for range count {
 		pendingEntry := heap.Pop(&pendingLogs).(*LogEntry)
 		result += fmt.Sprintf("%s[%d, %d]", delimiter, pendingEntry.Sequence, pendingEntry.EndSequence)
 		delimiter = ","

@@ -56,9 +56,9 @@ type N1QLStore interface {
 	CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(ctx context.Context, indexName string, options *N1qlIndexOptions) error
 	DropIndex(ctx context.Context, indexName string) error
-	ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
+	ExplainQuery(ctx context.Context, statement string, params map[string]any) (plan map[string]any, err error)
 	GetIndexMeta(ctx context.Context, indexName string) (exists bool, meta *IndexMeta, err error)
-	Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
+	Query(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string
@@ -82,7 +82,7 @@ type N1QLStore interface {
 	sgbucket.BucketStoreFeatureIsSupported
 }
 
-func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params map[string]any) (plan map[string]any, err error) {
 	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
 	explainResults, explainErr := store.Query(ctx, explainStatement, params, RequestPlus, true)
 
@@ -219,7 +219,7 @@ func createIndexFromStatement(ctx context.Context, store N1QLStore, indexName st
 // Waits for index to exist/not exist.  Used in response to background create/drop processing by server.
 func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName string, shouldExist bool) error {
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		// GetIndexMeta has its own error retry handling,
 		// but keep the retry logic up here for checking if the index exists.
 		exists, _, err := store.GetIndexMeta(ctx, indexName)
@@ -254,7 +254,7 @@ func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) e
 	// the provided indexes can be in a state that is not yet ready to take a build command
 	// there's a delay between the time of index creation and when it's actually found in the system:indexes table
 	// this results in buildIndexes returning a not found error for an index that was very recently created
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		err = buildIndexes(ctx, s, indexSet)
 		if IsIndexNotFoundError(err) {
 			DebugfCtx(ctx, KeyQuery, "Index not found error when building indexes - will retry: %v", err)
@@ -470,7 +470,7 @@ func isTransientIndexerError(err error) bool {
 	return false
 }
 
-func SlowQueryLog(ctx context.Context, startTime time.Time, threshold time.Duration, messageFormat string, args ...interface{}) {
+func SlowQueryLog(ctx context.Context, startTime time.Time, threshold time.Duration, messageFormat string, args ...any) {
 	if elapsed := time.Now().Sub(startTime); elapsed > threshold {
 		InfofCtx(ctx, KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}
@@ -512,7 +512,7 @@ type gocbRawIterator struct {
 }
 
 // Unmarshal a single result row into valuePtr, and then close the iterator
-func (i *gocbRawIterator) One(ctx context.Context, valuePtr interface{}) error {
+func (i *gocbRawIterator) One(ctx context.Context, valuePtr any) error {
 	if !i.Next(ctx, valuePtr) {
 		err := i.Close()
 		if err != nil {
@@ -528,7 +528,7 @@ func (i *gocbRawIterator) One(ctx context.Context, valuePtr interface{}) error {
 }
 
 // Unmarshal the next result row into valuePtr.  Returns false when reaching end of result set
-func (i *gocbRawIterator) Next(ctx context.Context, valuePtr interface{}) bool {
+func (i *gocbRawIterator) Next(ctx context.Context, valuePtr any) bool {
 
 	nextBytes := i.rawResult.NextBytes()
 	if nextBytes == nil {
@@ -603,7 +603,7 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 			return false, err, nil
 		}
 		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
-		for i := 0; i < len(currIndexes); i++ {
+		for i := range currIndexes {
 			name := currIndexes[i].Name
 			// use slices.Contains since the number of indexes is expected to be small
 			if currIndexes[i].State == IndexStateOnline && slices.Contains(indexNames, name) {

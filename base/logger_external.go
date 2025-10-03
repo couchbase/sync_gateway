@@ -65,7 +65,7 @@ type GoCBLogger struct{}
 var _ gocb.Logger = GoCBLogger{}
 
 // Log wraps the levelled SG logs for gocb to use. Log levels are not changed or remapped.
-func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...any) error {
 	switch level {
 	case gocb.LogError:
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
@@ -87,7 +87,7 @@ type GoCBCoreLogger struct{}
 
 var _ gocbcore.Logger = GoCBCoreLogger{}
 
-func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...any) error {
 	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
 }
 
@@ -107,7 +107,7 @@ var _ gocb.Logger = GoCBLoggerRemapped{}
 //	Trace  -> SG Trace
 //	Sched  -> SG Trace
 //	Others -> no-op
-func (GoCBLoggerRemapped) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBLoggerRemapped) Log(level gocb.LogLevel, offset int, format string, v ...any) error {
 	switch level {
 	case gocb.LogError:
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
@@ -125,7 +125,7 @@ type GoCBCoreLoggerRemapped struct{}
 
 var _ gocbcore.Logger = GoCBCoreLoggerRemapped{}
 
-func (GoCBCoreLoggerRemapped) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBCoreLoggerRemapped) Log(level gocbcore.LogLevel, offset int, format string, v ...any) error {
 	return GoCBLoggerRemapped{}.Log(gocb.LogLevel(level), offset, format, v...)
 }
 
@@ -137,7 +137,7 @@ func (GoCBCoreLoggerRemapped) Log(level gocbcore.LogLevel, offset int, format st
 //	bypasses clog logging, and so won't end up in this callback.
 //
 // **************************************************************************
-func ClogCallback(level, format string, v ...interface{}) string {
+func ClogCallback(level, format string, v ...any) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
 		logTo(context.TODO(), LevelError, KeyAll, KeyDCP.String()+": "+format, v...)
@@ -195,41 +195,41 @@ func (CBGoUtilsLogger) Level() logging.Level {
 	}
 }
 
-func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Fatalf(fmt string, args ...any) {
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
-func (CBGoUtilsLogger) Severef(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Severef(fmt string, args ...any) {
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Errorf(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Errorf(fmt string, args ...any) {
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Warnf(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Warnf(fmt string, args ...any) {
 	logTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Infof(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Infof(fmt string, args ...any) {
 	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Requestf(rlevel logging.Level, fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Requestf(rlevel logging.Level, fmt string, args ...any) {
 	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Tracef(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Tracef(fmt string, args ...any) {
 	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Debugf(fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Debugf(fmt string, args ...any) {
 	logTo(context.TODO(), LevelDebug, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
-func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}) {
+func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...any) {
 	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 

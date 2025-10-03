@@ -43,7 +43,7 @@ const (
 type rootResponse struct {
 	Admin            bool   `json:"ADMIN,omitempty"`
 	CouchDB          string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
-	Vendor           vendor `json:"vendor,omitempty"`
+	Vendor           vendor `json:"vendor"`
 	Version          string `json:"version,omitempty"`
 	PersistentConfig bool   `json:"persistent_config"`
 }
@@ -142,7 +142,7 @@ func (h *handler) handleAttachmentMigration() error {
 	}
 
 	if action == string(db.BackgroundProcessActionStart) {
-		err := h.db.AttachmentMigrationManager.Start(h.ctx(), map[string]interface{}{
+		err := h.db.AttachmentMigrationManager.Start(h.ctx(), map[string]any{
 			"reset": reset,
 		})
 		if err != nil {
@@ -199,7 +199,7 @@ func (h *handler) handleCompact() error {
 	if compactionType == compactionTypeTombstone {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]interface{}{
+				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]any{
 					"database": h.db,
 				})
 				if err != nil {
@@ -237,7 +237,7 @@ func (h *handler) handleCompact() error {
 
 	if compactionType == compactionTypeAttachment {
 		if action == string(db.BackgroundProcessActionStart) {
-			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]interface{}{
+			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]any{
 				"database": h.db,
 				"reset":    h.getBoolQuery("reset"),
 				"dryRun":   h.getBoolQuery("dry_run"),
@@ -396,7 +396,7 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
+			err := h.db.ResyncManager.Start(h.ctx(), map[string]any{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,

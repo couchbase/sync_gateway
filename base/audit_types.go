@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"strconv"
 )
@@ -125,16 +126,12 @@ func (ed *EventDescriptor) expandMandatoryFieldGroups(groups []fieldGroup) {
 
 	// common global fields
 	fields := fieldsByGroup[fieldGroupGlobal]
-	for k, v := range fields {
-		ed.MandatoryFields[k] = v
-	}
+	maps.Copy(ed.MandatoryFields, fields)
 
 	// event-specific field groups
 	for _, group := range groups {
 		groupFields := fieldsByGroup[group]
-		for k, v := range groupFields {
-			ed.MandatoryFields[k] = v
-		}
+		maps.Copy(ed.MandatoryFields, groupFields)
 	}
 }
 
@@ -145,9 +142,7 @@ func (ed *EventDescriptor) expandOptionalFieldGroups(groups []fieldGroup) {
 	// event-specific field groups
 	for _, group := range groups {
 		groupFields := fieldsByGroup[group]
-		for k, v := range groupFields {
-			ed.OptionalFields[k] = v
-		}
+		maps.Copy(ed.OptionalFields, groupFields)
 	}
 }
 

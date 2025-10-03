@@ -133,7 +133,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 
 	releasedCount := 0
 	// Ensure unused sequence is released on Stop
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		releasedCount = int(testStats.SequenceReleasedCount.Value())
 		if releasedCount == 1 {
 			break
@@ -165,7 +165,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 			// Wait for 500ms for releaseSequenceMonitor time.After to trigger
 			time.Sleep(100 * time.Millisecond)
 
-			for i := 0; i < 500; i++ {
+			for range 500 {
 				wg.Add(1)
 				go func(a *sequenceAllocator) {
 					_, err := a.nextSequence(ctx)
@@ -818,7 +818,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	documentCount := 10
 	var updateWg sync.WaitGroup
 	updateWg.Add(documentCount)
-	for i := 0; i < documentCount; i++ {
+	for range documentCount {
 		go func() {
 			_ = multiNodeUpdate(t, ctx, importFeedAllocator, clientAllocators, 5, 10*time.Millisecond)
 			updateWg.Done()
@@ -856,7 +856,7 @@ func TestVariableRateAllocators(t *testing.T) {
 func multiNodeUpdate(t *testing.T, ctx context.Context, importAllocator *sequenceAllocator, clientAllocators []*sequenceAllocator, updateCount int, interval time.Duration) (releasedCount uint64) {
 	currentSequence, _ := importAllocator.nextSequence(ctx)
 
-	for i := 0; i < updateCount; i++ {
+	for range updateCount {
 		allocatorIndex := rand.Intn(len(clientAllocators))
 		clientAllocator := clientAllocators[allocatorIndex]
 		nextSequence, err := clientAllocator.nextSequence(ctx)

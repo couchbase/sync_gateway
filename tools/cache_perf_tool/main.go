@@ -233,7 +233,7 @@ outerloop:
 		}
 	}
 
-	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
+	workerFunc := func() (shouldRetry bool, err error, val any) {
 		return numGoroutines.Load() != int32(0), nil, val
 	}
 	err, _ = base.RetryLoop(parentCtx, "wait for writing goroutines to stop", workerFunc, base.CreateSleeperFunc(500, 100))
@@ -248,8 +248,8 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 	chanIDList := make([]channels.ID, 0, clientChans)
 	chanCount := 0
 	var chanID channels.ID
-	for i := 0; i < numClients; i++ {
-		for j := 0; j < clientChans; j++ { // create clientChans number of channels for each change waiter
+	for range numClients {
+		for range clientChans { // create clientChans number of channels for each change waiter
 			if chanCount == totalSystemChannels {
 				chanCount = 0 // reset channel count so we don't go over system channels count
 			}
@@ -377,8 +377,8 @@ func extractDelays(delayStr string, mode string) ([]time.Duration, error) {
 	if delayStr == "" {
 		return delays, nil
 	}
-	delayList := strings.Split(delayStr, ",")
-	for _, delay := range delayList {
+	delayList := strings.SplitSeq(delayStr, ",")
+	for delay := range delayList {
 		delayInt, err := strconv.Atoi(delay)
 		if err != nil {
 			log.Printf("Error parsing delay: %v", err)

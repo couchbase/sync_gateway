@@ -236,12 +236,12 @@ func BenchmarkSpecialProperties(b *testing.B) {
 
 	for _, t := range tests {
 		b.Run(t.name+"-StripInternalProperties", func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				StripInternalProperties(t.body)
 			}
 		})
 		b.Run(t.name+"-stripAllInternalProperties", func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				stripAllSpecialProperties(t.body)
 			}
 		})

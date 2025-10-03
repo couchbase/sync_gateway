@@ -393,7 +393,7 @@ func createJWT(subject string, issuerUrl string, authState AuthState) (token str
 	return createJWTWithExtraClaims(subject, issuerUrl, authState, customClaims)
 }
 
-func createJWTWithExtraClaims(subject, issuerUrl string, authState AuthState, extraClaims interface{}) (token string, err error) {
+func createJWTWithExtraClaims(subject, issuerUrl string, authState AuthState, extraClaims any) (token string, err error) {
 	key, err := privateKey()
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key: %v", err)

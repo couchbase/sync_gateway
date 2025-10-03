@@ -985,11 +985,11 @@ func (h LogPriorityQueue) Len() int           { return len(h) }
 func (h LogPriorityQueue) Less(i, j int) bool { return h[i].Sequence < h[j].Sequence }
 func (h LogPriorityQueue) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
-func (h *LogPriorityQueue) Push(x interface{}) {
+func (h *LogPriorityQueue) Push(x any) {
 	*h = append(*h, x.(*LogEntry))
 }
 
-func (h *LogPriorityQueue) Pop() interface{} {
+func (h *LogPriorityQueue) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -1031,7 +1031,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 
-	worker := func() (bool, error, interface{}) {
+	worker := func() (bool, error, any) {
 		if c.getNextSequence() >= sequence+1 {
 			base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return false, nil, nil
@@ -1051,7 +1051,7 @@ func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxW
 func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 
-	worker := func() (bool, error, interface{}) {
+	worker := func() (bool, error, any) {
 		if c.getNextSequence() >= sequence+1 {
 			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {

@@ -223,15 +223,15 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	response := rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "user1")
 	RequireStatus(t, response, 201)
 
-	var docs []interface{}
+	var docs []any
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	require.Len(t, docs, 2)
-	first, ok := docs[0].(map[string]interface{})
+	first, ok := docs[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "bulk1", first["id"])
 	assert.Equal(t, "1-17424d2a21bf113768dfdbcd344741ac", first["rev"])
 
-	second, ok := docs[1].(map[string]interface{})
+	second, ok := docs[1].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "bulk2", second["id"])
 	assert.Equal(t, "1-f120ccb33c0a6ef43ef202ade28f98ef", second["rev"])

@@ -192,7 +192,7 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 		runner.roles = map[string][]string{}
 		runner.expiry = nil
 	}
-	runner.After = func(result otto.Value, err error) (interface{}, error) {
+	runner.After = func(result otto.Value, err error) (any, error) {
 		output := runner.output
 		runner.output = nil
 		if err == nil {

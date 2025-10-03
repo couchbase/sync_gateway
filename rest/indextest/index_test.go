@@ -268,7 +268,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 	waitAndRequireDBState(t, sc, dbName, db.DBOnline)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("doc%d", i)
 		docBody := `{"channel1":["ABC"], "channel2":["DEF"]}`
 		resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/"+keyspace+"/"+docID, docBody)
@@ -329,7 +329,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
 	// verify raw documents in the bucket to validate that resync ran before db came online
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("doc%d", i)
 		requireActiveChannel(t, docCollection, docID, "DEF")
 	}
@@ -932,7 +932,7 @@ func getRESTKeyspaces(dbName string, scopesConfig rest.ScopesConfig) []string {
 func waitAndRequireDBState(t *testing.T, sc *rest.ServerContext, dbName string, targetState uint32) {
 	// wait for db to come online
 	var stateCurr string
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		var dbRootResponse rest.DatabaseRoot
 		resp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+dbName+"/", "")
 		resp.Unmarshal(&dbRootResponse)

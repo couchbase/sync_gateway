@@ -22,8 +22,7 @@ import (
 func BenchmarkExpvarString(b *testing.B) {
 	expvarMap := initExpvarBaseEquivalent()
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = expvarMap.String()
 	}
 }
@@ -31,8 +30,7 @@ func BenchmarkExpvarString(b *testing.B) {
 func BenchmarkExpvarAdd(b *testing.B) {
 	expvarMap := initExpvarBaseEquivalent()
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		expvarMap.Get("global").(*expvar.Map).Get("resource_utilization").(*expvar.Map).Add("error_count", 1)
 	}
 }
@@ -40,8 +38,7 @@ func BenchmarkExpvarAdd(b *testing.B) {
 func BenchmarkExpvarSet(b *testing.B) {
 	expvarMap := initExpvarBaseEquivalent()
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		expvarMap.Get("global").(*expvar.Map).Get("resource_utilization").(*expvar.Map).Get("error_count").(*expvar.Int).Set(1)
 	}
 }
@@ -49,8 +46,7 @@ func BenchmarkExpvarSet(b *testing.B) {
 func BenchmarkExpvarGet(b *testing.B) {
 	expvarMap := initExpvarBaseEquivalent()
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = expvarMap.Get("global").(*expvar.Map).Get("resource_utilization").(*expvar.Map).Get("error_count").(*expvar.Int).Value()
 	}
 }
@@ -70,8 +66,7 @@ func BenchmarkNewStatsMarshal(b *testing.B) {
 	sgwStats, err := NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = sgwStats.String()
 	}
 }
@@ -80,8 +75,7 @@ func BenchmarkNewStatAdd(b *testing.B) {
 	sgwStats, err := NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		sgwStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Add(1)
 	}
 }
@@ -90,8 +84,7 @@ func BenchmarkNewStatSet(b *testing.B) {
 	sgwStats, err := NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		sgwStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Set(1)
 	}
 }
@@ -100,8 +93,7 @@ func BenchmarkNewStatGet(b *testing.B) {
 	sgwStats, err := NewSyncGatewayStats()
 	require.NoError(b, err)
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = sgwStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
 	}
 }

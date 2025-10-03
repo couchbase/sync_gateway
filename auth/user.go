@@ -43,12 +43,12 @@ type userImplBody struct {
 	Email_           string          `json:"email,omitempty"`
 	Disabled_        bool            `json:"disabled,omitempty"`
 	PasswordHash_    []byte          `json:"passwordhash_bcrypt,omitempty"`
-	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	OldPasswordHash_ any             `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
 	JWTRoles_        ch.TimedSet     `json:"jwt_roles,omitempty"`
 	JWTChannels_     ch.TimedSet     `json:"jwt_channels,omitempty"`
 	JWTIssuer_       string          `json:"jwt_issuer,omitempty"`
-	JWTLastUpdated_  time.Time       `json:"jwt_last_updated,omitempty"`
+	JWTLastUpdated_  time.Time       `json:"jwt_last_updated"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of RebuildRoles.

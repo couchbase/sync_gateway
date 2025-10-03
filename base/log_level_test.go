@@ -88,7 +88,7 @@ func TestLogLevelNames(t *testing.T) {
 }
 
 func TestLogLevelText(t *testing.T) {
-	for i := LogLevel(0); i < levelCount; i++ {
+	for i := range levelCount {
 		t.Run(fmt.Sprintf("LogLevel: %v", i), func(ts *testing.T) {
 			text, err := i.MarshalText()
 			assert.NoError(ts, err)
@@ -163,7 +163,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 }
 
 func BenchmarkLogLevelName(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = LevelWarn.String()
 	}
 }
@@ -180,7 +180,7 @@ func BenchmarkLogLevelEnabled(b *testing.B) {
 
 	for _, t := range tests {
 		b.Run(t.Name, func(bn *testing.B) {
-			for i := 0; i < bn.N; i++ {
+			for bn.Loop() {
 				t.SetLogLevel.Enabled(t.TestLogLevel)
 			}
 		})

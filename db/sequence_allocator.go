@@ -347,10 +347,7 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 	// this indicates we're making an incr call more frequently than we want to.  Triggers an increase in batch size to
 	// reduce incr frequency.
 	if time.Since(s.lastSequenceReserveTime) < MaxSequenceIncrFrequency {
-		s.sequenceBatchSize = s.sequenceBatchSize * sequenceBatchMultiplier
-		if s.sequenceBatchSize > maxBatchSize {
-			s.sequenceBatchSize = maxBatchSize
-		}
+		s.sequenceBatchSize = min(s.sequenceBatchSize*sequenceBatchMultiplier, maxBatchSize)
 		base.DebugfCtx(ctx, base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
 
@@ -455,7 +452,7 @@ func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, prevAllocTo
 	// find diff between current _sync:seq value and what we expected it to be + correction value
 	correctionIncrValue := (expectedValue - prevAllocTo) + syncSeqCorrectionValue
 
-	worker := func() (bool, error, interface{}) {
+	worker := func() (bool, error, any) {
 		// grab _sync:seq value + its current cas value
 		var result uint64
 		cas, err := s.datastore.Get(s.metaKeys.SyncSeqKey(), &result)

@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -220,11 +221,9 @@ func (opm OIDCProviderMap) GetProviderForIssuer(ctx context.Context, issuer stri
 		clientID := base.ValDefault(provider.ClientID, "")
 		if provider.Issuer == issuer && clientID != "" {
 			// Iterate over the audiences looking for a match
-			for _, aud := range audiences {
-				if clientID == aud {
-					base.DebugfCtx(ctx, base.KeyAuth, "Provider matches, returning")
-					return provider
-				}
+			if slices.Contains(audiences, clientID) {
+				base.DebugfCtx(ctx, base.KeyAuth, "Provider matches, returning")
+				return provider
 			}
 		}
 	}
@@ -436,7 +435,7 @@ func getJWTUsername(provider JWTConfigCommon, identity *Identity) (username stri
 }
 
 // formatUsername returns the string representation of the given username value.
-func formatUsername(value interface{}) (string, error) {
+func formatUsername(value any) (string, error) {
 	switch valueType := value.(type) {
 	case string:
 		return valueType, nil
@@ -725,7 +724,7 @@ func (op *OIDCProvider) stopDiscoverySync() {
 // amount of time in seconds that the fetched responses are allowed to be used again (from the
 // time when a request is made). The second value (ok) is true if max-age exists, and false if not.
 func cacheControlMaxAge(header http.Header) (maxAge time.Duration, ok bool, err error) {
-	for _, field := range strings.Split(header.Get("Cache-Control"), ",") {
+	for field := range strings.SplitSeq(header.Get("Cache-Control"), ",") {
 		parts := strings.SplitN(strings.TrimSpace(field), "=", 2)
 		k := strings.ToLower(strings.TrimSpace(parts[0]))
 		if k != "max-age" {

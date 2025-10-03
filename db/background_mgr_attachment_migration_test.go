@@ -28,10 +28,10 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create some docs with attachments defined
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docBody := Body{
 			"value":         1234,
-			BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 		}
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
@@ -40,7 +40,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
-	for j := 0; j < 5; j++ {
+	for j := range 5 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
 		value, _, err := collection.dataStore.GetRaw(key)
 		require.NoError(t, err)
@@ -86,10 +86,10 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 
 	// create some docs with attachments defined, a large number is needed to allow us to stop the migration midway
 	// through without it completing first
-	for i := 0; i < 4000; i++ {
+	for i := range 4000 {
 		docBody := Body{
 			"value":         1234,
-			BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 		}
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
@@ -191,7 +191,7 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 
 	docBody := Body{
 		"value":         1234,
-		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	key := t.Name()
 	_, _, err := collection.Put(ctx, key, docBody)
@@ -206,7 +206,7 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	// define some attachment meta on sync data
 	syncData.AttachmentsPre4dot0 = AttachmentsMeta{}
-	att := map[string]interface{}{
+	att := map[string]any{
 		"stub":   true,
 		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
 		"length": 11,

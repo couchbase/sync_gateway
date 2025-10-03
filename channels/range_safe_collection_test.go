@@ -79,14 +79,14 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 	assert.Equal(t, rsc.Length(), 0)
 
 	// Add  elements to the set
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 
 		rsc.GetOrInsert(NewID(fmt.Sprintf("key_%d", i), base.DefaultCollectionID), fmt.Sprintf("value_%d", i))
 	}
 
 	// Simple range
 	count := 0
-	countFunc := func(value interface{}) bool {
+	countFunc := func(value any) bool {
 		count++
 		return true
 	}
@@ -96,7 +96,7 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 
 	// Range with concurrent insert
 	count = 0
-	appendFunc := func(value interface{}) bool {
+	appendFunc := func(value any) bool {
 		count++
 		rsc.GetOrInsert(NewID(fmt.Sprintf("key2_%d", count), base.DefaultCollectionID), fmt.Sprintf("value2_%d", count))
 		return true
@@ -129,7 +129,7 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 	// Range a few times
 	go func() {
 		count := 0
-		countFunc := func(value interface{}) bool {
+		countFunc := func(value any) bool {
 			count++
 			return true
 		}

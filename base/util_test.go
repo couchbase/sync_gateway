@@ -36,9 +36,9 @@ func TestFixJSONNumbers(t *testing.T) {
 	assert.Equal(t, float64(12345678901234567890), FixJSONNumbers(float64(12345678901234567890)))
 
 	assert.Equal(t, "foo", FixJSONNumbers("foo"))
-	assert.Equal(t, []interface{}{1, int64(123456)}, FixJSONNumbers([]interface{}{1, float64(123456)}))
+	assert.Equal(t, []any{1, int64(123456)}, FixJSONNumbers([]any{1, float64(123456)}))
 
-	assert.Equal(t, map[string]interface{}{"foo": int64(123456)}, FixJSONNumbers(map[string]interface{}{"foo": float64(123456)}))
+	assert.Equal(t, map[string]any{"foo": int64(123456)}, FixJSONNumbers(map[string]any{"foo": float64(123456)}))
 
 }
 
@@ -81,12 +81,12 @@ func BenchmarkJSONStringUtils(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run("ConvertToJSONString "+test.input, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = ConvertToJSONString(test.input)
 			}
 		})
 		b.Run("ConvertJSONString "+test.input, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = ConvertJSONString(test.output)
 			}
 		})
@@ -184,7 +184,7 @@ func TestRetryLoop(t *testing.T) {
 	// Make sure that the worker retries if an error is returned and shouldRetry == true
 
 	numTimesInvoked := 0
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		log.Printf("Worker invoked")
 		numTimesInvoked += 1
 		if numTimesInvoked <= 3 {
@@ -281,21 +281,21 @@ func TestValueToStringArray(t *testing.T) {
 	assert.Equal(t, []string{"foobar", "moocar"}, result)
 	assert.Nil(t, nonStrings)
 
-	result, nonStrings = ValueToStringArray([]interface{}{"foobar", 1, true})
+	result, nonStrings = ValueToStringArray([]any{"foobar", 1, true})
 	assert.Equal(t, []string{"foobar"}, result)
-	assert.Equal(t, []interface{}{1, true}, nonStrings)
+	assert.Equal(t, []any{1, true}, nonStrings)
 
-	result, nonStrings = ValueToStringArray([]interface{}{"a", []interface{}{"b", "g"}, "c", 4})
+	result, nonStrings = ValueToStringArray([]any{"a", []any{"b", "g"}, "c", 4})
 	assert.Equal(t, []string{"a", "c"}, result)
-	assert.Equal(t, []interface{}{[]interface{}{"b", "g"}, 4}, nonStrings)
+	assert.Equal(t, []any{[]any{"b", "g"}, 4}, nonStrings)
 
 	result, nonStrings = ValueToStringArray(4)
 	assert.Nil(t, result)
-	assert.Equal(t, []interface{}{4}, nonStrings)
+	assert.Equal(t, []any{4}, nonStrings)
 
-	result, nonStrings = ValueToStringArray([]interface{}{1, true})
+	result, nonStrings = ValueToStringArray([]any{1, true})
 	assert.Equal(t, result, []string{})
-	assert.Equal(t, []interface{}{1, true}, nonStrings)
+	assert.Equal(t, []any{1, true}, nonStrings)
 }
 
 func TestReflectExpiry(t *testing.T) {
@@ -509,16 +509,16 @@ type A struct {
 
 // Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
 func TestDeepCopyInefficient(t *testing.T) {
-	src := map[string]interface{}{
+	src := map[string]any{
 		"String":  "Hello World",
 		"Int":     5,
 		"Strings": []string{"A", "B"},
 		"Ints":    map[string]int{"A": 1, "B": 2},
-		"As": map[string]map[string]interface{}{
-			"One": map[string]interface{}{
+		"As": map[string]map[string]any{
+			"One": map[string]any{
 				"String": "2",
 			},
-			"Two": map[string]interface{}{
+			"Two": map[string]any{
 				"String": "3",
 			},
 		},
@@ -845,7 +845,7 @@ func TestInjectJSONProperties(t *testing.T) {
 			}
 
 			assert.Equal(tt, test.expectedOutput, string(output))
-			assert.NoError(tt, JSONUnmarshal(output, &map[string]interface{}{}), "produced invalid JSON")
+			assert.NoError(tt, JSONUnmarshal(output, &map[string]any{}), "produced invalid JSON")
 		})
 	}
 }
@@ -976,7 +976,7 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 			output, err := InjectJSONProperties([]byte(test.input), test.pair)
 			assert.NoError(t, err)
 			assert.Equal(t, test.output, string(output))
-			assert.NoErrorf(t, JSONUnmarshal(output, &map[string]interface{}{}), "produced invalid JSON")
+			assert.NoErrorf(t, JSONUnmarshal(output, &map[string]any{}), "produced invalid JSON")
 		})
 	}
 }
@@ -1044,7 +1044,7 @@ func TestInjectJSONProperties_Multiple(t *testing.T) {
 
 			assert.Equal(tt, test.expectedOutput, string(output))
 
-			var m map[string]interface{}
+			var m map[string]any
 			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
@@ -1104,7 +1104,7 @@ func TestInjectJSONPropertiesFromBytes(t *testing.T) {
 
 			assert.Equal(tt, test.expectedOutput, string(output))
 
-			var m map[string]interface{}
+			var m map[string]any
 			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
@@ -1174,7 +1174,7 @@ func TestInjectJSONPropertiesFromBytes_Multiple(t *testing.T) {
 
 			assert.Equal(tt, test.expectedOutput, string(output))
 
-			var m map[string]interface{}
+			var m map[string]any
 			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
@@ -1213,7 +1213,7 @@ func BenchmarkInjectJSONPropertiesFromBytes(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				_, _ = InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes...)
 			}
 		})
@@ -1242,7 +1242,7 @@ func BenchmarkInjectJSONPropertiesFromBytes_Multiple(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				_, _ = InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes)
 			}
 		})
@@ -1271,7 +1271,7 @@ func BenchmarkInjectJSONProperties(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				_, _ = InjectJSONProperties([]byte(test.input), newKV)
 			}
 		})
@@ -1310,7 +1310,7 @@ func BenchmarkInjectJSONProperties_Multiple(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				_, _ = InjectJSONProperties([]byte(test.input), newKVs...)
 			}
 		})
@@ -1319,7 +1319,7 @@ func BenchmarkInjectJSONProperties_Multiple(b *testing.B) {
 
 func BenchmarkPanicRecover(b *testing.B) {
 	b.Run("recover panic", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			func() {
 				defer func() {
 					_ = recover()
@@ -1330,7 +1330,7 @@ func BenchmarkPanicRecover(b *testing.B) {
 	})
 
 	b.Run("recover no panic", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			func() {
 				defer func() {
 					_ = recover()
@@ -1340,7 +1340,7 @@ func BenchmarkPanicRecover(b *testing.B) {
 	})
 
 	b.Run("noop no panic", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			func() {
 				defer func() {}()
 			}()
@@ -1444,13 +1444,13 @@ func BenchmarkURLParse(b *testing.B) {
 	b.ResetTimer()
 	urlString := "https://username:password@example.org:8123/path?key=val&email=me@example.org"
 	b.Run("url.Parse", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = url.Parse(urlString)
 		}
 	})
 
 	b.Run("regex", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = basicAuthURLRegexp.ReplaceAllLiteralString(urlString, "://****:****@")
 		}
 	})
@@ -1693,32 +1693,32 @@ func TestReplaceLast(t *testing.T) {
 func TestAllOrNoneNil(t *testing.T) {
 	tests := []struct {
 		name string
-		args []interface{}
+		args []any
 		want bool
 	}{
 		{
 			name: "untyped nils",
-			args: []interface{}{nil, nil, nil},
+			args: []any{nil, nil, nil},
 			want: true,
 		},
 		{
 			name: "typed nils",
-			args: []interface{}{(*int64)(nil), (*float64)(nil), (*string)(nil), (*time.Time)(nil)},
+			args: []any{(*int64)(nil), (*float64)(nil), (*string)(nil), (*time.Time)(nil)},
 			want: true,
 		},
 		{
 			name: "one non-nil",
-			args: []interface{}{nil, Ptr("foo"), nil},
+			args: []any{nil, Ptr("foo"), nil},
 			want: false,
 		},
 		{
 			name: "one typed nil",
-			args: []interface{}{Ptr(1234), Ptr("foo"), (*time.Time)(nil)},
+			args: []any{Ptr(1234), Ptr("foo"), (*time.Time)(nil)},
 			want: false,
 		},
 		{
 			name: "all non-nil",
-			args: []interface{}{Ptr(1234), Ptr("foo"), Ptr(time.Second)},
+			args: []any{Ptr(1234), Ptr("foo"), Ptr(time.Second)},
 			want: true,
 		},
 	}

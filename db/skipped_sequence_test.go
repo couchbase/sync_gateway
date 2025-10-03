@@ -29,7 +29,7 @@ const multiplier = 8 // used to multiply sequence numbers in benchmarks
 func TestPushSingleSkippedSequence(t *testing.T) {
 	skippedList := NewSkippedSequenceSkiplist()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
 		require.NoError(t, err)
 	}
@@ -63,7 +63,7 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 func TestPushSkippedSequenceRange(t *testing.T) {
 	skippedList := NewSkippedSequenceSkiplist()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		start := i * 10
 		err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(start), uint64(start+5)))
 		require.NoError(t, err)
@@ -985,7 +985,7 @@ func setupBenchmarkForInsert(largeSlice bool, rangeEntries bool) *SkippedSequenc
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(200000000, 0))
 	if largeSlice {
-		for i := 0; i < 30000000; i++ {
+		for range 30000000 {
 			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
@@ -1012,7 +1012,7 @@ func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool) *SkippedSequenc
 	inputTime := time.Now().Unix() - 1000
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, inputTime))
 	if largeSlice {
-		for i := 0; i < 30000000; i++ {
+		for range 30000000 {
 			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction
@@ -1023,7 +1023,7 @@ func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool) *SkippedSequenc
 			}
 		}
 	} else {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction

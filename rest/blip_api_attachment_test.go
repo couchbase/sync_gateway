@@ -75,14 +75,14 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
-		greetings := respBody["greetings"].([]interface{})
+		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
+		assert.Equal(t, map[string]any{"hi": "bob"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+		attachments, ok := respBody[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
 		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
@@ -146,14 +146,14 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		respBody := btc.rt.GetDocVersion(docID, version2)
 
 		assert.Equal(t, docID, respBody[db.BodyId])
-		greetings := respBody["greetings"].([]interface{})
+		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
+		assert.Equal(t, map[string]any{"hi": "bob"}, greetings[0])
 
-		attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+		attachments, ok := respBody[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
 		assert.Len(t, attachments, 1)
-		hello, ok := attachments["hello.txt"].(map[string]interface{})
+		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 		assert.Equal(t, float64(11), hello["length"])
@@ -373,7 +373,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		var latestVersion *DocVersion
 		var firstVersion DocVersion
 		for i := range 3 {
-			version := btcRunner.AddRev(btc.id, docID, latestVersion, []byte(fmt.Sprintf(`{"rev": %d, "greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`, i)))
+			version := btcRunner.AddRev(btc.id, docID, latestVersion, fmt.Appendf(nil, `{"rev": %d, "greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`, i))
 			if latestVersion == nil {
 				firstVersion = version
 			}
@@ -393,9 +393,9 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.Code)
 
 		body := rt.GetDocBody(docID)
-		greetings := body["greetings"].([]interface{})
+		greetings := body["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
+		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[0])
 
 		attachments, ok := body[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)

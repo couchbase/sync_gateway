@@ -34,9 +34,9 @@ import (
 //	    "collection2": ["scope1.channel1", "scope1.channel2"]
 //	  }
 //	}
-func CollectionChannelsFromQueryParams(localCollections []string, queryParams interface{}) (perCollectionChannels [][]string, allCollectionsChannels []string, err error) {
+func CollectionChannelsFromQueryParams(localCollections []string, queryParams any) (perCollectionChannels [][]string, allCollectionsChannels []string, err error) {
 	switch val := queryParams.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		_, hasChannels := val["channels"]
 		_, hasCollectionsChannels := val["collections_channels"]
 		if hasChannels && hasCollectionsChannels {
@@ -44,7 +44,7 @@ func CollectionChannelsFromQueryParams(localCollections []string, queryParams in
 		}
 
 		if hasChannels {
-			if chanarray, ok := val["channels"].([]interface{}); ok {
+			if chanarray, ok := val["channels"].([]any); ok {
 				allCollectionsChannels, err = interfaceValsToStringVals(chanarray)
 				return nil, allCollectionsChannels, err
 			} else {
@@ -56,11 +56,11 @@ func CollectionChannelsFromQueryParams(localCollections []string, queryParams in
 			if localCollections == nil {
 				return nil, nil, errors.New("channel filters using 'collections_channels' also requires 'collections_local' to be specified")
 			}
-			if collectionChannels, ok := val["collections_channels"].(map[string]interface{}); ok {
+			if collectionChannels, ok := val["collections_channels"].(map[string]any); ok {
 				perCollectionChannels = make([][]string, len(localCollections))
 				for i, collection := range localCollections {
 					collectionQueryParams := collectionChannels[collection]
-					collectionQueryParamsArray, ok := collectionQueryParams.([]interface{})
+					collectionQueryParamsArray, ok := collectionQueryParams.([]any)
 					if !ok {
 						return nil, nil, errors.New("query_params must be a map of collection name to array of channels")
 					}
@@ -75,7 +75,7 @@ func CollectionChannelsFromQueryParams(localCollections []string, queryParams in
 			}
 		}
 		return perCollectionChannels, nil, nil
-	case []interface{}:
+	case []any:
 		allCollectionsChannels, err = interfaceValsToStringVals(val)
 		return nil, allCollectionsChannels, err
 	default:
@@ -84,7 +84,7 @@ func CollectionChannelsFromQueryParams(localCollections []string, queryParams in
 }
 
 // interfaceValsToStringVals takes a []interface{} and returns a []string
-func interfaceValsToStringVals(interfaceVals []interface{}) ([]string, error) {
+func interfaceValsToStringVals(interfaceVals []any) ([]string, error) {
 	stringVals := make([]string, len(interfaceVals))
 	for i := range interfaceVals {
 		str, ok := interfaceVals[i].(string)

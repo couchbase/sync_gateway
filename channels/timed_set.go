@@ -413,7 +413,7 @@ func TimedSetFromString(encoded string) TimedSet {
 // redactableTimedSet is a wrapper for TimedSet that allows it to be redacted in logs.
 type redactableTimedSet struct {
 	set          TimedSet
-	redactorFunc func(interface{}) base.RedactorFunc
+	redactorFunc func(any) base.RedactorFunc
 }
 
 // Redact returns the TimedSet as a redacted string for logging.

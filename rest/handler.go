@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1272,13 +1273,13 @@ func (h *handler) readJSON() (db.Body, error) {
 }
 
 // Parses a JSON request body into a custom structure.
-func (h *handler) readJSONInto(into interface{}) error {
+func (h *handler) readJSONInto(into any) error {
 	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
 // readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeJSON(val interface{}) ([]byte, error) {
+func (h *handler) readSanitizeJSON(val any) ([]byte, error) {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
 	if err != nil {
@@ -1481,13 +1482,13 @@ func (h *handler) writeRawJSONWithoutClientVerification(status int, b []byte) {
 }
 
 // writeJSON writes the given value as a JSON response with a 200 OK status.
-func (h *handler) writeJSON(value interface{}) {
+func (h *handler) writeJSON(value any) {
 	h.writeJSONStatus(http.StatusOK, value)
 }
 
 // Writes an object to the response in JSON format.
 // If status is nonzero, the header will be written with that status.
-func (h *handler) writeJSONStatus(status int, value interface{}) {
+func (h *handler) writeJSONStatus(status int, value any) {
 	if !h.requestAccepts("application/json") {
 		base.WarnfCtx(h.ctx(), "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
@@ -1562,7 +1563,7 @@ func (h *handler) writeWithMimetypeStatus(status int, value []byte, mimetype str
 	}
 }
 
-func (h *handler) addJSON(value interface{}) error {
+func (h *handler) addJSON(value any) error {
 	encoder := base.JSONEncoderCanonical(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
@@ -1767,12 +1768,7 @@ func (h *handler) shouldShowProductVersion() bool {
 }
 
 func requiresWritePermission(accessPermissions []Permission) bool {
-	for _, permission := range accessPermissions {
-		if permission == PermWriteAppData {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(accessPermissions, PermWriteAppData)
 }
 
 func (h *handler) isBlipSync() bool {

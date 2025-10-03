@@ -142,7 +142,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments(), "hello.txt")
-	attachmentData, ok := gotDoc.Attachments()["hello.txt"].(map[string]interface{})
+	attachmentData, ok := gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
 	assert.Equal(t, float64(11), attachmentData["length"])
@@ -168,7 +168,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments(), "hello.txt")
-	attachmentData, ok = gotDoc.Attachments()["hello.txt"].(map[string]interface{})
+	attachmentData, ok = gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
 	assert.Equal(t, float64(11), attachmentData["length"])
@@ -935,17 +935,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc3", "", false, nil)
 		}
 	})
@@ -956,17 +956,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.Get1xRevBody(ctx, "doc3", "1-a", false, nil)
 		}
 	})
@@ -992,17 +992,17 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc3", "", false, nil)
 		}
 	})
@@ -1013,17 +1013,17 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc3", updateBody, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
 
 	b.Run("ShortOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_, _ = collection.GetRev(ctx, "doc3", "1-a", false, nil)
 		}
 	})
@@ -1047,10 +1047,10 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = map[string]any(deltaSrcRev.Attachments)
 		}
 
-		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		deltaSrcMap := map[string]any(deltaSrcBody)
 		_ = base.Patch(&deltaSrcMap, newDoc.Body(ctx))
 	}
 
@@ -1060,7 +1060,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 			RevID: "1a",
 		}
 		newDoc.UpdateBodyBytes([]byte(`{"foo": "bart"}`))
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			getDelta(newDoc)
 		}
 	})
@@ -1074,7 +1074,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		longBody := Body{"val": string(largeDoc)}
 		bodyBytes, _ := base.JSONMarshal(longBody)
 		newDoc.UpdateBodyBytes(bodyBytes)
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			getDelta(newDoc)
 		}
 	})
@@ -1105,7 +1105,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	// Get available attachments by immediate ancestor revision or parent revision
 	meta, found := collection.getAvailableRevAttachments(ctx, doc, parent)
 	require.True(t, found, "Ancestor should exists")
-	attachment := meta["camera.txt"].(map[string]interface{})
+	attachment := meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
 	assert.Equal(t, json.Number("20"), attachment["length"])
 	assert.Equal(t, json.Number("1"), attachment["revpos"])
@@ -1113,7 +1113,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
 	require.True(t, found, "Ancestor should exists")
-	attachment = meta["camera.txt"].(map[string]interface{})
+	attachment = meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
 	assert.Equal(t, json.Number("20"), attachment["length"])
 	assert.Equal(t, json.Number("1"), attachment["revpos"])
@@ -1152,10 +1152,10 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "6213100", response["sku"])
-	revisions, ok := response[BodyRevisions].(map[string]interface{})
+	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
 	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
+	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
 	rev3, _, err := collection.DeleteDoc(ctx, docId, DocVersion{RevTreeID: rev2})
@@ -1175,10 +1175,10 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.Equal(t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "6213101", response["sku"])
-	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
 	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []interface{}{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
@@ -1205,10 +1205,10 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Equal(t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "Los Angeles", response["city"])
-	revisions, ok := response[BodyRevisions].(map[string]interface{})
+	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
 	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
+	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
 
 	// Create the second revision of the document
 	payload = `{"city":"Hollywood"}`
@@ -1227,10 +1227,10 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Equal(t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
-	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
 	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []interface{}{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
 
 	// Get body bytes from doc with unknown revision id; it simulates the error scenario.
 	// A 404 missing error should be thrown when trying get the body bytes of the document
@@ -1258,10 +1258,10 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Equal(t, docId, response[BodyId])
 	assert.Equal(t, rev3, response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
-	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
 	assert.Equal(t, json.Number("3"), revisions[RevisionsStart])
-	assert.Equal(t, []interface{}{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
+	assert.Equal(t, []any{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
 
 	// If the provided revision ID is blank and the current revision is already deleted
 	// when checking document revision history, it should throw 404 deleted error.
@@ -1289,7 +1289,7 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"pre25Atts only",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
@@ -1297,7 +1297,7 @@ func TestMergeAttachments(t *testing.T) {
 			},
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
@@ -1308,14 +1308,14 @@ func TestMergeAttachments(t *testing.T) {
 			"docAtts only",
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
@@ -1325,26 +1325,26 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"disjoint set",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att2": map[string]interface{}{
+				"att2": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
-				"att2": map[string]interface{}{
+				"att2": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
@@ -1354,21 +1354,21 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"25Atts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
@@ -1378,21 +1378,21 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"docAtts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "def",
 					"revpos": json.Number("6"),
 					"stub":   true,
@@ -1402,21 +1402,21 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"invalid pre25 revpos",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "def",
 					"revpos": "6",
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
+				"att1": map[string]any{
 					"digest": "abc",
 					"revpos": json.Number("4"),
 					"stub":   true,
@@ -1504,7 +1504,7 @@ func TestKnownRevsForCheckChangeVersion(t *testing.T) {
 	// have three revisions on db for the doc
 	revID, doc, err := collection.Put(ctx, t.Name(), Body{"some": "data"})
 	require.NoError(t, err)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		revID, doc, err = collection.Put(ctx, t.Name(), Body{"some": "data", BodyRev: revID})
 		require.NoError(t, err)
 	}
@@ -1573,7 +1573,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	t.Logf("doc sequence: %d", doc.Sequence)
 
 	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
-	var newSyncData map[string]interface{}
+	var newSyncData map[string]any
 	sd, err := json.Marshal(doc.SyncData)
 	require.NoError(t, err)
 	err = json.Unmarshal(sd, &newSyncData)
@@ -1697,7 +1697,7 @@ func TestDocUpdateCorruptSequence(t *testing.T) {
 	// but we can fiddle with the sequence in the metadata of the doc write to simulate a doc from a different cluster (with a higher sequence)
 	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, "doc1", []string{base.SyncXattrName})
 	require.NoError(t, err)
-	var newSyncData map[string]interface{}
+	var newSyncData map[string]any
 	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = corruptSequence

@@ -2457,7 +2457,7 @@ func (d *DbStats) Query(queryName string) *QueryStat {
 func (g *QueryStats) MarshalJSON() ([]byte, error) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
-	ret := map[string]interface{}{}
+	ret := map[string]any{}
 	for queryName, queryMap := range g.Stats {
 		ret[queryName+"_query_count"] = queryMap.QueryCount
 		ret[queryName+"_query_error_count"] = queryMap.QueryErrorCount

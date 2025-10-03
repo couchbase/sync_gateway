@@ -78,10 +78,10 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	// Create some legacy attachments to be marked but not compacted
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attBody := map[string]any{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
 		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
@@ -93,7 +93,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 	}
@@ -231,7 +231,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	}
 
 	attachmentKeys := make([]string, 0, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 		attachmentKeys = append(attachmentKeys, docID)
@@ -401,10 +401,10 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 	defer rt.Close()
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attBody := map[string]any{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
 		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
@@ -437,7 +437,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 	}

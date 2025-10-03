@@ -503,7 +503,7 @@ func makeScopesConfig(scopeName string, collectionNames []string) ScopesConfig {
 
 // waitForWorkerDone avoids races when testing db initializations performed serially
 func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string) {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if !manager.HasActiveInitialization(dbName) {
 			return
 		}

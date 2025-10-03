@@ -115,7 +115,7 @@ func newJsEventTask(ctx context.Context, funcSource string) (sgbucket.JSServerTa
 		return nil, err
 	}
 
-	eventTask.After = func(result otto.Value, err error) (interface{}, error) {
+	eventTask.After = func(result otto.Value, err error) (any, error) {
 		nativeValue, _ := result.Export()
 		return nativeValue, err
 	}
@@ -140,10 +140,10 @@ func NewJSEventFunction(ctx context.Context, fnSource string) *JSEventFunction {
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (ef *JSEventFunction) CallFunction(ctx context.Context, event Event) (interface{}, error) {
+func (ef *JSEventFunction) CallFunction(ctx context.Context, event Event) (any, error) {
 
 	var err error
-	var result interface{}
+	var result any
 
 	// Different events send different parameters
 	switch event := event.(type) {

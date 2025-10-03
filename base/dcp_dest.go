@@ -95,7 +95,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 }
 
 func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
-	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
+	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 
 	if !dcpKeyFilter(key, d.metaKeys) {
 		return nil
@@ -134,7 +134,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 }
 
 func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
-	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
+	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 	if !dcpKeyFilter(key, d.metaKeys) {
 		return nil
 	}
@@ -265,7 +265,7 @@ func (d *DCPLoggingDest) DataUpdate(partition string, key []byte, seq uint64,
 }
 
 func (d *DCPLoggingDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
-	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
+	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 
 	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataUpdateEx:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataUpdateEx(partition, key, seq, val, cas, extrasType, req)
@@ -278,7 +278,7 @@ func (d *DCPLoggingDest) DataDelete(partition string, key []byte, seq uint64,
 }
 
 func (d *DCPLoggingDest) DataDeleteEx(partition string, key []byte, seq uint64,
-	cas uint64, extrasType cbgt.DestExtrasType, req interface{}) error {
+	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataDeleteEx:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataDeleteEx(partition, key, seq, cas, extrasType, req)
 }

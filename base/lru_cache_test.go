@@ -41,19 +41,19 @@ func verifyValue(t *testing.T, value *testStruct, i int) {
 
 func TestLRUCache(t *testing.T) {
 	ids := make([]string, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
 	cache, err := NewLRUCache(10)
 	assert.True(t, err == nil)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		key := keyForTest(i)
 		value := valueForTest(i)
 		cache.Put(key, value)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		value, _ := cache.Get(keyForTest(i))
 		testValue, ok := value.(*testStruct)
 		assert.True(t, ok)
@@ -66,7 +66,7 @@ func TestLRUCache(t *testing.T) {
 		cache.Put(key, value)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		value, _ := cache.Get(keyForTest(i))
 		assert.True(t, value == nil)
 	}

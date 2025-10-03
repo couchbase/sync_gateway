@@ -13,6 +13,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"slices"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -128,7 +129,7 @@ type LeakyBucketConfig struct {
 
 	// QueryCallback allows tests to set a callback that will be issued prior to issuing a view query
 	QueryCallback     func(ddoc, viewName string, params map[string]any) error
-	PostQueryCallback func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+	PostQueryCallback func(ddoc, viewName string, params map[string]any) // Issues callback after issuing query when bucket.ViewQuery is called
 
 	N1QLQueryCallback func(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) error
 
@@ -163,10 +164,8 @@ type LeakyBucketConfig struct {
 func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	if len(b.config.DCPFeedMissingDocs) > 0 {
 		wrappedCallback := func(event sgbucket.FeedEvent) bool {
-			for _, key := range b.config.DCPFeedMissingDocs {
-				if string(event.Key) == key {
-					return false
-				}
+			if slices.Contains(b.config.DCPFeedMissingDocs, string(event.Key)) {
+				return false
 			}
 			return callback(event)
 		}

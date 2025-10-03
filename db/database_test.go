@@ -898,7 +898,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
-	var interfaceListChannels []interface{}
+	var interfaceListChannels []any
 	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{
 		"k2":       "v2",
@@ -1385,7 +1385,7 @@ func TestAllDocsOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		channels := []string{"all"}
 		if i%10 == 0 {
 			channels = append(channels, "KFJC")
@@ -1595,10 +1595,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 			}
 
 			// cap to max retries if we're doing more
-			expectedReleasedSequences := test.numCASRetries
-			if test.numCASRetries > auth.PrincipalUpdateMaxCasRetries {
-				expectedReleasedSequences = auth.PrincipalUpdateMaxCasRetries
-			}
+			expectedReleasedSequences := min(test.numCASRetries, auth.PrincipalUpdateMaxCasRetries)
 
 			// Ensure we released the sequences for all the CAS retries we expected to make
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2334,7 +2331,7 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	// grab doc and alter sync data of one to artificially create gap in sequences at cache
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(6)
 	retrievedXattr["recent_sequences"] = []uint64{1, 6}
@@ -2359,7 +2356,7 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	// alter sync data on doc2 to create recent sequence history to plug gap in sequences that have been pushed to skipped
 	xattrs, cas, err = collection.dataStore.GetXattrs(ctx, docID2, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	retrievedXattr = map[string]interface{}{}
+	retrievedXattr = map[string]any{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(5)
 	retrievedXattr["recent_sequences"] = []uint64{2, 3, 4, 5}
@@ -2402,7 +2399,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(6)
 	retrievedXattr["recent_sequences"] = []uint64{1, 2, 3, 4, 5, 6}
@@ -2476,7 +2473,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
-	for i := 0; i < kMaxRecentSequences; i++ {
+	for range kMaxRecentSequences {
 		revid, doc, err = collection.Put(ctx, "doc1", body)
 		require.NoError(t, err)
 		body[BodyId] = doc.ID
@@ -2511,7 +2508,7 @@ func TestMaintainMinimumRecentSequences(t *testing.T) {
 
 	// Add 20 revisions of a single document to fill recent sequences up on the document
 	body := Body{"val": "one"}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		revid, doc, err := collection.Put(ctx, docID, body)
 		require.NoError(t, err)
 		body[BodyId] = doc.ID
@@ -2554,7 +2551,7 @@ func TestChannelView(t *testing.T) {
 
 	var entries LogEntries
 	// Query view (retry loop to wait for indexing)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		var err error
 		entries, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
 
@@ -2752,7 +2749,7 @@ func TestConcurrentImport(t *testing.T) {
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -2770,7 +2767,7 @@ func TestConcurrentImport(t *testing.T) {
 func BenchmarkDatabase(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		ctx := base.TestCtx(b)
 		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
 			Server:     base.UnitTestUrl(),
@@ -2800,9 +2797,8 @@ func BenchmarkPut(b *testing.B) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"key1": "value1", "key2": 1234}
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
 	}
 
@@ -2991,7 +2987,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	revBody, err := rev.Body()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
-	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
+	assert.Equal(t, map[string]any{"subkey1": "subvalue1"}, revBody["key2"])
 	log.Printf("rev: %s", rev.BodyBytes)
 
 }
@@ -3280,8 +3276,8 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update the doc a few times to populate recent sequences
-	for i := 0; i < 10; i++ {
-		updateBody := make(map[string]interface{})
+	for i := range 10 {
+		updateBody := make(map[string]any)
 		updateBody["prop"] = i
 		updateBody["_rev"] = revid
 		revid, _, err = collection.Put(ctx, "doc1", updateBody)
@@ -3296,7 +3292,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	var rawBody Body
 	_, err = collection.dataStore.Get("doc1", &rawBody)
 	require.NoError(t, err)
-	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
+	rawSyncData, ok := rawBody["_sync"].(map[string]any)
 	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
 	assert.NoError(t, collection.dataStore.Set("doc1", 0, nil, rawBody))
@@ -3306,14 +3302,14 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	_, err = collection.dataStore.Get("doc1", &rawBodyCheck)
 	require.NoError(t, err)
 	log.Printf("raw body check %v", rawBodyCheck)
-	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]interface{})
+	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]any)
 	require.True(t, ok)
 	recentSequences, ok := rawSyncDataCheck["recent_sequences"].([]uint64)
 	require.True(t, ok)
 	assert.False(t, sort.IsSorted(base.SortedUint64Slice(recentSequences)))
 
 	// Update the doc again. expect sequences to now be ordered
-	updateBody := make(map[string]interface{})
+	updateBody := make(map[string]any)
 	updateBody["prop"] = 12
 	updateBody["_rev"] = revid
 	_, _, err = collection.Put(ctx, "doc1", updateBody)
@@ -3334,7 +3330,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Ensure empty doc is imported correctly
-	added, err := collection.dataStore.Add("doc1", 0, map[string]interface{}{})
+	added, err := collection.dataStore.Add("doc1", 0, map[string]any{})
 	assert.NoError(t, err)
 	assert.True(t, added)
 
@@ -3343,7 +3339,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	})
 
 	// Ensure deleted doc with double operation isn't treated as import
-	_, _, err = collection.Put(ctx, "doc", map[string]interface{}{"_deleted": true})
+	_, _, err = collection.Put(ctx, "doc", map[string]any{"_deleted": true})
 	assert.NoError(t, err)
 
 	var doc Body
@@ -3379,7 +3375,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		docID := fmt.Sprintf("doc%d", i)
 		rev, _, err := collection.Put(ctx, docID, Body{})
 		assert.NoError(t, err)
@@ -3402,7 +3398,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	// FIXME (bbrks): These callbacks are not firing due to leakyDataStore being set in test and not inside SG
 	if base.TestsDisableGSI() {
-		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]any) {
 			callbackFunc()
 		})
 	} else {
@@ -3411,7 +3407,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		})
 	}
 
-	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, map[string]interface{}{"database": db}))
+	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, map[string]any{"database": db}))
 
 	waitAndAssertConditionWithOptions(t, func() bool {
 		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
@@ -3525,7 +3521,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		require.NoError(t, err)
 		assert.NotEmpty(t, role)
@@ -3543,7 +3539,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	err := collection.updateAllPrincipalsSequences(ctx)
 	require.NoError(t, err)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		role, err := auth.GetRole(fmt.Sprintf("role%d", i))
 		assert.NoError(t, err)
 		assert.Greater(t, role.Sequence(), roleSequences[i])
@@ -3569,7 +3565,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	auth := db.Authenticator(ctx)
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, role)
@@ -3616,7 +3612,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		}
 
 		var invalPrinc invalPric
-		for i := 0; i < 1; i++ {
+		for i := range 1 {
 			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			require.NoError(t, json.Unmarshal(raw, &invalPrinc))
@@ -3640,7 +3636,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		}
 
 		var invalPrinc invalPric
-		for i := 0; i < 1; i++ {
+		for i := range 1 {
 			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
@@ -3678,7 +3674,7 @@ func Test_resyncDocument(t *testing.T) {
 
 	docID := uuid.NewString()
 
-	updateBody := make(map[string]interface{})
+	updateBody := make(map[string]any)
 	updateBody["val"] = "value"
 	_, doc, err := collection.Put(ctx, docID, updateBody)
 	require.NoError(t, err)
@@ -3751,7 +3747,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		require.NoError(t, err)
 
 		docID := uuid.NewString()
-		updateBody := make(map[string]interface{})
+		updateBody := make(map[string]any)
 		updateBody["val"] = "value"
 		_, doc, err := collection.Put(ctx, docID, updateBody)
 		require.NoError(t, err)
@@ -3938,7 +3934,7 @@ func TestServerUUID(t *testing.T) {
 	}
 }
 
-func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
+func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...any) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
 			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
@@ -3950,7 +3946,7 @@ func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount,
 	}
 }
 
-func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...any) {
 	waitAndAssertConditionWithOptions(t, fn, 20, 100, failureMsgAndArgs...)
 }
 
@@ -3991,7 +3987,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 		},
 	}
 
-	emptyOptions := map[string]interface{}{}
+	emptyOptions := map[string]any{}
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -4056,7 +4052,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			Process: &testBackgroundProcess{isStoppable: false},
 		}
 		ctx := base.TestCtx(t)
-		err := bgMngr.Start(ctx, map[string]interface{}{})
+		err := bgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
 		err = bgMngr.Stop()
 		require.NoError(t, err)
@@ -4074,7 +4070,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			Process: &testBackgroundProcess{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
-		err := bgMngr.Start(ctx, map[string]interface{}{})
+		err := bgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
 		err = bgMngr.Stop()
 		require.NoError(t, err)
@@ -4092,7 +4088,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			Process: &testBackgroundProcess{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
-		err := stoppableBgMngr.Start(ctx, map[string]interface{}{})
+		err := stoppableBgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
 		err = stoppableBgMngr.Stop()
 		require.NoError(t, err)
@@ -4102,7 +4098,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 			Process: &testBackgroundProcess{isStoppable: false},
 		}
 
-		err = unstoppableBgMngr.Start(ctx, map[string]interface{}{})
+		err = unstoppableBgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
 		err = unstoppableBgMngr.Stop()
 		require.NoError(t, err)
@@ -4123,11 +4119,11 @@ type testBackgroundProcess struct {
 	isStoppable bool
 }
 
-func (i *testBackgroundProcess) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (i *testBackgroundProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	return nil
 }
 
-func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	<-terminator.Done()
 	if i.isStoppable {
 		return nil
@@ -4206,8 +4202,8 @@ func TestInject1xBodyProperties(t *testing.T) {
 	require.NoError(t, resBody.Unmarshal(newDoc))
 
 	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
-	revs := resBody[BodyRevisions].(map[string]interface{})
-	atts := resBody[BodyAttachments].(map[string]interface{})
+	revs := resBody[BodyRevisions].(map[string]any)
+	atts := resBody[BodyAttachments].(map[string]any)
 
 	assert.NotNil(t, atts)
 	assert.NotNil(t, revs)
@@ -4224,8 +4220,8 @@ func TestInject1xBodyProperties(t *testing.T) {
 	require.NoError(t, resBody.Unmarshal(newDoc))
 
 	// cast to map of interface given we have injected the properties runtime has no concept of the AttachmentMeta and Revisions types
-	revs = resBody[BodyRevisions].(map[string]interface{})
-	atts = resBody[BodyAttachments].(map[string]interface{})
+	revs = resBody[BodyRevisions].(map[string]any)
+	atts = resBody[BodyAttachments].(map[string]any)
 
 	assert.NotNil(t, atts)
 	assert.NotNil(t, revs)

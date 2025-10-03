@@ -57,9 +57,9 @@ func (h *handler) handleFunctionCall() error {
 }
 
 // Subroutine for reading function name and arguments from a request
-func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{}, error) {
+func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]any, error) {
 	name := h.PathVar(kFnNameParam)
-	args := map[string]interface{}{}
+	args := map[string]any{}
 	var err error
 	if h.rq.Method == "POST" {
 		// POST: Args come from the request body in JSON format:
@@ -95,7 +95,7 @@ func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{},
 			value := values[0]
 			// Parse value as JSON if it looks like JSON, else just as a raw string:
 			if len(value) > 0 && strings.IndexByte(`0123456789-"[{`, value[0]) >= 0 {
-				var jsonValue interface{}
+				var jsonValue any
 				if base.JSONUnmarshal([]byte(value), &jsonValue) != nil {
 					return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Value of ?%s is not valid JSON", key)
 				}
@@ -124,7 +124,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 		return err
 	}
 	first := true
-	var row interface{}
+	var row any
 	for rows.Next(h.ctx(), &row) {
 		if first {
 			first = false

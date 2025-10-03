@@ -38,7 +38,7 @@ const kMinCompressedJSONSize = 300
 
 // ReadJSONFromMIME parses a JSON MIME body, unmarshalling it into "into".
 // Closes the input io.ReadCloser once done.
-func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
+func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into any) error {
 	err := ReadJSONFromMIMERawErr(headers, input, into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
@@ -51,7 +51,7 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	return err
 }
 
-func ReadJSONFromMIMERawErr(headers http.Header, input io.ReadCloser, into interface{}) error {
+func ReadJSONFromMIMERawErr(headers http.Header, input io.ReadCloser, into any) error {
 	input, err := processContentEncoding(headers, input, "application/json")
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.C
 	// First extract the attachments that should follow:
 	following := []attInfo{}
 	for name, value := range db.GetBodyAttachments(body) {
-		meta := value.(map[string]interface{})
+		meta := value.(map[string]any)
 		if meta["stub"] != true {
 			var err error
 			var info attInfo
@@ -168,7 +168,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.C
 
 func hasInlineAttachments(body db.Body) bool {
 	for _, value := range db.GetBodyAttachments(body) {
-		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
+		if meta, ok := value.(map[string]any); ok && meta["data"] != nil {
 			return true
 		}
 	}
@@ -226,9 +226,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 	}
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
-	followingAttachments := map[string]map[string]interface{}{}
+	followingAttachments := map[string]map[string]any{}
 	for name, value := range db.GetBodyAttachments(body) {
-		if meta := value.(map[string]interface{}); meta["follows"] == true {
+		if meta := value.(map[string]any); meta["follows"] == true {
 			followingAttachments[name] = meta
 		}
 	}
@@ -236,7 +236,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 	// Subroutine to look up a following attachment given its digest. (I used to pre-compute a
 	// map from digest->name, which was faster, but that broke down if there were multiple
 	// attachments with the same contents! See #96)
-	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
+	findFollowingAttachment := func(withDigest string) (string, map[string]any) {
 		for name, meta := range followingAttachments {
 			if meta["follows"] == true {
 				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
