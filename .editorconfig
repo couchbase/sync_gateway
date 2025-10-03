@@ -1,5 +1,4 @@
 ; https://editorconfig.org/
-
 root = true
 
 [*]
@@ -7,8 +6,11 @@ charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
+max_line_length = 120
+ij_visual_guides = 80, 120
 
 [manifest/**.{json,xml}]
+indent_style = space
 indent_size = 4
 
 [*.sh]
@@ -16,7 +18,29 @@ indent_style = space
 indent_size = 4
 shell_variant = bash
 binary_next_line = false
+ij_shell_binary_ops_start_line = false
 switch_case_indent = true
+ij_shell_switch_cases_indented = true
 space_redirects = true
+ij_shell_redirect_followed_by_space = true
 keep_padding = true
+ij_shell_minify_program = false
 function_next_line = false
+
+[*.{go,go2}]
+indent_style = tab
+indent_size = 4
+ij_go_run_go_fmt_on_reformat = true
+
+[*.{yml,yaml}]
+indent_size = 2
+indent_style = space
+ij_yaml_spaces_within_brackets = false
+ij_yaml_spaces_within_braces = false
+
+[*.{js,ts}]
+indent_style = space
+indent_size = 2
+
+[*.py]
+ij_python_align_multiline_parameters = false

@@ -32,7 +32,7 @@ extraPaths = ["tools"]
 extend-include = ["tools/sgcollect_info"]
 
 [tool.ruff.lint]
-extend-select = ["I","B006"]  # isort, mutable default argument
+extend-select = ["I", "B006"]  # isort, mutable default argument
 
 # test only dependencies
 [dependency-groups]

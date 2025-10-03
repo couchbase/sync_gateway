@@ -21,10 +21,10 @@ function ReplaceDescriptionCapella() {
     Operation: {
       leave(Operation) {
         if (Operation.description) {
-            Operation.description = Operation.description.replace(
-              "Sync Gateway",
-              "App Services",
-            );
+          Operation.description = Operation.description.replace(
+            "Sync Gateway",
+            "App Services",
+          );
         }
       },
     },

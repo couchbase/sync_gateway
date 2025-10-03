@@ -11,7 +11,7 @@
 module.exports = ReplaceServersCapella;
 
 /** @type {import('@redocly/cli').OasDecorator} */
-function ReplaceServersCapella({ serverUrl }) {
+function ReplaceServersCapella({serverUrl}) {
   return {
     Server: {
       leave(Server) {
