@@ -229,6 +229,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 // Verify that a continuous changes feed hitting an error when building its late sequence feed will roll back to
 // its low sequence value, then recover and successfully send subsequent late sequences.
 func TestLateSequenceErrorRecovery(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyChanges, base.KeyCache)
 
@@ -350,6 +351,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 // Verify that a continuous changes that has an active late feed serves the expected results if the
 // channel cache associated with the late feed is compacted out of the cache
 func TestLateSequenceHandlingDuringCompact(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
@@ -576,6 +578,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyDCP)
 
@@ -1023,6 +1026,8 @@ func TestChannelQueryCancellation(t *testing.T) {
 //	base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 //	time.Sleep(100 * time.Millisecond)
 func TestChannelRace(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -1122,6 +1127,7 @@ func TestChannelRace(t *testing.T) {
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyDCP)
 
@@ -1337,6 +1343,7 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 //
 // Verify that notifyChange for channel ABC was sent.
 func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// Enable relevant logging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges)
@@ -1667,6 +1674,8 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 
 // Validates InsertPendingEntries timing
 func TestChangeCache_InsertPendingEntries(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 	cacheOptions := DefaultCacheOptions()
@@ -2168,6 +2177,8 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 //   - Push a sequence higher than expected to cache
 //   - Assert that the skipped slice eventually ends up with 0 length and the number of abandoned sequences are as expected
 func TestSkippedSequenceCompact(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
@@ -2224,6 +2235,8 @@ func TestSkippedSequenceCompact(t *testing.T) {
 // TestReleasedSequenceRangeHandlingEverythingSkipped:
 //   - Test release of an unused sequence range when all sequences in the range are skipped sequences
 func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2414,6 +2427,8 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 //   - Then add another pending entry to take over pending capacity and assert that the range is processed correctly
 //   - Then add another range to completely unblock pending
 func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2512,6 +2527,8 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 //   - Assert this single range is processed off pending after new entry is added taking pending over the limit
 //   - Test release of another single range that is now skipped and assert that skipped is emptied
 func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2735,6 +2752,8 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 //   - Empty skipped through unused sequence release
 //   - Add new contiguous sequence and assert it is processed correctly
 func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2859,6 +2878,8 @@ func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels b
 }
 
 func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)

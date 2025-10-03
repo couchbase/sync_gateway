@@ -33,7 +33,6 @@ import (
 )
 
 func TestLocalJWTAuthenticationE2E(t *testing.T) {
-	base.LongRunningTest(t)
 
 	const (
 		testIssuer             = "test_issuer"
@@ -165,7 +164,6 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 
 func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 
-	base.LongRunningTest(t)
 	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	testRSAJWK := jose.JSONWebKey{

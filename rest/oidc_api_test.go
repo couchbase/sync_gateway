@@ -383,6 +383,8 @@ func (s *mockAuthServer) keysHandler(w http.ResponseWriter, r *http.Request) {
 // Verifies OpenID Connect callback URL in redirect link is returned in the Location
 // header for both oidc and _oidc_challenge requests.
 func TestGetOIDCCallbackURL(t *testing.T) {
+	base.LongRunningTest(t)
+
 	type test struct {
 		name         string
 		authURL      string
@@ -533,8 +535,8 @@ func (m mockProviderChannelsClaim) Apply(provider *auth.OIDCProvider) {
 
 // E2E test that checks OpenID Connect Authorization Code Flow.
 func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	type test struct {
 		name                string
 		providers           auth.OIDCProviderMap
@@ -2109,8 +2111,8 @@ func TestCallbackStateClientCookies(t *testing.T) {
 // E2E test that checks OpenID Connect Authorization Code Flow with the specified username_claim
 // as Sync Gateway username.
 func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	var (
 		defaultProvider = "foo"
 		authURL         = "/db/_oidc?provider=foo&offline=true"
@@ -2366,6 +2368,8 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 // CBG-1378 - test when OIDC provider is not reachable, and then becomes reachable
 // at a later request
 func TestEventuallyReachableOIDCClient(t *testing.T) {
+	base.LongRunningTest(t)
+
 	// Modified copy of TestOpenIDConnectImplicitFlow
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	unreachableAddr := "http://0.0.0.0"
@@ -2586,6 +2590,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 
 // Checks that we correctly handle the removal of an OIDC provider while it's in use
 func TestOpenIDConnectProviderRemoval(t *testing.T) {
+	base.LongRunningTest(t)
 
 	const (
 		providerName    = "foo"
@@ -2806,6 +2811,8 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 }
 
 func TestPutDBConfigOIDC(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	sc, closeFn := StartBootstrapServer(t)

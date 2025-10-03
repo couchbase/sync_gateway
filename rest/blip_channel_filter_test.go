@@ -20,6 +20,8 @@ import (
 )
 
 func TestChannelFilterRemovalFromChannel(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyHTTP)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {

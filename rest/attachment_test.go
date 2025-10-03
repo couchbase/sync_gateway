@@ -2213,6 +2213,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 }
 
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
@@ -2269,6 +2270,8 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 //   - Tests document update through blip to a doc with attachment metadata defined in sync data
 //   - Assert that the c doc update this way will migrate the attachment metadata from sync data to global sync data
 func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
@@ -2320,6 +2323,8 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 }
 
 func TestUpdateExistingAttachment(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2378,6 +2383,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2416,6 +2423,8 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 }
 
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2584,6 +2593,8 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
@@ -2884,6 +2895,8 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 }
 
 func TestBlipPushRevWithAttachment(t *testing.T) {
+	base.LongRunningTest(t)
+
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {

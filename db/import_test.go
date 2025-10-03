@@ -28,6 +28,7 @@ import (
 )
 
 func TestFeedImport(t *testing.T) {
+	base.LongRunningTest(t)
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -932,6 +933,8 @@ func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 }
 
 func TestImportFeedInvalidSyncMetadata(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
@@ -1008,6 +1011,8 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 }
 
 func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 	base.SkipImportTestsIfNotEnabled(t)
 
@@ -1376,6 +1381,8 @@ func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key str
 }
 
 func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}

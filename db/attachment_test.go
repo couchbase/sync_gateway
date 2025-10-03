@@ -1446,6 +1446,8 @@ func TestGetAttVersion(t *testing.T) {
 }
 
 func TestLargeAttachments(t *testing.T) {
+	base.LongRunningTest(t)
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

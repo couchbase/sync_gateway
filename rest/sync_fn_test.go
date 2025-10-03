@@ -388,6 +388,8 @@ func TestSyncFunctionException(t *testing.T) {
 }
 
 func TestSyncFnTimeout(t *testing.T) {
+	base.LongRunningTest(t)
+
 	syncFn := `function(doc) { while(true) {} }`
 
 	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
@@ -496,7 +498,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 func TestResyncRegenerateSequences(t *testing.T) {
 	base.TestRequiresDCPResync(t)
-	base.LongRunningTest(t)
+
 	syncFn := `
 	function(doc) {
 		if (doc.userdoc){
@@ -658,6 +660,8 @@ func TestResyncPersistence(t *testing.T) {
 }
 
 func TestExpiryUpdateSyncFunction(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 

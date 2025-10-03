@@ -23,6 +23,8 @@ import (
 )
 
 func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	testCases := []struct {
 		name            string
@@ -193,6 +195,8 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 }
 
 func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -347,6 +351,8 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 }
 
 func TestActiveReplicatorLocalWinsCases(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const (
@@ -634,6 +640,8 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 }
 
 func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const (
@@ -934,6 +942,8 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 }
 
 func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {
@@ -1211,6 +1221,8 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 }
 
 func TestActiveReplicatorAttachmentHandling(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {
@@ -1369,6 +1381,8 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 }
 
 func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {
@@ -1613,6 +1627,8 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 }
 
 func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	activeStartingCV := db.Version{SourceID: "activeRT", Value: 12234}
@@ -1819,6 +1835,8 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 }
 
 func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {
@@ -1971,6 +1989,8 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 }
 
 func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLocalIsTombstoned(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -2087,6 +2107,8 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 }
 
 func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -2191,6 +2213,8 @@ func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.
 }
 
 func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 

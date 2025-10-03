@@ -19,7 +19,7 @@ import (
 func TestHTTPLoggingRedaction(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
-	base.LongRunningTest(t)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

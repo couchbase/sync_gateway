@@ -540,6 +540,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 // Tests that the users returned in the config endpoint have the correct names
 // Reproduces #2223
 func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
+	base.LongRunningTest(t)
 
 	p := "password"
 	rt := rest.NewRestTester(t,
@@ -681,7 +682,6 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 
 func TestResyncUsingDCPStream(t *testing.T) {
 	base.TestRequiresDCPResync(t)
-	base.LongRunningTest(t)
 
 	testCases := []struct {
 		docsCreated int
@@ -748,7 +748,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 func TestResyncUsingDCPStreamReset(t *testing.T) {
 	base.TestRequiresDCPResync(t)
-	base.LongRunningTest(t)
 
 	syncFn := `
 	function(doc) {
@@ -944,7 +943,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 //   - assert the db returns to the server context and is removed from corrupt database tracking AND that the bucket name
 //     on the config now matches the rest tester bucket name
 func TestCorruptDbConfigHandling(t *testing.T) {
-	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -1025,6 +1024,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 //   - assert that the db config is picked up as an invalid db config
 //   - assert that a call to the db endpoint will fail with correct error message
 func TestBadConfigInsertionToBucket(t *testing.T) {
+	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
@@ -1256,6 +1256,8 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 //   - persist that db config to another bucket
 //   - assert that is picked up as an invalid db config
 func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	ctx := base.TestCtx(t)
@@ -1312,6 +1314,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 //
 //	Validates db is removed when polling detects that the config is not found
 func TestConfigPollingRemoveDatabase(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyConfig)
 	testCases := []struct {
@@ -1557,7 +1560,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // DB should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
@@ -1599,7 +1601,6 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t, nil)
@@ -2269,6 +2270,8 @@ func TestHandleSGCollect(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.Ptr("password")}}}}})
 	defer rt.Close()
 
@@ -2896,6 +2899,8 @@ func TestPutDbConfigChangeName(t *testing.T) {
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
@@ -3152,6 +3157,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
 func TestDbConfigPersistentSGVersions(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
 
 	// Start SG with no databases
@@ -3255,6 +3262,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
+	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -3305,6 +3313,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
+	base.LongRunningTest(t)
+
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 

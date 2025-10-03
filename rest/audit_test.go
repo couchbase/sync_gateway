@@ -711,6 +711,8 @@ func TestRedactConfigAsStr(t *testing.T) {
 }
 
 func TestEffectiveUserID(t *testing.T) {
+	base.LongRunningTest(t)
+
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()

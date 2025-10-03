@@ -815,6 +815,8 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 
 // TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
 func TestOfflineDatabaseStartup(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.TestUseXattrs() {
 		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
 	}

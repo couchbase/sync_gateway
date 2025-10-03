@@ -74,6 +74,8 @@ func TestUserFunctions(t *testing.T) {
 }
 
 func TestJSFunctionAsGuest(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		GuestEnabled:      true,
 		EnableUserQueries: true,

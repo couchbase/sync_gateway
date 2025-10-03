@@ -176,7 +176,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.LongRunningTest(t)
 
 	docsToCreate := 1000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
@@ -337,7 +336,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.LongRunningTest(t)
 
 	docsToCreate := 1000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
@@ -395,7 +393,6 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.LongRunningTest(t)
 
 	docsToCreate := 5000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
@@ -468,7 +465,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug)
 	base.TestRequiresCollections(t)
 

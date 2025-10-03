@@ -11,6 +11,8 @@ package topologytest
 import (
 	"fmt"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // TestMultiActorUpdate tests that a single actor can update a document that was created on a different peer.
@@ -20,6 +22,8 @@ import (
 // 4. update each document on a single peer, documents exist in pairwise create peer and update peer
 // 5. wait for the hlv for updated documents to synchronized
 func TestMultiActorUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -50,6 +54,8 @@ func TestMultiActorUpdate(t *testing.T) {
 // 4. delete each document on a single peer, documents exist in pairwise create peer and update peer
 // 5. wait for the hlv for updated documents to synchronized
 func TestMultiActorDelete(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -80,6 +86,8 @@ func TestMultiActorDelete(t *testing.T) {
 // 6. resurrect each document on a single peer
 // 7. wait for the hlv for updated documents to be synchronized
 func TestMultiActorResurrect(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)

@@ -1515,6 +1515,8 @@ func TestUpdatePrincipal(t *testing.T) {
 }
 
 func TestUpdatePrincipalCASRetry(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyCRUD)
 
 	// ensure we don't batch sequences so that the number of released sequences is deterministic
@@ -3364,6 +3366,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 }
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
+	base.LongRunningTest(t)
 
 	if !base.TestUseXattrs() {
 		t.Skip("Compaction requires xattrs")
@@ -3511,6 +3514,8 @@ func TestGetRoleIDs(t *testing.T) {
 }
 
 func Test_updateAllPrincipalsSequences(t *testing.T) {
+	base.LongRunningTest(t)
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -3550,6 +3555,8 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 }
 
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
@@ -3775,6 +3782,8 @@ func Test_getUpdatedDocument(t *testing.T) {
 
 // Regression test for CBG-2058.
 func TestImportCompactPanic(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.TestUseXattrs() {
 		t.Skip("requires xattrs")
 	}

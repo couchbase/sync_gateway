@@ -24,6 +24,8 @@ import (
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
 // only the default collection. Verifies that metadata documents are still accessible.
 func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	rtConfig := &rest.RestTesterConfig{
@@ -70,6 +72,8 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 // TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
 // named collections in the default scope. Verifies that metadata documents are still accessible.
 func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	rtConfig := &rest.RestTesterConfig{
@@ -115,6 +119,8 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 // TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
 // named collections in the default scope. Verifies that metadata documents are still accessible.
 func TestUpgradeDatabasePreHelium(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
@@ -179,6 +185,7 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 
 }
 func TestLegacyMetadataID(t *testing.T) {
+	base.LongRunningTest(t)
 
 	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
@@ -212,6 +219,7 @@ func TestLegacyMetadataID(t *testing.T) {
 // TestMetadataIDRenameDatabase verifies that resync is not required when deleting and recreating a database (with a
 // different name) targeting only the default collection.
 func TestMetadataIDRenameDatabase(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// Create a persistent rest tester with default collection.
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
@@ -244,6 +252,7 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 
 // Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
 func TestMetadataIDWithConfigGroups(t *testing.T) {
+	base.LongRunningTest(t)
 
 	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester

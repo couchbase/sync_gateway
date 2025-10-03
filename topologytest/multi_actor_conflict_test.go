@@ -10,6 +10,8 @@ package topologytest
 
 import (
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // TestMultiActorConflictCreate
@@ -18,6 +20,8 @@ import (
 //  3. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
 //     Lite peers. The body should match.
 func TestMultiActorConflictCreate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -40,6 +44,8 @@ func TestMultiActorConflictCreate(t *testing.T) {
 //  7. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
 //     Lite peers. The body should match.
 func TestMultiActorConflictUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -68,6 +74,8 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 6. start replications
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
 func TestMultiActorConflictDelete(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -103,6 +111,8 @@ func TestMultiActorConflictDelete(t *testing.T) {
 //  11. assert that the documents are resurrected on all peers and have matching hlvs for non Couchbase Lite peers and
 //     matching CV for Couchbase Lite peers.
 func TestMultiActorConflictResurrect(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)

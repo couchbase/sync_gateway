@@ -699,6 +699,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during feed-based import
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
 
@@ -822,6 +823,7 @@ type treeHistory struct {
 
 // Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
 func TestMigrateLargeInlineRevisions(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
 
@@ -2115,6 +2117,8 @@ func TestImportOnWriteMigration(t *testing.T) {
 }
 
 func TestImportFilterTimeout(t *testing.T) {
+	base.LongRunningTest(t)
+
 	importFilter := `function(doc) { while(true) { } }`
 
 	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
@@ -2633,6 +2637,8 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 //   - Wait for the doc to arrive over the import feed and assert that once doc was imported the attachment metadata
 //     was migrated from sync data xattr to global xattr
 func TestMigrationOfAttachmentsOnImport(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{

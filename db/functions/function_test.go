@@ -173,6 +173,8 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
+	base.LongRunningTest(t)
+
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)

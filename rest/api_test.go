@@ -80,6 +80,8 @@ func TestRoot(t *testing.T) {
 }
 
 func TestPublicRESTStatCount(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
@@ -917,6 +919,8 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 // TestBulkGetEfficientBodyCompression makes sure that the multipart writer of the bulk get response is efficiently compressing the document bodies.
 // This is to catch a case where document bodies are marshalled with random property ordering, and reducing compression ratio between multiple doc body instances.
 func TestBulkGetEfficientBodyCompression(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	const (
@@ -1436,6 +1440,8 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 }
 
 func TestAddingLargeDoc(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	defer func() { rosmar.MaxDocSize = 0 }()
@@ -1792,6 +1798,8 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
 // once we add the ability to take a bucket offline/online.
 func TestLongpollWithWildcard(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`}
@@ -2909,7 +2917,7 @@ func TestNullDocHandlingForMutable1xBody(t *testing.T) {
 //   - Test updating the config to disable the use of xattrs in this database through replacing + upserting the config
 //   - Assert error code is returned and response contains error string
 func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
-	base.LongRunningTest(t)
+
 	const (
 		dbName  = "db1"
 		errResp = "sync gateway requires enable_shared_bucket_access=true"
@@ -3248,6 +3256,8 @@ func TestAllDbs(t *testing.T) {
 
 // TestBufferFlush will test for http.ResponseWriter implements Flusher interface
 func TestBufferFlush(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	})

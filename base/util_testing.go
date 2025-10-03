@@ -876,13 +876,11 @@ func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
 
 // LongRunningTest skips the test if running in -short mode, and logs if the test completed quickly under other circumstances.
 func LongRunningTest(t *testing.T) {
-	const (
-		shortTestThreshold = time.Second
-	)
 	if testing.Short() {
 		t.Skip("skipping long running test in short mode")
 		return
 	}
+	const shortTestThreshold = 250 * time.Millisecond
 	start := time.Now()
 	t.Cleanup(func() {
 		testDuration := time.Since(start)

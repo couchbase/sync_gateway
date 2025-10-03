@@ -31,6 +31,8 @@ import (
 // 6. Start replications
 // 7. Observe resolved conflict on both Actor A and Actor B, with the attachment still present
 func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)

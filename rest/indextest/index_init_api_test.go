@@ -40,7 +40,6 @@ func TestChangeIndexPartitions(t *testing.T) {
 	}
 
 	// requires index init for many subtests
-	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyQuery, base.KeyHTTP)
 
@@ -276,7 +275,6 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	}
 
 	// requires index init
-	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -303,7 +301,6 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 	}
 
 	// requires index init
-	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -355,7 +352,6 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 	}
 
 	// requires index init
-	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()

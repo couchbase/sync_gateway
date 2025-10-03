@@ -29,6 +29,8 @@ func dummyCallbackURL(_ string, _ bool) string {
 const anyError = "SGW_TEST_ANY_ERROR"
 
 func TestJWTVerifyToken(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 
 	test := func(provider *LocalJWTAuthProvider, token string, expectedError string) func(t *testing.T) {

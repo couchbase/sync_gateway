@@ -35,6 +35,7 @@ import (
 //   - The replicator also remaps local collections to different ones on the remote.
 //   - The replicator also filters to a subset of channels for each of the replicated collections.
 func TestActiveReplicatorMultiCollection(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.TestRequiresCollections(t)
@@ -416,6 +417,8 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 }
 
 func TestReplicatorMissingCollections(t *testing.T) {
+	base.LongRunningTest(t)
+
 	const numCollections = 2
 	base.RequireNumTestDataStores(t, numCollections)
 	base.RequireNumTestBuckets(t, 2)

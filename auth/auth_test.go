@@ -789,6 +789,8 @@ func TestConcurrentUserWrites(t *testing.T) {
 }
 
 func TestAuthenticateTrustedJWT(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyAccess, base.KeyHTTP)
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
