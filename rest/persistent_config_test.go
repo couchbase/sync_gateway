@@ -338,6 +338,8 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
@@ -545,6 +547,8 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 // TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
 // leaving the registry version ahead of the config - but also with a collection conflict occurring in the subsequent rollback.
 func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 3)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
@@ -1371,6 +1375,8 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)

@@ -68,6 +68,8 @@ func TestDescriptionPopulation(t *testing.T) {
 }
 
 func TestMemoryProfile(t *testing.T) {
+	base.LongRunningTest(t)
+
 	stats := statsContext{heapProfileCollectionThreshold: 1, heapProfileEnabled: true} // set to a very low value to ensure collection
 
 	outputDir := t.TempDir()

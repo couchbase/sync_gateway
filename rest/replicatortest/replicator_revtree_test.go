@@ -24,6 +24,8 @@ import (
 )
 
 func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	testCases := []struct {
 		name            string
@@ -166,6 +168,8 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 }
 
 func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	// Passive
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -283,6 +287,8 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 }
 
 func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {

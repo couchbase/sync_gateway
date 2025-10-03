@@ -11,6 +11,8 @@ package topologytest
 import (
 	"fmt"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // TestSingleActorCreate tests creating a document with a single actor in different topologies.
@@ -18,6 +20,8 @@ import (
 // 2. create document on a single active peer (version1)
 // 3. wait for convergence on other peers
 func TestSingleActorCreate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -41,6 +45,8 @@ func TestSingleActorCreate(t *testing.T) {
 // 4. update document on a single active peer (version2)
 // 5. wait for convergence on other peers
 func TestSingleActorUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -70,6 +76,8 @@ func TestSingleActorUpdate(t *testing.T) {
 // 4. delete document on a single active peer (version2)
 // 5. wait for convergence on other peers for a deleted document with correct hlv
 func TestSingleActorDelete(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
@@ -100,6 +108,8 @@ func TestSingleActorDelete(t *testing.T) {
 // 6. resurrect document on a single active peer (version3)
 // 7. wait for convergence on other peers for a resurrected document with correct hlv
 func TestSingleActorResurrect(t *testing.T) {
+	base.LongRunningTest(t)
+
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)

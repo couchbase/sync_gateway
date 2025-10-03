@@ -22,6 +22,8 @@ import (
 )
 
 func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
@@ -82,6 +84,8 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 }
 
 func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	const username = "alice"
 
@@ -239,6 +243,8 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 // | Expected Result | 2-abc,1-abc | none | 2-abc,1-abc | none |  |  |  |  |  |
 // +-----------------+-------------+------+-------------+------+--+--+--+--+--+
 func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
@@ -332,6 +338,8 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 }
 
 func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
@@ -518,6 +526,8 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 //	Update this doc on passive to create 100@passiveSource
 //	Pull this rev and assert that the rev is not conflicting
 func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
@@ -711,6 +721,8 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 }
 
 func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"
@@ -891,6 +903,8 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 }
 
 func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	const username = "alice"

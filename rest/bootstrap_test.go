@@ -25,6 +25,8 @@ import (
 // Then Sync Gateway restarts to ensure that a subsequent bootstrap picks up the
 // database created in the first step.
 func TestBootstrapRESTAPISetup(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	config := BootstrapStartupConfigForTest(t) // share config between both servers in test to share a groupID

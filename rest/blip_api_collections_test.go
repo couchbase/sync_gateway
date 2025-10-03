@@ -21,6 +21,8 @@ import (
 )
 
 func TestBlipGetCollections(t *testing.T) {
+	base.LongRunningTest(t)
+
 	// FIXME as part of CBG-2203 to enable subtest checkpointExistsWithErrorInNonDefaultCollection
 	base.TestRequiresCollections(t)
 
@@ -238,6 +240,8 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 }
 
 func TestCollectionsReplication(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 
 	rtConfig := &RestTesterConfig{
@@ -263,6 +267,8 @@ func TestCollectionsReplication(t *testing.T) {
 }
 
 func TestBlipReplicationMultipleCollections(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -301,6 +307,8 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 }
 
 func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}

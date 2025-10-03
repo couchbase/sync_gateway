@@ -208,6 +208,8 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 }
 
 func TestReleaseSequenceWait(t *testing.T) {
+	base.LongRunningTest(t)
+
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -765,6 +767,8 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 //
 // Ensures we don't release more sequences than would be expected based on allocator batch size
 func TestVariableRateAllocators(t *testing.T) {
+	base.LongRunningTest(t)
+
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)

@@ -65,6 +65,8 @@ func TestGetAlldocChannels(t *testing.T) {
 }
 
 func TestGetDocDryRuns(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SkipImportTestsIfNotEnabled(t)
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
@@ -711,6 +713,8 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)

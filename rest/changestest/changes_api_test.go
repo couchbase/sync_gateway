@@ -2327,6 +2327,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 // Tests query backfill with limit
 func TestChangesQueryBackfillWithLimit(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 

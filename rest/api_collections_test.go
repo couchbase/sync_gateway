@@ -27,6 +27,8 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
+	base.LongRunningTest(t)
+
 	const (
 		username = "alice"
 		password = "pass"
@@ -277,6 +279,8 @@ func TestMultiCollectionDCP(t *testing.T) {
 }
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -966,6 +970,8 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 //   - Fetch runtime config and assert the scope config matches what we expect
 //   - Assert we can perform crud operations against each collection 1 and 2
 func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.TestRequiresCollections(t)
 

@@ -26,6 +26,8 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
@@ -67,6 +69,7 @@ func TestPublicChanGuestAccess(t *testing.T) {
 }
 
 func TestStarAccess(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
@@ -298,6 +301,8 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 
 // CBG-2143: Make sure the REST API is returning forbidden errors if when unsupported config option is set
 func TestForceAPIForbiddenErrors(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyHTTP)
 	testCases := []struct {
 		forceForbiddenErrors bool

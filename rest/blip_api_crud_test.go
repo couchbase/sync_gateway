@@ -157,6 +157,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Make several updates
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 
@@ -945,6 +946,8 @@ function(doc, oldDoc) {
 // Start subChanges w/ continuous=true, batchsize=20
 // Start sending rev messages for documents that grant access to themselves for the active replication's user
 func TestConcurrentRefreshUser(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
@@ -1172,7 +1175,6 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 //
 //	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
-	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
@@ -1820,6 +1822,8 @@ func TestMissingNoRev(t *testing.T) {
 // TestSendReplacementRevision ensures that an alternative revision is sent instead of a norev when a client opts for replacement revs.
 // Create doc with rev 1-..., make the client request changes, and then update the document underneath the client's changes request to force a norev, with 2-... being sent as an optional replacement
 func TestSendReplacementRevision(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	userChannels := []string{"ABC", "DEF"}
@@ -1951,6 +1955,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 // TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
 func TestBlipPullRevMessageHistory(t *testing.T) {
+	base.LongRunningTest(t)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -1997,6 +2002,8 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 //   - Making use of HLV agent to mock a doc from a HLV aware peer coming over replicator
 //   - Update this same doc through sync gateway then assert that the history is populated with the old current version
 func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
@@ -2050,6 +2057,8 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 }
 
 func TestBlipClientSendDelete(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
@@ -2078,6 +2087,7 @@ func TestBlipClientSendDelete(t *testing.T) {
 
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
 func TestActiveOnlyContinuous(t *testing.T) {
+	base.LongRunningTest(t)
 
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
@@ -2160,6 +2170,8 @@ func TestNoRevSetSeq(t *testing.T) {
 }
 
 func TestRemovedMessageWithAlternateAccess(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -2241,6 +2253,8 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 //	  Revocation should not be issued because the user currently has access to channel B, even though they didn't
 //	  have access to the removal revision (rev 2).  CBG-2277
 func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -2313,7 +2327,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 // Asserts on stats to test for regression of CBG-1824: Make sure SubChangesOneShotActive gets decremented when one shot
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -2429,6 +2442,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
+	base.LongRunningTest(t)
 
 	testCases := []struct {
 		name                        string
@@ -2693,8 +2707,8 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 // Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
 // in which case a noRev should be sent.
 func TestSendRevisionNoRevHandling(t *testing.T) {
-
 	base.LongRunningTest(t)
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
@@ -2774,6 +2788,8 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 }
 
 func TestUnsubChanges(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
@@ -2824,6 +2840,7 @@ func TestUnsubChanges(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the replication.
 func TestRequestPlusPull(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
 	defer db.SuspendSequenceBatching()() // Required for slow sequence simulation
@@ -2881,6 +2898,7 @@ func TestRequestPlusPull(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the db config.
 func TestRequestPlusPullDbConfig(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
 	defer db.SuspendSequenceBatching()() // Required for slow sequence simulation
@@ -3004,6 +3022,8 @@ func TestBlipRefreshUser(t *testing.T) {
 }
 
 func TestImportInvalidSyncGetsNoRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
@@ -3064,6 +3084,8 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 //     then SGW will detect the document needs to be imported when the rev is requested.  Should triggers norev handling
 //     in the case where the import was unsuccessful
 func TestOnDemandImportBlipFailure(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.TestUseXattrs() {
 		t.Skip("Test performs import, not valid for non-xattr mode")
 	}
@@ -3177,6 +3199,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 // TestBlipDatabaseClose verifies that the client connection is closed when the database is closed.
 // Starts a continuous pull replication then updates the db to trigger a close.
 func TestBlipDatabaseClose(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -3308,6 +3331,7 @@ func TestBlipMergeVersions(t *testing.T) {
 
 // Starts a continuous pull replication then updates the db to trigger a close.
 func TestChangesFeedExitDisconnect(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -3351,6 +3375,8 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 }
 
 func TestBlipPushRevOnResurrection(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -3433,6 +3459,8 @@ func TestBlipPullConflict(t *testing.T) {
 }
 
 func TestTombstoneCount(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,

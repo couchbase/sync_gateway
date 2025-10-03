@@ -251,7 +251,6 @@ func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-	base.LongRunningTest(t)
 
 	defaultCollection := base.DefaultScopeAndCollectionName()
 	namedCollection := base.ScopeAndCollectionName{Scope: "placeHolderScope", Collection: "placeHolderCollection"}
@@ -424,7 +423,6 @@ func testGetIndexesMeta(t *testing.T, database *db.Database, indexInitOptions db
 
 // TestInitializeIndexesConcurrentMultiNode simulates a large multi-node SG cluster starting up and racing to create indexes.
 func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
-	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 

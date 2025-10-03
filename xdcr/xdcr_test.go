@@ -28,6 +28,8 @@ import (
 //   - Assert that doc and attachment doc are replicated, sync doc is not
 //   - Assert that the version vector is written on destination bucket for each replicated doc
 func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
+	base.LongRunningTest(t)
+
 	ctx := base.TestCtx(t)
 	base.RequireNumTestBuckets(t, 2)
 	fromBucket := base.GetTestBucket(t)
@@ -153,6 +155,8 @@ func getTwoBucketDataStores(t *testing.T) (base.Bucket, sgbucket.DataStore, base
 }
 
 func TestReplicateVV(t *testing.T) {
+	base.LongRunningTest(t)
+
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
@@ -387,6 +391,8 @@ func TestVVObeyMou(t *testing.T) {
 }
 
 func TestVVMouImport(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest)
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
@@ -533,6 +539,8 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 }
 
 func TestReplicateXattrs(t *testing.T) {
+	base.LongRunningTest(t)
+
 	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
 
 	testCases := []struct {
@@ -697,6 +705,8 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 // TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
 // reflected in the HLV (cv and pv).
 func TestVVMultiActor(t *testing.T) {
+	base.LongRunningTest(t)
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test can fail with CBS due to CBS-4334 since a document without xattrs will be written to the target bucket, even if it is otherwise up to date")
 	}

@@ -32,6 +32,8 @@ import (
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -99,6 +101,8 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -163,6 +167,8 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 // TestBlipProveAttachmentV2 ensures that CBL's proveAttachment for deduplication is working correctly even for v2 attachments which aren't de-duped on the server side.
 func TestBlipProveAttachmentV2(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
@@ -219,6 +225,8 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 
 // TestBlipProveAttachmentV2Push ensures that CBL's attachment deduplication is ignored for push replications - resulting in new server-side digests and duplicated attachment data (v2 attachment format).
 func TestBlipProveAttachmentV2Push(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
@@ -266,6 +274,8 @@ func TestBlipProveAttachmentV2Push(t *testing.T) {
 }
 
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -501,6 +511,8 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
 	rtConfig := &RestTesterConfig{
@@ -552,6 +564,8 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -597,6 +611,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := &RestTesterConfig{
@@ -669,6 +684,8 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 }
 
 func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,

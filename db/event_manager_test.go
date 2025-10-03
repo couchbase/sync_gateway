@@ -166,6 +166,8 @@ func TestDBStateChangeEvent(t *testing.T) {
 // Test sending many events with slow-running execution to validate they get dropped after hitting
 // the max concurrent goroutines
 func TestSlowExecutionProcessing(t *testing.T) {
+	base.LongRunningTest(t)
+
 	ctx := base.TestCtx(t)
 	terminator := make(chan bool)
 	defer close(terminator)
@@ -436,7 +438,6 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 }
 
 func TestWebhookBasic(t *testing.T) {
-	base.LongRunningTest(t)
 
 	terminator := make(chan bool)
 	defer close(terminator)
@@ -529,7 +530,6 @@ func TestWebhookOverflows(t *testing.T) {
 	if true { // Modify conditions or re-enable once CBG-2281 is fixed
 		t.Skip("Test skipped")
 	}
-	base.LongRunningTest(t)
 
 	terminator := make(chan bool)
 	defer close(terminator)

@@ -23,6 +23,7 @@ import (
 )
 
 func TestMultiCollectionImportFilter(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
@@ -261,6 +262,7 @@ const collectionsDbConfigUpsertScopes = `{
 	}`
 
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.SkipImportTestsIfNotEnabled(t)
@@ -354,6 +356,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 }
 
 func TestMultiCollectionImportRemoveCollection(t *testing.T) {
+	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
 	base.SkipImportTestsIfNotEnabled(t)

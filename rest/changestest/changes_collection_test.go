@@ -133,6 +133,7 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 }
 
 func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2

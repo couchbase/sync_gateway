@@ -467,7 +467,6 @@ func TestReplicationsFromConfig(t *testing.T) {
 // - Creates a continuous push replication on rt1 via the REST API
 // - Validates documents are replicated to rt2
 func TestPushReplicationAPI(t *testing.T) {
-	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -547,6 +546,8 @@ func TestPullReplicationAPI(t *testing.T) {
 }
 
 func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -588,6 +589,8 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 }
 
 func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -627,6 +630,8 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 }
 
 func TestServerlessConnectionLimitingContinuous(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -685,6 +690,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 //   - Creates a continuous pull replication on rt1 via the REST API
 //   - Validates stop/start/reset actions on the replicationStatus endpoint
 func TestReplicationStatusActions(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -1006,7 +1012,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 //   - Validates documents are replicated to rt1
 //   - Validates replication status count when replication is local and non-local
 func TestPullOneshotReplicationAPI(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -1066,7 +1071,6 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //
 //	WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
-	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -1797,6 +1801,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 // Repros CBG-2416
 func TestDBReplicationStatsTeardown(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	// Test tests Prometheus stat registration
@@ -1865,7 +1870,6 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 }
 
 func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
-	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -1966,6 +1970,8 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 // TestActiveReplicatorHeartbeats uses an ActiveReplicator with another RestTester instance to connect, and waits for several websocket ping/pongs.
 func TestActiveReplicatorHeartbeats(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)
 
 	username := "alice"
@@ -2100,6 +2106,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 //
 // - Issues a few pulls to ensure the replicator is resuming correctly from a compound sequence checkpoint, and that we're emptying the expected/processed lists appropriately.
 func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeyChanges, base.KeyReplicate)
@@ -2292,6 +2300,8 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 //   - asserts the replicator enters a reconnecting state and eventually enters a running state again
 //   - puts some docs on the remote rest tester and assert the replicator pulls these docs to prove reconnect was successful
 func TestReconnectReplicator(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	testCases := []struct {
@@ -2358,6 +2368,8 @@ func TestReconnectReplicator(t *testing.T) {
 }
 
 func TestReplicatorReconnectTimeout(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)
 	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -2429,6 +2441,8 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 //   - wait some time for the background task to increment TotalSyncTime stat
 //   - assert on the TotalSyncTime stat being incremented
 func TestTotalSyncTimeStat(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
@@ -2464,6 +2478,8 @@ func TestTotalSyncTimeStat(t *testing.T) {
 //   - assert on the TotalSyncTime stat being incremented
 //   - put doc to end changes feed connection
 func TestChangesEndpointTotalSyncTime(t *testing.T) {
+	base.LongRunningTest(t)
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel);}`,
 	})
@@ -2824,6 +2840,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 //   - Insert the second batch of docs into rt2.
 //   - Starts the pull replication again and asserts that the checkpoint is used.
 func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -2977,6 +2994,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 //   - Creates identical documents on rt1 and rt2.
 //   - Starts a pull replication to ensure that even ignored revisions are checkpointed.
 func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -3325,6 +3343,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 //   - Insert the second batch of docs into rt1.
 //   - Starts the push replication again and asserts that the checkpoint is used.
 func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -3479,6 +3498,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 //   - Starts 3 RestTesters, one to create documents, and two running pull replications from the central cluster
 //   - Replicators running on the edges have identical IDs (e.g. edge-repl)
 func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 3)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -3800,8 +3821,6 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 //   - Drops the document out of the channel so the replicator in rt1 pulls a _removed revision.
 func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
-
-	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -4134,7 +4153,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pushAndPull from rt2.
 //   - verifies expected conflict resolution, and that expected result is replicated to both peers
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	type conflictWinner int
@@ -4541,6 +4559,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 //   - Recreates rt1 with a new bucket (to simulate a flush).
 //   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 3)
 
@@ -4695,6 +4714,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 //   - Recreates rt2 with a new bucket (to simulate a flush).
 //   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 3)
 
@@ -4860,6 +4880,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 //   - Manually rolls back the bucket to the first document.
 //   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -5019,6 +5040,8 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 //   - Modifies the checkpoint rev ID in the target bucket.
 //   - Checkpoints again to ensure it is retried on error.
 func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -5227,6 +5250,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 //   - Insert the second batch of docs into rt2.
 //   - Starts the pull replication again with a config change, validate checkpoint is reset
 func TestActiveReplicatorPullModifiedHash(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -5532,6 +5556,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 // TestActiveReplicatorReconnectOnStartEventualSuccess ensures an active replicator with invalid creds retries,
 // but succeeds once the user is created on the remote.
 func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -5613,6 +5638,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 // TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
 func TestActiveReplicatorReconnectSendActions(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -5701,7 +5727,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
-
 	base.LongRunningTest(t)
 
 	createVersion := func(generation int, parentRevID string, body db.Body) rest.DocVersion {
@@ -5975,7 +6000,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	}
 }
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
-	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	t.Skip("CBG-4782: needs rework for version vectors, may be able ot get to work after rev tree reconciliation is done")
 
@@ -6202,9 +6227,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // This test ensures that the local tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
-	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -6329,9 +6355,10 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // This test ensures that the remote tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
+	base.LongRunningTest(t)
 
 	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
-	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -7050,6 +7077,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 // CBG-1428 - check for regression of ISGR not ignoring _removed:true bodies when purgeOnRemoval is disabled
 func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -7196,6 +7224,8 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 
 // TestActiveReplicatorBlipsync uses an ActiveReplicator with another RestTester instance to connect and cleanly disconnect.
 func TestActiveReplicatorBlipsync(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
 	passiveDBName := "passivedb"
@@ -7263,6 +7293,8 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 }
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -7295,6 +7327,8 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 // Test that the username and password fields in the replicator still work and get redacted appropriately.
 // This should log a deprecation notice.
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	passiveRT := rest.NewRestTester(t,
@@ -7361,6 +7395,8 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 
 // CBG-1581: Ensure activeReplicatorCommon does final checkpoint on stop/disconnect
 func TestReplicatorCheckpointOnStop(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	activeRT, passiveRT, remoteURL := rest.SetupSGRPeers(t)

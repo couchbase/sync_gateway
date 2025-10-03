@@ -1500,6 +1500,8 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 }
 
 func TestReplicatorRevocations(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
@@ -1563,6 +1565,8 @@ func TestReplicatorRevocations(t *testing.T) {
 }
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
@@ -1630,6 +1634,8 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 }
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
@@ -1703,6 +1709,8 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 }
 
 func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
@@ -1825,6 +1833,8 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 }
 
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 
 	base.RequireNumTestBuckets(t, 2)
@@ -1920,6 +1930,8 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 }
 
 func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
@@ -1998,6 +2010,8 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 }
 
 func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
@@ -2091,6 +2105,8 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 }
 
 func TestReplicatorRevocationsFromZero(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 
 	base.RequireNumTestBuckets(t, 2)
@@ -2201,6 +2217,8 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 }
 
 func TestRevocationMessage(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2307,6 +2325,8 @@ func TestRevocationMessage(t *testing.T) {
 }
 
 func TestRevocationNoRev(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2368,6 +2388,8 @@ func TestRevocationNoRev(t *testing.T) {
 }
 
 func TestRevocationGetSyncDataError(t *testing.T) {
+	base.LongRunningTest(t)
+
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2439,6 +2461,8 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2482,6 +2506,8 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 }
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	defer db.SuspendSequenceBatching()()

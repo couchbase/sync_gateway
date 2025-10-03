@@ -281,6 +281,8 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 // TestBlipDeltaSyncNewAttachmentPull tests that adding a new attachment in SG and replicated via delta sync adds the attachment
 // to the temporary "allowedAttachments" map.
 func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
@@ -368,6 +370,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 // TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
 // and checks that full body replication still happens in CE.
 func TestBlipDeltaSyncPull(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -544,6 +547,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 // TestBlipDeltaSyncPullRemoved tests a simple pull replication that drops a document out of the user's channel.
 func TestBlipDeltaSyncPullRemoved(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -609,6 +613,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 // │     Client 1 ├─┤         ▼      continuous      ▼  ├─■
 // └──────────────┘ └───────────────────────────────────┘
 func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -714,6 +719,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 // │     Client 2 ├───────────┤ ▼ oneshot ├──────────┤ ▼ oneshot ├─■
 // └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)
 
@@ -954,6 +960,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySGTest, base.KeySyncMsg, base.KeySync)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -1082,6 +1090,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 // TestBlipNonDeltaSyncPush tests that a client that doesn't support deltas can push to a SG that supports deltas (either CE or EE)
 func TestBlipNonDeltaSyncPush(t *testing.T) {
+	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	sgUseDeltas := base.IsEnterpriseEdition()
@@ -1138,6 +1147,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 }
 
 func TestBlipDeltaNoAccessPush(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeySyncMsg, base.KeyWebSocket, base.KeySGTest)
 	const (
 		username = "alice"

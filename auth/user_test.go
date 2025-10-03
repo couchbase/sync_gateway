@@ -59,6 +59,8 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 }
 
 func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
+	base.LongRunningTest(t)
+
 	const (
 		username      = "alice"
 		oldPassword   = "hunter2"

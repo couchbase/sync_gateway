@@ -970,6 +970,8 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 }
 
 func TestLegacyRevBlipTesterClient(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 	rtConfig := RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)

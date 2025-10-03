@@ -60,7 +60,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{

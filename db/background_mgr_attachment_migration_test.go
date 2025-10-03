@@ -79,7 +79,6 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("rosmar does not support DCP client, pending CBG-4249")
 	}
-	base.LongRunningTest(t)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
