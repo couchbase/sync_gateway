@@ -5858,7 +5858,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
-	t.Skip("CBG-4782: needs rework for version vectors, may be able ot get to work after rev tree reconciliation is done")
 
 	tombstoneTests := []struct {
 		name               string
@@ -5936,24 +5935,17 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		}
 	}
 
-	for _, test := range tombstoneTests {
+	sgrRunner := rest.NewSGRTestRunner(t)
+	// tests is putting document rev trees in certain states, not fully relevant for v4 replication so keep in v3 mode
+	sgrRunner.RunSubprotocolV3(func(t *testing.T) {
+		for _, test := range tombstoneTests {
+			t.Run(test.name, func(t *testing.T) {
+				if test.sdkResurrect && !base.TestUseXattrs() {
+					t.Skip("SDK resurrect test cases require xattrs to be enabled")
+				}
+				localActiveRT, remotePassiveRT, _ := sgrRunner.SetupSGRPeers(t)
 
-		t.Run(test.name, func(t *testing.T) {
-			if test.sdkResurrect && !base.TestUseXattrs() {
-				t.Skip("SDK resurrect test cases require xattrs to be enabled")
-			}
-
-			remotePassiveRT := rest.NewRestTester(t, nil)
-			defer remotePassiveRT.Close()
-
-			// Active
-			localActiveRT := rest.NewRestTester(t,
-				&rest.RestTesterConfig{
-					SgReplicateEnabled: true,
-				})
-			defer localActiveRT.Close()
-
-			replConf := `
+				replConf := `
 			{
 				"replication_id": "replication",
 				"remote": "` + adminDBURL(remotePassiveRT).String() + `",
@@ -5962,122 +5954,124 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				"collections_enabled": ` + strconv.FormatBool(!localActiveRT.GetDatabase().OnlyDefaultCollection()) + `
 			}`
 
-			// Send up replication
-			resp := localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replication/replication", replConf)
-			rest.RequireStatus(t, resp, http.StatusCreated)
+				// Send up replication
+				resp := localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replication/replication", replConf)
+				rest.RequireStatus(t, resp, http.StatusCreated)
 
-			// Create a doc with 3-revs
-			resp = localActiveRT.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
-			rest.RequireStatus(t, resp, http.StatusCreated)
+				// Create a doc with 3-revs
+				resp = localActiveRT.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
+				rest.RequireStatus(t, resp, http.StatusCreated)
 
-			// Wait for the replication to be started
-			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
+				// Wait for the replication to be started
+				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
-			const doc2ID = "docid2"
-			doc2Version := rest.DocVersion{RevTreeID: "3-abc"}
-			localActiveRT.WaitForVersion(doc2ID, doc2Version)
-			remotePassiveRT.WaitForVersion(doc2ID, doc2Version)
+				const doc2ID = "docid2"
+				doc2Version := rest.DocVersion{RevTreeID: "3-abc"}
+				sgrRunner.WaitForVersion(doc2ID, localActiveRT, doc2Version)
+				sgrRunner.WaitForVersion(doc2ID, remotePassiveRT, doc2Version)
 
-			// Stop the replication
-			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
-			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
+				// Stop the replication
+				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
+				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
 
-			// Delete on the short branch and make another doc on the longer branch before deleting it
-			if test.longestBranchLocal {
-				// Delete doc on remote
-				deletedVersion := remotePassiveRT.DeleteDoc(doc2ID, doc2Version)
-				require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevTreeID)
+				// Delete on the short branch and make another doc on the longer branch before deleting it
+				deleteVersion := rest.DocVersion{}
+				if test.longestBranchLocal {
+					// Delete doc on remote
+					deletedVersion := remotePassiveRT.DeleteDoc(doc2ID, doc2Version)
+					require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevTreeID)
 
-				// Create another rev and then delete doc on local - ie tree is longer
-				version := localActiveRT.UpdateDoc(doc2ID, doc2Version, `{"foo":"bar"}`)
-				localActiveRT.DeleteDoc(doc2ID, version)
+					// Create another rev and then delete doc on local - ie tree is longer
+					version := localActiveRT.UpdateDoc(doc2ID, doc2Version, `{"foo":"bar"}`)
+					deleteVersion = localActiveRT.DeleteDoc(doc2ID, version)
 
-				// Validate local is CBS tombstone, expect not found error
-				// Expect KeyNotFound error retrieving local tombstone pre-replication
-				requireTombstone(t, localActiveRT.GetSingleDataStore(), "docid2")
+					// Validate local is CBS tombstone, expect not found error
+					// Expect KeyNotFound error retrieving local tombstone pre-replication
+					requireTombstone(t, localActiveRT.GetSingleDataStore(), "docid2")
 
-			} else {
-				// Delete doc on localActiveRT (active / local)
-				deletedVersion := localActiveRT.DeleteDoc(doc2ID, doc2Version)
-				require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevTreeID)
-
-				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
-				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevTreeID: "3-abc"}, `{"foo":"bar"}`)
-				remotePassiveRT.DeleteDoc(doc2ID, version)
-
-				// Validate local is CBS tombstone, expect not found error
-				// Expect KeyNotFound error retrieving remote tombstone pre-replication
-				requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
-			}
-
-			// Start up repl again
-			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
-			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
-
-			// Wait for the recently longest branch to show up on both sides
-			localActiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
-			remotePassiveRT.WaitForTombstone(doc2ID, rest.DocVersion{RevTreeID: "5-4a5f5a35196c37c117737afd5be1fc9b"})
-
-			// Stop the replication
-			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
-			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
-
-			// Resurrect Doc
-			updatedBody := make(map[string]interface{})
-			updatedBody["resurrection"] = true
-			if test.resurrectLocal {
-				if test.sdkResurrect {
-					// resurrect doc via SDK on local
-					err := localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
-					assert.NoError(t, err, "Unable to resurrect doc docid2")
-					collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
-					// force on-demand import
-					_, getErr := collection.GetDocument(ctx, "docid2", db.DocUnmarshalSync)
-					require.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
-					localActiveRT.PutDoc("docid2", `{"resurrection": true}`)
+					// Delete doc on localActiveRT (active / local)
+					deletedVersion := localActiveRT.DeleteDoc(doc2ID, doc2Version)
+					require.Equal(t, "4-cc0337d9d38c8e5fc930ae3deda62bf8", deletedVersion.RevTreeID)
+
+					// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
+					version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevTreeID: "3-abc"}, `{"foo":"bar"}`)
+					deleteVersion = remotePassiveRT.DeleteDoc(doc2ID, version)
+
+					// Validate local is CBS tombstone, expect not found error
+					// Expect KeyNotFound error retrieving remote tombstone pre-replication
+					requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
 				}
-			} else {
-				if test.sdkResurrect {
-					// resurrect doc via SDK on remote
-					err := remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
-					assert.NoError(t, err, "Unable to resurrect doc docid2")
-					// force on-demand import
-					collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
-					_, getErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
-					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+
+				// Start up repl again
+				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
+				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
+
+				// Wait for the recently longest branch to show up on both sides
+				sgrRunner.WaitForTombstone(doc2ID, localActiveRT, deleteVersion)
+				sgrRunner.WaitForTombstone(doc2ID, remotePassiveRT, deleteVersion)
+
+				// Stop the replication
+				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
+				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateStopped)
+
+				// Resurrect Doc
+				updatedBody := make(map[string]interface{})
+				updatedBody["resurrection"] = true
+				if test.resurrectLocal {
+					if test.sdkResurrect {
+						// resurrect doc via SDK on local
+						err := localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+						assert.NoError(t, err, "Unable to resurrect doc docid2")
+						collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
+						// force on-demand import
+						_, getErr := collection.GetDocument(ctx, "docid2", db.DocUnmarshalSync)
+						require.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+					} else {
+						localActiveRT.PutDoc("docid2", `{"resurrection": true}`)
+					}
 				} else {
-					remotePassiveRT.PutDoc("docid2", `{"resurrection": true}`)
+					if test.sdkResurrect {
+						// resurrect doc via SDK on remote
+						err := remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+						assert.NoError(t, err, "Unable to resurrect doc docid2")
+						// force on-demand import
+						collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
+						_, getErr := collection.GetDocument(ctx, doc2ID, db.DocUnmarshalSync)
+						assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+					} else {
+						remotePassiveRT.PutDoc("docid2", `{"resurrection": true}`)
+					}
 				}
-			}
 
-			// For SG resurrect, rev history is preserved, expect rev 6-...
-			expectedRevID := "6-bf187e11c1f8913769dca26e56621036"
-			if test.sdkResurrect {
-				// For SDK resurrect, rev history is not preserved, expect rev 1-...
-				expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
-			}
+				// For SG resurrect, rev history is preserved, expect rev 6-...
+				expectedRevID := "6-bf187e11c1f8913769dca26e56621036"
+				if test.sdkResurrect {
+					// For SDK resurrect, rev history is not preserved, expect rev 1-...
+					expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
+				}
 
-			expectedVersion := rest.DocVersion{RevTreeID: expectedRevID}
-			// Wait for doc to show up on side that the resurrection was done
-			if test.resurrectLocal {
-				localActiveRT.WaitForVersion(doc2ID, expectedVersion)
-			} else {
-				remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
-			}
+				expectedVersion := rest.DocVersion{RevTreeID: expectedRevID}
+				// Wait for doc to show up on side that the resurrection was done
+				if test.resurrectLocal {
+					localActiveRT.WaitForVersion(doc2ID, expectedVersion)
+				} else {
+					remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
+				}
 
-			// Start the replication
-			rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
-			localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
+				// Start the replication
+				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
+				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
-			// Wait for doc to replicate from side resurrection was done on to the other side
-			if test.resurrectLocal {
-				remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
-			} else {
-				localActiveRT.WaitForVersion(doc2ID, expectedVersion)
-			}
-		})
-	}
+				// Wait for doc to replicate from side resurrection was done on to the other side
+				if test.resurrectLocal {
+					remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
+				} else {
+					localActiveRT.WaitForVersion(doc2ID, expectedVersion)
+				}
+			})
+		}
+	})
 }
 
 // This test ensures that the local tombstone revision wins over non-tombstone revision
