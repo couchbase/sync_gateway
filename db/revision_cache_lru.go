@@ -727,6 +727,13 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 			if hlv != nil {
 				value.cv = *hlv.ExtractCurrentVersionFromHLV()
 				value.hlvHistory = hlv.ToHistoryForHLV()
+			} else if value.err == nil {
+				// if hlv is nil its a legacy rev, we need to create a CV from the revID
+				encodedCV, err := LegacyRevToRevTreeEncodedVersion(value.revID)
+				if err != nil {
+					return docRev, false, err
+				}
+				value.cv = encodedCV
 			}
 		}
 	}
