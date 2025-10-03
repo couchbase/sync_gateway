@@ -452,7 +452,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, serverType serverType, ro
 					cors = db.CORS
 				}
 			}
-			if cors != nil && privs != adminPrivs && privs != metricsPrivs {
+			if !cors.IsEmpty() && privs != adminPrivs && privs != metricsPrivs {
 				cors.AddResponseHeaders(rq, response)
 			}
 			if len(options) == 0 {
