@@ -26,9 +26,9 @@ const (
 )
 
 // Constants for the * channel variations
-const UserStarChannel = "*"     // user channel for "can access all docs"
-const DocumentStarChannel = "!" // doc channel for "visible to all users"
-const AllChannelWildcard = "*"  // wildcard for 'all channels'
+const UserStarChannel = "*"       // user channel for "can access all docs"
+const DocumentPublicChannel = "!" // doc channel for "visible to all users"
+const AllChannelWildcard = "*"    // wildcard for 'all channels'
 
 // ID represents a single channel inside a collection
 type ID struct {
