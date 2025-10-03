@@ -274,7 +274,7 @@ func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, col
 	}
 
 	// always grant access to the public document channel
-	channels.AddChannel(ch.DocumentStarChannel, 1)
+	channels.AddChannel(ch.DocumentPublicChannel, 1)
 
 	channelHistory := auth.calculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 

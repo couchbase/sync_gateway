@@ -52,7 +52,7 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		}
 		resp[keyspace] = make(map[string]channelHistory)
 		for chanName, chanEntry := range currentChannels {
-			if chanName == channels.DocumentStarChannel {
+			if chanName == channels.DocumentPublicChannel {
 				continue
 			}
 			resp[keyspace][chanName] = channelHistory{Entries: []auth.GrantHistorySequencePair{{StartSeq: chanEntry.Sequence, EndSeq: 0}}}
