@@ -339,7 +339,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			if h.db != nil {
 				cors = h.db.CORS
 			}
-			if cors != nil {
+			if !cors.IsEmpty() {
 				cors.AddResponseHeaders(h.rq, h.response)
 			}
 		}
