@@ -6081,8 +6081,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	base.LongRunningTest(t)
 
-	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
-
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -6208,8 +6206,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	base.LongRunningTest(t)
-
-	// CBG-4799: tests wil be refactored to allow for easier switch between rev tree and version vector
 
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
