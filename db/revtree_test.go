@@ -881,7 +881,7 @@ func BenchmarkEncodeRevisions(b *testing.B) {
 	for _, test := range tests {
 		docID := b.Name() + "-" + test.name
 		b.Run(test.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = encodeRevisions(ctx, docID, test.input)
 			}
 		})
@@ -1183,9 +1183,8 @@ func BenchmarkRevTreePruning(b *testing.B) {
 	}
 
 	ctx := base.TestCtx(b)
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 
 		b.StopTimer()
 		revTree := getMultiBranchTestRevtree1(ctx, 50, 100, branchSpecs)
@@ -1208,14 +1207,14 @@ func BenchmarkRevtreeUnmarshal(b *testing.B) {
 	b.ResetTimer()
 	b.Run("Marshal into revTree", func(b *testing.B) {
 		revTree := RevTree{}
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = base.JSONUnmarshal(treeJson, &revTree)
 		}
 	})
 
 	b.Run("Marshal into revTreeList", func(b *testing.B) {
 		revTree := revTreeList{}
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = base.JSONUnmarshal(treeJson, &revTree)
 		}
 	})
@@ -1234,7 +1233,7 @@ func addRevs(ctx context.Context, revTree RevTree, startingParentRevId string, n
 
 	generation, _ := ParseRevID(ctx, startingParentRevId)
 
-	for i := 0; i < numRevs; i++ {
+	for i := range numRevs {
 
 		newRevId := fmt.Sprintf("%v-%v", generation+1, revDigest)
 		parentRevId := ""
@@ -1310,7 +1309,7 @@ func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
 
 	numEntries := (docSizeBytes / 100) + 1
 	body := make(map[string]string, numEntries)
-	for i := 0; i < numEntries; i++ {
+	for i := range numEntries {
 		key := fmt.Sprintf("field_%d", i)
 		body[key] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	}

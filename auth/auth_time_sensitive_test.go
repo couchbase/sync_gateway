@@ -37,7 +37,7 @@ func TestAuthenticationSpeed(t *testing.T) {
 	assert.True(t, user.Authenticate("goIsKewl"))
 
 	start := time.Now()
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		assert.True(t, user.Authenticate("goIsKewl"))
 	}
 	durationPerAuth := time.Since(start) / 1000

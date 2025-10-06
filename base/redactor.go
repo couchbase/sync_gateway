@@ -29,7 +29,7 @@ type Redactor interface {
 
 // RedactorBuilder provides a struct a way to implement its own redaction.
 type RedactorBuilder interface {
-	BuildRedactor(redactor func(interface{}) RedactorFunc) Redactor
+	BuildRedactor(redactor func(any) RedactorFunc) Redactor
 }
 
 // This allows for lazy evaluation for a Redactor. Means that we don't have to process redaction unless we are
@@ -44,7 +44,7 @@ type RedactorSlice []Redactor
 
 // redact performs an *in-place* redaction on the input slice, and returns it.
 // This should only be consumed by logging funcs. E.g. fmt.Printf(fmt, redact(args))
-func redact(args []interface{}) []interface{} {
+func redact(args []any) []any {
 	for i, v := range args {
 		if r, ok := v.(Redactor); ok {
 			args[i] = r.Redact()
@@ -83,7 +83,7 @@ func (redactorSlice RedactorSlice) String() string {
 
 type RedactorSet struct {
 	set          Set
-	redactorFunc func(interface{}) RedactorFunc
+	redactorFunc func(any) RedactorFunc
 }
 
 func (redactorSet RedactorSet) Redact() string {
@@ -112,10 +112,10 @@ func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
 	return string(append(tmp, "}"...))
 }
 
-func buildRedactorFuncSlice(valueOf reflect.Value, function func(interface{}) RedactorFunc) RedactorSlice {
+func buildRedactorFuncSlice(valueOf reflect.Value, function func(any) RedactorFunc) RedactorSlice {
 	length := valueOf.Len()
 	retVal := make([]Redactor, 0, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		retVal = append(retVal, function(valueOf.Index(i).Interface()))
 	}
 

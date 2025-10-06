@@ -30,7 +30,7 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 	}
 
 	metadata := make([]DCPMetadata, numVbuckets)
-	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+	for vbNo := range numVbuckets {
 		highSeqNo := gocbcore.SeqNo(highSeqNos[vbNo])
 		metadata[vbNo].VbUUID = gocbcore.VbUUID(vbUUIDs[vbNo])
 		metadata[vbNo].FailoverEntries = []gocbcore.FailoverEntry{

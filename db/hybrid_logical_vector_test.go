@@ -966,7 +966,7 @@ func TestExtractCVFromProposeChangesRev(t *testing.T) {
 func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 	for _, bm := range getHLVTestCases(b) {
 		b.Run(bm.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _, _ = extractHLVFromBlipString(bm.hlvString)
 			}
 		})

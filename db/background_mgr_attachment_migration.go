@@ -52,7 +52,7 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 	}
 }
 
-func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -92,7 +92,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 	return newRunInit()
 }
 
-func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := a.databaseCtx
 	migrationLoggingID := "Migration: " + a.MigrationID
 

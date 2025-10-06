@@ -125,7 +125,7 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 
 	// Initialize active vbuckets
 	client.activeVbuckets = make(map[uint16]struct{})
-	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+	for vbNo := range numVbuckets {
 		client.activeVbuckets[vbNo] = struct{}{}
 	}
 
@@ -375,7 +375,7 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 
 	// Wait for agent to be ready
 	var waitError error
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		waitError = nil
 		agentReadyErr := make(chan error)
 		_, err = dc.agent.WaitUntilReady(

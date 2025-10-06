@@ -150,7 +150,7 @@ type DbConfig struct {
 	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                 // Initial user accounts
 	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                 // Initial roles
 	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`            // Max depth a document's revision tree can grow to
-	AutoImport                       interface{}                      `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	AutoImport                       any                              `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
 	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`     // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
 	ImportFilter                     *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
 	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
@@ -226,11 +226,11 @@ type EventHandlerConfig struct {
 }
 
 type EventConfig struct {
-	HandlerType string                 `json:"handler,omitempty"` // Handler type
-	Url         string                 `json:"url,omitempty"`     // Url (webhook)
-	Filter      string                 `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     *uint64                `json:"timeout,omitempty"` // Timeout (webhook)
-	Options     map[string]interface{} `json:"options,omitempty"` // Options can be specified per-handler, and are specific to each type.
+	HandlerType string         `json:"handler,omitempty"` // Handler type
+	Url         string         `json:"url,omitempty"`     // Url (webhook)
+	Filter      string         `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64        `json:"timeout,omitempty"` // Timeout (webhook)
+	Options     map[string]any `json:"options,omitempty"` // Options can be specified per-handler, and are specific to each type.
 }
 
 type CacheConfig struct {
@@ -373,7 +373,7 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 	}
 
 	logMessage := "Must repair invalid database config for %q for it to be usable!"
-	logArgs := []interface{}{base.MD(dbname)}
+	logArgs := []any{base.MD(dbname)}
 
 	// build log message
 	if isBucketMismatch := *cnf.Bucket != bucket; isBucketMismatch {
@@ -1327,7 +1327,7 @@ func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
 }
 
 // DecodeAndSanitiseStartupConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
+func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config any, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err

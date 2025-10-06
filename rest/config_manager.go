@@ -431,7 +431,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		timeout = b.configRetryTimeout
 	}
 
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+	retryWorker := func() (shouldRetry bool, err error, value any) {
 		config := &DatabaseConfig{}
 		metadataKey := PersistentConfigKey(ctx, groupID, dbName)
 		cas, err := b.Connection.GetMetadataDocument(ctx, bucketName, metadataKey, config)
@@ -531,7 +531,7 @@ func (b *bootstrapContext) waitForConfigDelete(ctx context.Context, bucketName, 
 	}
 
 	dbConfigName := PersistentConfigKey(ctx, groupID, dbName)
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+	retryWorker := func() (shouldRetry bool, err error, value any) {
 		config := &DatabaseConfig{}
 		cas, getErr := b.Connection.GetMetadataDocument(ctx, bucketName, dbConfigName, config)
 		// Success case - delete has been completed

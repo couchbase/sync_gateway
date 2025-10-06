@@ -27,15 +27,15 @@ type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
 	GetConfigBuckets() ([]string, error)
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
-	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr interface{}) (cas uint64, err error)
+	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, err error)
 	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
-	InsertMetadataDocument(ctx context.Context, bucket, key string, value interface{}) (newCAS uint64, err error)
+	InsertMetadataDocument(ctx context.Context, bucket, key string, value any) (newCAS uint64, err error)
 	// DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
 	DeleteMetadataDocument(ctx context.Context, bucket, key string, cas uint64) (err error)
 	// UpdateMetadataDocument updates an existing bootstrap metadata document for a given bucket and key. updateCallback can return nil to remove the config.  Retries on CAS failure.
 	UpdateMetadataDocument(ctx context.Context, bucket, key string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// WriteMetadataDocument writes a bootstrap metadata document for a given bucket and key.  Does not retry on CAS failure.
-	WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, valuePtr interface{}) (casOut uint64, err error)
+	WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, valuePtr any) (casOut uint64, err error)
 	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
 	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
 	TouchMetadataDocument(ctx context.Context, bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
@@ -43,7 +43,7 @@ type BootstrapConnection interface {
 	KeyExists(ctx context.Context, bucket, key string) (exists bool, err error)
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
 	// Returns exists=false if key is not found, returns error for any other error.
-	GetDocument(ctx context.Context, bucket, docID string, rv interface{}) (exists bool, err error)
+	GetDocument(ctx context.Context, bucket, docID string, rv any) (exists bool, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -291,7 +291,7 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	return bucketList, nil
 }
 
-func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr interface{}) (cas uint64, err error) {
+func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -309,7 +309,7 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 	return cas, err
 }
 
-func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -324,7 +324,7 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
-func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -449,7 +449,7 @@ func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID strin
 
 // GetDocument fetches a document from the default collection.  Does not use configPersistence - callers
 // requiring configPersistence handling should use GetMetadataDocument.
-func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID string, rv interface{}) (exists bool, err error) {
+func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID string, rv any) (exists bool, err error) {
 	if cc == nil {
 		return false, errors.New("nil CouchbaseCluster")
 	}
@@ -580,7 +580,7 @@ type CredentialsConfigX509 struct {
 }
 
 // ConfigMerge applies non-empty fields from b onto non-empty fields on a
-func ConfigMerge(a, b interface{}) error {
+func ConfigMerge(a, b any) error {
 	return mergo.Merge(a, b, mergo.WithTransformers(&mergoNilTransformer{}), mergo.WithOverride)
 }
 

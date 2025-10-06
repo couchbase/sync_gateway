@@ -16,7 +16,7 @@ import "fmt"
 // which has the ability to redact any sensitive data by calling redact() on all of its args.
 type RedactableError struct {
 	fmt  string
-	args []interface{}
+	args []any
 }
 
 var (
@@ -25,7 +25,7 @@ var (
 )
 
 // RedactErrorf creates a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
-func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
+func RedactErrorf(fmt string, args ...any) *RedactableError {
 	return &RedactableError{
 		fmt:  fmt,
 		args: args,

@@ -197,7 +197,7 @@ func init() {
 // GetSGIndexes returns the set of indexes defined for Sync Gateway.
 func GetSGIndexes() map[SGIndexType]SGIndex {
 	sgIndexes := make(map[SGIndexType]SGIndex, indexTypeCount)
-	for i := SGIndexType(0); i < indexTypeCount; i++ {
+	for i := range indexTypeCount {
 		sgIndex := SGIndex{
 			simpleName:       indexNames[i],
 			Version:          indexVersions[i],
@@ -326,7 +326,7 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 	sleeper := base.CreateMaxDoublingSleeperFunc(20, 1000, 30000)
 
 	// start a retry loop to create index,
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		err = bucket.CreateIndexIfNotExists(ctx, indexName, indexExpression, filterExpression, n1qlOptions)
 		if err != nil {
 			switch {

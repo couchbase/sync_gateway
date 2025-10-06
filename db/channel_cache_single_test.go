@@ -734,11 +734,11 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 	docIDs := make([]string, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i)
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], "1-a"), false)
 	}
 }
@@ -762,8 +762,8 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(5.0, b.N)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
@@ -786,8 +786,8 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(20.0, b.N)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
@@ -810,8 +810,8 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(50.0, b.N)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
@@ -834,8 +834,8 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(80.0, b.N)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
@@ -858,8 +858,8 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(95.0, b.N)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
@@ -882,7 +882,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	// generate docs
 	docs := make([]*LogEntry, b.N)
 	r := rand.New(rand.NewSource(99))
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		docs[i] = testLogEntry(uint64(i), fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", i), "1-a")
 	}
 	// shuffle sequences
@@ -893,9 +893,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 		docs[j].Sequence = oldSeq
 	}
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		cache.addToCache(ctx, docs[i], false)
 	}
 }
@@ -908,7 +906,7 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 	r := rand.New(rand.NewSource(99))
 	uniqueDocs := percentInsert / 100 * float64(N)
 	maxRevCount := 0
-	for i := 0; i < N; i++ {
+	for i := range N {
 		docIndex := int(r.Float64() * uniqueDocs)
 		docIDs[i] = fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", docIndex)
 		revCount[docIndex]++

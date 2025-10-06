@@ -444,7 +444,7 @@ func GetCollectionsConfigWithFiltering(t testing.TB, testBucket *base.TestBucket
 	}
 
 	scopesConfig := ScopesConfig{}
-	for i := 0; i < numCollections; i++ {
+	for i := range numCollections {
 		dataStoreName := stores[i]
 		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
 			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
@@ -930,7 +930,7 @@ func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNu
 }
 
 func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
+	waitForSuccess := func() (shouldRetry bool, err error, value any) {
 		if successFunc() {
 			return false, nil, nil
 		}
@@ -946,7 +946,7 @@ func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, m
 	return nil
 }
 
-func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value interface{}), maxNumAttempts, timeToSleepMs int) error {
+func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value any), maxNumAttempts, timeToSleepMs int) error {
 	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
 	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
 	if err != nil {
@@ -1024,7 +1024,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 // Waits for view to be defined on the server.  Used to avoid view_undefined errors.
 func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value any) {
 		response := rt.SendAdminRequest("GET", viewURLPath, ``)
 
 		if response.Code == 200 {
@@ -1494,7 +1494,7 @@ func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester,
 	bt.blipContext.FatalErrorHandler = func(err error) {
 		bt.TB().Fatalf("BLIP fatal error: %v", err)
 	}
-	bt.blipContext.HandlerPanicHandler = func(request, response *blip.Message, err interface{}) {
+	bt.blipContext.HandlerPanicHandler = func(request, response *blip.Message, err any) {
 		stack := debug.Stack()
 		bt.TB().Fatalf("Panic while handling %s: %v\n%s", request.Profile(), err, string(stack))
 	}
@@ -1755,14 +1755,14 @@ func getChangesHandler(t testing.TB, changesFinishedWg, revsFinishedWg *sync.Wai
 		if !request.NoReply() {
 
 			// unmarshal into json array
-			changesBatch := [][]interface{}{}
+			changesBatch := [][]any{}
 
 			require.NoError(t, base.JSONUnmarshal(body, &changesBatch))
 
-			responseVal := [][]interface{}{}
+			responseVal := [][]any{}
 			for _, change := range changesBatch {
 				revId := change[2].(string)
-				responseVal = append(responseVal, []interface{}{revId})
+				responseVal = append(responseVal, []any{revId})
 				revsFinishedWg.Add(1)
 			}
 
@@ -1912,7 +1912,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (r
 // WaitForNumChanges waits for at least the number of document changes and returns the changes as they are in the changes messages:
 //
 //	[[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
-func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
+func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]any) {
 
 	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
 		currentChanges := bt.GetChanges()
@@ -1938,14 +1938,14 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
-func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
+func (bt *BlipTester) GetChanges() (changes [][]any) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
 		delete(bt.blipContext.HandlerForProfile, "changes") // a handler for this profile is registered in SubscribeToChanges
 	}()
 
-	collectedChanges := [][]interface{}{}
+	collectedChanges := [][]any{}
 	chanChanges := make(chan *blip.Message)
 	bt.SubscribeToChanges(false, chanChanges)
 
@@ -1962,7 +1962,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 		}
 
 		// unmarshal into json array
-		changesBatch := [][]interface{}{}
+		changesBatch := [][]any{}
 
 		require.NoError(bt.TB(), base.JSONUnmarshal(body, &changesBatch), "Error unmarshalling changes. Body: %v", string(body))
 
@@ -2093,7 +2093,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
-			emptyResponseVal := []interface{}{}
+			emptyResponseVal := []any{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			require.NoError(bt.TB(), err)
 			response.SetBody(emptyResponseValBytes)
@@ -2126,7 +2126,7 @@ type ExpectedChange struct {
 	deleted  *bool  // Deleted status or nil for any deleted status
 }
 
-func (e ExpectedChange) Equals(change []interface{}) error {
+func (e ExpectedChange) Equals(change []any) error {
 
 	// TODO: this is commented because it's giving an error: panic: interface conversion: interface {} is float64, not string [recovered].
 	// TODO: I think this should be addressed by adding a BlipChange struct stronger typing than a slice of empty interfaces.  TBA.
@@ -2172,10 +2172,10 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 // This struct wraps a map and provides convenience methods for getting at the special
 // fields with the appropriate types (string in the id/rev case, db.AttachmentMap in the attachments case).
 // Currently only used in tests, but if similar functionality needed in primary codebase, could be moved.
-type RestDocument map[string]interface{}
+type RestDocument map[string]any
 
 func NewRestDocument() *RestDocument {
-	emptyBody := make(map[string]interface{})
+	emptyBody := make(map[string]any)
 	restDoc := RestDocument(emptyBody)
 	return &restDoc
 }
@@ -2225,7 +2225,7 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 		// If it's already an AttachmentMap (maybe due to previous call to SetAttachments), then return as-is
 		return v, nil
 	default:
-		rawAttachmentsMap := v.(map[string]interface{})
+		rawAttachmentsMap := v.(map[string]any)
 		for attachmentName, attachmentVal := range rawAttachmentsMap {
 
 			// marshal attachmentVal into a byte array, then unmarshal into a DocAttachment
@@ -2289,7 +2289,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...any) {
 	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
@@ -2303,7 +2303,7 @@ func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...i
 	}
 }
 
-func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...any) {
 	t.Helper()
 	start := time.Now()
 	tick := time.NewTicker(timeout / 20)
@@ -2639,7 +2639,7 @@ func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
 	dropAllNonPrimaryIndexes(t, tb.GetMetadataStore())
 
 	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := 0; i < len(dsNames); i++ {
+	for i := range dsNames {
 		ds, err := tb.GetNamedDataStore(i)
 		require.NoError(t, err)
 		dropAllNonPrimaryIndexes(t, ds)
@@ -2655,7 +2655,7 @@ func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
 	require.NoError(t, dropErr)
 
 	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := 0; i < len(dsNames); i++ {
+	for i := range dsNames {
 		ds, err := tb.GetNamedDataStore(i)
 		require.NoError(t, err)
 		n1qlStore, ok := base.AsN1QLStore(ds)
@@ -2746,8 +2746,8 @@ func SafeDocumentName(t *testing.T, name string) string {
 	return docName
 }
 
-func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
-	result := make(map[string]interface{})
+func JsonToMap(t *testing.T, jsonStr string) map[string]any {
+	result := make(map[string]any)
 	err := json.Unmarshal([]byte(jsonStr), &result)
 	require.NoError(t, err)
 	return result

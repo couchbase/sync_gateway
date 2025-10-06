@@ -102,13 +102,13 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 				}, time.Second*20, time.Millisecond*100)
 
 				if tc.replicationType == db.ActiveReplicatorTypePull {
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 						docHistoryList = append(docHistoryList, version.RevTreeID)
 					}
 					rt2.WaitForPendingChanges()
 				} else {
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						version = rt1.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 						docHistoryList = append(docHistoryList, version.RevTreeID)
 					}
@@ -212,13 +212,13 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 		rest.RequireDocVersionEqual(t, rt2Version, rt1InitDocVersion)
 
 		// update doc on rt2 + rt1 to create diff in rev tree history
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			rt2Version = rt2.UpdateDoc(docID, rt2Version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 		}
 		rt2.WaitForPendingChanges()
 		rt1Version := rt1InitDocVersion
 		lastUpdateNum := 0
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 			lastUpdateNum = i
 		}
@@ -344,12 +344,12 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 
 				// update doc hundreds of times to create a large diff in rev tree versions
 				if tc.replicationType == db.ActiveReplicatorTypePull {
-					for i := 0; i < 200; i++ {
+					for i := range 200 {
 						version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 					}
 					rt2.WaitForPendingChanges()
 				} else {
-					for i := 0; i < 200; i++ {
+					for i := range 200 {
 						version = rt1.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 					}
 					rt1.WaitForPendingChanges()

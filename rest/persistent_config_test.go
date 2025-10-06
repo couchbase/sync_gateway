@@ -188,7 +188,7 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Use underlying connection to unmarshal to untyped config
-	cnf := make(map[string]interface{}, 1)
+	cnf := make(map[string]any, 1)
 	key := PersistentConfigKey(ctx, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "newdb")
 	cas, err := rt.ServerContext().BootstrapContext.Connection.GetMetadataDocument(ctx, tb.GetName(), key, &cnf)
 	require.NoError(t, err)

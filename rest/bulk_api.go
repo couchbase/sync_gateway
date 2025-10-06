@@ -265,8 +265,8 @@ func (h *handler) handleAllDocs() error {
 	// have errors associated with them.
 	numDocsPostFilter = uint64(totalRows)
 
-	_, _ = h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
-		totalRows, lastSeq)))
+	_, _ = h.response.Write(fmt.Appendf(nil, "],\n"+`"total_rows":%d,"update_seq":%d}`,
+		totalRows, lastSeq))
 
 	return nil
 }
@@ -286,18 +286,18 @@ func (h *handler) handleDump() error {
 	}
 	title := fmt.Sprintf("/%s: “%s” View", html.EscapeString(h.db.Name), html.EscapeString(viewName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
-	_, _ = h.response.Write([]byte(fmt.Sprintf(
+	_, _ = h.response.Write(fmt.Appendf(nil,
 		`<!DOCTYPE html><html><head><title>%s</title></head><body>
 		<h1>%s</h1><code>
 		<table border=1>
 		`,
-		title, title)))
+		title, title))
 	_, _ = h.response.Write([]byte("\t<tr><th>Key</th><th>Value</th><th>ID</th></tr>\n"))
 	for _, row := range result.Rows {
 		key, _ := base.JSONMarshal(row.Key)
 		value, _ := base.JSONMarshal(row.Value)
-		_, _ = h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%s</td><td>%s</td><td><em>%s</em></td>",
-			html.EscapeString(string(key)), html.EscapeString(string(value)), html.EscapeString(row.ID))))
+		_, _ = h.response.Write(fmt.Appendf(nil, "\t<tr><td>%s</td><td>%s</td><td><em>%s</em></td>",
+			html.EscapeString(string(key)), html.EscapeString(string(value)), html.EscapeString(row.ID)))
 		_, _ = h.response.Write([]byte("</tr>\n"))
 	}
 	_, _ = h.response.Write([]byte("</table>\n</code></html></body>"))
@@ -361,18 +361,18 @@ func (h *handler) handleDumpChannel() error {
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
-	_, _ = h.response.Write([]byte(fmt.Sprintf(
+	_, _ = h.response.Write(fmt.Appendf(nil,
 		`<!DOCTYPE html><html><head><title>%s</title></head><body>
 		<h1>%s</h1><code>
 		<p>Since = %d</p>
 		<table border=1>
 		`,
-		title, title, chanLog[0].Sequence-1)))
+		title, title, chanLog[0].Sequence-1))
 	_, _ = h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
 	for _, entry := range chanLog {
-		_, _ = h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
+		_, _ = h.response.Write(fmt.Appendf(nil, "\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
 			entry.Sequence,
-			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags)))
+			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags))
 		_, _ = h.response.Write([]byte("</tr>\n"))
 	}
 	_, _ = h.response.Write([]byte("</table>\n</code></html></body>"))
@@ -417,7 +417,7 @@ func (h *handler) handleBulkGet() error {
 		return err
 	}
 
-	docs, ok := body["docs"].([]interface{})
+	docs, ok := body["docs"].([]any)
 	if !ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
 	}
@@ -429,7 +429,7 @@ func (h *handler) handleBulkGet() error {
 			var docRevsLimit int
 			var err error
 
-			doc := item.(map[string]interface{})
+			doc := item.(map[string]any)
 			docid, _ := doc["id"].(string)
 			revOrCV := ""
 			revok := true
@@ -541,7 +541,7 @@ func (h *handler) handleBulkDocs() error {
 		newEdits = true
 	}
 
-	userDocs, ok := body["docs"].([]interface{})
+	userDocs, ok := body["docs"].([]any)
 	if !ok {
 		err = base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
 		return err
@@ -549,10 +549,10 @@ func (h *handler) handleBulkDocs() error {
 	lenDocs := len(userDocs)
 
 	// split out local docs, save them on their own
-	localDocs := make([]interface{}, 0, lenDocs)
-	docs := make([]interface{}, 0, lenDocs)
+	localDocs := make([]any, 0, lenDocs)
+	docs := make([]any, 0, lenDocs)
 	for _, item := range userDocs {
-		doc, ok := item.(map[string]interface{})
+		doc, ok := item.(map[string]any)
 		if !ok {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Document body must be JSON")
 			return err
@@ -571,7 +571,7 @@ func (h *handler) handleBulkDocs() error {
 
 	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
-		doc := item.(map[string]interface{})
+		doc := item.(map[string]any)
 		docid, _ := doc[db.BodyId].(string)
 		var docErr error
 		var revid string
@@ -612,7 +612,7 @@ func (h *handler) handleBulkDocs() error {
 	}
 
 	for _, item := range localDocs {
-		doc := item.(map[string]interface{})
+		doc := item.(map[string]any)
 		for k, v := range doc {
 			doc[k] = base.FixJSONNumbers(v)
 		}

@@ -34,7 +34,7 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 	ctx := base.TestCtx(t)
 	defer tb.Close(ctx)
 	var wg sync.WaitGroup
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		wg.Add(1)
 		go func(i int) {
 			noCloseTB := tb.NoCloseClone()

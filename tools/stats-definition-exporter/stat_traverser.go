@@ -10,6 +10,7 @@ package main
 
 import (
 	"log"
+	"maps"
 	"reflect"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -57,9 +58,7 @@ func traverseAndRetrieveStats(logger *log.Logger, s any) StatDefinitions {
 		}
 
 		// Follow to struct down a level and append the stats to the map
-		for k, v := range traverseAndRetrieveStats(logger, field.Interface()) {
-			stats[k] = v
-		}
+		maps.Copy(stats, traverseAndRetrieveStats(logger, field.Interface()))
 	}
 
 	return stats

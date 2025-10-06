@@ -61,7 +61,7 @@ func GetDefaultSyncFunction(scopeName, collectionName string) string {
 
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body map[string]any, oldBodyJSON string, metaMap map[string]any, userCtx map[string]any) (*ChannelMapperOutput, error) {
 	numberFixBody := ConvertJSONNumbers(body)
 	numberFixMetaMap := ConvertJSONNumbers(metaMap)
 
@@ -80,7 +80,7 @@ const JavascriptMinSafeInt = -JavascriptMaxSafeInt
 // ConvertJSONNumbers converts json.Number values to javascript number objects for use in the sync
 // function.  Integers that would lose precision are left as json.Number, as are floats that can't be
 // converted to float64.
-func ConvertJSONNumbers(value interface{}) interface{} {
+func ConvertJSONNumbers(value any) any {
 	switch value := value.(type) {
 	case json.Number:
 		if asInt, err := value.Int64(); err == nil {
@@ -101,11 +101,11 @@ func ConvertJSONNumbers(value interface{}) interface{} {
 			return asFloat
 		}
 		return value
-	case map[string]interface{}:
+	case map[string]any:
 		for k, v := range value {
 			value[k] = ConvertJSONNumbers(v)
 		}
-	case []interface{}:
+	case []any:
 		for i, v := range value {
 			value[i] = ConvertJSONNumbers(v)
 		}
@@ -130,7 +130,7 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 	}
 }
 
-func (runner *SyncRunner) MapToChannelsAndAccess(ctx context.Context, body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (runner *SyncRunner) MapToChannelsAndAccess(ctx context.Context, body map[string]any, oldBodyJSON string, userCtx map[string]any) (*ChannelMapperOutput, error) {
 	result, err := runner.Call(ctx, body, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err

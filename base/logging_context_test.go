@@ -42,7 +42,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	var log string
 	var originalLog string
 	// Allow time for logs to be printed
-	retry := func() (shouldRetry bool, err error, value interface{}) {
+	retry := func() (shouldRetry bool, err error, value any) {
 		originalLog = b.String()
 		if len(originalLog) < timestampLength {
 			return false, nil, nil

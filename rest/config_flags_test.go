@@ -155,7 +155,7 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 	assert.Lenf(t, flagsNum, cfgFieldsNum, "Number of cli flags and startup config properties did not match! Did you forget to add a new config option in registerConfigFlags?")
 }
 
-func countFields(cfg interface{}) (fields int) {
+func countFields(cfg any) (fields int) {
 	rField := reflect.ValueOf(cfg)
 	if rField.Kind() == reflect.Ptr {
 		rField = rField.Elem()

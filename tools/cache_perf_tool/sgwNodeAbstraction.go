@@ -58,7 +58,7 @@ func (s *sequenceAllocator) nextNSequences(n int) []uint64 {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	sequences := make([]uint64, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if s.lastSeq >= s.maxSeqInBatch {
 			maxSeq := s.syncSeqMock.nextBatch(uint64(s.batchSize))
 			s.maxSeqInBatch = maxSeq

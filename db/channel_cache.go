@@ -263,7 +263,7 @@ func (c *channelCacheImpl) Remove(ctx context.Context, collectionID uint32, docI
 		return 0
 	}
 
-	removeCallback := func(v interface{}) bool {
+	removeCallback := func(v any) bool {
 		channelCache := AsSingleChannelCache(ctx, v)
 		if channelCache == nil {
 			return false
@@ -302,7 +302,7 @@ func (c *channelCacheImpl) GetCachedChanges(ctx context.Context, channel channel
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
 func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 
-	callback := func(v interface{}) bool {
+	callback := func(v any) bool {
 		channelCache := AsSingleChannelCache(ctx, v)
 		if channelCache == nil {
 			return false
@@ -356,7 +356,7 @@ func (c *channelCacheImpl) getBypassChannelCache(ch channels.ID) (SingleChannelC
 
 // Converts an RangeSafeCollection value to a singleChannelCacheImpl.  On type
 // conversion error, logs a warning and returns nil.
-func AsSingleChannelCache(ctx context.Context, cacheValue interface{}) *singleChannelCacheImpl {
+func AsSingleChannelCache(ctx context.Context, cacheValue any) *singleChannelCacheImpl {
 	singleChannelCache, ok := cacheValue.(*singleChannelCacheImpl)
 	if !ok {
 		base.WarnfCtx(ctx, "Unexpected channel cache value type: %T", cacheValue)
@@ -423,7 +423,7 @@ func (c *channelCacheImpl) getActiveChannelCache(ctx context.Context, channel ch
 func (c *channelCacheImpl) MaxCacheSize(ctx context.Context) int {
 
 	maxCacheSize := 0
-	callback := func(v interface{}) bool {
+	callback := func(v any) bool {
 		channelCache := AsSingleChannelCache(ctx, v)
 		if channelCache == nil {
 			return false

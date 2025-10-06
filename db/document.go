@@ -56,7 +56,7 @@ const (
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
-type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as included in sync metadata
+type AttachmentsMeta map[string]any // AttachmentsMeta metadata as included in sync metadata
 
 type ChannelSetEntry struct {
 	Name      string `json:"name"`
@@ -107,7 +107,7 @@ type SyncData struct {
 	ChannelSetHistory   []ChannelSetEntry      `json:"channel_set_history"`
 
 	// Only used for performance metrics:
-	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
+	TimeSaved time.Time `json:"time_saved"` // Timestamp of save.
 
 	ClusterUUID string `json:"cluster_uuid,omitempty"` // Couchbase Server UUID when the document is updated
 
@@ -445,11 +445,11 @@ func (doc *Document) BodyBytes(ctx context.Context) ([]byte, error) {
 // Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
 // can be expanded upon in the future.
 // NOTE: emptyMetaMap() is used within tests in channelmapper_test.go and therefore this should be expanded if the below is
-func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
-	xattrsMap := map[string]interface{}{}
+func (doc *Document) GetMetaMap(userXattrKey string) (map[string]any, error) {
+	xattrsMap := map[string]any{}
 
 	if userXattrKey != "" {
-		var userXattr interface{}
+		var userXattr any
 
 		if len(doc.rawUserXattr) > 0 {
 			err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
@@ -460,7 +460,7 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 		xattrsMap[userXattrKey] = userXattr
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		base.MetaMapXattrsKey: xattrsMap,
 	}, nil
 }

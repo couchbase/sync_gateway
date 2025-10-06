@@ -351,7 +351,7 @@ func (c *Collection) createTombstone(_ context.Context, k string, exp uint32, ca
 }
 
 // insertBodyAndXattrs inserts a document and associated xattrs in a single mutateIn operation.  Writes cas and crc32c to the xattr using macro expansion.
-func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32, v interface{}, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32, v any, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -373,7 +373,7 @@ func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32
 }
 
 // SubdocInsert performs a subdoc insert operation to the specified path in the document body.
-func (c *Collection) SubdocInsert(_ context.Context, k string, fieldPath string, cas uint64, value interface{}) error {
+func (c *Collection) SubdocInsert(_ context.Context, k string, fieldPath string, cas uint64, value any) error {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -465,7 +465,7 @@ func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas
 }
 
 // updateBodyAndXattrs updates the document body and xattrs of an existing document. Writes cas and crc32c to the xattr using macro expansion.
-func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v interface{}, xattrs map[string][]byte, xattrsToDelete []string) (casOut uint64, err error) {
+func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v any, xattrs map[string][]byte, xattrsToDelete []string) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -533,7 +533,7 @@ func (c *Collection) updateXattrsDeleteBody(_ context.Context, k string, exp uin
 
 // UpdateXattrDeleteBody deletes the document body and updates the xattr of an existing document. Writes cas and crc32c to the xattr using
 // macro expansion.
-func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string, exp uint32, cas uint64, xv interface{}, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (c *Collection) UpdateXattrDeleteBody(_ context.Context, k, xattrKey string, exp uint32, cas uint64, xv any, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -671,7 +671,7 @@ func isKVError(err error, code memd.StatusCode) bool {
 }
 
 // If v is []byte or *[]byte, converts to json.RawMessage to avoid duplicate marshalling by gocb.
-func bytesToRawMessage(v interface{}) interface{} {
+func bytesToRawMessage(v any) any {
 	switch val := v.(type) {
 	case []byte:
 		return json.RawMessage(val)

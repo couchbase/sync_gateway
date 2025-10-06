@@ -97,7 +97,7 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
 	// add some docs to arrive over dcp
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		docBody := db.Body{
 			"value": 1234,
@@ -227,10 +227,10 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 }
 
 func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docBody := db.Body{
 			"value":            1234,
-			db.BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+			db.BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 		}
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
@@ -259,7 +259,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
-	for j := 0; j < 5; j++ {
+	for j := range 5 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
 		value, _, err := collection.GetCollectionDatastore().GetRaw(key)
 		require.NoError(t, err)

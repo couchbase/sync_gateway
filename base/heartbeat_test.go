@@ -115,7 +115,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	listeners := make([]*documentBackedListener, nodeCount)
-	for i := 0; i < nodeCount; i++ {
+	for i := range nodeCount {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)
@@ -197,7 +197,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	importListeners := make([]*documentBackedListener, nodeCount)
 	sgrListeners := make([]*documentBackedListener, nodeCount)
-	for i := 0; i < nodeCount; i++ {
+	for i := range nodeCount {
 		nodeUUID := fmt.Sprintf("node%d", i)
 		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)

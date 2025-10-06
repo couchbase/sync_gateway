@@ -52,8 +52,8 @@ func TestCreateJWTToken(t *testing.T) {
 		idTokenFormat identityTokenFormat // Specific token format.
 		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
 		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
-		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
-		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		typExpected   any                 // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   any                 // X.509 Certificate Thumbprint; used to identify specific certificates.
 		verExpected   int                 // Version number; used in IBM Cloud App ID format.
 	}{{
 		name:          "create token in default format",
@@ -251,8 +251,8 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 		idTokenFormat identityTokenFormat // Specific token format.
 		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
 		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
-		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
-		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		typExpected   any                 // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   any                 // X.509 Certificate Thumbprint; used to identify specific certificates.
 		verExpected   int                 // Version number; used in IBM Cloud App ID format.
 	}{{
 		name:          "obtain session with bearer token in default format",

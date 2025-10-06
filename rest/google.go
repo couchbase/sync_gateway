@@ -12,6 +12,7 @@ package rest
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -85,10 +86,5 @@ func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error
 }
 
 func isValidAud(aud string, allowedAppID []string) bool {
-	for _, s := range allowedAppID {
-		if aud == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowedAppID, aud)
 }

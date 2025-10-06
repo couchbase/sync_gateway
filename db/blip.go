@@ -71,7 +71,7 @@ func NewSGBlipContextWithProtocols(ctx context.Context, id string, origin []stri
 
 // defaultBlipLogger returns a function that can be set as the blip.Context.Logger for Sync Gateway integrated go-blip logging.
 func defaultBlipLogger(ctx context.Context) blip.LogFn {
-	return func(eventType blip.LogEventType, format string, params ...interface{}) {
+	return func(eventType blip.LogEventType, format string, params ...any) {
 		switch eventType {
 		case blip.LogFrame:
 			base.TracefCtx(ctx, base.KeyWebSocketFrame, format, params...)
@@ -111,7 +111,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 }
 
 // Returns true if this attachment is worth trying to compress.
-func isCompressible(filename string, meta map[string]interface{}) bool {
+func isCompressible(filename string, meta map[string]any) bool {
 	if meta["encoding"] != nil {
 		return false
 	} else if badFilenames.MatchString(filename) {

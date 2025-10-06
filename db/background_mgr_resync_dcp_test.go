@@ -130,7 +130,7 @@ func TestResyncDCPInit(t *testing.T) {
 				resyncMgr.resetStatus()
 			}()
 
-			options := make(map[string]interface{})
+			options := make(map[string]any)
 			options["database"] = db
 			options["collections"] = ResyncCollections{}
 			if testCase.forceReset {
@@ -186,7 +186,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
-	options := map[string]interface{}{
+	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
 		"collections":         ResyncCollections{},
@@ -249,7 +249,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		require.NotNil(t, resyncMgr)
 		db.ResyncManager = resyncMgr
 
-		options := map[string]interface{}{
+		options := map[string]any{
 			"database":            db,
 			"regenerateSequences": false,
 			"collections":         ResyncCollections{},
@@ -296,7 +296,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		initialStats := getResyncStats(resyncMgr.Process)
 		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-		options := map[string]interface{}{
+		options := map[string]any{
 			"database":            db,
 			"regenerateSequences": false,
 			"collections":         ResyncCollections{},
@@ -345,7 +345,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
-	options := map[string]interface{}{
+	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
 		"collections":         ResyncCollections{},
@@ -402,7 +402,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
-	options := map[string]interface{}{
+	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
 		"collections":         ResyncCollections{},
@@ -498,7 +498,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 		require.NoError(t, err)
 
 		// create docs
-		for i := 0; i < docsPerCollection; i++ {
+		for i := range docsPerCollection {
 			_, _, err := col.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), Body{"foo": "bar"})
 			require.NoError(t, err)
 		}
@@ -510,7 +510,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 		dbCollections[i] = col
 	}
 
-	options := map[string]interface{}{
+	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
 		"collections": ResyncCollections{
@@ -596,8 +596,8 @@ function sync(doc, oldDoc){
 	require.NoError(t, err)
 
 	// Create the docs that will be marked and not swept
-	body := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < docsToCreate; i++ {
+	body := map[string]any{"foo": "bar"}
+	for i := range docsToCreate {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
@@ -715,7 +715,7 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 	initialStats := getResyncStats(resyncMgr.Process)
 	log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-	options := map[string]interface{}{
+	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
 		"collections":         ResyncCollections{},

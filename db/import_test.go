@@ -538,7 +538,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 	syncDataInBodyCallback := func(key string) {
 		if runOnce {
-			var body map[string]interface{}
+			var body map[string]any
 
 			runOnce = false
 			valStr := `{
@@ -659,7 +659,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
-			var bodyOut map[string]interface{}
+			var bodyOut map[string]any
 			rawDoc, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, testcase.docname, []string{base.SyncXattrName})
 			assert.NoError(t, err)
 
@@ -1410,7 +1410,7 @@ func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
 	require.NoError(t, err)
 
 	// corrupt the document sequence
-	var newSyncData map[string]interface{}
+	var newSyncData map[string]any
 	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = corruptSequence
@@ -1451,7 +1451,7 @@ func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
 	require.NoError(t, err)
 
 	// corrupt the document sequence
-	var newSyncData map[string]interface{}
+	var newSyncData map[string]any
 	err = json.Unmarshal(xattrs[base.SyncXattrName], &newSyncData)
 	require.NoError(t, err)
 	newSyncData["sequence"] = corruptSequence

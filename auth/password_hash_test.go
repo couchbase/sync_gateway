@@ -236,7 +236,7 @@ func TestCacheRace(t *testing.T) {
 				assert.Equal(t, 0, cache.Len())
 			}()
 
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				wg.Add(1)
 				go func(cache Cache, i int) {
 					defer wg.Done()
@@ -269,7 +269,7 @@ func BenchmarkPutAndOverflow(b *testing.B) {
 			cache = NewNoReplKeyCache(maxCacheSize)
 		}
 		if warmupCache {
-			for i := 0; i < maxCacheSize; i++ {
+			for range maxCacheSize {
 				cache.Put(randKey(math.MaxUint32))
 			}
 		}
@@ -308,7 +308,7 @@ func BenchmarkPutAndOverflow(b *testing.B) {
 			} else {
 				b.Run(bm.name, func(b *testing.B) {
 					b.ReportAllocs()
-					for i := 0; i < b.N; i++ {
+					for b.Loop() {
 						cache.Put(randKey(math.MaxUint32))
 					}
 				})
@@ -349,7 +349,7 @@ func BenchmarkContains(b *testing.B) {
 			cache.Put(randKey(maxCacheSize))
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if cache.Contains(randKey(maxCacheSize)) {
 					cacheHits++
 				} else {
@@ -385,8 +385,8 @@ type hashAndPassword struct {
 // generateTestData generates the test data and warm up the cache if required.
 func generateTestData(b *testing.B, cache Cache, warmCache bool, key string, numPasswords int) []hashAndPassword {
 	hashAndPasswords := make([]hashAndPassword, numPasswords)
-	for i := 0; i < numPasswords; i++ {
-		password := []byte(fmt.Sprintf("%s%d", key, i))
+	for i := range numPasswords {
+		password := fmt.Appendf(nil, "%s%d", key, i)
 		hashAndPassword := hashAndPassword{
 			hash:     bcryptHash(b, password),
 			password: password,
@@ -417,7 +417,7 @@ func BenchmarkCompareHashAndPassword100PercentCacheHit(b *testing.B) {
 			testData := generateTestData(b, cache, true, "foo", maxCacheSize)
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				hashAndPassword := testData[i%maxCacheSize]
 				_ = compareHashAndPassword(cache, hashAndPassword.hash, hashAndPassword.password)
 			}
@@ -442,7 +442,7 @@ func BenchmarkCompareHashAndPasswordCacheMissAndFill(b *testing.B) {
 			testData := generateTestData(b, cache, false, "bar", maxCacheSize)
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				hashAndPassword := testData[i%maxCacheSize]
 				_ = compareHashAndPassword(cache, hashAndPassword.hash, hashAndPassword.password)
 			}
@@ -467,7 +467,7 @@ func BenchmarkCompareHashAndPassword100PercentIncorrect(b *testing.B) {
 			hash := bcryptHash(b, []byte("foo"))
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = compareHashAndPassword(cache, hash, []byte("baz"))
 			}
 		})
@@ -494,12 +494,12 @@ func BenchmarkPutAndContains(b *testing.B) {
 			b.ReportAllocs()
 			cache := bm.cache
 			defer cache.Purge()
-			for i := 0; i < maxCacheSize; i++ {
+			for range maxCacheSize {
 				key := randKey(maxCacheSize)
 				cache.Put(key)
 			}
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				key := randKey(numKeys)
 				if !cache.Contains(key) {
 					cache.Put(key)

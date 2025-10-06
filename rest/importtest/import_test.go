@@ -57,7 +57,7 @@ func TestImportFeed(t *testing.T) {
 
 	// Create doc via the SDK
 	mobileKey := t.Name()
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -152,7 +152,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	// 1. Test oldDoc behaviour during SDK insert
 	key := "TestImportDelete"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestImportDelete"
 	docBody["channels"] = "ABC"
 
@@ -164,7 +164,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	// 2. Test oldDoc behaviour during SDK update
 
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
@@ -212,7 +212,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	version := rt.PutDoc(docID, `{"val":-1}`)
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		prevVersion := version
 		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
@@ -220,7 +220,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	}
 
 	// 2. Modify doc via SDK
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestAncestorImport"
 	err := dataStore.Set(docID, 0, nil, updatedBody)
 	assert.NoError(t, err)
@@ -242,7 +242,7 @@ func TestXattrSGTombstone(t *testing.T) {
 
 	// 1. Create doc through SG
 	key := "TestXattrSGTombstone"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
@@ -263,7 +263,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	require.NotEqual(t, "", body["rev"].(string))
 
 	// 3. Attempt to retrieve the doc through the SDK
-	deletedValue := make(map[string]interface{})
+	deletedValue := make(map[string]any)
 	_, err := dataStore.Get(key, deletedValue)
 	assert.True(t, err != nil, "Expected key not found error trying to retrieve document")
 
@@ -285,7 +285,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 
 	// 1. SG Write
 	key := "TestCasFailureImport"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestCasFailureImport"
 	docBody["SG_write_count"] = "1"
 
@@ -308,9 +308,9 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	}()
 
 	// Concurrent SDK writes for 10 seconds, one per second
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		time.Sleep(1 * time.Second)
-		sdkBody := make(map[string]interface{})
+		sdkBody := make(map[string]any)
 		sdkBody["test"] = "TestCasFailureImport"
 		sdkBody["SDK_write_count"] = i
 		err := dataStore.Set(key, 0, nil, sdkBody)
@@ -346,7 +346,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 	// 1. Create and import doc
 	key := "TestResurrectViaSG"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
@@ -390,7 +390,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	// 1. Create and import doc
 	key := "TestResurrectViaSDK"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
@@ -408,7 +408,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	rt.TriggerOnDemandImport(key)
 
 	// 3. Recreate the doc through the SDK (with different data)
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
@@ -434,7 +434,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	// 1. Create and import doc
 	key := "TestDoubleDelete"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
@@ -486,7 +486,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// 1. Create and import docs
 	key := "SG_delete"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
@@ -499,7 +499,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	revId := body["rev"].(string)
 
 	sdk_key := "SDK_delete"
-	docBody = make(map[string]interface{})
+	docBody = make(map[string]any)
 	docBody["test"] = sdk_key
 	docBody["channels"] = "ABC"
 
@@ -559,14 +559,14 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 
 	// 1. Create two docs via the SDK, one matching filter
 	mobileKey := "TestImportFilterValid"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	nonMobileKey := "TestImportFilterInvalid"
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
@@ -607,7 +607,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportMultiActorUpdate"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -625,7 +625,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	require.NoError(t, err)
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
+	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
 
 	ctx := base.TestCtx(t)
@@ -659,7 +659,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportMultiActorUpdate"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -679,7 +679,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
+	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
 	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -718,7 +718,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	// Create doc via the SDK
 	mobileKey := "TestImportMultiActorFeed"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -741,14 +741,14 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
-	xattrVal := make(map[string]interface{})
+	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
 	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
 	var crcMatchesAfter int64
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		crcMatchesAfter = rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 		// if they changed, import has been processed
 		if crcMatchesAfter > crcMatchesBefore {
@@ -789,7 +789,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportLargeNumbers"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	mobileBody["largeNumber"] = uint64(9223372036854775807)
 	_, err := rt.GetSingleDataStore().Add(mobileKey, 0, mobileBody)
@@ -1047,7 +1047,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	// 1. Create docs via the SDK with expiry set
 	mobileKey := "TestXattrImportPreservesExpiry"
 	mobileKeyNoExpiry := fmt.Sprintf("%s-noexpiry", mobileKey)
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 
@@ -1163,7 +1163,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusNotFound) // import attempted with empty body
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document - should ignore empty body error and proceed with write
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	mobileBody["foo"] = "bar"
@@ -1202,7 +1202,7 @@ func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
 	rest.RequireStatus(t, response, 404)
 
 	// Attempt to update the doc via Sync Gateway, triggering on-demand import of the null document
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	mobileBody["foo"] = "bar"
@@ -1218,7 +1218,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
 
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 
@@ -1402,7 +1402,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 
 	// 2. Update via SDK, not matching import filter.  Will not be available via SG
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	err := dataStore.Set(sgWriteKey, 0, nil, nonMobileBody)
@@ -1479,7 +1479,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 			docNumber = "0." + strings.Repeat("0", i)
 		}
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
-		docBody := []byte(fmt.Sprintf(`{"key":%s}`, docNumber))
+		docBody := fmt.Appendf(nil, `{"key":%s}`, docNumber)
 
 		ok, err := dataStore.AddRaw(docID, 0, docBody)
 		require.NoError(t, err)
@@ -1543,7 +1543,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 			docNumber = "0E-" + strconv.Itoa(i)
 		}
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
-		docBody := []byte(fmt.Sprintf(`{"key":%s}`, docNumber))
+		docBody := fmt.Appendf(nil, `{"key":%s}`, docNumber)
 
 		ok, err := dataStore.AddRaw(docID, 0, docBody)
 		require.NoError(t, err)
@@ -1597,7 +1597,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestImportRevisionCopy"
 	docBody["channels"] = "ABC"
 
@@ -1616,7 +1616,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rt.GetDoc(key)
 
 	// 3. Update via SDK
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = dataStore.Set(key, 0, nil, updatedBody)
@@ -1657,7 +1657,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestImportRevisionCopy"
 	docBody["channels"] = "ABC"
 
@@ -1674,7 +1674,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = dataStore.Set(key, 0, nil, updatedBody)
@@ -1708,7 +1708,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestImportRevisionCopy"
 	docBody["channels"] = "ABC"
 
@@ -1721,7 +1721,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	rev1id := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// 3. Update via SDK
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = dataStore.Set(key, 0, nil, updatedBody)
@@ -1756,7 +1756,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestTombstoneUpdate"
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -1771,7 +1771,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Delete the document via the SDK
-	getBody := make(map[string]interface{})
+	getBody := make(map[string]any)
 	cas, err := dataStore.Get(mobileKey, &getBody)
 	require.NoError(t, err)
 
@@ -1781,7 +1781,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add the body back
-	xattrVal := make(map[string]interface{})
+	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
 	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -1795,8 +1795,8 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	assert.Equal(t, revId, newRevId)
 }
 
-func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, propertyName string, expectedPropertyValue interface{}) {
-	var responseBody map[string]interface{}
+func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, propertyName string, expectedPropertyValue any) {
+	var responseBody map[string]any
 	err := base.JSONUnmarshal(getDocResponse.Body.Bytes(), &responseBody)
 	assert.NoError(t, err, "Error unmarshalling document response")
 	value, ok := responseBody[propertyName]
@@ -1888,88 +1888,88 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		importBody         map[string]interface{}
+		importBody         map[string]any
 		expectReject       bool
 		expectedStatusCode *int // Defaults to not 200 (for expectedReject=true) and 200 if expectedReject=false
 	}{
 		{
 			name:         "Valid document with properties and special prop",
-			importBody:   map[string]interface{}{"true": false, "_cookie": "is valid"},
+			importBody:   map[string]any{"true": false, "_cookie": "is valid"},
 			expectReject: false,
 		},
 		{
 			name:         "Valid document with special prop",
-			importBody:   map[string]interface{}{"_cookie": "is valid"},
+			importBody:   map[string]any{"_cookie": "is valid"},
 			expectReject: false,
 		},
 		{
 			name:               "Invalid _sync",
-			importBody:         map[string]interface{}{"_sync": true},
+			importBody:         map[string]any{"_sync": true},
 			expectReject:       true,
 			expectedStatusCode: base.Ptr(500), // Internal server error due to unmarshal error
 		},
 		{
 			name:               "Valid _id",
-			importBody:         map[string]interface{}{"_id": "documentid"},
+			importBody:         map[string]any{"_id": "documentid"},
 			expectReject:       true,
 			expectedStatusCode: base.Ptr(http.StatusNotFound),
 		},
 		{
 			name:         "Valid _rev",
-			importBody:   map[string]interface{}{"_rev": "1-abc"},
+			importBody:   map[string]any{"_rev": "1-abc"},
 			expectReject: true,
 		},
 		{
 			name:         "Valid _deleted",
-			importBody:   map[string]interface{}{"_deleted": false},
+			importBody:   map[string]any{"_deleted": false},
 			expectReject: false,
 		},
 		{
 			name:         "Valid _revisions",
-			importBody:   map[string]interface{}{"_revisions": map[string]interface{}{"ids": "1-abc"}},
+			importBody:   map[string]any{"_revisions": map[string]any{"ids": "1-abc"}},
 			expectReject: true,
 		},
 		{
 			name:         "Valid _exp",
-			importBody:   map[string]interface{}{"_exp": "123"},
+			importBody:   map[string]any{"_exp": "123"},
 			expectReject: true,
 		},
 		{
 			name:         "Invalid _attachments",
-			importBody:   map[string]interface{}{"_attachments": false},
+			importBody:   map[string]any{"_attachments": false},
 			expectReject: false,
 		},
 		{
 			name:         "Valid _attachments",
-			importBody:   map[string]interface{}{"_attachments": map[string]interface{}{"attch": map[string]interface{}{"data": "c2d3IGZ0dw=="}}},
+			importBody:   map[string]any{"_attachments": map[string]any{"attch": map[string]any{"data": "c2d3IGZ0dw=="}}},
 			expectReject: false,
 		},
 		{
 			name:         "_purged false",
-			importBody:   map[string]interface{}{"_purged": false},
+			importBody:   map[string]any{"_purged": false},
 			expectReject: true,
 		},
 		{
 			name:               "_purged true",
-			importBody:         map[string]interface{}{"_purged": true},
+			importBody:         map[string]any{"_purged": true},
 			expectReject:       true,
 			expectedStatusCode: base.Ptr(404), // Import gets cancelled and returns not found
 		},
 		{
 			name:               "_removed",
-			importBody:         map[string]interface{}{"_removed": false},
+			importBody:         map[string]any{"_removed": false},
 			expectReject:       true,
 			expectedStatusCode: base.Ptr(404),
 		},
 		{
 			name:         "_sync_cookies",
-			importBody:   map[string]interface{}{"_sync_cookies": true},
+			importBody:   map[string]any{"_sync_cookies": true},
 			expectReject: true,
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
 			// Known issue: _SYNC causes unmarshal error when importing document that contains it
-			importBody: map[string]interface{}{
+			importBody: map[string]any{
 				"_ID": true, "_REV": true, "_DELETED": true, "_ATTACHMENTS": true, "_REVISIONS": true,
 				"_EXP": true, "_PURGED": true, "_REMOVED": true, "_SYNC_COOKIES": true,
 			},
@@ -2034,7 +2034,7 @@ func TestImportTouch(t *testing.T) {
 
 	// 1. Create a document
 	key := "TestImportTouch"
-	docBody := make(map[string]interface{})
+	docBody := make(map[string]any)
 	docBody["test"] = "TestImportTouch"
 	docBody["channels"] = "ABC"
 
@@ -2125,7 +2125,7 @@ func TestImportFilterTimeout(t *testing.T) {
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
-	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
+	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, fmt.Appendf(nil, `{"foo": "bar"}`))
 	require.True(t, added)
 	require.NoError(t, err)
 
@@ -2168,7 +2168,7 @@ func TestImportRollback(t *testing.T) {
 			key := "importRollbackTest"
 			var checkpointPrefix string
 			// Create a document
-			added, err := rt.GetSingleDataStore().AddRaw(key, 0, []byte(fmt.Sprintf(`{"star": "6"}`)))
+			added, err := rt.GetSingleDataStore().AddRaw(key, 0, fmt.Appendf(nil, `{"star": "6"}`))
 			require.True(t, added)
 			require.NoError(t, err)
 
@@ -2216,7 +2216,7 @@ func TestImportRollback(t *testing.T) {
 			})
 			defer rt2.Close()
 
-			err = rt2.GetSingleDataStore().SetRaw(key, 0, nil, []byte(fmt.Sprintf(`{"star": "7 8 9"}`)))
+			err = rt2.GetSingleDataStore().SetRaw(key, 0, nil, fmt.Appendf(nil, `{"star": "7 8 9"}`))
 			require.NoError(t, err)
 
 			// wait for doc update to be imported
@@ -2264,12 +2264,12 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	vb800DocIDs := []string{"abrook", "accept", "accompaniment", "acoemeti", "adiposeness", "alkyd", "alnage", "ambulance", "anasazi", "anhydroxime"}
 
 	for _, v := range vb0DocIDs {
-		added, err := rt.GetSingleDataStore().AddRaw(v, 0, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		added, err := rt.GetSingleDataStore().AddRaw(v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		added, err := rt.GetSingleDataStore().AddRaw(v, 0, []byte(fmt.Sprintf(`{"star": "6"}`)))
+		added, err := rt.GetSingleDataStore().AddRaw(v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
 	}
@@ -2334,16 +2334,16 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	defer rt2.Close()
 
 	for _, v := range vb0DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, []byte(fmt.Sprintf(`{"star": "7"}`)))
+		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
 
 	// Add doc to non rolled back vBucket (392) and assert its imported
-	added, err := rt2.GetSingleDataStore().AddRaw("someKey", 0, []byte(fmt.Sprintf(`{"star": "6"}`)))
+	added, err := rt2.GetSingleDataStore().AddRaw("someKey", 0, fmt.Appendf(nil, `{"star": "6"}`))
 	require.NoError(t, err)
 	require.True(t, added)
 
@@ -2356,7 +2356,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 		name         string
 		syncFn       string
 		startExpiry  uint32
-		assertion    func(t require.TestingT, expected, actual interface{}, msgAndArgs ...interface{})
+		assertion    func(t require.TestingT, expected, actual any, msgAndArgs ...any)
 		shouldBeZero bool
 	}{
 		{
@@ -2592,7 +2592,7 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 
 	// Create doc via the SDK
 	mobileKey := t.Name()
-	mobileBody := make(map[string]interface{})
+	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")

@@ -85,7 +85,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 
 	// Validate non-xattr write doesn't get upgraded
 	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
 	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -167,7 +167,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 
 	// Validate non-xattr document doesn't get upgraded on attempted write
 	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
 	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
@@ -235,7 +235,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 
 	// Validate non-xattr document doesn't get processed on attempted feed read
 	nonMobileKey := "TestUpgradeNoXattr"
-	nonMobileBody := make(map[string]interface{})
+	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
 
 	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)

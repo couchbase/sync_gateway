@@ -134,7 +134,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			}})
 
 		b.Run(name, func(bb *testing.B) {
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				l.shouldLog(TestCtx(bb), test.logToLevel, test.logToKey)
 			}
 		})

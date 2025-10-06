@@ -34,14 +34,14 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionTombstoneStartTime.Set(time.Now().UTC().Unix())
 
 	return nil
 }
 
-func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
 	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)

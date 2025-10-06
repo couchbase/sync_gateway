@@ -87,7 +87,7 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 			metadata: make([]DCPMetadata, numVbuckets),
 		},
 	}
-	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+	for vbNo := range numVbuckets {
 		m.metadata[vbNo] = DCPMetadata{
 			FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 			EndSeqNo:        math.MaxUint64,
@@ -106,10 +106,7 @@ func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo 
 		}
 	}
 	// use the lower value of the start sequence number that we last saved, or the value that was provided from KV as the rollback point
-	newStartSeqNo := m.metadata[vbID].StartSeqNo
-	if startSeqNo < m.metadata[vbID].StartSeqNo {
-		newStartSeqNo = startSeqNo
-	}
+	newStartSeqNo := min(startSeqNo, m.metadata[vbID].StartSeqNo)
 	m.metadata[vbID].VbUUID = rollbackVbuuid
 	m.metadata[vbID].StartSeqNo = newStartSeqNo
 	m.metadata[vbID].SnapStartSeqNo = newStartSeqNo
@@ -206,7 +203,7 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 			metadata: make([]DCPMetadata, numVbuckets),
 		},
 	}
-	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+	for vbNo := range numVbuckets {
 		m.metadata[vbNo] = DCPMetadata{
 			FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 			EndSeqNo:        math.MaxUint64,
@@ -214,7 +211,7 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 	}
 
 	// Initialize any persisted metadata
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		m.load(ctx, i)
 	}
 
@@ -258,7 +255,7 @@ func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 }
 
 func (m *DCPMetadataCS) Purge(ctx context.Context, numWorkers int) {
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		err := m.dataStore.Delete(m.getMetadataKey(i))
 		if err != nil && !IsDocNotFoundError(err) {
 			InfofCtx(ctx, KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)

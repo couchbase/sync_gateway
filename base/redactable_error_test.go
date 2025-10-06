@@ -20,21 +20,21 @@ func TestRedactErrorf(t *testing.T) {
 		expectedString,
 		expectedRedact,
 		fmt string
-		args []interface{}
+		args []any
 	}{
 		{
 			name:           "%s",
 			expectedString: "Couldn't get user \"Bob\": Not Found",
 			expectedRedact: "Couldn't get user \"<ud>Bob</ud>\": Not Found",
 			fmt:            "Couldn't get user %q: %s",
-			args:           []interface{}{UD("Bob"), ErrNotFound},
+			args:           []any{UD("Bob"), ErrNotFound},
 		},
 		{
 			name:           "%w",
 			expectedString: "Couldn't get user \"Bob\": Not Found",
 			expectedRedact: "Couldn't get user \"<ud>Bob</ud>\": Not Found",
 			fmt:            "Couldn't get user %q: %w",
-			args:           []interface{}{UD("Bob"), ErrNotFound},
+			args:           []any{UD("Bob"), ErrNotFound},
 		},
 	}
 	for _, test := range tests {
@@ -49,17 +49,17 @@ func TestRedactErrorf(t *testing.T) {
 func BenchmarkRedactErrorf(b *testing.B) {
 	fmt := "Couldn't get user %q: "
 	fmtVerbs := []string{"%s", "%w"}
-	args := []interface{}{UD("Bob"), ErrNotFound}
+	args := []any{UD("Bob"), ErrNotFound}
 
 	for _, verb := range fmtVerbs {
 		err := RedactErrorf(fmt+verb, args...)
 		b.Run(verb+" String()", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = err.String()
 			}
 		})
 		b.Run(verb+" Redact()", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = err.Redact()
 			}
 		})

@@ -25,7 +25,7 @@ type AsyncIndexInitManager struct {
 }
 
 // Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
-func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error {
+func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a._statusMap = options["statusMap"].(*IndexStatusByCollection)
@@ -34,7 +34,7 @@ func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]int
 }
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
-func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	a.lock.Lock()
 	doneChan := a._doneChan
 	a.lock.Unlock()

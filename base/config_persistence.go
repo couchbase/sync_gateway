@@ -30,8 +30,8 @@ type ConfigPersistence interface {
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
 	// associated with the last config mutation, and may not match document CAS
-	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cfgCas uint64, err error)
-	insertConfig(c *gocb.Collection, key string, value interface{}) (cfgCas uint64, err error)
+	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cfgCas uint64, err error)
+	insertConfig(c *gocb.Collection, key string, value any) (cfgCas uint64, err error)
 
 	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
 	// Used to change to the cas value during rollback, to guard against races with slow updates
@@ -53,7 +53,7 @@ const cfgXattrKey = "_sync"
 const cfgXattrConfigPath = cfgXattrKey + ".config"
 const cfgXattrBody = `{"cfgVersion": 1}`
 
-func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value interface{}) (cas uint64, err error) {
+func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, err error) {
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
@@ -166,7 +166,7 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 
 // loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
 // detected, recreates the document to avoid metadata purge
-func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
+func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
@@ -189,7 +189,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		casOut := res.Cas()
 
 		// deleted document check - if deleted, restore
-		var body map[string]interface{}
+		var body map[string]any
 		bodyErr := res.ContentAt(1, &body)
 		if bodyErr != nil {
 			restoreCas, restoreErr := xbp.restoreDocumentBody(c, key, valuePtr)
@@ -209,7 +209,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 }
 
 // Restore a deleted document's body.  Rewrites metadata
-func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value interface{}) (casOut gocb.Cas, err error) {
+func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value any) (casOut gocb.Cas, err error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
 		gocb.ReplaceSpec("", json.RawMessage(cfgXattrBody), nil),
@@ -268,7 +268,7 @@ func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, ke
 	return replaceRes.Cas(), nil
 }
 
-func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
+func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, err error) {
 
 	res, err := c.Get(key, &gocb.GetOptions{
 		Timeout:       time.Second * 10,
@@ -288,7 +288,7 @@ func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.C
 	return uint64(res.Cas()), nil
 }
 
-func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value interface{}) (cas uint64, err error) {
+func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, err error) {
 	res, err := c.Insert(key, value, nil)
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {

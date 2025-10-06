@@ -203,7 +203,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		indexName     = "db0x2d9928b7_index"
 	)
 
-	require.NoError(t, dataStore.SetRaw(base.CBGTCfgIndexDefs, 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
+	require.NoError(t, dataStore.SetRaw(base.CBGTCfgIndexDefs, 0, nil, fmt.Appendf(nil, indexDefs, tb.GetName(), bucketUUID)))
 	require.NoError(t, dataStore.SetRaw(base.CBGTCfgNodeDefsKnown, 0, nil, []byte(nodeDefs)))
 	require.NoError(t, dataStore.SetRaw(base.CBGTCfgNodeDefsWanted, 0, nil, []byte(nodeDefs)))
 	planPIndexesJSON := preparePlanPIndexesJSON(t, tb, numVBuckets, numPartitions)
@@ -237,7 +237,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	collection := GetSingleDatabaseCollection(t, db)
 
 	collectionCtx := collection.AddCollectionContext(ctx)
-	err, _ = base.RetryLoop(ctx, "wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ = base.RetryLoop(ctx, "wait for non-existent node to be removed", func() (shouldRetry bool, err error, value any) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
 		if err != nil {
 			return false, err, nil
@@ -251,7 +251,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	}, base.CreateSleeperFunc(100, 100))
 	require.NoError(t, err)
 
-	err, _ = base.RetryLoop(ctx, "wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ = base.RetryLoop(ctx, "wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value any) {
 		pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
 		if err != nil {
 			return false, nil, err

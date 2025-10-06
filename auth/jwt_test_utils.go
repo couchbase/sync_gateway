@@ -18,12 +18,12 @@ import (
 
 // These are not in jwt_test.go to allow use in tests from other packages.
 
-type JWTHeaders map[jose.HeaderKey]interface{}
+type JWTHeaders map[jose.HeaderKey]any
 
 // CreateTestJWT creates and signs a valid JWT with the given headers and claims.
 // The key must be valid for use with gopkg.in/square/go-jose.v2 (https://pkg.go.dev/gopkg.in/square/go-jose.v2#readme-supported-key-types),
 // and the alg must match the key.
-func CreateTestJWT(t *testing.T, alg jose.SignatureAlgorithm, key interface{}, headers JWTHeaders, claims map[string]interface{}) string {
+func CreateTestJWT(t *testing.T, alg jose.SignatureAlgorithm, key any, headers JWTHeaders, claims map[string]any) string {
 	t.Helper()
 
 	signerOpts := new(jose.SignerOptions)

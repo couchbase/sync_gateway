@@ -419,7 +419,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 
 	var body Body
 	callbackCount := 0
-	callback := func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+	callback := func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
 		callbackCount++
 		return []byte("data"), nil
 	}
@@ -480,7 +480,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	callback = func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+	callback = func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
 	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
@@ -663,7 +663,7 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments(), "Attachment metadata should be populated")
-	attachment := doc.Attachments()["att1.txt"].(map[string]interface{})
+	attachment := doc.Attachments()["att1.txt"].(map[string]any)
 	assert.Equal(t, "text/plain", attachment["content_type"])
 	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
 	assert.Equal(t, 8, attachment["encoded_length"])
@@ -681,7 +681,7 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments(), "Attachment metadata should be populated")
-	attachment = doc.Attachments()["att1.txt"].(map[string]interface{})
+	attachment = doc.Attachments()["att1.txt"].(map[string]any)
 	assert.Equal(t, "text/plain", attachment["content_type"])
 	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
 	assert.Equal(t, 8, attachment["encoded_length"])
@@ -868,8 +868,8 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		newBody := Body{
 			"test":  true,
 			BodyRev: "3-a",
-			BodyAttachments: map[string]interface{}{
-				"hello.txt": map[string]interface{}{
+			BodyAttachments: map[string]any{
+				"hello.txt": map[string]any{
 					"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
 					"length": 11,
 					"revpos": 1,
@@ -928,7 +928,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		newAtts := rev.Attachments.ShallowCopy()
-		newAtts["bye.txt"] = map[string]interface{}{
+		newAtts["bye.txt"] = map[string]any{
 			"content_type": "text/plain",
 			"stub":         false,
 			"data":         byeTxtData,
@@ -1424,7 +1424,7 @@ func TestAllowedAttachments(t *testing.T) {
 func TestGetAttVersion(t *testing.T) {
 	var tests = []struct {
 		name                    string
-		inputAttVersion         interface{}
+		inputAttVersion         any
 		expectedValidAttVersion bool
 		expectedAttVersion      int
 	}{
@@ -1437,7 +1437,7 @@ func TestGetAttVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			meta := map[string]interface{}{"ver": tt.inputAttVersion}
+			meta := map[string]any{"ver": tt.inputAttVersion}
 			version, ok := GetAttachmentVersion(meta)
 			assert.Equal(t, tt.expectedValidAttVersion, ok)
 			assert.Equal(t, tt.expectedAttVersion, version)
@@ -1458,7 +1458,7 @@ func TestLargeAttachments(t *testing.T) {
 
 	_, _, err := collection.Put(ctx, "testdoc", Body{
 		"_attachments": AttachmentsMeta{
-			"foo.bin": map[string]interface{}{
+			"foo.bin": map[string]any{
 				"data": base64.StdEncoding.EncodeToString(normalAttachment),
 			},
 		},
@@ -1467,7 +1467,7 @@ func TestLargeAttachments(t *testing.T) {
 
 	_, _, err = collection.Put(ctx, "bigdoc", Body{
 		"_attachments": AttachmentsMeta{
-			"foo.bin": map[string]interface{}{
+			"foo.bin": map[string]any{
 				"data": base64.StdEncoding.EncodeToString(oversizeAttachment),
 			},
 		},
@@ -1478,7 +1478,7 @@ func TestLargeAttachments(t *testing.T) {
 
 	_, _, err = collection.Put(ctx, "hugedoc", Body{
 		"_attachments": AttachmentsMeta{
-			"foo.bin": map[string]interface{}{
+			"foo.bin": map[string]any{
 				"data": base64.StdEncoding.EncodeToString(hugeAttachment),
 			},
 		},

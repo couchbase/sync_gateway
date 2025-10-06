@@ -106,7 +106,7 @@ func TestRoleKeysHash(t *testing.T) {
 func BenchmarkIsValidPrincipalName(b *testing.B) {
 	const nameLength = 25
 	name := strings.Builder{}
-	for i := 0; i < nameLength; i++ {
+	for range nameLength {
 		name.WriteRune(rune(rand.Intn('z'-'a') + 'a'))
 	}
 	nameStr := name.String()
@@ -122,7 +122,7 @@ func BenchmarkIsValidPrincipalName(b *testing.B) {
 	b.ResetTimer()
 	for _, tc := range testcases {
 		b.Run(tc.desc, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				IsValidPrincipalName(tc.name)
 			}
 		})
@@ -133,7 +133,7 @@ func BenchmarkIsValidPrincipalName(b *testing.B) {
 func TestValidatePrincipalName(t *testing.T) {
 	getName := func(l int) string {
 		name := strings.Builder{}
-		for i := 0; i < l; i++ {
+		for range l {
 			name.WriteRune(rune(rand.Intn('z'-'a') + 'a'))
 		}
 		return name.String()
@@ -175,7 +175,7 @@ func TestValidatePrincipalName(t *testing.T) {
 func BenchmarkValidatePrincipalName(b *testing.B) {
 	getName := func(l int) string {
 		name := strings.Builder{}
-		for i := 0; i < l; i++ {
+		for range l {
 			name.WriteRune(rune(rand.Intn('z'-'a') + 'a'))
 		}
 		return name.String()
@@ -196,7 +196,7 @@ func BenchmarkValidatePrincipalName(b *testing.B) {
 	b.ResetTimer()
 	for _, tc := range testcases {
 		b.Run(tc.desc, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = ValidatePrincipalName(tc.name)
 			}
 		})

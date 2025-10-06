@@ -970,7 +970,7 @@ func TestIsStandardDiscovery(t *testing.T) {
 func TestFormatUsername(t *testing.T) {
 	tests := []struct {
 		name             string
-		username         interface{}
+		username         any
 		usernameExpected string
 		errorExpected    error
 	}{{
@@ -1014,7 +1014,7 @@ func TestJWTRolesChannels(t *testing.T) {
 	)
 	type simulatedLogin struct {
 		explicitRoles, explicitChannels []string
-		claims                          map[string]interface{}
+		claims                          map[string]any
 		expectedRoles, expectedChannels []string
 	}
 	type testCase struct {
@@ -1037,7 +1037,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			rolesClaimName: "roles",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
@@ -1048,7 +1048,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			rolesClaimName: "roles",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{},
+					claims:           map[string]any{},
 					expectedRoles:    []string{},
 					expectedChannels: []string{"!"},
 				},
@@ -1060,7 +1060,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			logins: []simulatedLogin{
 				{
 					explicitRoles:    []string{"bar"},
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo", "bar"},
 					expectedChannels: []string{"!"},
 				},
@@ -1071,12 +1071,12 @@ func TestJWTRolesChannels(t *testing.T) {
 			rolesClaimName: "roles",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
 				{
-					claims:           map[string]interface{}{"roles": []string{}},
+					claims:           map[string]any{"roles": []string{}},
 					expectedRoles:    []string{},
 					expectedChannels: []string{"!"},
 				},
@@ -1088,7 +1088,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			logins: []simulatedLogin{
 				{
 					explicitRoles:    []string{"foo"},
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
@@ -1100,13 +1100,13 @@ func TestJWTRolesChannels(t *testing.T) {
 			logins: []simulatedLogin{
 				{
 					explicitRoles:    []string{"foo"},
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
 				{
 					explicitRoles:    []string{"foo"},
-					claims:           map[string]interface{}{"roles": []string{}},
+					claims:           map[string]any{"roles": []string{}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
@@ -1117,12 +1117,12 @@ func TestJWTRolesChannels(t *testing.T) {
 			rolesClaimName: "roles",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"roles": []string{"foo"}},
+					claims:           map[string]any{"roles": []string{"foo"}},
 					expectedRoles:    []string{"foo"},
 					expectedChannels: []string{"!"},
 				},
 				{
-					claims:           map[string]interface{}{"roles": []string{"bar"}},
+					claims:           map[string]any{"roles": []string{"bar"}},
 					expectedRoles:    []string{"bar"},
 					expectedChannels: []string{"!"},
 				},
@@ -1133,7 +1133,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			channelsClaimName: "channels",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					claims:           map[string]any{"channels": []string{"foo"}},
 					expectedRoles:    []string{},
 					expectedChannels: []string{"!", "foo"},
 				},
@@ -1145,7 +1145,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			logins: []simulatedLogin{
 				{
 					explicitChannels: []string{"bar"},
-					claims:           map[string]interface{}{"channels": []string{"foo"}},
+					claims:           map[string]any{"channels": []string{"foo"}},
 					expectedRoles:    []string{},
 					expectedChannels: []string{"!", "foo", "bar"},
 				},
@@ -1157,7 +1157,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			channelsClaimName: "channels",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					claims:           map[string]any{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
 					expectedRoles:    []string{"rFoo"},
 					expectedChannels: []string{"!", "cBar"},
 				},
@@ -1169,7 +1169,7 @@ func TestJWTRolesChannels(t *testing.T) {
 			channelsClaimName: "channels",
 			logins: []simulatedLogin{
 				{
-					claims:           map[string]interface{}{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
+					claims:           map[string]any{"roles": []string{"rFoo"}, "channels": []string{"cBar"}},
 					explicitRoles:    []string{"rBaz"},
 					explicitChannels: []string{"cQux"},
 					expectedRoles:    []string{"rFoo", "rBaz"},

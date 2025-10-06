@@ -197,7 +197,7 @@ func TestAllDocsQuery(t *testing.T) {
 	endKey := ""
 	results, queryErr := collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
-	var row map[string]interface{}
+	var row map[string]any
 	rowCount := 0
 	for results.Next(ctx, &row) {
 		t.Logf("row[%d]: %v", rowCount, row)
@@ -273,7 +273,7 @@ func TestAccessQuery(t *testing.T) {
 	username := "user1"
 	results, queryErr := collection.QueryAccess(base.TestCtx(t), username)
 	assert.NoError(t, queryErr, "Query error")
-	var row map[string]interface{}
+	var row map[string]any
 	rowCount := 0
 	for results.Next(ctx, &row) {
 		rowCount++
@@ -316,7 +316,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	username := "user1"
 	results, queryErr := collection.QueryRoleAccess(base.TestCtx(t), username)
 	assert.NoError(t, queryErr, "Query error")
-	var row map[string]interface{}
+	var row map[string]any
 	rowCount := 0
 	for results.Next(ctx, &row) {
 		rowCount++
@@ -343,7 +343,7 @@ func TestRoleAccessQuery(t *testing.T) {
 func countQueryResults(ctx context.Context, results sgbucket.QueryResultIterator) int {
 
 	count := 0
-	var row map[string]interface{}
+	var row map[string]any
 	for results.Next(ctx, &row) {
 		count++
 	}

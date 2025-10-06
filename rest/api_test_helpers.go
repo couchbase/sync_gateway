@@ -29,9 +29,9 @@ func (rt *RestTester) RequireDocNotFound(docID string) {
 func (rt *RestTester) PurgeDoc(docID string) {
 	response := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_purge", rt.GetSingleKeyspace()), fmt.Sprintf(`{"%s":["*"]}`, docID))
 	RequireStatus(rt.TB(), response, http.StatusOK)
-	var body map[string]interface{}
+	var body map[string]any
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.Equal(rt.TB(), body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
+	require.Equal(rt.TB(), body, map[string]any{"purged": map[string]any{docID: []any{"*"}}})
 }
 
 // PutDocResponse should be replaced with functions that return DocVersion.
@@ -52,7 +52,7 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 	requestBody := body.ShallowCopy()
 	newRevGeneration, newRevDigest := db.ParseRevID(base.TestCtx(rt.TB()), newVersion.RevTreeID)
 
-	revisions := make(map[string]interface{})
+	revisions := make(map[string]any)
 	revisions["start"] = newRevGeneration
 	ids := []string{newRevDigest}
 	if parentVersion != nil {

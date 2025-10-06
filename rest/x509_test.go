@@ -109,10 +109,10 @@ func TestAttachmentCompactionRun(t *testing.T) {
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
+		attBody := map[string]any{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
 		CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
