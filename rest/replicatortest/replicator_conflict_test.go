@@ -2125,54 +2125,26 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
-		remoteURL, err := url.Parse(remoteURLString)
-		require.NoError(t, err)
-		ctx1 := rt1.Context()
+		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
 		docID := rest.SafeDocumentName(t, t.Name())
-		rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		rt1Version := activeRT.PutDoc(docID, `{"source":"activeRT","channels":["alice"]}`)
 		// delete local version
-		rt1Version = rt1.DeleteDoc(docID, rt1Version)
-		rt1.WaitForPendingChanges()
-		// create conflicting update on rt2
-		rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
-		rt2Version = rt2.UpdateDoc(docID, rt2Version, `{"source":"rt2-updated","channels":["alice"]}`)
-		rt2.WaitForPendingChanges()
+		rt1Version = activeRT.DeleteDoc(docID, rt1Version)
+		activeRT.WaitForPendingChanges()
+		// create conflicting update on passiveRT
+		rt2Version := passiveRT.PutDoc(docID, `{"source":"passiveRT","channels":["alice"]}`)
+		rt2Version = passiveRT.UpdateDoc(docID, rt2Version, `{"source":"passiveRT-updated","channels":["alice"]}`)
+		passiveRT.WaitForPendingChanges()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
-		require.NoError(t, err)
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
+		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          replicationID,
-			Direction:   db.ActiveReplicatorTypePushAndPull,
-			RemoteDBURL: remoteURL,
-			ActiveDB: &db.Database{
-				DatabaseContext: rt1.GetDatabase(),
-			},
-			ChangesBatchSize:           200,
-			ReplicationStatsMap:        replicationStats,
-			ConflictResolverFuncForHLV: resolverFunc,
-			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-			Continuous:                 true,
-			SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
-		})
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, ar.Stop())
-		}()
-
-		assert.Equal(t, int64(0), replicationStats.ConflictResolvedLocalCount.Value())
-
-		require.NoError(t, ar.Start(ctx1))
+		assert.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedLocalCount.Value())
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), replicationStats.ConflictResolvedLocalCount.Value())
+			assert.Equal(c, int64(1), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedLocalCount.Value())
 		}, 10*time.Second, 100*time.Millisecond)
 
 		docBodyBytes := []byte(`{}`)
@@ -2181,12 +2153,9 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 		conflictResVersion.RevTreeID = newRev
 
 		// expect local doc to win and still be tombstone with remote docs revision history
-		sgrRunner.WaitForTombstone(docID, rt1, conflictResVersion)
+		sgrRunner.WaitForTombstone(docID, activeRT, conflictResVersion)
 
-		rt1Collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
-		rt1Doc, err := rt1Collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		require.NoError(t, err)
-
+		rt1Doc := activeRT.GetDocument(docID)
 		// assert that remote cv is in pv now
 		assert.Equal(t, rt2Version.CV.Value, rt1Doc.HLV.PreviousVersions[rt2Version.CV.SourceID])
 		// assert doc is still a tombstone
@@ -2206,55 +2175,25 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
-		remoteURL, err := url.Parse(remoteURLString)
-		require.NoError(t, err)
-		ctx1 := rt1.Context()
-
+		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 		docID := rest.SafeDocumentName(t, t.Name())
 
-		rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
-		rt2Version = rt2.DeleteDoc(docID, rt2Version)
-		rt2.WaitForPendingChanges()
-		// create conflicting update on rt1
-		rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		rt2Version := passiveRT.PutDoc(docID, `{"source":"passiveRT","channels":["alice"]}`)
+		rt2Version = passiveRT.DeleteDoc(docID, rt2Version)
+		passiveRT.WaitForPendingChanges()
+		// create conflicting update on activeRT
+		rt1Version := activeRT.PutDoc(docID, `{"source":"activeRT","channels":["alice"]}`)
 		// delete local version
-		rt1Version = rt1.UpdateDoc(docID, rt1Version, `{"source":"rt1-updated","channels":["alice"]}`)
-		rt1.WaitForPendingChanges()
+		rt1Version = activeRT.UpdateDoc(docID, rt1Version, `{"source":"activeRT-updated","channels":["alice"]}`)
+		activeRT.WaitForPendingChanges()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
-		require.NoError(t, err)
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
-
-		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          replicationID,
-			Direction:   db.ActiveReplicatorTypePushAndPull,
-			RemoteDBURL: remoteURL,
-			ActiveDB: &db.Database{
-				DatabaseContext: rt1.GetDatabase(),
-			},
-			ChangesBatchSize:           200,
-			ReplicationStatsMap:        replicationStats,
-			ConflictResolverFuncForHLV: resolverFunc,
-			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
-			Continuous:                 true,
-			SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
-		})
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, ar.Stop())
-		}()
-
-		assert.Equal(t, int64(0), replicationStats.ConflictResolvedRemoteCount.Value())
-
-		require.NoError(t, ar.Start(ctx1))
+		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+		assert.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedRemoteCount.Value())
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), replicationStats.ConflictResolvedRemoteCount.Value())
+			assert.Equal(c, int64(1), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedRemoteCount.Value())
 		}, 10*time.Second, 100*time.Millisecond)
 
 		// expect remote doc to win but local doc ends up with longer history and given both local and remote branches
@@ -2262,12 +2201,9 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		newRev := getRevTreeID(t, rt1Version.RevTreeID, []byte(db.DeletedDocument))
 		conflictResVersion := rt2Version
 		conflictResVersion.RevTreeID = newRev
-		sgrRunner.WaitForTombstone(docID, rt1, conflictResVersion)
+		sgrRunner.WaitForTombstone(docID, activeRT, conflictResVersion)
 
-		rt1Collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
-		rt1Doc, err := rt1Collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		require.NoError(t, err)
-
+		rt1Doc := activeRT.GetDocument(docID)
 		// assert that remote cv is in pv now
 		assert.Equal(t, rt1Version.CV.Value, rt1Doc.HLV.PreviousVersions[rt1Version.CV.SourceID])
 		// assert doc is still a tombstone
