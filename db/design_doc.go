@@ -240,7 +240,7 @@ func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
 	return
 }
 
-func (db *Database) QueryDesignDoc(ctx context.Context, ddocName string, viewName string, options map[string]interface{}) (*sgbucket.ViewResult, error) {
+func (db *Database) QueryDesignDoc(ctx context.Context, ddocName string, viewName string, options map[string]any) (*sgbucket.ViewResult, error) {
 
 	// Regular users have limitations on what they can query
 	if db.user != nil {
@@ -291,11 +291,11 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 	result.Rows = make([]*sgbucket.ViewRow, 0, len(input.Rows)/2)
 	for _, row := range input.Rows {
 		if applyChannelFiltering {
-			value, ok := row.Value.([]interface{})
+			value, ok := row.Value.([]any)
 			if ok {
 				// value[0] is the array of channels; value[1] is the actual value
 				// handle the case where walrus returns []string instead of []interface{}
-				vi, ok := value[0].([]interface{})
+				vi, ok := value[0].([]any)
 				if !ok {
 					vi = base.ToArrayOfInterface(value[0].([]string))
 				}
@@ -328,7 +328,7 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 }
 
 // Is any item of channels found in visibleChannels?
-func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool {
+func channelsIntersect(visibleChannels ch.TimedSet, channels []any) bool {
 	for _, channel := range channels {
 		if visibleChannels.Contains(channel.(string)) || channel == "*" {
 			return true
@@ -339,7 +339,7 @@ func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool
 
 func stripSyncProperty(row *sgbucket.ViewRow) {
 	if doc := row.Doc; doc != nil {
-		delete((*doc).(map[string]interface{}), base.SyncPropertyName)
+		delete((*doc).(map[string]any), base.SyncPropertyName)
 	}
 }
 
@@ -613,7 +613,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 	for designDocName, designDoc := range designDocMap {
 
 		// start a retry loop to put design document backing off double the delay each time
-		worker := func() (shouldRetry bool, err error, value interface{}) {
+		worker := func() (shouldRetry bool, err error, value any) {
 			err = viewStore.PutDDoc(ctx, designDocName, designDoc)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error installing Couchbase design doc: %v", err)
@@ -671,7 +671,7 @@ func WaitForViews(ctx context.Context, dataStore sgbucket.DataStore) error {
 
 // Issues stale=false view queries to determine when view indexing is complete.  Retries on timeout
 func waitForViewIndexing(ctx context.Context, viewStore sgbucket.ViewStore, bucketName string, ddocName string, viewName string) error {
-	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
+	opts := map[string]any{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
 
 	// Not using standard retry loop here, because we want to retry indefinitely on view timeout (since view indexing could potentially take hours), and
 	// we don't need to sleep between attempts.  Using manual exponential backoff retry processing for non-timeout related errors, waits up to ~5 min

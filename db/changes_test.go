@@ -244,10 +244,10 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
-	var x map[string]interface{}
+	var x map[string]any
 	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
-	sync := x[base.SyncXattrName].(map[string]interface{})
+	sync := x[base.SyncXattrName].(map[string]any)
 	sync["sequence"] = 3
 	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
 	sync["recent_sequences"] = []uint64{1, 2, 3}
@@ -256,7 +256,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cm["A"] = &channels.ChannelRemoval{Seq: 2, Rev: channels.RevAndVersion{RevTreeID: "2-e99405a23fa102238fa8c3fd499b15bc"}}
 	sync["channels"] = cm
 
-	history := sync["history"].(map[string]interface{})
+	history := sync["history"].(map[string]any)
 	history["revs"] = []string{revid, "2-e99405a23fa102238fa8c3fd499b15bc", "3-e99405a23fa102238fa8c3fd499b15bc"}
 	history["parents"] = []int{-1, 0, 1}
 	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("B"), base.SetOf("B")}
@@ -365,15 +365,15 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
-	var x map[string]interface{}
+	var x map[string]any
 	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
-	sync := x[base.SyncXattrName].(map[string]interface{})
+	sync := x[base.SyncXattrName].(map[string]any)
 	sync["sequence"] = 3
 	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
 	sync["recent_sequences"] = []uint64{1, 2, 3}
 
-	history := sync["history"].(map[string]interface{})
+	history := sync["history"].(map[string]any)
 	history["revs"] = []string{revid, "2-e99405a23fa102238fa8c3fd499b15bc", "3-e99405a23fa102238fa8c3fd499b15bc"}
 	history["parents"] = []int{-1, 0, 1}
 	history["channels"] = []base.Set{base.SetOf("A", "B"), base.SetOf("A", "B"), base.SetOf("A", "B")}
@@ -472,7 +472,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	fieldVal := func(valSizeBytes int) string {
 		buffer := bytes.Buffer{}
-		for i := 0; i < valSizeBytes; i++ {
+		for range valSizeBytes {
 			buffer.WriteString("a")
 		}
 		return buffer.String()
@@ -480,7 +480,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	createDoc := func(numKeys, valSizeBytes int) Body {
 		doc := Body{}
-		for keyNum := 0; keyNum < numKeys; keyNum++ {
+		for keyNum := range numKeys {
 			doc[fmt.Sprintf("%v", keyNum)] = fieldVal(valSizeBytes)
 		}
 		return doc
@@ -491,7 +491,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	valSizeBytes := 1024
 
 	// Create 2k docs of size 50k, 1000 keys with branches, 1 parent + 2 child branches -- doesn't matter which API .. bucket api
-	for docNum := 0; docNum < numDocs; docNum++ {
+	for range numDocs {
 
 		// Create the parent rev
 		docid, err := base.GenerateRandomID()
@@ -524,8 +524,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	options.ActiveOnly = true // active_only=true
 	options.Since = SequenceID{Seq: 0}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 
 		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
 		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
@@ -551,7 +550,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 func TestChangesOptionsStringer(t *testing.T) {
 	opts := ChangesOptions{}
 	var stringerFields []string
-	for _, key := range strings.Split(opts.String()[1:len(opts.String())-1], ",") {
+	for key := range strings.SplitSeq(opts.String()[1:len(opts.String())-1], ",") {
 		fieldName, _, found := strings.Cut(strings.Trim(key, `" ,`), ":")
 		require.True(t, found, "Expected , in %s", key)
 		stringerFields = append(stringerFields, fieldName)

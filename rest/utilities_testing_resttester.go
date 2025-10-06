@@ -324,7 +324,7 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 
 	if len(channels) > 0 {
 		replicationConfig.Filter = base.ByChannelFilter
-		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
+		replicationConfig.QueryParams = map[string]any{"channels": channels}
 	}
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.TB(), err)

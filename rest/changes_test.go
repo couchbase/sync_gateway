@@ -106,7 +106,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rt.CreateUser("user1", []string{"alpha"})
 
 	// Create 100 docs
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		docpath := fmt.Sprintf("/{{.keyspace}}/doc%d", i)
 		RequireStatus(t, rt.SendRequest("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`), 201)
 	}
@@ -202,7 +202,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 				DocumentChanged: []*EventConfig{
 					{Url: s.URL + "?event=DocumentChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
 					{Url: s.URL + "?event=WinningRevChanged", Filter: "function(doc){return true;}", HandlerType: "webhook",
-						Options: map[string]interface{}{db.EventOptionDocumentChangedWinningRevOnly: true},
+						Options: map[string]any{db.EventOptionDocumentChangedWinningRevOnly: true},
 					},
 				},
 			},
@@ -292,7 +292,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(20)
 	newXattrVal := map[string][]byte{
@@ -362,7 +362,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	var retrievedXattr map[string]interface{}
+	var retrievedXattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 	retrievedXattr["sequence"] = uint64(20)
 	newXattrVal := map[string][]byte{
@@ -633,7 +633,7 @@ func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
 	require.NoError(t, err)
 	oldDoc := "oldDoc"
 	oldDocBody := `{"body_field":"1234"}`
-	oldDocSyncData := []byte(fmt.Sprintf(`{"sequence":%d,"rev":{"rev": "1-abc"},"history":{"revs":["1-abc"],"parents":[-1],"channels":[null]},"value_crc32c":"%s"}`, seq, base.Crc32cHashString([]byte(oldDocBody))))
+	oldDocSyncData := fmt.Appendf(nil, `{"sequence":%d,"rev":{"rev": "1-abc"},"history":{"revs":["1-abc"],"parents":[-1],"channels":[null]},"value_crc32c":"%s"}`, seq, base.Crc32cHashString([]byte(oldDocBody)))
 	_, err = rt.GetSingleDataStore().WriteWithXattrs(t.Context(), oldDoc, 0, 0, []byte(oldDocBody), map[string][]byte{base.SyncXattrName: oldDocSyncData}, nil, nil)
 	require.NoError(t, err)
 

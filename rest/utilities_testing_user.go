@@ -27,7 +27,7 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 	form.Add("password", password)
 	form.Add("roles", strings.Join(roles, ","))
 
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+	retryWorker := func() (shouldRetry bool, err error, value any) {
 		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 

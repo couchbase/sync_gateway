@@ -241,12 +241,12 @@ func BenchmarkComparableBuildVersion(b *testing.B) {
 	require.NoError(b, err)
 
 	b.Run("parseComparableBuildVersion", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _, _, _, _, _, _, _ = parseComparableBuildVersion(str)
 		}
 	})
 	b.Run("formatComparableBuildVersion", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = current.formatComparableBuildVersion()
 		}
 	})

@@ -67,7 +67,7 @@ func (rq *SubChangesRequest) marshalBLIPRequest(ctx context.Context) (*blip.Mess
 	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	if len(rq.DocIDs) > 0 {
-		if err := msg.SetJSONBody(map[string]interface{}{
+		if err := msg.SetJSONBody(map[string]any{
 			"docIDs": rq.DocIDs,
 		}); err != nil {
 			base.ErrorfCtx(ctx, "error marshalling docIDs slice into subChanges request: %v", err)

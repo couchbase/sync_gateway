@@ -29,7 +29,7 @@ func TestN1qlQuery(t *testing.T) {
 	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
@@ -70,7 +70,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", KeyspaceQueryToken)
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	params["minvalue"] = 2
 
 	queryResults, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
@@ -97,7 +97,7 @@ func TestN1qlQuery(t *testing.T) {
 	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
 
 	// Requery the index, validate empty resultset behaviour
-	params = make(map[string]interface{})
+	params = make(map[string]any)
 	params["minvalue"] = 10
 
 	queryResults, queryErr = n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
@@ -139,7 +139,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
@@ -221,7 +221,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	n1qlStore := getN1QLStore(t)
 
 	// Write a few docs to the bucket to query
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
@@ -242,26 +242,26 @@ func TestMalformedN1qlQuery(t *testing.T) {
 
 	// Query with syntax error
 	queryExpression := "SELECT META().id, val WHERE val > $minvalue"
-	params := make(map[string]interface{})
+	params := make(map[string]any)
 	_, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (syntax)")
 
 	// Query against non-existing bucket
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", "badBucket")
-	params = map[string]interface{}{"minvalue": 2}
+	params = map[string]any{"minvalue": 2}
 	_, queryErr = n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (no bucket)")
 
 	// Specify params for non-parameterized query (no error expected, ensure doesn't break)
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > 5", KeyspaceQueryToken)
-	params = map[string]interface{}{"minvalue": 2}
+	params = map[string]any{"minvalue": 2}
 	queryResults, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	require.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
 	assert.NoError(t, queryResults.Close())
 
 	// Omit params for parameterized query
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", KeyspaceQueryToken)
-	params = map[string]interface{}{"othervalue": 2}
+	params = map[string]any{"othervalue": 2}
 	results, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	if queryErr == nil {
 		for results.NextBytes() != nil {

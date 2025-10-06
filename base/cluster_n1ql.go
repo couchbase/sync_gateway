@@ -95,7 +95,7 @@ func (cl *ClusterOnlyN1QLStore) CreatePrimaryIndex(ctx context.Context, indexNam
 	return CreatePrimaryIndex(ctx, cl, indexName, options)
 }
 
-func (cl *ClusterOnlyN1QLStore) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+func (cl *ClusterOnlyN1QLStore) ExplainQuery(ctx context.Context, statement string, params map[string]any) (plan map[string]any, err error) {
 	return ExplainQuery(ctx, cl, statement, params)
 }
 
@@ -124,7 +124,7 @@ func (cl *ClusterOnlyN1QLStore) IndexMetaScopeID() string {
 	return cl.scopeName
 }
 
-func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
+func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, cl.EscapedKeyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{

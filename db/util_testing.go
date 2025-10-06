@@ -42,7 +42,7 @@ func (db *DatabaseContext) CacheCompactActive() bool {
 }
 
 func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
 		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 		if caughtUpCount >= targetCount {
@@ -54,7 +54,7 @@ func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 }
 
 func (db *DatabaseContext) WaitForTotalCaughtUp(targetCount int64) error {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 		if caughtUpCount >= targetCount {
 			return nil
@@ -146,7 +146,7 @@ func (sw *StatWaiter) Wait() {
 	}
 
 	waitTime := 1 * time.Millisecond
-	for i := 0; i < 14; i++ {
+	for range 14 {
 		waitTime *= 2
 		time.Sleep(waitTime)
 		actualCount = sw.stat.Value()
@@ -168,7 +168,7 @@ func AssertEqualBodies(t *testing.T, expected, actual Body) {
 
 func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	var isChanged bool
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		isChanged = userWaiter.RefreshUserCount()
 		if isChanged {
 			break
@@ -535,20 +535,20 @@ func TestBucketPoolEnsureNoIndexes(ctx context.Context, m *testing.M, tbpOptions
 // The plan returned by an EXPLAIN is a nested hierarchy with operators potentially appearing at different
 // depths, so need to traverse the JSON object.
 // https://docs.couchbase.com/server/6.0/n1ql/n1ql-language-reference/explain.html
-func IsCovered(plan map[string]interface{}) bool {
+func IsCovered(plan map[string]any) bool {
 	for key, value := range plan {
 		switch value := value.(type) {
 		case string:
 			if key == "#operator" && value == "Fetch" {
 				return false
 			}
-		case map[string]interface{}:
+		case map[string]any:
 			if !IsCovered(value) {
 				return false
 			}
-		case []interface{}:
+		case []any:
 			for _, arrayValue := range value {
-				jsonArrayValue, ok := arrayValue.(map[string]interface{})
+				jsonArrayValue, ok := arrayValue.(map[string]any)
 				if ok {
 					if !IsCovered(jsonArrayValue) {
 						return false
@@ -623,7 +623,7 @@ func GetScopesOptions(t testing.TB, bucket base.Bucket, numCollections int) Scop
 	require.GreaterOrEqual(t, len(stores), numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesOptions{}
-	for i := 0; i < numCollections; i++ {
+	for i := range numCollections {
 		dataStoreName := stores[i]
 		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
 			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {

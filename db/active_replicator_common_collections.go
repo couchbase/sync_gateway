@@ -51,7 +51,7 @@ func (arc *activeReplicatorCommon) validateCollectionsConfig() error {
 // buildGetCollectionsMessage returns a GetCollections BLIP message for the given collection names.
 func (arc *activeReplicatorCommon) buildGetCollectionsMessage(remoteCollectionsKeyspaces base.ScopeAndCollectionNames) (*blip.Message, error) {
 	getCollectionsCheckpointIDs := make([]string, 0, len(remoteCollectionsKeyspaces))
-	for i := 0; i < len(remoteCollectionsKeyspaces); i++ {
+	for range remoteCollectionsKeyspaces {
 		getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 	}
 

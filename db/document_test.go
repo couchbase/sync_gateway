@@ -137,7 +137,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _ = unmarshalDocumentWithXattrs(ctx, "doc_1k", doc1k_body, doc1k_meta, nil, nil, nil, nil, nil, 1, bm.unmarshalLevel)
 			}
 		})
@@ -160,7 +160,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				b.StopTimer()
 				doc := NewDocument("testDocID")
 				docReader := bytes.NewReader(doc1k_body)
@@ -636,14 +636,14 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	// assert on attachments
 	atts := doc.Attachments()
 	assert.Len(t, atts, 2)
-	hello := atts["hello.txt"].(map[string]interface{})
+	hello := atts["hello.txt"].(map[string]any)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(1), hello["revpos"])
 	assert.Equal(t, float64(2), hello["ver"])
 	assert.True(t, hello["stub"].(bool))
 
-	bye := atts["bye.txt"].(map[string]interface{})
+	bye := atts["bye.txt"].(map[string]any)
 	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
 	assert.Equal(t, float64(19), bye["length"])
 	assert.Equal(t, float64(1), bye["revpos"])
@@ -659,14 +659,14 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	// assert on attachments
 	atts = doc.Attachments()
 	assert.Len(t, atts, 2)
-	hello = atts["hello.txt"].(map[string]interface{})
+	hello = atts["hello.txt"].(map[string]any)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(1), hello["revpos"])
 	assert.Equal(t, float64(2), hello["ver"])
 	assert.True(t, hello["stub"].(bool))
 
-	bye = atts["bye.txt"].(map[string]interface{})
+	bye = atts["bye.txt"].(map[string]any)
 	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
 	assert.Equal(t, float64(19), bye["length"])
 	assert.Equal(t, float64(1), bye["revpos"])

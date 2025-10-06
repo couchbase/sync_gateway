@@ -36,7 +36,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	var markProcessFailureErr error
 
 	// failProcess used when a failure is deemed as 'un-recoverable' and we need to abort the compaction process.
-	failProcess := func(err error, format string, args ...interface{}) bool {
+	failProcess := func(err error, format string, args ...any) bool {
 		markProcessFailureErr = err
 		terminator.Close()
 		base.WarnfCtx(ctx, format, args...)
@@ -338,7 +338,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 			// If the document did indeed have an xattr then check the compactID. If it is the same as the current
 			// running compaction ID we don't want to purge this doc and can continue to the next doc.
 			if xattr != nil {
-				var syncData map[string]interface{}
+				var syncData map[string]any
 				err = base.JSONUnmarshal(xattr, &syncData)
 				if err != nil {
 					base.WarnfCtx(ctx, "[%s] Failed to unmarshal xattr data: %v", compactionLoggingID, err)
@@ -346,7 +346,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 				}
 
 				compactIDSync, compactIDSyncPresent := syncData[CompactionIDKey]
-				if _, compactionIDPresent := compactIDSync.(map[string]interface{})[compactionID]; compactIDSyncPresent && compactionIDPresent {
+				if _, compactionIDPresent := compactIDSync.(map[string]any)[compactionID]; compactIDSyncPresent && compactionIDPresent {
 					return true
 				}
 			}
@@ -452,7 +452,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 
 		if xattr != nil {
 			// TODO: Struct map
-			var attachmentCompactionMetadata map[string]map[string]interface{}
+			var attachmentCompactionMetadata map[string]map[string]any
 			err = base.JSONUnmarshal(xattr, &attachmentCompactionMetadata)
 			if err != nil {
 				base.WarnfCtx(ctx, "[%s] Failed to unmarshal attachment compaction xattr: %v", compactionLoggingID, err)

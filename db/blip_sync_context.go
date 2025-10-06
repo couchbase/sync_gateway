@@ -289,7 +289,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDbCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *blip.Sender, response *blip.Message, changeArray [][]any, requestSent time.Time, handleChangesResponseDbCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)
@@ -311,7 +311,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 		return fmt.Errorf("Client returned error in changesResponse: %s", respBody)
 	}
 
-	var answer []interface{}
+	var answer []any
 	if len(respBody) > 0 {
 		if err := base.JSONUnmarshal(respBody, &answer); err != nil {
 			base.ErrorfCtx(ctx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
@@ -357,7 +357,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 		docID := changeArray[i][1].(string)
 		rev := changeArray[i][2].(string)
 
-		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
+		if knownRevsArray, ok := knownRevsArrayInterface.([]any); ok {
 			legacyRev := false
 			deltaSrcRevID := ""
 			knownRevs := knownRevsByDoc[docID]
@@ -867,7 +867,7 @@ func (bsc *BlipSyncContext) sendRevTreeProperty() bool {
 
 // getKnownRevs will return deltaSrcRev (if delta sync is enabled), whether the known rev array represents a legacy
 // document without an HLV, the parsed known revs in a map and error if unknown format is received.
-func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, knownRevsArray []interface{}) (deltaSrcRev string, changeIsLegacyRev bool, knownRevs map[string]bool, err error) {
+func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, knownRevsArray []any) (deltaSrcRev string, changeIsLegacyRev bool, knownRevs map[string]bool, err error) {
 	knownRevs = make(map[string]bool)
 	// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc for
 	// revtree clients. For HLV clients, use the cv as deltaSrc

@@ -498,7 +498,7 @@ func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.
 		return nil, err
 	}
 
-	importFilterRunner.After = func(result otto.Value, err error) (interface{}, error) {
+	importFilterRunner.After = func(result otto.Value, err error) (any, error) {
 		nativeValue, _ := result.Export()
 		return nativeValue, err
 	}

@@ -10,6 +10,7 @@ package replicatortest
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"testing"
@@ -89,11 +90,11 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 
 				var expectedConflictResBody []byte
 
-				for i := 0; i < 10; i++ {
+				for i := range 10 {
 					version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 				}
 				rt2.WaitForPendingChanges()
-				for i := 0; i < 10; i++ {
+				for i := range 10 {
 					rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 				}
 				rt1.WaitForPendingChanges()
@@ -235,11 +236,11 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 		var expectedWinner rest.DocVersion
 		var nonWinningRevPreConflict rest.DocVersion
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 		}
 		rt2.WaitForPendingChanges()
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 		}
 		rt1.WaitForPendingChanges()
@@ -500,11 +501,9 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 					},
 					MergeVersions: testCase.mvForLocal,
 				}
-				for key, value := range testCase.pvForLocal {
-					newHLVForLocal.PreviousVersions[key] = value
-				}
+				maps.Copy(newHLVForLocal.PreviousVersions, testCase.pvForLocal)
 
-				docBody := map[string]interface{}{
+				docBody := map[string]any{
 					"source":   "rt2",
 					"channels": []string{"alice"},
 					"some":     "data",
@@ -516,7 +515,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				}, 1)
 
 				// simplify local doc body to one field so we can easily generate expected revID for local wins case
-				docBody = map[string]interface{}{
+				docBody = map[string]any{
 					"channels": []string{"alice"},
 				}
 				localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
@@ -801,11 +800,9 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 					},
 					MergeVersions: testCase.mvForLocal,
 				}
-				for key, value := range testCase.pvForLocal {
-					newHLVForLocal.PreviousVersions[key] = value
-				}
+				maps.Copy(newHLVForLocal.PreviousVersions, testCase.pvForLocal)
 
-				docBody := map[string]interface{}{
+				docBody := map[string]any{
 					"source":   "rt2",
 					"channels": []string{"alice"},
 					"some":     "data",
@@ -816,7 +813,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 					return rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 				}, 1)
 
-				docBody = map[string]interface{}{
+				docBody = map[string]any{
 					"source":   "rt1",
 					"channels": []string{"alice"},
 				}
@@ -834,9 +831,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 						rt1.GetDatabase().EncodedSourceID: localCas,
 					},
 				}
-				for key, value := range testCase.expectedPV {
-					expectedHLV.PreviousVersions[key] = value
-				}
+				maps.Copy(expectedHLV.PreviousVersions, testCase.expectedPV)
 
 				rt1.WaitForPendingChanges()
 				rt2.WaitForPendingChanges()
@@ -1036,11 +1031,9 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 					},
 					MergeVersions: testCase.localMV,
 				}
-				for key, value := range testCase.localPV {
-					newHLVForLocal.PreviousVersions[key] = value
-				}
+				maps.Copy(newHLVForLocal.PreviousVersions, testCase.localPV)
 
-				docBody := map[string]interface{}{
+				docBody := map[string]any{
 					"some":     "data",
 					"source":   "rt2",
 					"channels": []string{"alice"},
@@ -1052,7 +1045,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				}, 1)
 
 				// simplify local doc body to one field so we can easily generate expected revID for local wins case
-				docBody = map[string]interface{}{
+				docBody = map[string]any{
 					"channels": []string{"alice"},
 				}
 				localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
@@ -1105,9 +1098,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 					expectedWinnerPreConflict = localDocBodyPreConflict
 				}
 				// add extra pv expected
-				for key, value := range testCase.expectedPV {
-					expectedHLV.PreviousVersions[key] = value
-				}
+				maps.Copy(expectedHLV.PreviousVersions, testCase.expectedPV)
 
 				require.Equal(t, expectedHLV, *rt1Doc.HLV)
 
@@ -1780,14 +1771,14 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 					// update doc on remote to ensure it we have something to replicate
 					// update doc locally many times to create more revisions than remote
 					version = rt2.UpdateDoc(docID, version, `{"source":"rt2","channels":["alice"]}`)
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 					}
 
 					_, expectedWinnerPreConflict = rt2.GetDoc(docID) // get body for later comparison + revID assertion
 				} else {
 					// update doc on remote loads of times to cause large diff in revisions
-					for i := 0; i < 10; i++ {
+					for i := range 10 {
 						version = rt2.UpdateDoc(docID, version, fmt.Sprintf(`{"source":"rt2","channels":["alice"], "version": "%d"}`, i))
 					}
 					// update doc locally to conflict
@@ -1868,7 +1859,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 		// create conflicting update on rt1 and create more revisions than remote
 		rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 		rt1.WaitForPendingChanges()
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			rt1Version = rt1.UpdateDoc(docID, rt1Version, fmt.Sprintf(`{"source":"rt1","channels":["alice"], "version": "%d"}`, i))
 		}
 		// delete local version
@@ -1925,7 +1916,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 		// we will create 10 additional revs to inject into remote  doc's history to catch up with local rev tree
 		previousRevID := rt2Version.RevTreeID
 		generatedRevs := make([]string, 0)
-		for i := 0; i < requiredAdditionalRevs; i++ {
+		for range requiredAdditionalRevs {
 			remoteGeneration++
 			previousRevID = db.CreateRevIDWithBytes(remoteGeneration, previousRevID, []byte("{}"))
 			generatedRevs = append(generatedRevs, previousRevID)

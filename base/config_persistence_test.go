@@ -51,7 +51,7 @@ func TestConfigPersistence(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			cp := testCase.configPersistenceImpl
-			configBody := make(map[string]interface{})
+			configBody := make(map[string]any)
 			configBody["sampleConfig"] = "value"
 			configKey := "testConfigKey"
 			rawConfigBody, marshalErr := JSONMarshal(configBody)
@@ -65,7 +65,7 @@ func TestConfigPersistence(t *testing.T) {
 			require.Equal(t, ErrAlreadyExists, reinsertErr)
 
 			ctx := TestCtx(t)
-			var loadedConfig map[string]interface{}
+			var loadedConfig map[string]any
 			loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, insertCas, loadCas)
@@ -88,7 +88,7 @@ func TestConfigPersistence(t *testing.T) {
 			require.NoError(t, updateErr)
 
 			// retrieve config, validate updated value
-			var updatedConfig map[string]interface{}
+			var updatedConfig map[string]any
 			loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &updatedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, updateCas, gocb.Cas(loadCas))
@@ -109,7 +109,7 @@ func TestConfigPersistence(t *testing.T) {
 			require.NoError(t, removeErr)
 
 			// attempt to retrieve config, validate not found
-			var deletedConfig map[string]interface{}
+			var deletedConfig map[string]any
 			_, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
 			assert.Equal(t, ErrNotFound, loadErr)
 
@@ -139,7 +139,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	// create config
 	c := sgCollection.Collection
 	cp := &XattrBootstrapPersistence{}
-	configBody := make(map[string]interface{})
+	configBody := make(map[string]any)
 	configBody["sampleConfig"] = "value"
 	configKey := "testConfigKey"
 	_, marshalErr := JSONMarshal(configBody)
@@ -149,7 +149,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, insertErr)
 
 	// modify the document body directly in the bucket
-	updatedBody := make(map[string]interface{})
+	updatedBody := make(map[string]any)
 	updatedBody["unexpected"] = "value"
 	err := dataStore.Set(configKey, 0, nil, updatedBody)
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.Equal(t, ErrAlreadyExists, reinsertErr)
 
 	// Retrieve the config
-	var loadedConfig map[string]interface{}
+	var loadedConfig map[string]any
 	_, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
@@ -174,7 +174,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
-	var docBody map[string]interface{}
+	var docBody map[string]any
 	_, err = dataStore.Get(configKey, &docBody)
 	assert.NoError(t, err)
 	assert.True(t, docBody == nil)
@@ -219,13 +219,13 @@ func TestConfigPersistenceXattrFormatMismatches(t *testing.T) {
 
 	nonXattrConfigPersistence := &DocumentBootstrapPersistence{}
 	nonXattrConfigKey := "testNonXattrConfigKey"
-	nonXattrConfigBody := map[string]interface{}{
+	nonXattrConfigBody := map[string]any{
 		"sampleConfig": "value",
 	}
 
 	xattrConfigKey := "testXattrConfigKey"
 	xattrConfigPersistence := &XattrBootstrapPersistence{}
-	xattrConfigBody := map[string]interface{}{
+	xattrConfigBody := map[string]any{
 		"sampleConfig": "value",
 	}
 

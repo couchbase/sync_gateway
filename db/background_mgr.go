@@ -89,8 +89,8 @@ type BackgroundManagerStatus struct {
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
 // Examples of this: ReSync, Compaction, Attachment Migration
 type BackgroundManagerProcessI interface {
-	Init(ctx context.Context, options map[string]interface{}, clusterStatus []byte) error
-	Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
+	Init(ctx context.Context, options map[string]any, clusterStatus []byte) error
+	Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
 	GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error)
 	ResetStatus()
 }
@@ -102,7 +102,7 @@ func (b *BackgroundManager) GetName() string {
 	return b.name
 }
 
-func (b *BackgroundManager) Start(ctx context.Context, options map[string]interface{}) error {
+func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) error {
 	err := b.markStart(ctx)
 	if err != nil {
 		return err
@@ -291,7 +291,7 @@ func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, e
 		return nil, err
 	}
 
-	var clusterStatus map[string]interface{}
+	var clusterStatus map[string]any
 	err = base.JSONUnmarshal(status, &clusterStatus)
 	if err != nil {
 		return nil, err
@@ -442,7 +442,7 @@ func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error 
 	if b.clusterAwareOptions == nil {
 		return nil
 	}
-	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value interface{}) {
+	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value any) {
 		status, metadata, err := b.getStatusLocal()
 		if err != nil {
 			return true, err, nil

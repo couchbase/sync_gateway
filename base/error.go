@@ -103,7 +103,7 @@ func (err *HTTPError) Error() string {
 }
 
 // HTTPErrorf creates an HTTPError with an http status code and a formatted message.
-func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {
+func HTTPErrorf(status int, format string, args ...any) *HTTPError {
 	return NewHTTPError(status, fmt.Errorf(format, args...).Error())
 }
 

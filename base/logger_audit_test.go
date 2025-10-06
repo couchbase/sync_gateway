@@ -338,7 +338,7 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 	}
 	for _, test := range tests {
 		b.Run(test.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				Audit(test.args.ctx, test.args.id, test.args.additionalData)
 			}
 		})
@@ -347,7 +347,7 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 
 func Test_expandFieldsAdditionalDataReadOnly(t *testing.T) {
 	additionalData := AuditFields{"foo": "bar"}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		fields := expandFields(AuditIDDocumentRead, TestCtx(t), AuditFields{"global": true}, additionalData)
 		// id, name, description, timestamp, global, foo
 		assert.Len(t, fields, 6)

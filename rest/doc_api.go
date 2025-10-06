@@ -252,7 +252,7 @@ func (h *handler) handleGetAttachment() error {
 		return kNotFoundError
 	}
 
-	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
+	meta, ok := rev.Attachments[attachmentName].(map[string]any)
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
@@ -459,11 +459,11 @@ func (h *handler) handlePutAttachment() error {
 	// find attachment (if it existed)
 	attachments := db.GetBodyAttachments(body)
 	if attachments == nil {
-		attachments = make(map[string]interface{})
+		attachments = make(map[string]any)
 	}
 
 	// create new attachment
-	attachment := make(map[string]interface{})
+	attachment := make(map[string]any)
 	attachment["data"] = attachmentData
 	attachment["content_type"] = attachmentContentType
 

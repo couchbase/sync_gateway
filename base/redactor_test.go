@@ -24,7 +24,7 @@ func TestRedactHelper(t *testing.T) {
 
 	ptr := UserData("hello")
 
-	var in = []interface{}{
+	var in = []any{
 		UserData("alice"),
 		&ptr,
 		"bob",
@@ -127,7 +127,7 @@ func BenchmarkRedactHelper(b *testing.B) {
 	RedactUserData = true
 	defer func() { RedactUserData = defaultRedactUserData }()
 
-	var data = []interface{}{
+	var data = []any{
 		UserData("alice"),
 		"bob",
 		1234,
@@ -135,8 +135,7 @@ func BenchmarkRedactHelper(b *testing.B) {
 		struct{}{},
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		redact(data)
 	}
 }

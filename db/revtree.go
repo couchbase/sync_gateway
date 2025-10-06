@@ -806,7 +806,7 @@ func ParseRevisions(ctx context.Context, body Body) []string {
 	switch revs := revisionsProperty.(type) {
 	case Revisions:
 		revisions = revs
-	case map[string]interface{}:
+	case map[string]any:
 		revisions = Revisions(revs)
 	default:
 		return nil

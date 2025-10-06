@@ -310,7 +310,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	}
 }
 
-func generateTestJWK(t *testing.T, alg, kid string, key interface{}) string {
+func generateTestJWK(t *testing.T, alg, kid string, key any) string {
 	jwk := jose.JSONWebKey{
 		Algorithm: alg,
 		Key:       key,
@@ -563,7 +563,7 @@ func TestTLSMinimumVersionSetting(t *testing.T) {
 func TestAutoImportEnabled(t *testing.T) {
 	tests := []struct {
 		name        string
-		configValue interface{}
+		configValue any
 		expected    bool
 		hasError    bool
 	}{
@@ -3177,7 +3177,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	ds := rt.MetadataStore()
-	var user map[string]interface{}
+	var user map[string]any
 	userKey := metaKeys.UserKey("user1")
 	_, err := ds.Get(userKey, &user)
 	require.NoError(t, err)
@@ -3198,7 +3198,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_user/user1", `{"name":"user1","password":"password1"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	user = map[string]interface{}{}
+	user = map[string]any{}
 	_, err = ds.Get(userKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)
@@ -3228,7 +3228,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	ds := rt.MetadataStore()
 	metaKeys := rt.GetDatabase().MetadataKeys
 	roleKey := metaKeys.RoleKey("role1")
-	var user map[string]interface{}
+	var user map[string]any
 	_, err := ds.Get(roleKey, &user)
 	require.NoError(t, err)
 
@@ -3248,7 +3248,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/db1/_role/role1", `{"name":"role1","admin_channels":["ABC"]}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	user = map[string]interface{}{}
+	user = map[string]any{}
 	_, err = ds.Get(roleKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)

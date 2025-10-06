@@ -72,8 +72,8 @@ type FileLogger struct {
 }
 
 type FileLoggerConfig struct {
-	Enabled  *bool             `json:"enabled,omitempty"`  // Toggle for this log output
-	Rotation logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
+	Enabled  *bool             `json:"enabled,omitempty"` // Toggle for this log output
+	Rotation logRotationConfig `json:"rotation"`          // Log rotation settings
 
 	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
 	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
@@ -184,7 +184,7 @@ func (l *FileLogger) String() string {
 
 // logf will put the given message into the collation buffer if it exists,
 // otherwise will log the message directly.
-func (l *FileLogger) logf(format string, args ...interface{}) {
+func (l *FileLogger) logf(format string, args ...any) {
 	if l == nil {
 		return
 	}

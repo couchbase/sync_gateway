@@ -133,7 +133,7 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 	}
 }
 
-func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expectedLength int) ChangesResults {
+func (tester *ChannelRevocationTester) getChanges(sinceSeq any, expectedLength int) ChangesResults {
 	var changes ChangesResults
 
 	// Ensure any previous mutations have caught up before issuing changes request
@@ -1190,7 +1190,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	rt.WaitForPendingChanges()
-	waitForUserChangesWithLimit := func(sinceVal interface{}, limit int) ChangesResults {
+	waitForUserChangesWithLimit := func(sinceVal any, limit int) ChangesResults {
 		var changesRes ChangesResults
 		err := rt.WaitForCondition(func() bool {
 			changesRes = rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit), "user")
@@ -1350,7 +1350,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	// Enter a load of history by looping over adding and removing a channel. Needs a get changes in there to trigger
 	// the actual rebuild
 	var changes ChangesResults
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		changes = revocationTester.getChanges(0, 2)
 		assert.Len(t, changes.Results, 2)
 		revocationTester.removeRoleChannel("foo", "a")
@@ -2327,7 +2327,7 @@ func TestRevocationMessage(t *testing.T) {
 				// Verify the deleted property in the changes message is "2" this indicated a revocation
 				for _, msg := range messages {
 					if msg.Properties[db.BlipProfile] == db.MessageChanges {
-						var changesMessages [][]interface{}
+						var changesMessages [][]any
 						err := msg.ReadJSONBody(&changesMessages)
 						if err != nil {
 							continue
@@ -2413,12 +2413,12 @@ func TestRevocationNoRev(t *testing.T) {
 		_ = btcRunner.WaitForVersion(btc.id, waitMarkerID, waitMarkerVersion)
 
 		changesMsg := btc.getMostRecentChangesMessage()
-		var messageBody []interface{}
+		var messageBody []any
 		require.NoError(t, changesMsg.ReadJSONBody(&messageBody))
 		require.Len(t, messageBody, 2)
 		require.Len(t, messageBody[0], 4)
 
-		deletedFlag, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
+		deletedFlag, err := messageBody[0].([]any)[3].(json.Number).Int64()
 		require.NoError(t, err)
 
 		assert.Equal(t, deletedFlag, int64(2))
@@ -2599,11 +2599,11 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
 		}
 
-		for i := 0; i < 7; i++ {
+		for i := range 7 {
 			_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
 		}
 
@@ -2667,12 +2667,12 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 		changesResults = rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docA%d", i), "")
 			RequireStatus(t, resp, http.StatusOK)
 		}
 
-		for i := 0; i < 7; i++ {
+		for i := range 7 {
 			resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/docB%d", i), "")
 			RequireStatus(t, resp, http.StatusOK)
 		}

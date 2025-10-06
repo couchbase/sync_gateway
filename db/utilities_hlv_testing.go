@@ -33,7 +33,7 @@ type HLVAgent struct {
 	xattrName string // xattr name to store the HLV
 }
 
-var defaultHelperBody = map[string]interface{}{"version": 1}
+var defaultHelperBody = map[string]any{"version": 1}
 
 func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string) *HLVAgent {
 	return &HLVAgent{
@@ -338,7 +338,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 	}
 
 	// pv
-	for _, versionStr := range strings.Split(pvString, ",") {
+	for versionStr := range strings.SplitSeq(pvString, ",") {
 		version, err := ParseVersion(versionStr)
 		require.NoError(t, err)
 		pv[EncodeSource(version.SourceID)] = version.Value
@@ -346,7 +346,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 
 	// mv
 	if mvString != "" {
-		for _, versionStr := range strings.Split(mvString, ",") {
+		for versionStr := range strings.SplitSeq(mvString, ",") {
 			version, err := ParseVersion(versionStr)
 			require.NoError(t, err)
 			mv[EncodeSource(version.SourceID)] = version.Value
@@ -381,7 +381,7 @@ func hlvAsBlipString(_ testing.TB, hlv *HybridLogicalVector) string {
 
 // AlterHLVForTest will alter the HLV of an existing document in the bucket, setting it to the provided HLV. Used for
 // testing purposes to set up specific HLV scenarios.
-func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]interface{}) uint64 {
+func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]any) uint64 {
 	cas, err := dataStore.Get(key, nil)
 	require.NoError(t, err)
 

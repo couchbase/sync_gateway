@@ -54,7 +54,7 @@ func (md Metadata) Redact() string {
 var _ Redactor = Metadata("")
 
 // MD returns a Metadata type for any given value.
-func MD(i interface{}) RedactorFunc {
+func MD(i any) RedactorFunc {
 	switch v := i.(type) {
 	case string:
 		return func() Redactor {

@@ -81,7 +81,7 @@ func (c *Collection) IndexMetaKeyspaceID() string {
 	return IndexMetaKeyspaceID(c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
-func (c *Collection) Query(ctx context.Context, statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
+func (c *Collection) Query(ctx context.Context, statement string, params map[string]any, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 	keyspaceStatement := strings.Replace(statement, KeyspaceQueryToken, c.EscapedKeyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{
@@ -125,7 +125,7 @@ func (c *Collection) Query(ctx context.Context, statement string, params map[str
 	return nil, err
 }
 
-func (c *Collection) ExplainQuery(ctx context.Context, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {
+func (c *Collection) ExplainQuery(ctx context.Context, statement string, params map[string]any) (plan map[string]any, err error) {
 	return ExplainQuery(ctx, c, statement, params)
 }
 

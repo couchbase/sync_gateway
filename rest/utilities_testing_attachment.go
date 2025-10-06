@@ -56,8 +56,8 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	require.NoError(t, err)
 
 	_, err = dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-		attachmentSyncData := map[string]interface{}{
-			attID: map[string]interface{}{
+		attachmentSyncData := map[string]any{
+			attID: map[string]any{
 				"content_type": "application/json",
 				"digest":       attDigest,
 				"length":       2,

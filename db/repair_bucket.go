@@ -36,8 +36,8 @@ type RepairBucketParams struct {
 
 // Params suitable for external (eg, HTTP) invocations to describe a specific RepairJob operation
 type RepairJobParams struct {
-	RepairJobType   RepairJobType          `json:"type"`
-	RepairJobParams map[string]interface{} `json:"params"`
+	RepairJobType   RepairJobType  `json:"type"`
+	RepairJobParams map[string]any `json:"params"`
 }
 
 // Record details about the result of a bucket repair that was made on a doc

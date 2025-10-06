@@ -247,7 +247,7 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 	uuids = make(map[uint16]uint64, maxVbno)
 	highSeqnos = make(map[uint16]uint64, maxVbno)
 	for _, serverMap := range stats {
-		for i := uint16(0); i < maxVbno; i++ {
+		for i := range maxVbno {
 			// stats come map with keys in format:
 			//   vb_nn:uuid
 			//   vb_nn:high_seqno
@@ -494,7 +494,7 @@ func GetDataStoreWithRetry(ctx context.Context, bucket Bucket, scName ScopeAndCo
 	err, dataStore := RetryLoop(
 		ctx,
 		fmt.Sprintf("waiting for %s.%s.%s to exist", MD(bucket.GetName()), MD(scName.ScopeName()), MD(scName.CollectionName())),
-		func() (bool, error, interface{}) {
+		func() (bool, error, any) {
 			dataStore, err := bucket.NamedDataStore(scName)
 			return err != nil, err, dataStore
 		},

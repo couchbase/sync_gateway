@@ -273,7 +273,7 @@ func (arc *activeReplicatorCommon) reconnect() {
 				int(maxReconnectInterval.Milliseconds())),
 			ctx)
 
-		retryFunc := func() (shouldRetry bool, err error, _ interface{}) {
+		retryFunc := func() (shouldRetry bool, err error, _ any) {
 			// check before and after acquiring lock to make sure to exit early if ActiveReplicatorCommon.Stop() was called.
 			if ctx.Err() != nil {
 				return false, ctx.Err(), nil

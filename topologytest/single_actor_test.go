@@ -29,7 +29,7 @@ func TestSingleActorCreate(t *testing.T) {
 			for activePeerID, activePeer := range topology.ActivePeers() {
 				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					docBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topologySpec.description))
+					docBody := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topologySpec.description)
 					docVersion := activePeer.CreateDocument(collectionName, docID, docBody)
 					waitForVersionAndBody(t, collectionName, docID, docVersion, topology)
 				})
@@ -54,12 +54,12 @@ func TestSingleActorUpdate(t *testing.T) {
 			for activePeerID, activePeer := range topology.ActivePeers() {
 				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
+					body1 := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription)
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
 					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.specDescription))
+					body2 := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "update"}`, activePeerID, topology.specDescription)
 					updateVersion := activePeer.WriteDocument(collectionName, docID, body2)
 
 					waitForVersionAndBody(t, collectionName, docID, updateVersion, topology)
@@ -86,7 +86,7 @@ func TestSingleActorDelete(t *testing.T) {
 				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
+					body1 := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription)
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 
 					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
@@ -117,14 +117,14 @@ func TestSingleActorResurrect(t *testing.T) {
 			for activePeerID, activePeer := range topology.ActivePeers() {
 				topology.Run(t, fmt.Sprintf("actor=%s", activePeerID), func(t *testing.T) {
 					docID := getDocID(t)
-					body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription))
+					body1 := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "create"}`, activePeerID, topology.specDescription)
 					createVersion := activePeer.CreateDocument(collectionName, docID, body1)
 					waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
 					deleteVersion := activePeer.DeleteDocument(collectionName, docID)
 					waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: activePeerID}, topology)
 
-					body2 := []byte(fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.specDescription))
+					body2 := fmt.Appendf(nil, `{"activePeer": "%s", "topology": "%s", "action": "resurrect"}`, activePeerID, topology.specDescription)
 					resurrectVersion := activePeer.WriteDocument(collectionName, docID, body2)
 					waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 				})

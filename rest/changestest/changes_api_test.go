@@ -176,7 +176,7 @@ func TestChangesFeedOnInheritedChannelsFromRoles(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a some doc on the database with channel A assigned
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "rt", "channels":["A"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
@@ -206,7 +206,7 @@ func TestChangesFeedOnInheritedChannelsFromRolesDefaultCollection(t *testing.T) 
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a some doc on the database with channel A assigned
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"source": "rt", "channels":["A"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
@@ -1806,7 +1806,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		docVersion := rt.UpdateDoc("doc_pruned", db.DocVersion{RevTreeID: revid}, `{"type": "pruned", "channels":["gamma"]}`)
 		revid = docVersion.RevTreeID
 	}
@@ -2517,7 +2517,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	//     41-50		ch1, ch2, ch3
 	channelSets := []string{`"ch1"`, `"ch1", "ch3"`, `"ch1"`, `"ch2"`, `"ch1", "ch2", "ch3"`}
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		channelSet := channelSets[i/10]
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s_%d", t.Name(), i), fmt.Sprintf(`{"channels":[%s]}`, channelSet))
 		rest.RequireStatus(t, response, 201)
@@ -2534,7 +2534,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	require.Len(t, changes.Results, 50)
 
 	// Verify results ordering
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		assert.Equal(t, fmt.Sprintf("%s_%d", t.Name(), i), changes.Results[i].ID)
 	}
 
@@ -2545,7 +2545,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	require.Len(t, changes.Results, 25)
 
 	// Verify results ordering
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		assert.Equal(t, fmt.Sprintf("%s_%d", t.Name(), i), changes.Results[i].ID)
 	}
 
@@ -2642,10 +2642,10 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
 
-	postQueryCallback := func(ddoc, viewName string, params map[string]interface{}) {
+	postQueryCallback := func(ddoc, viewName string, params map[string]any) {
 		log.Printf("Got callback for %s, %s, %v", ddoc, viewName, params)
 		// Check which channel the callback was invoked for
-		startkey, ok := params["startkey"].([]interface{})
+		startkey, ok := params["startkey"].([]any)
 		log.Printf("startkey: %v %T", startkey, startkey)
 		channelName := ""
 		if ok && len(startkey) > 1 {
@@ -3401,7 +3401,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	changesURLPattern := "/db/_changes?filter=sync_gateway/bychannel&feed=longpoll&since=0&channels=%s"
 	var longpollWg sync.WaitGroup
 	queryCount := 100
-	for i := 0; i < queryCount; i++ {
+	for i := range queryCount {
 		longpollWg.Add(1)
 		go func(i int) {
 			defer longpollWg.Done()
@@ -3429,12 +3429,12 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	assert.True(t, cacheSize <= 80)
 
 	channelSet := make([]string, queryCount)
-	for i := 0; i < queryCount; i++ {
+	for i := range queryCount {
 		channelSet[i] = fmt.Sprintf("chan_%d", i)
 	}
 
 	// Write a single doc to all 100 channels, ensure everyone gets it
-	channelDocBody := make(map[string]interface{})
+	channelDocBody := make(map[string]any)
 	channelDocBody["channels"] = channelSet
 	bodyBytes, err := base.JSONMarshal(channelDocBody)
 	assert.NoError(t, err, "Marshal error for 100 channel doc")
@@ -3789,7 +3789,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 }
 
 func waitForCompactStopped(dbc *db.DatabaseContext) error {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		compactRunning := dbc.CacheCompactActive()
 		if !compactRunning {
 			return nil

@@ -80,11 +80,11 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 		return nil, nil
 	}
 
-	var parentAttachments map[string]interface{}
+	var parentAttachments map[string]any
 	newAttachments := make(updatedAttachments, 0)
 	atts := newAttachmentsMeta
 	for name, value := range atts {
-		meta, ok := value.(map[string]interface{})
+		meta, ok := value.(map[string]any)
 		if !ok {
 			return nil, base.HTTPErrorf(400, "Invalid _attachments")
 		}
@@ -105,7 +105,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 				created: !updated,
 			}
 
-			newMeta := map[string]interface{}{
+			newMeta := map[string]any{
 				"stub":   true,
 				"digest": digest,
 				"revpos": generation,
@@ -157,7 +157,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 func retrieveV2Attachments(docID string, docAttachments AttachmentsMeta) (map[string][]string, error) {
 	attachments := make(map[string][]string)
 	for name, value := range docAttachments {
-		meta, ok := value.(map[string]interface{})
+		meta, ok := value.(map[string]any)
 		if !ok {
 			return nil, ErrAttachmentMeta
 		}
@@ -178,7 +178,7 @@ func retrieveV2Attachments(docID string, docAttachments AttachmentsMeta) (map[st
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Context, doc *Document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Context, doc *Document, parentRev string, docHistory []string) map[string]any {
 
 	// Attempt to find a non-pruned parent or ancestor
 	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(ctx, doc, parentRev); foundAncestor {
@@ -187,10 +187,10 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 
 	// No non-pruned ancestor is available
 	if commonAncestor := doc.History.findAncestorFromSet(doc.GetRevTreeID(), docHistory); commonAncestor != "" {
-		parentAttachments := make(map[string]interface{})
+		parentAttachments := make(map[string]any)
 		commonAncestorGen := int64(genOfRevID(ctx, commonAncestor))
 		for name, activeAttachment := range GetBodyAttachments(doc.Body(ctx)) {
-			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
+			if attachmentMeta, ok := activeAttachment.(map[string]any); ok {
 				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
 				if ok && activeRevpos <= commonAncestorGen {
 					parentAttachments[name] = activeAttachment
@@ -212,7 +212,7 @@ func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, mi
 	newAttachments = attachments.ShallowCopy()
 
 	for attachmentName, value := range newAttachments {
-		meta := value.(map[string]interface{})
+		meta := value.(map[string]any)
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
 			digest, ok := meta["digest"]
@@ -243,7 +243,7 @@ func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, mi
 // DeleteAttachmentVersion removes attachment versions from the AttachmentsMeta map specified.
 func DeleteAttachmentVersion(attachments AttachmentsMeta) {
 	for _, value := range attachments {
-		meta := value.(map[string]interface{})
+		meta := value.(map[string]any)
 		delete(meta, "ver")
 	}
 }
@@ -281,7 +281,7 @@ func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attach
 	return nil
 }
 
-type AttachmentCallback func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error)
+type AttachmentCallback func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error)
 
 // Given a document body, invokes the callback once for each attachment that doesn't include
 // its data, and isn't present with a matching digest on the existing doc (existingDigests).
@@ -294,7 +294,7 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
 	}
 	for name, value := range atts {
-		meta, ok := value.(map[string]interface{})
+		meta, ok := value.(map[string]any)
 		if !ok {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 		}
@@ -338,7 +338,7 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 	return nil
 }
 
-func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
+func GetAttachmentVersion(meta map[string]any) (int, bool) {
 	ver, ok := meta["ver"]
 	if !ok {
 		return AttVersion1, true
@@ -376,7 +376,7 @@ func GetBodyAttachments(body Body) AttachmentsMeta {
 	switch atts := body[BodyAttachments].(type) {
 	case AttachmentsMeta:
 		return atts
-	case map[string]interface{}:
+	case map[string]any:
 		return AttachmentsMeta(atts)
 	default:
 		return nil
@@ -387,7 +387,7 @@ func GetBodyAttachments(body Body) AttachmentsMeta {
 func AttachmentDigests(attachments AttachmentsMeta) []string {
 	var digests = make([]string, 0, len(attachments))
 	for _, att := range attachments {
-		if attMap, ok := att.(map[string]interface{}); ok {
+		if attMap, ok := att.(map[string]any); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
 					digests = append(digests, digestString)
@@ -411,7 +411,7 @@ type AttachmentStorageMeta struct {
 func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
 	meta := make([]AttachmentStorageMeta, 0, len(attachments))
 	for name, att := range attachments {
-		if attMap, ok := att.(map[string]interface{}); ok {
+		if attMap, ok := att.(map[string]any); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
 					version, _ := GetAttachmentVersion(attMap)
@@ -428,7 +428,7 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 	return meta
 }
 
-func DecodeAttachment(att interface{}) ([]byte, error) {
+func DecodeAttachment(att any) ([]byte, error) {
 	switch att := att.(type) {
 	case []byte:
 		return att, nil

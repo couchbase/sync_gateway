@@ -53,7 +53,7 @@ func TestLegacyProposeChanges(t *testing.T) {
 	body, err := proposeChangesResponse.Body()
 	require.NoError(t, err)
 
-	var changeList [][]interface{}
+	var changeList [][]any
 	err = base.JSONUnmarshal(body, &changeList)
 	require.NoError(t, err)
 
@@ -98,7 +98,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 		key           string
 		revID         string
 		parentRevID   string
-		expectedValue interface{}
+		expectedValue any
 	}
 
 	proposeChangesCases := []proposeChangesCase{
@@ -107,7 +107,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 			key:           "conflictingInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
-			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
+			expectedValue: map[string]any{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
 		},
 		{
 			description:   "successful insert, legacy rev",
@@ -121,7 +121,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 			key:           "conflictingUpdate",
 			revID:         "2-abc",
 			parentRevID:   conflictingUpdateRev1,
-			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
+			expectedValue: map[string]any{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
 		},
 		{
 			description:   "successful update, legacy rev",
@@ -149,7 +149,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 			key:           "conflictingUpdate",
 			revID:         "1000@CBL1",
 			parentRevID:   conflictingUpdateRev1,
-			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateVersion2.String()},
+			expectedValue: map[string]any{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateVersion2.String()},
 		},
 		{
 			description:   "already known, existing version, legacy parent is ancestor",
@@ -207,9 +207,9 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	proposeChangesRequest.SetCompressed(true)
 	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
 
-	proposedChanges := make([][]interface{}, 0)
+	proposedChanges := make([][]any, 0)
 	for _, c := range proposeChangesCases {
-		changeEntry := []interface{}{
+		changeEntry := []any{
 			c.key,
 			c.revID,
 		}
@@ -228,7 +228,7 @@ func TestProposeChangesHandlingWithExistingRevs(t *testing.T) {
 	bodyReader, err := proposeChangesResponse.BodyReader()
 	require.NoError(t, err)
 
-	var changeList []interface{}
+	var changeList []any
 	decoder := base.JSONDecoder(bodyReader)
 	decodeErr := decoder.Decode(&changeList)
 	require.NoError(t, decodeErr)
@@ -570,14 +570,14 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 		body, err := request.Body()
 		log.Printf("changes body: %v, err: %v", string(body), err)
 
-		knownRevs := []interface{}{}
+		knownRevs := []any{}
 
 		if string(body) != "null" {
-			var changesReqs [][]interface{}
+			var changesReqs [][]any
 			err = base.JSONUnmarshal(body, &changesReqs)
 			require.NoError(t, err)
 
-			knownRevs = make([]interface{}, len(changesReqs))
+			knownRevs = make([]any, len(changesReqs))
 
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)
@@ -674,14 +674,14 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 		body, err := request.Body()
 		log.Printf("changes body: %v, err: %v", string(body), err)
 
-		knownRevs := []interface{}{}
+		knownRevs := []any{}
 
 		if string(body) != "null" {
-			var changesReqs [][]interface{}
+			var changesReqs [][]any
 			err = base.JSONUnmarshal(body, &changesReqs)
 			require.NoError(t, err)
 
-			knownRevs = make([]interface{}, len(changesReqs))
+			knownRevs = make([]any, len(changesReqs))
 
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)

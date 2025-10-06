@@ -45,7 +45,7 @@ type UserFunction interface {
 	N1QLQueryName() (string, bool)
 
 	// Creates an invocation of the function, which can then be run or iterated.
-	Invoke(db *Database, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error)
+	Invoke(db *Database, args map[string]any, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error)
 }
 
 // The context for running a user function; created by UserFunction.Invoke.
@@ -56,13 +56,13 @@ type UserFunctionInvocation interface {
 
 	// Calls a user function, returning the entire result.
 	// (If this is a N1QL query it will return all the result rows in an array, which is less efficient than iterating them, so try calling `Iterate` first.)
-	Run(context.Context) (interface{}, error)
+	Run(context.Context) (any, error)
 }
 
 //////// DATABASE API FOR USER FUNCTIONS:
 
 // Looks up a UserFunction by name and returns an Invocation.
-func (db *Database) GetUserFunction(ctx context.Context, name string, args map[string]interface{}, mutationAllowed bool) (UserFunctionInvocation, error) {
+func (db *Database) GetUserFunction(ctx context.Context, name string, args map[string]any, mutationAllowed bool) (UserFunctionInvocation, error) {
 	if db.Options.UserFunctions != nil {
 		if fn, found := db.Options.UserFunctions.Definitions[name]; found {
 			return fn.Invoke(db, args, mutationAllowed, ctx)
@@ -72,7 +72,7 @@ func (db *Database) GetUserFunction(ctx context.Context, name string, args map[s
 }
 
 // Calls a user function by name, returning all the results at once.
-func (db *Database) CallUserFunction(ctx context.Context, name string, args map[string]interface{}, mutationAllowed bool) (interface{}, error) {
+func (db *Database) CallUserFunction(ctx context.Context, name string, args map[string]any, mutationAllowed bool) (any, error) {
 	invocation, err := db.GetUserFunction(ctx, name, args, mutationAllowed)
 	if err != nil {
 		return nil, err

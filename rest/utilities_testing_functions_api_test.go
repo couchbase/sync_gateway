@@ -54,7 +54,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 
 	// 100 sequential calls:
 	startTime := time.Now()
-	for i := 0; i < numTasks; i++ {
+	for range numTasks {
 		if !testFunc() {
 			return false
 		}
@@ -64,7 +64,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	// Now run 100 concurrent calls:
 	var wg sync.WaitGroup
 	startTime = time.Now()
-	for i := 0; i < numTasks; i++ {
+	for range numTasks {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

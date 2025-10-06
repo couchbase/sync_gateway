@@ -32,11 +32,11 @@ func TestMultiActorUpdate(t *testing.T) {
 				for updatePeerName, updatePeer := range topology.ActivePeers() {
 					topology.Run(t, "create="+createPeerName+",update="+updatePeerName, func(t *testing.T) {
 						docID := getDocID(t) + "_create=" + createPeerName + ",update=" + updatePeerName
-						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.specDescription))
+						body1 := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, updatePeer, topology.specDescription)
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 						waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-						newBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "update"}`, updatePeerName, createPeerName, updatePeerName, topology.specDescription))
+						newBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "updatePeer": "%s", "topology": "%s", "action": "update"}`, updatePeerName, createPeerName, updatePeerName, topology.specDescription)
 						updateVersion := updatePeer.WriteDocument(collectionName, docID, newBody)
 
 						waitForVersionAndBody(t, collectionName, docID, updateVersion, topology)
@@ -64,7 +64,7 @@ func TestMultiActorDelete(t *testing.T) {
 				for deletePeerName, deletePeer := range topology.ActivePeers() {
 					topology.Run(t, "create="+createPeerName+",delete="+deletePeerName, func(t *testing.T) {
 						docID := getDocID(t) + "_create=" + createPeerName + ",update=" + deletePeerName
-						body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, topology.specDescription))
+						body1 := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, topology.specDescription)
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 						waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
@@ -97,14 +97,14 @@ func TestMultiActorResurrect(t *testing.T) {
 					for resurrectPeerName, resurrectPeer := range topology.ActivePeers() {
 						topology.Run(t, fmt.Sprintf("create=%s,delete=%s,resurrect=%s", createPeerName, deletePeerName, resurrectPeerName), func(t *testing.T) {
 							docID := getDocID(t) + "_create=" + createPeerName + ",delete=" + deletePeerName + ",resurrect=" + resurrectPeerName
-							body1 := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, resurrectPeer, topologySpec.description))
+							body1 := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "create"}`, createPeerName, createPeerName, deletePeer, resurrectPeer, topologySpec.description)
 							createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 							waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
 							deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
 							waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName}, topology)
 
-							resBody := []byte(fmt.Sprintf(`{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription))
+							resBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription)
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
 							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {

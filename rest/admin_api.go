@@ -358,7 +358,7 @@ func (h *handler) handlePostIndexInit() error {
 		return err
 	}
 
-	opts := map[string]interface{}{
+	opts := map[string]any{
 		"statusMap": &statusMap,
 		"doneChan":  done,
 	}
@@ -562,13 +562,13 @@ func (h *handler) handlePutConfig() error {
 	type ServerPutConfig struct {
 		Logging struct {
 			Console *ConsoleLoggerPutConfig `json:"console,omitempty"`
-			Error   FileLoggerPutConfig     `json:"error,omitempty"`
-			Warn    FileLoggerPutConfig     `json:"warn,omitempty"`
-			Info    FileLoggerPutConfig     `json:"info,omitempty"`
-			Debug   FileLoggerPutConfig     `json:"debug,omitempty"`
-			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
-			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
-			Audit   FileLoggerPutConfig     `json:"audit,omitempty"`
+			Error   FileLoggerPutConfig     `json:"error"`
+			Warn    FileLoggerPutConfig     `json:"warn"`
+			Info    FileLoggerPutConfig     `json:"info"`
+			Debug   FileLoggerPutConfig     `json:"debug"`
+			Trace   FileLoggerPutConfig     `json:"trace"`
+			Stats   FileLoggerPutConfig     `json:"stats"`
+			Audit   FileLoggerPutConfig     `json:"audit"`
 		} `json:"logging"`
 		ReplicationLimit *int `json:"max_concurrent_replications,omitempty"`
 	}
@@ -674,7 +674,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 		auditFields[base.AuditFieldPayload] = configStr
 
-		var mapDbConfig map[string]interface{}
+		var mapDbConfig map[string]any
 		err = ReadJSONFromMIMERawErr(h.rq.Header, io.NopCloser(bytes.NewReader(rawBytes)), &mapDbConfig)
 		if err != nil {
 			return err
@@ -2104,7 +2104,7 @@ func (h *handler) handlePurge() error {
 		// For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "purging document = %v", base.UD(key))
 
-		if revisionList, ok := value.([]interface{}); ok {
+		if revisionList, ok := value.([]any); ok {
 
 			// There should only be a single revision entry of "*"
 			if len(revisionList) != 1 {
@@ -2293,7 +2293,7 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry GatewayRegistry `json:"registry,omitempty"`
+	Registry GatewayRegistry `json:"registry"`
 }
 
 // Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster

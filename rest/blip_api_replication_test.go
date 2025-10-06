@@ -59,7 +59,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
 
-		var retrievedXattr map[string]interface{}
+		var retrievedXattr map[string]any
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
 		retrievedXattr["sequence"] = uint64(20)
 		newXattrVal := map[string][]byte{
@@ -131,6 +131,6 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		rt.WaitForVersion(docID, newRev)
 
 		body := rt.GetDocBody(docID)
-		require.Equal(t, "bob", body["greetings"].([]interface{})[2].(map[string]interface{})["howdy"])
+		require.Equal(t, "bob", body["greetings"].([]any)[2].(map[string]any)["howdy"])
 	})
 }

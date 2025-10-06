@@ -131,7 +131,7 @@ func IsMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
 	return true
 }
 
-func normalizeIntToUint(value interface{}) (uint, error) {
+func normalizeIntToUint(value any) (uint, error) {
 	switch typeValue := value.(type) {
 	case int:
 		return uint(typeValue), nil
@@ -145,7 +145,7 @@ func normalizeIntToUint(value interface{}) (uint, error) {
 	}
 }
 
-func asBool(ctx context.Context, value interface{}) bool {
+func asBool(ctx context.Context, value any) bool {
 
 	switch typeValue := value.(type) {
 	case string:

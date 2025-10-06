@@ -108,7 +108,7 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 	return logger, nil
 }
 
-func (l *ConsoleLogger) logf(format string, args ...interface{}) {
+func (l *ConsoleLogger) logf(format string, args ...any) {
 	if l == nil {
 		return
 	}

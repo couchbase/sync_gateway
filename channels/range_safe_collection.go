@@ -83,7 +83,7 @@ func (r *RangeSafeCollection) RemoveElements(elements []*AppendOnlyListElement) 
 }
 
 // Get performs map-style retrieval from the collection.
-func (r *RangeSafeCollection) Get(key ID) (value interface{}, ok bool) {
+func (r *RangeSafeCollection) Get(key ID) (value any, ok bool) {
 
 	r.valueLock.RLock()
 
@@ -99,7 +99,7 @@ func (r *RangeSafeCollection) Get(key ID) (value interface{}, ok bool) {
 
 // GetOrInsert returns the value of the specified key if already present in the collection - otherwise
 // will append the element to the collection.  Does not block on active Range operations.
-func (r *RangeSafeCollection) GetOrInsert(key ID, value interface{}) (actual interface{}, created bool, length int) {
+func (r *RangeSafeCollection) GetOrInsert(key ID, value any) (actual any, created bool, length int) {
 
 	r.valueLock.Lock()
 
@@ -128,7 +128,7 @@ func (r *RangeSafeCollection) Length() int {
 
 // Range iterates over the set up to the last element at the time range was called, invoking
 // the callback function with the element value.
-func (r *RangeSafeCollection) Range(f func(value interface{}) bool) {
+func (r *RangeSafeCollection) Range(f func(value any) bool) {
 
 	wrapperFunc := func(item *AppendOnlyListElement) bool {
 		return f(item.Value)
@@ -186,7 +186,7 @@ type AppendOnlyListElement struct {
 	key ID
 
 	// The value stored with this element.
-	Value interface{}
+	Value any
 }
 
 // Next returns the next list element or nil.
@@ -254,7 +254,7 @@ func (l *AppendOnlyList) append(e *AppendOnlyListElement) *AppendOnlyListElement
 }
 
 // insertValue is a convenience wrapper for insert(&Element{Value: v}, at).
-func (l *AppendOnlyList) appendValue(k ID, v interface{}) *AppendOnlyListElement {
+func (l *AppendOnlyList) appendValue(k ID, v any) *AppendOnlyListElement {
 	return l.append(&AppendOnlyListElement{key: k, Value: v})
 }
 
@@ -271,7 +271,7 @@ func (l *AppendOnlyList) remove(e *AppendOnlyListElement) *AppendOnlyListElement
 // Remove removes e from l if e is an element of list l.
 // It returns the element value e.Value.
 // The element must not be nil.
-func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) interface{} {
+func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) any {
 	if e.list == l {
 		// if e.list == l, l must have been initialized when e was inserted
 		// in l or l == nil (e is a zero Element) and l.remove will crash
@@ -281,7 +281,7 @@ func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) interface{} {
 }
 
 // PushBack inserts a new element e with value v at the back of list l and returns e.
-func (l *AppendOnlyList) PushBack(key ID, v interface{}) *AppendOnlyListElement {
+func (l *AppendOnlyList) PushBack(key ID, v any) *AppendOnlyListElement {
 	l.lazyInit()
 	return l.appendValue(key, v)
 }

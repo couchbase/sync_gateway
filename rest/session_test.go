@@ -429,7 +429,7 @@ func TestSessionAPI(t *testing.T) {
 	user2sessions := make([]string, 5)
 	user3sessions := make([]string, 5)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		user1sessions[i] = createSession(t, rt, "user1")
 		user2sessions[i] = createSession(t, rt, "user2")
 		user3sessions[i] = createSession(t, rt, "user3")
@@ -586,7 +586,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 	const numSessions = 3
 	cookies := make([]string, numSessions)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
 		RequireStatus(t, response, http.StatusOK)
 		cookie := response.Header().Get("Set-Cookie")
@@ -648,7 +648,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NotNil(t, user)
 	require.NoError(t, authenticator.Save(user))
 
-	var rawUser map[string]interface{}
+	var rawUser map[string]any
 	_, err = rt.MetadataStore().Get(authenticator.DocIDForUser(user.Name()), &rawUser)
 	require.NoError(t, err)
 

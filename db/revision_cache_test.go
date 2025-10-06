@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -35,10 +36,8 @@ type testBackingStore struct {
 func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
-	for _, d := range t.notFoundDocIDs {
-		if docid == d {
-			return nil, ErrMissing
-		}
+	if slices.Contains(t.notFoundDocIDs, docid) {
+		return nil, ErrMissing
 	}
 
 	doc = NewDocument(docid)
@@ -130,7 +129,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// Fill up the rev cache with the first 10 docs
-	for docID := 0; docID < 10; docID++ {
+	for docID := range 10 {
 		id := strconv.Itoa(docID)
 		vrs := uint64(docID)
 		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: vrs, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
@@ -141,7 +140,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	assert.Equal(t, 10, len(cache.hlvCache))
 
 	// Get them back out
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		docID := strconv.Itoa(i)
 		docRev, err := cache.GetWithRev(ctx, docID, "1-abc", testCollectionID, RevCacheOmitDelta)
 		assert.NoError(t, err)
@@ -168,7 +167,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 
 	// Check that the first 3 docs were evicted
 	prevCacheHitCount := cacheHitCounter.Value()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		docID := strconv.Itoa(i)
 		docRev, ok := cache.Peek(ctx, docID, "1-abc", testCollectionID)
 		assert.False(t, ok)
@@ -182,7 +181,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	assert.Equal(t, 10, len(cache.hlvCache))
 
 	// and check we can Get up to and including the last 3 we put in
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		id := strconv.Itoa(i + 3)
 		docRev, err := cache.GetWithRev(ctx, id, "1-abc", testCollectionID, RevCacheOmitDelta)
 		assert.NoError(t, err)
@@ -214,7 +213,7 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// Fill up the rev cache with the first 10 docs
-	for docID := 0; docID < 10; docID++ {
+	for docID := range 10 {
 		id := strconv.Itoa(docID)
 		vrs := uint64(docID)
 		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: vrs, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
@@ -238,7 +237,7 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 
 	// assert we can get a hit on all 10 elements in the cache by CV lookup
 	prevCacheHitCount := cacheHitCounter.Value()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		id := strconv.Itoa(i + 3)
 		vrs := uint64(i + 3)
 		cv := Version{Value: vrs, SourceID: "test"}
@@ -253,7 +252,7 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 
 	// now do same but for rev lookup
 	prevCacheHitCount = cacheHitCounter.Value()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		id := strconv.Itoa(i + 3)
 		docRev, err := cache.GetWithRev(ctx, id, "1-abc", testCollectionID, RevCacheOmitDelta)
 		assert.NoError(t, err)
@@ -299,7 +298,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 
 			var currMem, expValue, revZeroSize int64
 			var rev1Version *Version
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				currMem = cacheStats.RevisionCacheTotalMemory.Value()
 				revSize, _, docVersion := createDocAndReturnSizeAndRev(t, ctx, fmt.Sprint(i), collection, smallBody)
 				if i == 0 {
@@ -694,7 +693,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	rev1body := Body{
 		"value":         1234,
-		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
 	rev1id, _, err := collection.Put(ctx, rev1key, rev1body)
@@ -745,7 +744,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev2id := "2-xxx"
 	rev2body := Body{
 		"value":         1235,
-		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	_, _, err = collection.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false, ExistingVersionWithUpdateToHLV)
 	assert.NoError(t, err, "Unexpected error calling collection.PutExistingRev")
@@ -1324,7 +1323,7 @@ func TestConcurrentLoad(t *testing.T) {
 	// Trigger load into cache
 	var wg sync.WaitGroup
 	wg.Add(20)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		go func() {
 			_, err := cache.GetWithRev(base.TestCtx(t), "doc1", "1-abc", testCollectionID, false)
 			assert.NoError(t, err)
@@ -1643,7 +1642,7 @@ func TestRevCacheOnDemand(t *testing.T) {
 	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -1770,7 +1769,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	ctx := base.TestCtx(b)
 
 	// trigger load into cache
-	for i := 0; i < 5000; i++ {
+	for i := range 5000 {
 		_, _ = cache.GetWithRev(ctx, fmt.Sprintf("doc%d", i), "1-abc", testCollectionID, RevCacheOmitDelta)
 	}
 
@@ -1841,7 +1840,7 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 	ctx, testCtxCancel := context.WithCancel(ctx)
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -1885,7 +1884,7 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -2083,7 +2082,7 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -2100,8 +2099,8 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 	}
 
 	go func() {
-		for i := 0; i < 100; i++ {
-			err = collection.dataStore.Set(docID, 0, nil, []byte(fmt.Sprintf(`{"ver": "%d"}`, i)))
+		for i := range 100 {
+			err = collection.dataStore.Set(docID, 0, nil, fmt.Appendf(nil, `{"ver": "%d"}`, i))
 			require.NoError(t, err)
 			_, err := db.revisionCache.GetActive(ctx, docID, collection.GetCollectionID())
 			if err != nil {
@@ -2134,7 +2133,7 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -2152,7 +2151,7 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 
 	var getErr error
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			_, getErr = db.revisionCache.GetWithRev(ctx, docID, rev1ID, collection.GetCollectionID(), true)
 			if getErr != nil {
 				break
@@ -2183,7 +2182,7 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
 	defer testCtxCancel()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
 		revID, _, err := collection.Put(ctx, docID, Body{"fake": "body"})
 		require.NoError(t, err)
@@ -2200,8 +2199,8 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 	}
 
 	go func() {
-		for i := 0; i < 100; i++ {
-			docRev := DocumentRevision{DocID: docID, RevID: fmt.Sprintf("1-%d", i), CV: &Version{SourceID: "someSrc", Value: uint64(i)}, BodyBytes: []byte(fmt.Sprintf(`{"ver": "%d"}`, i)), History: Revisions{"start": 1}}
+		for i := range 100 {
+			docRev := DocumentRevision{DocID: docID, RevID: fmt.Sprintf("1-%d", i), CV: &Version{SourceID: "someSrc", Value: uint64(i)}, BodyBytes: fmt.Appendf(nil, `{"ver": "%d"}`, i), History: Revisions{"start": 1}}
 			db.revisionCache.Put(ctx, docRev, collection.GetCollectionID())
 		}
 		wg.Done()
@@ -2250,7 +2249,7 @@ func TestRemoveFromRevLookup(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// Fill up the rev cache with the first 10 docs
-	for docID := 0; docID < 10; docID++ {
+	for docID := range 10 {
 		id := strconv.Itoa(docID)
 		vrs := uint64(docID)
 		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", CV: &Version{Value: vrs, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
@@ -2334,13 +2333,13 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 	revIDs := make([]string, 0)
 	legacyRev, _ := collection.CreateDocNoHLV(t, ctx, docID, Body{"foo": "bar"})
 	revIDs = append(revIDs, legacyRev)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		newRev, _ := collection.CreateDocNoHLV(t, ctx, docID, Body{BodyRev: legacyRev, "foo": "bar"})
 		revIDs = append(revIDs, newRev)
 		legacyRev = newRev // OCC val
 	}
 	// simulate doc revs that are backed up to bucket pre upgrade
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		err := collection.setOldRevisionJSONBody(ctx, docID, revIDs[i], []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds())
 		require.NoError(t, err)
 	}
@@ -2349,7 +2348,7 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 	db.FlushRevisionCacheForTest()
 
 	// fetch all three legacy revisions, first two should be loaded from old backup revisions
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		docRev, err := collection.getRev(ctx, docID, revIDs[i], 0, nil)
 		require.NoError(t, err)
 		assert.Equal(t, revIDs[i], docRev.RevID)

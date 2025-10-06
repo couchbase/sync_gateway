@@ -11,6 +11,7 @@ package functionsapitest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -531,9 +532,7 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 		MaxRequestSize:   kUserFunctionConfig.MaxRequestSize,
 		Definitions:      map[string]*functions.FunctionConfig{},
 	}
-	for functionName, functionConfig := range kUserFunctionConfig.Definitions {
-		kUserFunctionConfigCopy.Definitions[functionName] = functionConfig
-	}
+	maps.Copy(kUserFunctionConfigCopy.Definitions, kUserFunctionConfig.Definitions)
 
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})

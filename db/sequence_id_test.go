@@ -78,7 +78,7 @@ func BenchmarkParseSequenceID(b *testing.B) {
 	for _, test := range tests {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _ = parseIntegerSequenceID(test)
 			}
 		})
@@ -161,8 +161,8 @@ func TestCompareSequenceIDs(t *testing.T) {
 		{Seq: 6666},
 	}
 
-	for i := 0; i < len(orderedSeqs); i++ {
-		for j := 0; j < len(orderedSeqs); j++ {
+	for i := range orderedSeqs {
+		for j := range orderedSeqs {
 			assert.Equal(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]))
 		}
 	}
@@ -177,8 +177,8 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 		{LowSeq: 1234, Seq: 5678},
 	}
 
-	for i := 0; i < len(orderedSeqs); i++ {
-		for j := 0; j < len(orderedSeqs); j++ {
+	for i := range orderedSeqs {
+		for j := range orderedSeqs {
 			t.Run(fmt.Sprintf("%v<%v==%v", orderedSeqs[i], orderedSeqs[j], i < j), func(t *testing.T) {
 				assert.Equalf(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]), "expected %v < %v", orderedSeqs[i], orderedSeqs[j])
 			})
