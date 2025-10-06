@@ -2141,10 +2141,10 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-		assert.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedLocalCount.Value())
-
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedLocalCount.Value())
+			replicationStats, err := activeRT.GetDatabase().DbStats.DBReplicatorStats(replicationID)
+			assert.NoError(c, err)
+			assert.Equal(c, int64(1), replicationStats.ConflictResolvedLocalCount.Value())
 		}, 10*time.Second, 100*time.Millisecond)
 
 		docBodyBytes := []byte(`{}`)
@@ -2190,10 +2190,11 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		replicationID := rest.SafeDocumentName(t, t.Name())
 		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-		assert.Equal(t, int64(0), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedRemoteCount.Value())
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), activeRT.GetDatabase().DbStats.DbReplicatorStats[replicationID].ConflictResolvedRemoteCount.Value())
+			replicationStats, err := activeRT.GetDatabase().DbStats.DBReplicatorStats(replicationID)
+			assert.NoError(c, err)
+			assert.Equal(c, int64(1), replicationStats.ConflictResolvedRemoteCount.Value())
 		}, 10*time.Second, 100*time.Millisecond)
 
 		// expect remote doc to win but local doc ends up with longer history and given both local and remote branches
