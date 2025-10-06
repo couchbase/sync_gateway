@@ -39,7 +39,7 @@ type Principal interface {
 
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
-	UnauthError(message string) error
+	UnauthError(err error) error
 
 	DocID() string
 	accessViewKey() string
