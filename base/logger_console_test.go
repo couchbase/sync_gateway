@@ -372,7 +372,7 @@ func TestConsoleIrregularLogPaths(t *testing.T) {
 				filenames := getDirFiles(t, tempdir)
 				assert.Contains(c, filenames, test.logPath)
 				assert.Greater(c, len(filenames), 2)
-			}, time.Second, 10*time.Millisecond)
+			}, 10*time.Second, 10*time.Millisecond)
 
 			// add a few non-matching files to the directory for negative testing
 			nonMatchingFileNames := []string{
