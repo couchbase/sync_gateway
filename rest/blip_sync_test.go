@@ -10,9 +10,14 @@ package rest
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"testing"
 
+	"github.com/coder/websocket"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostOnlyCORS(t *testing.T) {
@@ -69,4 +74,29 @@ func TestHostOnlyCORS(t *testing.T) {
 			assert.Equal(t, test.output, output)
 		})
 	}
+}
+
+func TestBlipSyncInvalidProtocol(t *testing.T) {
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const dbName = "db1"
+	createDatabaseForBootstrapTest(t, sc, dbName, tb)
+
+	url := "http://" + mustGetServerAddr(t, sc, adminServer) + "/" + dbName + "/_blipsync"
+	c, resp, err := websocket.Dial(ctx, url, nil)
+	defer resp.Body.Close()
+	require.ErrorContains(t, err, "expected handshake response status code 101 but got 500")
+	require.Nil(t, c)
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "I only speak")
 }

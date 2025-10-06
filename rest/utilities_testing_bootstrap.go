@@ -215,3 +215,14 @@ func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext,
 	started = true
 	return sc, closeFn
 }
+
+func createDatabaseForBootstrapTest(t *testing.T, sc *ServerContext, dbName string, bucket base.Bucket) {
+	dbConfig := `{
+		"bucket": "` + bucket.GetName() + `",
+		"index": {
+			"num_replicas": 0
+		}
+	}`
+	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/", dbConfig)
+	resp.RequireStatus(http.StatusCreated)
+}

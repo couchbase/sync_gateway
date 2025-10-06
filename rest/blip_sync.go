@@ -49,7 +49,10 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// error is checked at the time of database load, and ignored at this time
-	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
+	var originPatterns []string
+	if h.db.CORS != nil {
+		originPatterns, _ = hostOnlyCORS(h.db.CORS.Origin)
+	}
 
 	cancelCtx, cancelCtxFunc := context.WithCancel(h.db.DatabaseContext.CancelContext)
 	// Create a BLIP context:
