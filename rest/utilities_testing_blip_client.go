@@ -313,21 +313,21 @@ func (cd *clientDoc) _getLatestHLVCopy(t testing.TB) db.HybridLogicalVector {
 	return *latestRev.HLV.Copy()
 }
 
-func (cd *clientDoc) _hasConflict(t testing.TB, opts revOptions) bool {
+func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
 	// there is no local document
 	if cd == nil {
 		return false
 	}
 	latestRev := cd._latestRev(t)
-	if latestRev.version.RevTreeID != "" || opts.incomingHLV == nil {
+	if latestRev.version.RevTreeID != "" {
 		// currently no conflict detection or resolution for revtree clients.
 		return false
 	}
 
 	localHLV := latestRev.HLV
-	incomingCV := opts.incomingHLV.ExtractCurrentVersionFromHLV()
+	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
 
-	conflictStatus := db.IsInConflict(t.Context(), &localHLV, opts.incomingHLV)
+	conflictStatus := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
 	switch conflictStatus {
 	case db.HLVNoConflict:
 		return false
@@ -2178,7 +2178,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	doc, hasLocalDoc := btcc._getClientDoc(docID)
 	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
 	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
-	if doc._hasConflict(btcc.TB(), opts) {
+	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
 		newBody, updatedHLV = btcc._resolveConflict(opts.incomingHLV, opts.body, doc._latestRev(btcc.TB()))
 		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%#v, existingHLV:%#v, updatedHLV:%#v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {

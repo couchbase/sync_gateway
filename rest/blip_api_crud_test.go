@@ -3465,20 +3465,18 @@ func TestBlipPullConflict(t *testing.T) {
 	})
 }
 
-func TestPanicInCheckProposedVersion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	t.Skip("skipping due to conflict resolution not yet implemented for CBL rev tree")
+func TestPushHLVOntoLegacyRev(t *testing.T) {
+	t.Skip("CBG-4909 skipping due to conflict resolution not yet implemented for CBL rev tree")
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // revtree subtest not relevant to this test
 	btcRunner.Run(func(t *testing.T) {
 		// Steps:
-		// 1 .Rev 1-abc is cerated on SGW
+		// 1. Rev 1-abc is created on SGW
 		// 2. Client pulls this revision (one shot)
-		// 3. Doc is mutated on SGW to get 2-abc
-		// 4. Upgrade happens both SGW and Client
-		// 5. Doc is updated post upgrade on client to be given a CV
-		// 6. Client attempts to push this doc update
+		// 3. Doc is mutated on SGW to get 2-abc (legacy rev only)
+		// 4. Doc is updated on CBL to get 100@CBL1 (HLV)
+		// 5. Client attempts to push this doc update
 		rt := NewRestTester(t,
 			&RestTesterConfig{
 				SyncFn: channels.DocChannelsSyncFunction,
