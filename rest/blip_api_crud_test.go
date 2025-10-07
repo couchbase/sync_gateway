@@ -3473,7 +3473,7 @@ func TestPanicInCheckProposedVersion(t *testing.T) {
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // revtree subtest not relevant to this test
 	btcRunner.Run(func(t *testing.T) {
 		// Steps:
-		// 1 .Rev 1-abc is cerated on SGW
+		// 1. Rev 1-abc is created on SGW
 		// 2. Client pulls this revision (one shot)
 		// 3. Doc is mutated on SGW to get 2-abc
 		// 4. Upgrade happens both SGW and Client
