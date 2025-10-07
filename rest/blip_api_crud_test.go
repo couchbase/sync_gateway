@@ -3501,7 +3501,7 @@ func TestPanicInCheckProposedVersion(t *testing.T) {
 		btcRunner.WaitForVersion(client.id, docID, docInitVersion)
 
 		// update doc again in legacy mode on rt
-		doc = rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"ABC"}, "_rev": docInitVersion.RevTreeID})
+		_ = rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"ABC"}, "_rev": docInitVersion.RevTreeID})
 
 		// update doc on client to have vv given to it and attempt to push it
 		newVersion := btcRunner.AddRev(client.id, docID, &docInitVersion, []byte(`{"channels": ["ABC"]}`))
