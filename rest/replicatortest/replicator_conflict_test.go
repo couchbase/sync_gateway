@@ -1471,7 +1471,7 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		_, _, _, err = rt2Collection.PutExistingCurrentVersion(rt2Ctx, opts)
 		require.NoError(t, err)
 
-		resolver := `function(conflict) {var mergedDoc = new Object(); 
+		resolver := `function(conflict) {var mergedDoc = new Object();
 										mergedDoc._cv = "@";
 										return mergedDoc;}` // invalid - setting cv to something that doesn't match either doc
 		customConflictResolver, err := db.NewCustomConflictResolver(ctx1, resolver, rt1.GetDatabase().Options.JavascriptTimeout)
