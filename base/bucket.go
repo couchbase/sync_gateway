@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -540,18 +541,22 @@ func RequireNoBucketTTL(ctx context.Context, b Bucket) error {
 
 // GetSourceID returns the source ID for a bucket.
 func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
-	// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return "", err
+	}
 	gocbBucket, err := AsGocbV2Bucket(bucket)
 	if err != nil {
-		return bucket.GetName(), nil
+		// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
+		if testing.Testing() {
+			return bucket.GetName(), nil
+		}
+		serverUUID := ""
+		return CreateEncodedSourceID(bucketUUID, serverUUID)
 	}
 
 	// If not overwriting the source ID, for rosmar, serverUUID would be ""
 	serverUUID, err := GetServerUUID(ctx, gocbBucket)
-	if err != nil {
-		return "", err
-	}
-	bucketUUID, err := bucket.UUID()
 	if err != nil {
 		return "", err
 	}
