@@ -1013,3 +1013,8 @@ func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID stri
 	require.Error(t, err, fmt.Sprintf("Expected xattr %q to not be found on document %q but has contents %s", xattrName, docID, xattrs[xattrName]))
 	RequireXattrNotFoundError(t, err)
 }
+
+// underGoTest returns true if the tests are being run via 'go test'
+func underGoTest() bool {
+	return testing.Testing()
+}
