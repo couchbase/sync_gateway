@@ -204,6 +204,12 @@ func (body Body) ExtractExpiry() (uint32, error) {
 	return exp, nil
 }
 
+// IsDeleted returns true if the body contains a _deleted property set to true.
+func (body Body) IsDeleted() bool {
+	deleted, _ := body[BodyDeleted].(bool)
+	return deleted
+}
+
 func (body Body) ExtractDeleted() bool {
 	deleted, _ := body[BodyDeleted].(bool)
 	delete(body, BodyDeleted)
