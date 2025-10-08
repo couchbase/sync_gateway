@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"iter"
 	"maps"
-	"math/bits"
 	"slices"
 	"sort"
 	"strconv"
@@ -972,12 +971,13 @@ func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
 	// trim to 40 bits (10 hex characters)
 	if len(digest) > 10 {
 		digest = digest[:10]
+	} else if len(digest) < 10 {
+		digest += strings.Repeat("0", 10-len(digest))
 	}
 	value, err := strconv.ParseUint(digest, 16, 64)
 	if err != nil {
 		return Version{}, err
 	}
-	value = value << (40 - bits.Len64(value)) // right pad zeros
 	return Version{
 		SourceID: encodedRevTreeSourceID,
 		Value:    (uint64(generation) << 40) | value,
