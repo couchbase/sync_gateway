@@ -952,6 +952,15 @@ func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (B
 	if conflict.LocalHLV == nil || conflict.RemoteHLV == nil {
 		return nil, errors.New("local or incoming document is nil for resolveConflict")
 	}
+	localDeleted := conflict.LocalDocument.IsDeleted()
+	remoteDeleted := conflict.RemoteDocument.IsDeleted()
+	if localDeleted && !remoteDeleted {
+		return conflict.LocalDocument, nil
+	}
+	if remoteDeleted && !localDeleted {
+		return conflict.RemoteDocument, nil
+	}
+
 	// resolve conflict in favor of remote document, remote wins case
 	if conflict.RemoteHLV.Version > conflict.LocalHLV.Version {
 		// remote document wins
