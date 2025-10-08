@@ -1112,13 +1112,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		newDoc.HLV = incomingHLV
 	}
 
-	isBlipRevTreeProperty := false
 	// if the client is SGW and there are no legacy revs being sent (i.e. doc is not a pre-upgraded doc) check the rev tree property
 	if bh.clientType == BLIPClientTypeSGR2 && len(legacyRevList) == 0 {
 		revTree, ok := rq.Properties[RevMessageTreeHistory]
 		if ok {
 			legacyRevList = append(legacyRevList, strings.Split(revTree, ",")...)
-			isBlipRevTreeProperty = true
 			if len(legacyRevList) > 0 {
 				newDoc.RevID = legacyRevList[0]
 			}
@@ -1352,7 +1350,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			ExistingDoc:                    rawBucketDoc,
 			NewDocHLV:                      incomingHLV,
 			ConflictResolver:               bh.conflictResolver.hlvConflictResolver,
-			AlignRevTrees:                  isBlipRevTreeProperty,
+			ISGRWrite:                      bh.clientType == BLIPClientTypeSGR2,
 		}
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, opts)
 	} else {
