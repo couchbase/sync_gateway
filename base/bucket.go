@@ -21,7 +21,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -548,7 +547,7 @@ func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
 	gocbBucket, err := AsGocbV2Bucket(bucket)
 	if err != nil {
 		// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
-		if testing.Testing() {
+		if underGoTest() {
 			return bucket.GetName(), nil
 		}
 		serverUUID := ""
