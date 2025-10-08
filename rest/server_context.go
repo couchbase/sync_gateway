@@ -2227,7 +2227,9 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		return fmt.Errorf("failed to create cluster: %v", err)
 	}
 
-	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{})
+	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{
+		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to wait for cluster to become ready: %v", err)
 	}
