@@ -11,8 +11,6 @@
       "username": "username",
       "password": "password",
       "bucket": "default",
-      "allow_conflicts": false,
-      "revs_limit": 20,
       "replications": {
         "push-continuous": {
           "direction": "push",
@@ -30,17 +28,13 @@
       "server": "couchbase://localhost",
       "username": "username",
       "password": "password",
-      "bucket": "default1",
-      "allow_conflicts": false,
-      "revs_limit": 20
+      "bucket": "default1"
     },
     "db3": {
       "server": "couchbase://localhost",
       "username": "username",
       "password": "password",
-      "bucket": "default2",
-      "allow_conflicts": false,
-      "revs_limit": 20
+      "bucket": "default2"
     },
     "db4": {
       "server": "couchbase://localhost",
@@ -67,9 +61,7 @@
               return conflict.RemoteDocument;
             }`
         }
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+      }
     },
     "db5": {
       "server": "couchbase://localhost",
@@ -81,9 +73,7 @@
           "disabled": false,
           "admin_channels": ["*"]
         }
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+      }
     },
     "db6": {
       "server": "couchbase://localhost",
@@ -102,17 +92,13 @@
           "filter": "sync_gateway/bychannel",
           "query_params":["ABC"]
         }
-      },
-      "allow_conflicts": false,
-      "revs_limit": 20
+      }
     },
     "db7": {
       "server": "couchbase://localhost",
       "username": "username",
       "password": "password",
-      "bucket": "default6",
-      "allow_conflicts": false,
-      "revs_limit": 20
+      "bucket": "default6"
     }
   }
 }

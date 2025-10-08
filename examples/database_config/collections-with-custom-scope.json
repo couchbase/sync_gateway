@@ -34,5 +34,7 @@
       }
     }
   },
-  "num_index_replicas": 0
+  "index": {
+    "num_replicas": 0
+  }
 }
