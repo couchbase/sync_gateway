@@ -24,8 +24,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/elastic/gosigar"
-	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/cpu"
+	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 )
 
 // ppofPrefix is the prefix used for the memory profile files that are collected at high memory times.
