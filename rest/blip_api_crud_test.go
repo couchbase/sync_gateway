@@ -384,7 +384,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	assert.True(t, receivedCaughtUpChange)
 
 	require.Equal(t, int64(1), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplTotalOneShot.Value())
-	require.Equal(t, int64(0), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value())
+	base.RequireWaitForStat(t, bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value, 0)
 }
 
 // Test subChanges w/ docID filter
