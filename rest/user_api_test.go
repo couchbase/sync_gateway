@@ -631,7 +631,10 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				triggerCallback = true
 			}
 
-			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(s, c).AllKeys())
+			chs, err := user.InheritedCollectionChannels(s, c)
+			assert.NoError(t, err)
+
+			assert.Equal(t, []string{"!"}, chs.AllKeys())
 
 			// Ensure callback ran
 			assert.False(t, triggerCallback)

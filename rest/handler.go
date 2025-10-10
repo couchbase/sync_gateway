@@ -886,18 +886,21 @@ func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
 }
 
 // getSGUserRolesForAudit returns a list of role names for the given user, if audit role filtering is enabled.
-func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
+func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) ([]string, error) {
 	if user == nil {
-		return nil
+		return nil, nil
 	}
 
 	if !needRolesForAudit(db, base.UserDomainSyncGateway) {
-		return nil
+		return nil, nil
 	}
 
-	roles := user.GetRoles()
+	roles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
 	if len(roles) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	roleNames := make([]string, 0, len(roles))
@@ -905,7 +908,7 @@ func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
 		roleNames = append(roleNames, role.Name())
 	}
 
-	return roleNames
+	return roleNames, nil
 }
 
 // checkPublicAuth verifies that the current request is authenticated for the given database.
@@ -938,7 +941,10 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			} else if h.user != nil {
 				username = h.user.Name()
 			}
-			roleNames := getSGUserRolesForAudit(dbCtx, h.user)
+			roleNames, err := getSGUserRolesForAudit(dbCtx, h.user)
+			if err != nil {
+				base.InfofCtx(h.ctx(), base.KeyHTTP, "Error getting user roles for audit logging: %v", err)
+			}
 			h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
 			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
 		}
