@@ -493,7 +493,9 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	info.Name = &name
 	info.ExplicitChannels = princ.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 	if user, ok := princ.(auth.User); ok {
-		info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
+		channels, err := user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
+		require.NoError(tb, err)
+		info.Channels = channels.AsSet()
 		email := user.Email()
 		info.Email = &email
 		info.Disabled = base.Ptr(user.Disabled())
