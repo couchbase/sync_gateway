@@ -293,7 +293,6 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	nonIntegerSequenceReceived := false
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -320,7 +319,6 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 					assert.True(t, receivedSeq > lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
-					nonIntegerSequenceReceived = true
 					log.Printf("Unexpected non-integer sequence received: %v", change[0])
 				}
 
@@ -402,30 +400,8 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// Validate that the 'caught up' message was sent
 	assert.True(t, receivedCaughtUpChange)
 
-	// Create a few more changes, validate that they aren't sent (subChanges has been closed).
-	// Validated by the prefix matching in the subChanges callback, as well as waitgroup check below.
-	for i := 0; i < 5; i++ {
-		// // Add a change: Send an unsolicited doc revision in a rev request
-		_, _, revResponse, err := bt.SendRev(
-			fmt.Sprintf("postOneShot_%d", i),
-			"1-abc",
-			[]byte(`{"key": "val"}`),
-			blip.Properties{},
-		)
-		require.NoError(t, err)
-		_, err = revResponse.Body()
-		assert.NoError(t, err, "Error unmarshalling response body")
-		receivedChangesWg.Add(1)
-	}
-
-	// Wait long enough to ensure the changes aren't being sent
-	expectedTimeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*1)
-	if expectedTimeoutErr == nil {
-		t.Errorf("Received additional changes after one-shot should have been closed.")
-	}
-
-	// Validate integer sequences
-	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
+	require.Equal(t, int64(1), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplTotalOneShot.Value())
+	base.RequireWaitForStat(t, bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value, 0)
 }
 
 // Test subChanges w/ docID filter
