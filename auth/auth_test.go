@@ -2963,5 +2963,5 @@ func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
 
 // requireExpandWildCardChannel is a helper function to assert that a user's wildcard channel expansion produces the expected result.
 func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, channelsToExpand []string) {
-	assert.Equal(t, base.SetFromArray(expectedChannels), user.expandWildCardChannel(base.SetFromArray(expectedChannels)), "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
+	assert.Equal(t, base.SetFromArray(expectedChannels), user.expandWildCardChannel(base.SetFromArray(channelsToExpand)), "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
 }
