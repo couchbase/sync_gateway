@@ -363,11 +363,12 @@ func (role *roleImpl) validate() error {
 
 //////// CHANNEL AUTHORIZATION:
 
-func (role *roleImpl) UnauthError(message string) error {
+// UnauthError returns the underlying error unless Role is the guest user.
+func (role *roleImpl) UnauthError(err error) error {
 	if role.Name_ == "" {
-		return base.HTTPErrorf(http.StatusUnauthorized, "login required: %s", message)
+		return errLoginRequired
 	}
-	return base.NewHTTPError(http.StatusForbidden, message)
+	return err
 }
 
 // Returns true if the Role is allowed to access the channel.
@@ -406,7 +407,7 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 		}
 	}
 	if forbidden != nil {
-		return princ.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
+		return princ.UnauthError(newErrNotAllowedChannels(forbidden))
 	}
 	return nil
 }
@@ -423,5 +424,5 @@ func authorizeAnyChannel(princ Principal, channels base.Set) error {
 	} else if princ.Channels().Contains(ch.UserStarChannel) {
 		return nil
 	}
-	return princ.UnauthError("You are not allowed to see this")
+	return princ.UnauthError(errUnauthorized)
 }

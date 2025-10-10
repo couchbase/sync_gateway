@@ -9,8 +9,6 @@
 package auth
 
 import (
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -195,11 +193,11 @@ func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, c
 			}
 		}
 		if forbidden != nil {
-			return role.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
+			return role.UnauthError(newErrNotAllowedChannels(forbidden))
 		}
 		return nil
 	}
-	return role.UnauthError(fmt.Sprintf("Unauthorized to see channels %v", channels))
+	return role.UnauthError(newErrUnauthorizedChannels(channels))
 }
 
 // Returns an error if the Principal does not have access to any of the channels in the set.
@@ -219,7 +217,7 @@ func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 			return nil
 		}
 	}
-	return role.UnauthError("You are not allowed to see this")
+	return role.UnauthError(errUnauthorized)
 }
 
 // initChannels grants the specified channels to the role as an admin grant, and performs
