@@ -14,13 +14,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"iter"
 	"net/http"
+	"os"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,28 +121,24 @@ func (btcc *BlipTesterCollectionClient) getProposeChangesForSeq(seq clientSeq) (
 }
 
 // OneShotChangesSince is an iterator that yields client sequence and document pairs that are newer than the given since value.
-func (btcc *BlipTesterCollectionClient) OneShotChangesSince(ctx context.Context, since clientSeq) iter.Seq2[clientSeq, *proposeChangeBatchEntry] {
+func (btcc *BlipTesterCollectionClient) OneShotChangesSince(ctx context.Context, since clientSeq, seqNotifier <-chan struct{}) iter.Seq2[clientSeq, *proposeChangeBatchEntry] {
 	return func(yield func(clientSeq, *proposeChangeBatchEntry) bool) {
-		btcc.seqLock.Lock()
-		seqLast := btcc._seqLast
-		for btcc._seqLast <= since {
+		seqLast := btcc.getLatestSequence()
+		for seqLast <= since {
 			if ctx.Err() != nil {
-				btcc.seqLock.Unlock()
 				return
 			}
 			// block until new seq
-			base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, _seqLast=%d - waiting for new sequence", since, btcc._seqLast)
-			btcc._seqCond.Wait()
-			// Check to see if we were woken because of Close()
-			if ctx.Err() != nil {
-				btcc.seqLock.Unlock()
+			base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, seqLast=%d - waiting for new sequence", since, seqLast)
+			select {
+			case <-ctx.Done():
 				return
+			case <-seqNotifier:
+				seqLast = btcc.getLatestSequence()
 			}
-			seqLast = btcc._seqLast
-			base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, _seqLast=%d - woke up", since, btcc._seqLast)
+			base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, seqLast=%d - woke up", since, seqLast)
 		}
-		btcc.seqLock.Unlock()
-		base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, _seqLast=%d - iterating", since, seqLast)
+		base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, seqLast=%d - iterating", since, seqLast)
 		for seq := since; seq <= seqLast; seq++ {
 			change, ok := btcc.getProposeChangesForSeq(seq)
 			// filter non-latest entries in cases where we haven't pruned _seqStore
@@ -146,17 +146,17 @@ func (btcc *BlipTesterCollectionClient) OneShotChangesSince(ctx context.Context,
 				continue
 			}
 			if !yield(seq, change) {
-				base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, _seqLast=%d - stopping iteration", since, seqLast)
+				base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, seqLast=%d - stopping iteration", since, seqLast)
 				return
 			}
 		}
-		base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, _seqLast=%d - done", since, seqLast)
+		base.DebugfCtx(ctx, base.KeySGTest, "OneShotChangesSince: since=%d, seqLast=%d - done", since, seqLast)
 	}
 }
 
 // changesSince returns a channel which will yield proposed versions of changes that are the given since value.
 // The channel will be closed when the iteration is finished. In the case of a continuous iteration, the channel will remain open until the context is cancelled.
-func (btcc *BlipTesterCollectionClient) changesSince(ctx context.Context, since clientSeq, continuous bool) chan *proposeChangeBatchEntry {
+func (btcc *BlipTesterCollectionClient) changesSince(ctx context.Context, since clientSeq, continuous bool, seqNotifier <-chan struct{}) chan *proposeChangeBatchEntry {
 	ch := make(chan *proposeChangeBatchEntry)
 	btcc.pushGoroutineWg.Add(1)
 	go func() {
@@ -168,7 +168,7 @@ func (btcc *BlipTesterCollectionClient) changesSince(ctx context.Context, since 
 				return
 			}
 			base.DebugfCtx(ctx, base.KeySGTest, "changesSince: sinceVal=%d", sinceVal)
-			for _, change := range btcc.OneShotChangesSince(ctx, sinceVal) {
+			for _, change := range btcc.OneShotChangesSince(ctx, sinceVal, seqNotifier) {
 				select {
 				case <-ctx.Done():
 					return
@@ -364,12 +364,11 @@ type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 
-	pushRunning     base.AtomicBool
+	pushRunning     atomic.Bool
 	pushGoroutineWg sync.WaitGroup
-	pushCtx         context.Context
-	pushCtxCancel   context.CancelFunc
+	pushCtxCancel   context.CancelCauseFunc
 
 	collection    string
 	collectionIdx int
@@ -384,8 +383,8 @@ type BlipTesterCollectionClient struct {
 	_seqStore map[clientSeq]*clientDoc
 	// _seqFromDocID used to lookup entry in _seqStore by docID - not a pointer into other map for simplicity
 	_seqFromDocID map[string]clientSeq
-	// _seqCond is used to signal when a new sequence has been added to wake up idle "changes" loops
-	_seqCond *sync.Cond
+	// _seqWaiters is a collection of channels that notify pull replicators when a new sequence is available
+	_seqWaiters map[chan struct{}]struct{} // map of channels waiting for a new sequence to be added
 
 	attachmentsLock sync.RWMutex      // lock for _attachments map
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
@@ -1280,12 +1279,23 @@ func (e proposeChangeBatchEntry) GoString() string {
 	return fmt.Sprintf("proposeChangeBatchEntry{docID:%q, version:%v,revTreeIDHistory:%v, hlvHistory:%#v, seq:%d, latestServerVersion:%v, isDelete:%t}", e.docID, e.version, e.revTreeIDHistory, e.hlvHistory, e.seq, e.latestServerVersion, e.isDelete)
 }
 
+// createNewSeqNotifier creates a channel that will receive notifications for when a sequence is updated.
+func (btcc *BlipTesterCollectionClient) createNewSeqNotifier() chan struct{} {
+	seqNotifier := make(chan struct{})
+	btcc.seqLock.Lock()
+	btcc._seqWaiters[seqNotifier] = struct{}{}
+	btcc.seqLock.Unlock()
+	return seqNotifier
+}
+
 // StartPushWithOpts will begin a push replication with the given options between the client and server
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
-	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
+	require.True(btcc.TB(), btcc.pushRunning.CompareAndSwap(false, true), "push replication already running")
 
-	btcc.pushCtx, btcc.pushCtxCancel = context.WithCancel(btcc.ctx)
-	ctx := btcc.pushCtx
+	require.NoError(btcc.TB(), btcc.ctx.Err(), "context already cancelled, cannot start push replication")
+	var ctx context.Context
+	ctx, btcc.pushCtxCancel = context.WithCancelCause(btcc.ctx)
+	seqNotifier := btcc.createNewSeqNotifier()
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
 	seq := clientSeq(sinceFromStr.SafeSequence())
@@ -1294,13 +1304,13 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 		defer func() {
 			waitTime := time.Second * 5
 			WaitWithTimeout(btcc.TB(), &btcc.pushGoroutineWg, waitTime)
-			btcc.pushRunning.Set(false)
+			btcc.pushRunning.Store(false)
 		}()
 		defer btcc.pushGoroutineWg.Done()
 		// TODO: CBG-4401 wire up opts.changesBatchSize and implement a flush timeout for when the client doesn't fill the batch
 		changesBatch := make([]proposeChangeBatchEntry, 0, changesBatchSize)
 		base.DebugfCtx(ctx, base.KeySGTest, "Starting push replication iteration with since=%v", seq)
-		for change := range btcc.changesSince(ctx, seq, opts.Continuous) {
+		for change := range btcc.changesSince(ctx, seq, opts.Continuous, seqNotifier) {
 			changesBatch = append(changesBatch, *change)
 			if len(changesBatch) >= changesBatchSize {
 				base.DebugfCtx(ctx, base.KeySGTest, "Sending batch of %d changes", len(changesBatch))
@@ -1513,18 +1523,43 @@ func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpt
 	}
 }
 
-func (btcc *BlipTesterCollectionClient) StopPush() {
-	require.True(btcc.TB(), btcc.pushRunning.IsTrue(), "can't stop push replication - not running")
-	btcc.pushCtxCancel()
+// notifySeqWaiters notifies all the sequence waiters that a new sequence has be crated, and a revision is ready.
+func (btcc *BlipTesterCollectionClient) notifySeqWaiters() {
+	go func() {
+		btcc.seqLock.RLock()
+		waiters := make([]chan struct{}, 0, len(btcc._seqWaiters))
+		for waiter := range btcc._seqWaiters {
+			waiters = append(waiters, waiter)
+		}
+		btcc.seqLock.RUnlock()
+		for _, waiter := range waiters {
+			select {
+			case waiter <- struct{}{}:
+			default:
+			}
+		}
+	}()
 
-	// Wake up any waiting push loops to check for cancellation
-	btcc._seqCond.Broadcast()
+}
+
+// StopPush will stop a running push replication. Fails the test harness if the push replication is not running.
+func (btcc *BlipTesterCollectionClient) StopPush() {
+	require.True(btcc.TB(), btcc.pushRunning.Load(), "can't stop push replication - not running")
+	btcc.pushCtxCancel(errors.New("BlipTesterCollectionClient.StopPush"))
 
 	// wait for push replication to stop running
-	assert.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
-		assert.False(c, btcc.pushRunning.IsTrue(), "push replication still running %t", btcc.pushRunning.IsTrue())
-	}, 20*time.Second, 1*time.Millisecond)
+	if assert.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
+		assert.False(c, btcc.pushRunning.Load(), "push replication still running")
+	}, 20*time.Second, 10*time.Millisecond) {
+		return
+	}
+	require.NoError(btcc.TB(), pprof.Lookup("goroutine").WriteTo(os.Stdout, 1))
+	assert.Failf(btcc.TB(), "push replication goroutine failed to exit", "push replication goroutine failed to exit after 20s")
 
+	// remove the sequence waiters
+	btcc.seqLock.Lock()
+	defer btcc.seqLock.Unlock()
+	btcc._seqWaiters = make(map[chan struct{}]struct{})
 }
 
 // UnsubPullChanges will send an UnsubChanges message to the server to stop the pull replication. Fails test harness if Sync Gateway responds with an error.
@@ -1540,7 +1575,7 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
 func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *BlipTesterCollectionClient {
-	ctx, ctxCancel := context.WithCancel(ctx)
+	ctx, ctxCancel := context.WithCancelCause(ctx)
 	l := sync.RWMutex{}
 	c := &BlipTesterCollectionClient{
 		ctx:           ctx,
@@ -1548,7 +1583,7 @@ func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *
 		seqLock:       &l,
 		_seqStore:     make(map[clientSeq]*clientDoc),
 		_seqFromDocID: make(map[string]clientSeq),
-		_seqCond:      sync.NewCond(&l),
+		_seqWaiters:   make(map[chan struct{}]struct{}),
 		_attachments:  make(map[string][]byte),
 		parent:        btc,
 		hlc:           btc.hlc,
@@ -1559,16 +1594,14 @@ func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *
 
 // Close will empty the stored docs and close the underlying replications.
 func (btcc *BlipTesterCollectionClient) Close() {
-	btcc.ctxCancel()
-
-	// wake up changes feeds to exit - don't need lock for sync.Cond
-	btcc._seqCond.Broadcast()
+	btcc.ctxCancel(fmt.Errorf("called BlipTesterCollectionClient.Close()"))
 
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
 	// empty storage
 	btcc._seqStore = make(map[clientSeq]*clientDoc, 0)
 	btcc._seqFromDocID = make(map[string]clientSeq, 0)
+	btcc._seqWaiters = make(map[chan struct{}]struct{}, 0)
 
 	btcc.attachmentsLock.Lock()
 	defer btcc.attachmentsLock.Unlock()
@@ -1645,8 +1678,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 	btcc._seqFromDocID[docID] = newSeq
 	delete(btcc._seqStore, oldSeq)
 
-	// new sequence written, wake up changes feeds
-	btcc._seqCond.Broadcast()
+	btcc.notifySeqWaiters()
 
 	return &rev
 }
@@ -2148,6 +2180,13 @@ func (btcc *BlipTesterCollectionClient) _nextSequence() clientSeq {
 	return btcc._seqLast
 }
 
+// getLatestSequence returns the latest sequence number for this collection.
+func (btcc *BlipTesterCollectionClient) getLatestSequence() clientSeq {
+	btcc.seqLock.RLock()
+	defer btcc.seqLock.RUnlock()
+	return btcc._seqLast
+}
+
 // pruneVersion removes the given version from the specified doc. This is not allowed for the latest version of a document.
 func (btcc *BlipTesterCollectionClient) pruneVersion(docID string, version DocVersion) {
 	btcc.seqLock.Lock()
@@ -2218,7 +2257,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	}
 	// if we resolved a conflict, then we might need to push this conflict back
 	if newVersion != opts.incomingVersion {
-		btcc._seqCond.Broadcast()
+		btcc.notifySeqWaiters()
 	}
 }
 
