@@ -25,6 +25,9 @@ func requireLogIs(t testing.TB, s string, f func()) {
 
 	config := &ConsoleLoggerConfig{
 		ColorEnabled: Ptr(false),
+		FileLoggerConfig: FileLoggerConfig{
+			Enabled: Ptr(true),
+		},
 	}
 	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
 	require.NoError(t, err)
@@ -39,23 +42,11 @@ func requireLogIs(t testing.TB, s string, f func()) {
 
 	f()
 
-	var log string
-	var originalLog string
-	// Allow time for logs to be printed
-	retry := func() (shouldRetry bool, err error, value any) {
-		originalLog = b.String()
-		if len(originalLog) < timestampLength {
-			return false, nil, nil
-		}
-		log = originalLog[timestampLength:]
-		if log == s {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-	err, _ = RetryLoop(TestCtx(t), "wait for logs", retry, CreateSleeperFunc(10, 100))
-
-	require.NoError(t, err, "Console logs did not contain %q, got %q", s, originalLog)
+	FlushLogBuffers()
+	originalLog := b.String()
+	require.GreaterOrEqual(t, len(originalLog), timestampLength, "%q is not a valid log line, needs to contain timestamp", originalLog)
+	log := originalLog[timestampLength:]
+	require.Equal(t, s, log)
 }
 
 func RequireLogMessage(t testing.TB, ctx context.Context, expectedMessage string, logString string) {
