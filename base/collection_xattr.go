@@ -148,7 +148,7 @@ func (c *Collection) SubdocGetRaw(ctx context.Context, k string, subdocKey strin
 		return false, nil, uint64(res.Cas())
 	}
 
-	err, casOut := RetryLoopCas(ctx, "SubdocGetRaw", worker, DefaultRetrySleeper())
+	err, casOut := RetryLoop(ctx, "SubdocGetRaw", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SubdocGetRaw with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
@@ -181,7 +181,7 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 		return false, err, 0
 	}
 
-	err, casOut := RetryLoopCas(ctx, "SubdocWrite", worker, DefaultRetrySleeper())
+	err, casOut := RetryLoop(ctx, "SubdocWrite", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SubdocWrite with key %s and subdocKey %s", UD(k).Redact(), UD(subdocKey).Redact())
 	}
@@ -310,7 +310,7 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas(ctx, "subdocGetBodyAndXattrs", worker, DefaultRetrySleeper())
+	err, cas = RetryLoop(ctx, "subdocGetBodyAndXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "subdocGetBodyAndXattrs %v", UD(k).Redact())
 	}
