@@ -239,6 +239,29 @@ func TestRetryLoopContextCancellation(t *testing.T) {
 	}()
 	err, _ := RetryLoop(ctx, t.Name(), worker, CreateIndefiniteMaxDoublingSleeperFunc(10, 100))
 	require.ErrorContains(t, err, "canceled based on context")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, ctx.Err(), context.Canceled)
+}
+
+func TestRetryLoopContextCancellationWithCause(t *testing.T) {
+	var invoked atomic.Bool
+	worker := func() (shouldRetry bool, err error, value any) {
+		invoked.Store(true)
+		return true, nil, nil
+	}
+
+	ctx, cancelFunc := context.WithCancelCause(TestCtx(t))
+
+	cause := errors.New("this specific issue")
+	go func() {
+		require.Eventually(t, func() bool { return invoked.Load() == true }, 10*time.Second, 50*time.Millisecond)
+		cancelFunc(cause)
+	}()
+	err, _ := RetryLoop(ctx, t.Name(), worker, CreateIndefiniteMaxDoublingSleeperFunc(10, 100))
+	require.ErrorContains(t, err, "Retry loop for TestRetryLoopContextCancellationWithCause canceled based on context: this specific issue")
+	require.Equal(t, ctx.Err(), context.Canceled)
+	require.ErrorIs(t, err, cause)
+	require.NotErrorIs(t, err, context.Canceled)
 }
 
 func TestRetryLoopContextDeadline(t *testing.T) {
@@ -253,6 +276,8 @@ func TestRetryLoopContextDeadline(t *testing.T) {
 
 	err, _ := RetryLoop(ctx, t.Name(), worker, CreateIndefiniteMaxDoublingSleeperFunc(10, 100))
 	require.ErrorContains(t, err, "timed out based on context")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
 }
 
 func TestSyncSourceFromURL(t *testing.T) {

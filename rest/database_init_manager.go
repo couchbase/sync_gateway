@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -62,13 +63,18 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
-			base.InfofCtx(ctx, base.KeyAll, "Found existing database initialization for database %s ...",
-				base.MD(dbConfig.Name))
-			doneChan := dbInitWorker.addWatcher()
-			return doneChan, nil
+			// make sure the worker isn't in the process of shutting down
+			if dbInitWorker.ctx.Err() == nil {
+				base.InfofCtx(ctx, base.KeyAll, "Found existing database initialization for database %s ...",
+					base.MD(dbConfig.Name))
+				doneChan := dbInitWorker.addWatcher()
+				return doneChan, nil
+			}
+			base.DebugfCtx(ctx, base.KeyAll, "Existing database initialization for database %s has been cancelled, starting new initialization ...", base.MD(dbConfig.Name))
+		} else {
+			// For a mismatch in collections, stop and remove the existing worker, then continue through to creation of new worker
+			dbInitWorker.Stop("Database requested to be initialized with different collections than existing initialization, canceling existing initialization.")
 		}
-		// For a mismatch in collections, stop and remove the existing worker, then continue through to creation of new worker
-		dbInitWorker.Stop()
 		delete(m.workers, dbConfig.Name)
 	}
 
@@ -165,14 +171,14 @@ func (m *DatabaseInitManager) SetTestCallbacks(collectionCallback CollectionCall
 	m.testDatabaseCompleteCallback = databaseComplete
 }
 
-func (m *DatabaseInitManager) Cancel(dbName string) {
+func (m *DatabaseInitManager) Cancel(dbName string, reason string) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	worker, ok := m.workers[dbName]
 	if !ok {
 		return
 	}
-	worker.Stop()
+	worker.Stop(reason)
 }
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
@@ -207,10 +213,10 @@ type DatabaseInitWorker struct {
 	dbName                   string
 	n1qlStore                *base.ClusterOnlyN1QLStore
 	options                  DatabaseInitOptions
-	ctx                      context.Context        // On close, terminates any goroutines associated with the worker
-	cancelFunc               context.CancelFunc     // Cancel function for context, invoked if Cancel is called
-	collections              CollectionInitData     // The set of collections associated with the worker, mapped by name to their index set
-	collectionStatusCallback CollectionCallbackFunc // Callback for status observability
+	ctx                      context.Context         // On close, terminates any goroutines associated with the worker
+	cancelFunc               context.CancelCauseFunc // Cancel function for context, invoked if Cancel is called
+	collections              CollectionInitData      // The set of collections associated with the worker, mapped by name to their index set
+	collectionStatusCallback CollectionCallbackFunc  // Callback for status observability
 
 	// Multiple goroutines (watchers) may be waiting for database initialization.  To support sending error information to
 	// every goroutine, we maintain a channel for each of these watching goroutines.  On success, all channels are
@@ -227,7 +233,7 @@ type DatabaseInitOptions struct {
 }
 
 func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc) *DatabaseInitWorker {
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	cancelCtx, cancelFunc := context.WithCancelCause(ctx)
 	return &DatabaseInitWorker{
 		dbName:                   dbName,
 		options:                  DatabaseInitOptions{indexOptions: indexOptions},
@@ -243,7 +249,7 @@ func (w *DatabaseInitWorker) Run() {
 	// Ensure cancelFunc resources are released on normal completion
 	defer func() {
 		if w.cancelFunc != nil {
-			w.cancelFunc()
+			w.cancelFunc(errors.New("database initialization finished normally"))
 		}
 	}()
 
@@ -333,6 +339,6 @@ func (w *DatabaseInitWorker) collectionsEqual(newCollectionSet CollectionInitDat
 }
 
 // Stop cancels the context, which will terminate initialization after the current collection being processed
-func (w *DatabaseInitWorker) Stop() {
-	w.cancelFunc()
+func (w *DatabaseInitWorker) Stop(reason string) {
+	w.cancelFunc(errors.New(reason))
 }
