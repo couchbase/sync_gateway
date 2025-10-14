@@ -70,7 +70,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 				doneChan := dbInitWorker.addWatcher()
 				return doneChan, nil
 			}
-			base.DebugfCtx(ctx, base.KeyAll, "Existing database initialization for database %s has been cancelled, starting new initialization ...", base.MD(dbConfig.Name))
+			base.DebugfCtx(ctx, base.KeyAll, "Existing database initialization for database %s has been cancelled, starting new initialization ... ctx=%s", base.MD(dbConfig.Name), context.Cause(dbInitWorker.ctx))
 		} else {
 			// For a mismatch in collections, stop and remove the existing worker, then continue through to creation of new worker
 			dbInitWorker.Stop("Database requested to be initialized with different collections than existing initialization, canceling existing initialization.")
@@ -139,7 +139,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 	return doneChan, nil
 }
 
-// Initializes the database.  Will establish a new cluster connection using the provided server config.  Establishes a new
+// InitializeDatabase will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
 func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
 	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex)
