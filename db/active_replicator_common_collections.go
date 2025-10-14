@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -62,7 +63,7 @@ func (arc *activeReplicatorCommon) buildGetCollectionsMessage(remoteCollectionsK
 }
 
 // buildCollectionsSetWithExplicitMappings returns a list of local collection names, and remote collection names according to any explicit mappings set.
-func (arc *activeReplicatorCommon) buildCollectionsSetWithExplicitMappings() (localCollectionsKeyspaces, remoteCollectionsKeyspaces base.ScopeAndCollectionNames, err error) {
+func (arc *activeReplicatorCommon) buildCollectionsSetWithExplicitMappings(ctx context.Context) (localCollectionsKeyspaces, remoteCollectionsKeyspaces base.ScopeAndCollectionNames, err error) {
 	if arc.config.CollectionsLocal != nil {
 		for i, localScopeAndCollection := range arc.config.CollectionsLocal {
 			localScopeAndCollectionName, err := getScopeAndCollectionName(localScopeAndCollection)
@@ -73,7 +74,7 @@ func (arc *activeReplicatorCommon) buildCollectionsSetWithExplicitMappings() (lo
 
 			// remap collection name to remote if set
 			if len(arc.config.CollectionsRemote) > 0 && arc.config.CollectionsRemote[i] != "" {
-				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, arc.config.CollectionsRemote[i])
+				base.DebugfCtx(ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, arc.config.CollectionsRemote[i])
 				remoteScopeAndCollectionName, err := getScopeAndCollectionName(arc.config.CollectionsRemote[i])
 				if err != nil {
 					return nil, nil, err
@@ -96,13 +97,13 @@ func (arc *activeReplicatorCommon) buildCollectionsSetWithExplicitMappings() (lo
 }
 
 // _initCollections will negotiate the set of collections with the peer using GetCollections and returns the set of checkpoints for each of them.
-func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, error) {
+func (arc *activeReplicatorCommon) _initCollections(ctx context.Context) ([]replicationCheckpoint, error) {
 
 	if err := arc.validateCollectionsConfig(); err != nil {
 		return nil, err
 	}
 
-	localCollectionsKeyspaces, remoteCollectionsKeyspaces, err := arc.buildCollectionsSetWithExplicitMappings()
+	localCollectionsKeyspaces, remoteCollectionsKeyspaces, err := arc.buildCollectionsSetWithExplicitMappings(ctx)
 	if err != nil {
 		return nil, err
 	}

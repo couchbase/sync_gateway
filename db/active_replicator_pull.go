@@ -34,7 +34,7 @@ func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 	return &apr, nil
 }
 
-func (apr *ActivePullReplicator) _connect() error {
+func (apr *ActivePullReplicator) _connect(ctx context.Context) error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-pull")
 	if err != nil {
@@ -55,18 +55,18 @@ func (apr *ActivePullReplicator) _connect() error {
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
 	if apr.config.CollectionsEnabled {
-		if err := apr._startPullWithCollections(); err != nil {
+		if err := apr._startPullWithCollections(ctx); err != nil {
 			return err
 		}
 	} else {
 		// for backwards compatibility use no collection-specific handling/messages
-		if err := apr._startPullNonCollection(); err != nil {
+		if err := apr._startPullNonCollection(ctx); err != nil {
 			return err
 		}
 	}
 
 	if apr.blipSyncContext.activeCBMobileSubprotocol <= CBMobileReplicationV2 && apr.config.PurgeOnRemoval {
-		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
+		base.ErrorfCtx(ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
 	}
 
 	apr.setState(ReplicationStateRunning)
@@ -76,16 +76,16 @@ func (apr *ActivePullReplicator) _connect() error {
 
 // _startPullNonCollection starts a pull replication without collection-specific handling
 // for backwards compatibility with SG 3.0 and earlier
-func (apr *ActivePullReplicator) _startPullNonCollection() error {
+func (apr *ActivePullReplicator) _startPullNonCollection(ctx context.Context) error {
 	defaultCollection, err := apr.config.ActiveDB.GetDefaultDatabaseCollection()
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(apr.ctx, defaultCollection))
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(ctx, defaultCollection))
 
-	if err := apr._initCheckpointer(nil); err != nil {
+	if err := apr._initCheckpointer(ctx, nil); err != nil {
 		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
+		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -94,8 +94,8 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 
 	since := apr.defaultCollection.Checkpointer.lastCheckpointSeq.String()
 
-	if err := apr._subChanges(nil, since); err != nil {
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
+	if err := apr._subChanges(ctx, nil, since); err != nil {
+		base.TracefCtx(ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
@@ -106,7 +106,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	return nil
 }
 
-func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) error {
+func (apr *ActivePullReplicator) _subChanges(ctx context.Context, collectionIdx *int, since string) error {
 	subChangesRequest := SubChangesRequest{
 		Continuous:     apr.config.Continuous,
 		Batch:          apr.config.ChangesBatchSize,
@@ -119,29 +119,29 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 		Revocations:    apr.config.PurgeOnRemoval,
 		CollectionIdx:  collectionIdx,
 	}
-	return subChangesRequest.Send(apr.ctx, apr.blipSender)
+	return subChangesRequest.Send(ctx, apr.blipSender)
 }
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
-func (apr *ActivePullReplicator) Complete() {
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "ActivePullReplicator.Complete()")
+func (apr *ActivePullReplicator) Complete(ctx context.Context) {
+	base.TracefCtx(ctx, base.KeyReplicate, "ActivePullReplicator.Complete()")
 	apr.lock.Lock()
 	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
+		base.TracefCtx(ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
 		if err := c.Checkpointer.waitForExpectedSequences(); err != nil {
-			base.InfofCtx(apr.ctx, base.KeyReplicate, "Couldn't drain replication %s - stopping anyway: %v", apr.config.ID, err)
+			base.InfofCtx(ctx, base.KeyReplicate, "Couldn't drain replication %s - stopping anyway: %v", apr.config.ID, err)
 		}
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "After calling waitForExpectedSequences in Complete()")
+		base.TracefCtx(ctx, base.KeyReplicate, "After calling waitForExpectedSequences in Complete()")
 		return nil
 	})
 
-	apr._stop()
+	apr._stop(ctx)
 
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling disconnect from Complete() in active replicator pull")
-	stopErr := apr._disconnect()
+	base.TracefCtx(ctx, base.KeyReplicate, "Calling disconnect from Complete() in active replicator pull")
+	stopErr := apr._disconnect(ctx)
 	if stopErr != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+		base.InfofCtx(ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
 	apr.setState(ReplicationStateStopped)
 
@@ -149,7 +149,7 @@ func (apr *ActivePullReplicator) Complete() {
 	// from the replicator
 	onCompleteCallback := apr.onReplicatorComplete
 
-	apr._publishStatus()
+	apr._publishStatus(ctx)
 	apr.lock.Unlock()
 
 	if onCompleteCallback != nil {
@@ -158,7 +158,7 @@ func (apr *ActivePullReplicator) Complete() {
 }
 
 // _getStatus returns current replicator status. Requires holding ActivePullReplicator.lock as a read lock.
-func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
+func (apr *ActivePullReplicator) _getStatus(ctx context.Context) *ReplicationStatus {
 	status := &ReplicationStatus{
 		ID: apr.CheckpointID,
 	}
@@ -172,7 +172,7 @@ func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 	status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
 	status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value()
 	status.DeltasRequested = pullStats.HandleChangesDeltaRequestedCount.Value()
-	status.LastSeqPull = apr.getCheckpointHighSeq()
+	status.LastSeqPull = apr.getCheckpointHighSeq(ctx)
 	if apr.initialStatus != nil {
 		status.PullReplicationStatus.Add(apr.initialStatus.PullReplicationStatus)
 	}
@@ -180,10 +180,10 @@ func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
-func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) error {
+func (apr *ActivePullReplicator) registerCheckpointerCallbacks(ctx context.Context, c *activeReplicatorCollection) error {
 	blipSyncContextCollection, err := apr.blipSyncContext.collections.get(c.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection for collection %d: %v", c.collectionIdx, err)
+		base.WarnfCtx(ctx, "Unable to get blipSyncContextCollection for collection %d: %v", c.collectionIdx, err)
 		return err
 	}
 
@@ -195,8 +195,8 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicat
 	if !apr.config.Continuous {
 		blipSyncContextCollection.emptyChangesMessageCallback = func() {
 			// Complete blocks waiting for pending rev messages, so needs its own goroutine
-			base.TracefCtx(apr.ctx, base.KeyReplicate, "calling complete from registerCheckpointerCallbacks, because we have empty callback")
-			go apr.Complete()
+			base.TracefCtx(ctx, base.KeyReplicate, "calling complete from registerCheckpointerCallbacks, because we have empty callback")
+			go apr.Complete(ctx)
 		}
 	}
 
@@ -205,7 +205,10 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicat
 
 // Stop stops the pull replication and waits for the sub changes goroutine to finish.
 func (apr *ActivePullReplicator) Stop() error {
-	if err := apr.stopAndDisconnect(); err != nil {
+	apr.lock.RLock()
+	ctx := apr._ctx
+	apr.lock.RUnlock()
+	if err := apr.stopAndDisconnect(ctx); err != nil {
 		return err
 	}
 	return nil

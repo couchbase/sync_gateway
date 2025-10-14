@@ -196,11 +196,11 @@ func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 	status.Status, status.ErrorMessage = ar.State(ctx)
 
 	if ar.Pull != nil {
-		status.PullReplicationStatus = ar.Pull.GetStatus().PullReplicationStatus
+		status.PullReplicationStatus = ar.Pull.GetStatus(ctx).PullReplicationStatus
 	}
 
 	if ar.Push != nil {
-		status.PushReplicationStatus = ar.Push.GetStatus().PushReplicationStatus
+		status.PushReplicationStatus = ar.Push.GetStatus(ctx).PushReplicationStatus
 	}
 
 	return status
@@ -238,7 +238,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
 		if ctx.Err() == nil {
-			arc.reconnect()
+			arc.reconnect(ctx)
 		}
 	}
 

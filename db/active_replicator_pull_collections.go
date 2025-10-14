@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -19,15 +20,15 @@ import (
 // _startPullWithCollections starts a pull replication with collections enabled
 // The remote must support collections for this to work which we can detect
 // if we got a 404 error back from the GetCollections message
-func (apr *ActivePullReplicator) _startPullWithCollections() error {
-	collectionCheckpoints, err := apr._initCollections()
+func (apr *ActivePullReplicator) _startPullWithCollections(ctx context.Context) error {
+	collectionCheckpoints, err := apr._initCollections(ctx)
 	if err != nil {
 		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
 	}
 
-	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {
+	if err := apr._initCheckpointer(ctx, collectionCheckpoints); err != nil {
 		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
+		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -36,13 +37,13 @@ func (apr *ActivePullReplicator) _startPullWithCollections() error {
 
 	err = apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		since := c.Checkpointer.lastCheckpointSeq.String()
-		err = apr._subChanges(base.Ptr(*c.collectionIdx), since)
+		err = apr._subChanges(ctx, base.Ptr(*c.collectionIdx), since)
 		return err
 	})
 
 	if err != nil {
 		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _startPullWithCollections where we send blip request")
+		base.TracefCtx(ctx, base.KeyReplicate, "cancelling the checkpointer context inside _startPullWithCollections where we send blip request")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()

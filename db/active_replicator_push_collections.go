@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -17,16 +18,16 @@ import (
 // _startPullWithCollections starts a push replication with collections enabled
 // The remote must support collections for this to work which we can detect
 // if we got a 404 error back from the GetCollections message
-func (apr *ActivePushReplicator) _startPushWithCollections() error {
-	collectionCheckpoints, err := apr._initCollections()
+func (apr *ActivePushReplicator) _startPushWithCollections(ctx context.Context) error {
+	collectionCheckpoints, err := apr._initCollections(ctx)
 	if err != nil {
 		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
 
 	}
 
-	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {
+	if err := apr._initCheckpointer(ctx, collectionCheckpoints); err != nil {
 		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
+		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -45,11 +46,11 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 			user:               apr.config.ActiveDB.user,
 		}
 
-		bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
+		bh := newBlipHandler(ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
 		bh.collection = dbCollectionWithUser
 		bh.collectionIdx = collectionIdx
 		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
-		return apr._startSendingChanges(bh, replicationCollection.Checkpointer.lastCheckpointSeq)
+		return apr._startSendingChanges(ctx, bh, replicationCollection.Checkpointer.lastCheckpointSeq)
 	})
 }

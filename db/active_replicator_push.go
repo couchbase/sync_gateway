@@ -42,7 +42,7 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to target with allow_conflicts=false. Change to allow_conflicts=true or upgrade to 2.8")
 
 // _connect opens up a connection, and starts replicating.
-func (apr *ActivePushReplicator) _connect() error {
+func (apr *ActivePushReplicator) _connect(ctx context.Context) error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
 	if err != nil {
@@ -54,12 +54,12 @@ func (apr *ActivePushReplicator) _connect() error {
 	apr.blipSyncContext.sendRevNoConflicts = true
 
 	if apr.config.CollectionsEnabled {
-		if err := apr._startPushWithCollections(); err != nil {
+		if err := apr._startPushWithCollections(ctx); err != nil {
 			return err
 		}
 	} else {
 		// for backwards compatibility use no collection-specific handling/messages
-		if err := apr._startPushNonCollection(); err != nil {
+		if err := apr._startPushNonCollection(ctx); err != nil {
 			return err
 		}
 	}
@@ -70,34 +70,34 @@ func (apr *ActivePushReplicator) _connect() error {
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
-func (apr *ActivePushReplicator) Complete() {
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "ActivePushReplicator.Complete()")
+func (apr *ActivePushReplicator) Complete(ctx context.Context) {
+	base.TracefCtx(ctx, base.KeyReplicate, "ActivePushReplicator.Complete()")
 	apr.lock.Lock()
 
 	// Wait for any pending changes responses to arrive and be processed
 	err := apr._waitForPendingChangesResponse()
 	if err != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
+		base.InfofCtx(ctx, base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
 	}
 
 	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		if err := c.Checkpointer.waitForExpectedSequences(); err != nil {
-			base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+			base.InfofCtx(ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 		}
 		return nil
 	})
 
-	apr._stop()
+	apr._stop(ctx)
 
-	stopErr := apr._disconnect()
+	stopErr := apr._disconnect(ctx)
 	if stopErr != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+		base.InfofCtx(ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
 	apr.setState(ReplicationStateStopped)
 
 	// unlock the replication before triggering callback, in case callback attempts to re-acquire the lock
 	onCompleteCallback := apr.onReplicatorComplete
-	apr._publishStatus()
+	apr._publishStatus(ctx)
 	apr.lock.Unlock()
 
 	if onCompleteCallback != nil {
@@ -106,7 +106,7 @@ func (apr *ActivePushReplicator) Complete() {
 }
 
 // _getStatus returns current replicator status. Requires holding ActivePushReplicator.lock as a read lock.
-func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
+func (apr *ActivePushReplicator) _getStatus(ctx context.Context) *ReplicationStatus {
 	status := &ReplicationStatus{}
 	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
 
@@ -117,7 +117,7 @@ func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status.DocWriteConflict = pushStats.SendRevErrorConflictCount.Value()
 	status.RejectedRemote = pushStats.SendRevErrorRejectedCount.Value()
 	status.DeltasSent = pushStats.SendRevDeltaSentCount.Value()
-	status.LastSeqPush = apr.getCheckpointHighSeq()
+	status.LastSeqPush = apr.getCheckpointHighSeq(ctx)
 	if apr.initialStatus != nil {
 		status.PushReplicationStatus.Add(apr.initialStatus.PushReplicationStatus)
 	}
@@ -125,10 +125,10 @@ func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
-func (apr *ActivePushReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) error {
+func (apr *ActivePushReplicator) registerCheckpointerCallbacks(ctx context.Context, c *activeReplicatorCollection) error {
 	blipSyncContextCollection, err := apr.blipSyncContext.collections.get(c.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection for collection %v", c.collectionIdx)
+		base.WarnfCtx(ctx, "Unable to get blipSyncContextCollection for collection %v", c.collectionIdx)
 		return err
 	}
 
@@ -161,7 +161,11 @@ func (apr *ActivePushReplicator) _waitForPendingChangesResponse() error {
 
 // Stop stops the push replication and waits for the send changes goroutine to finish.
 func (apr *ActivePushReplicator) Stop() error {
-	if err := apr.stopAndDisconnect(); err != nil {
+	apr.lock.RLock()
+	ctx := apr._ctx
+	apr.lock.RUnlock()
+
+	if err := apr.stopAndDisconnect(ctx); err != nil {
 		return err
 	}
 	teardownStart := time.Now()
@@ -171,16 +175,16 @@ func (apr *ActivePushReplicator) Stop() error {
 	return nil
 }
 
-func (apr *ActivePushReplicator) _startPushNonCollection() error {
+func (apr *ActivePushReplicator) _startPushNonCollection(ctx context.Context) error {
 	dbCollection, err := apr.config.ActiveDB.GetDefaultDatabaseCollection()
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(apr.ctx, dbCollection))
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(ctx, dbCollection))
 
-	if err := apr._initCheckpointer(nil); err != nil {
+	if err := apr._initCheckpointer(ctx, nil); err != nil {
 		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
+		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -191,15 +195,15 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 		DatabaseCollection: dbCollection,
 		user:               apr.config.ActiveDB.user,
 	}
-	bh := newBlipHandler(apr.ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
+	bh := newBlipHandler(ctx, apr.blipSyncContext, apr.config.ActiveDB, apr.blipSyncContext.incrementSerialNumber())
 	bh.collection = dbCollectionWithUser
 	bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
 
-	return apr._startSendingChanges(bh, apr.defaultCollection.Checkpointer.lastCheckpointSeq)
+	return apr._startSendingChanges(ctx, bh, apr.defaultCollection.Checkpointer.lastCheckpointSeq)
 }
 
 // _startSendingChanges starts a changes feed for a given collection in a goroutine and starts sending changes to the passive peer from a starting sequence value.
-func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since SequenceID) error {
+func (apr *ActivePushReplicator) _startSendingChanges(ctx context.Context, bh *blipHandler, since SequenceID) error {
 	collectionCtx, err := bh.collections.get(bh.collectionIdx)
 	if err != nil {
 		return err
@@ -212,15 +216,15 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 			err = ErrUseProposeChanges
-			apr.setError(PreHydrogenTargetAllowConflictsError)
-			err = apr.stopAndDisconnect()
+			apr.setError(ctx, PreHydrogenTargetAllowConflictsError)
+			err = apr.stopAndDisconnect(ctx)
 			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
+				base.ErrorfCtx(ctx, "Failed to stop and disconnect replication: %v", err)
 			}
 		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-			err = apr.disconnect()
+			err = apr.disconnect(ctx)
 			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to disconnect replication after database went away: %v", err)
+				base.ErrorfCtx(ctx, "Failed to disconnect replication after database went away: %v", err)
 			}
 		}
 		// No special handling for error
@@ -242,15 +246,15 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 			changesCtx:        collectionCtx.changesCtx,
 		})
 		if err != nil {
-			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
+			base.InfofCtx(ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
 			bh.ctxCancelFunc()
-			apr.setError(err)
-			apr.publishStatus()
+			apr.setError(ctx, err)
+			apr.publishStatus(ctx)
 			return
 		}
 		if isComplete {
 			// On a normal completion, call complete for the replication
-			apr.Complete()
+			apr.Complete(ctx)
 		}
 	}(apr.blipSender)
 	return nil
