@@ -86,7 +86,8 @@ func (apr *ActivePullReplicator) _startPullNonCollection(ctx context.Context) er
 	if err := apr._initCheckpointer(ctx, nil); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
-		apr.checkpointerCtx = nil
+		apr.checkpointerCtxCancel()
+		apr._checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
 		return err
@@ -97,7 +98,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection(ctx context.Context) er
 	if err := apr._subChanges(ctx, nil, since); err != nil {
 		base.TracefCtx(ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
 		apr.checkpointerCtxCancel()
-		apr.checkpointerCtx = nil
+		apr._checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
 		return err

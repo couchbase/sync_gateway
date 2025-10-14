@@ -38,7 +38,7 @@ type activeReplicatorCommon struct {
 	blipSyncContext                 *BlipSyncContext
 	blipSender                      *blip.Sender
 	Stats                           expvar.Map
-	checkpointerCtx                 context.Context
+	_checkpointerCtx                context.Context
 	checkpointerCtxCancel           context.CancelFunc
 	CheckpointID                    string // Used for checkpoint retrieval when Checkpointer isn't available
 	initialStatus                   *ReplicationStatus
@@ -176,7 +176,8 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 // initCheckpointer starts a checkpointer. The remoteCheckpoints are only for collections and indexed by the blip collectionIdx. If using default collection only, replicationCheckpoints is an empty array.
 func (arc *activeReplicatorCommon) _initCheckpointer(ctx context.Context, remoteCheckpoints []replicationCheckpoint) error {
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
-	arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancel(ctx)
+	arc._checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancel(ctx)
+	ctx = arc._checkpointerCtx
 
 	err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
 		checkpointHash, hashErr := arc.config.CheckpointHash(c.collectionIdx)
@@ -184,7 +185,7 @@ func (arc *activeReplicatorCommon) _initCheckpointer(ctx context.Context, remote
 			return hashErr
 		}
 
-		c.Checkpointer = NewCheckpointer(arc.checkpointerCtx, c.metadataStore, c.collectionDataStore, arc.CheckpointID, checkpointHash, arc.blipSender, arc.config, c.collectionIdx)
+		c.Checkpointer = NewCheckpointer(ctx, c.metadataStore, c.collectionDataStore, arc.CheckpointID, checkpointHash, arc.blipSender, arc.config, c.collectionIdx)
 
 		if arc.config.CollectionsEnabled {
 			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
@@ -372,7 +373,7 @@ func (arc *activeReplicatorCommon) _disconnect(ctx context.Context) error {
 		return nil
 	}
 
-	if arc.checkpointerCtx != nil {
+	if arc._checkpointerCtx != nil {
 		base.TracefCtx(ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		arc.checkpointerCtxCancel()
 		_ = arc.forEachCollection(func(c *activeReplicatorCollection) error {
@@ -381,7 +382,7 @@ func (arc *activeReplicatorCommon) _disconnect(ctx context.Context) error {
 			return nil
 		})
 	}
-	arc.checkpointerCtx = nil
+	arc._checkpointerCtx = nil
 
 	if arc.blipSender != nil {
 		base.TracefCtx(ctx, base.KeyReplicate, "closing blip sender")

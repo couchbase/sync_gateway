@@ -185,7 +185,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection(ctx context.Context) er
 	if err := apr._initCheckpointer(ctx, nil); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
-		apr.checkpointerCtx = nil
+		apr._checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
 		return err
