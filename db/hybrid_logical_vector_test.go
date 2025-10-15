@@ -659,6 +659,11 @@ func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 			hlv:    "2@abc,1@abc,2@def;1@abc",
 			errMsg: "found in pv and mv",
 		},
+		{
+			name:   "cv,mv,mv;,legacyrev (extra comma)",
+			hlv:    "25@def,20@abc,18@hij;,1-abc",
+			errMsg: ", delimiter not found",
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -901,21 +906,6 @@ func getHLVTestCases(t testing.TB) []extractHLVFromBlipMsgBMarkCases {
 			},
 			legacyRevs: []string{"1-abc"},
 		},
-		{
-			name:      "cv,mv,mv;,legacyrev (extra comma)",
-			hlvString: "25@def,20@abc,18@hij;1-abc",
-			expectedHLV: HybridLogicalVector{
-				CurrentVersionCAS: 0,
-				Version:           stringHexToUint(t, "25"),
-				SourceID:          "def",
-				MergeVersions: map[string]uint64{
-					"abc": stringHexToUint(t, "20"),
-					"hij": stringHexToUint(t, "18"),
-				},
-			},
-			legacyRevs: []string{"1-abc"},
-		},
-
 		{
 			name:      "cv;legacy rev",
 			hlvString: "25@def;1-abc",
