@@ -262,7 +262,9 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	default:
 		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %v for pull replication", p.Type()))
 	}
-	ctx := base.CorrelationIDLogCtx(sg.rt.TB().Context(), p.name)
+	// separate TestCtx out of context to shorten the length of log message
+	// do not inherit testing.Context()'s cancellation since it can cancel t.Cleanup() calls out of order
+	ctx := base.CorrelationIDLogCtx(context.WithoutCancel(sg.rt.TB().Context()), p.name)
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRTAndContext(ctx, sg.rt, &rest.BlipTesterClientOpts{
 		Username: "user",
 		AllowCreationWithoutBlipTesterClientRunner: true,

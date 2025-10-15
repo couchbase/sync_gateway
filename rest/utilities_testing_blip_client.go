@@ -1525,7 +1525,10 @@ func (btcc *BlipTesterCollectionClient) StopPush() {
 	// wait for push replication to stop running
 	assert.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
 		assert.False(c, btcc.pushRunning.IsTrue(), "push replication still running %t", btcc.pushRunning.IsTrue())
-	}, 20*time.Second, 1*time.Millisecond)
+		// reawaken any waiting push loops to check for cancellation,
+		// This is a workaround for a race between ctx.Err() != nil check and btcc._seqCond.Wait()
+		btcc._seqCond.Broadcast()
+	}, 20*time.Second, 10*time.Millisecond)
 
 }
 
