@@ -3532,3 +3532,48 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	assert.Error(t, err, errResp)
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
+
+func TestUnsupportedOptions( t *testing.T){
+	RequireBucketSpecificCredentials(t)
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		kvBuffer        int
+		dcpBuffer       int
+	}{
+		{
+			name:            "unsupported options specified",
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "default serverless",
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+
+			if test.name == "unsupported options specified" {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "unsupported": {"dcp_read_buffer": %d, "kv_buffer": %d}}`,
+					tb.GetName(), base.TestsDisableGSI(), test.dcpBuffer, test.kvBuffer))
+				RequireStatus(t, resp, http.StatusCreated)
+			} else {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+					tb.GetName(), base.TestsDisableGSI()))
+				RequireStatus(t, resp, http.StatusCreated)
+			}
+			assert.Equal(t, test.expectedConnStr, sc.getBucketSpec("db").Server)
+		})
+	}
+}

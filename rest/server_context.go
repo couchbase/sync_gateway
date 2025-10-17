@@ -600,22 +600,20 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 	} else {
 		server = serverConfig.Bootstrap.Server
 	}
-	if serverConfig.IsServerless() {
-		params := base.DefaultServerlessGoCBConnStringParams()
-		if config.Unsupported != nil {
-			if config.Unsupported.DCPReadBuffer != 0 {
-				params.DcpBufferSize = config.Unsupported.DCPReadBuffer
-			}
-			if config.Unsupported.KVBufferSize != 0 {
-				params.KvBufferSize = config.Unsupported.KVBufferSize
-			}
+	params := base.DefaultServerlessGoCBConnStringParams()
+	if config.Unsupported != nil {
+		if config.Unsupported.DCPReadBuffer != 0 {
+			params.DcpBufferSize = config.Unsupported.DCPReadBuffer
 		}
-		connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
-		if err != nil {
-			return base.BucketSpec{}, err
+		if config.Unsupported.KVBufferSize != 0 {
+			params.KvBufferSize = config.Unsupported.KVBufferSize
 		}
-		server = connStr
 	}
+	connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
+	if err != nil {
+		return base.BucketSpec{}, err
+	}
+	server = connStr
 
 	spec := config.MakeBucketSpec(server)
 
