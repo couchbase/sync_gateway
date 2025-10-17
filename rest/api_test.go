@@ -3533,7 +3533,7 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
 
-func TestUnsupportedOptions( t *testing.T){
+func TestUnsupportedOptions(t *testing.T) {
 	RequireBucketSpecificCredentials(t)
 	tests := []struct {
 		name            string
