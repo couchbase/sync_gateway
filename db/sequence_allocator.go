@@ -225,7 +225,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	if targetSequence <= s.max {
 		releaseFrom := s.last + 1
 		s.last = targetSequence
-		s.dbStats.LastSequenceAssignedValue.Set(int64(targetSequence))
+		s.dbStats.LastSequenceAssignedValue.Set(targetSequence)
 		s.mutex.Unlock()
 		if releaseFrom < targetSequence {
 			released, err := s.releaseSequenceRange(ctx, releaseFrom, targetSequence-1)
@@ -303,7 +303,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	s.max = allocatedToSeq
 	s.last = allocatedToSeq - numberToAllocate + 1
 	sequence = s.last
-	s.dbStats.LastSequenceAssignedValue.Set(int64(sequence))
+	s.dbStats.LastSequenceAssignedValue.Set(sequence)
 	s.mutex.Unlock()
 
 	// Perform standard batch handling and stats updates
@@ -336,7 +336,7 @@ func (s *sequenceAllocator) _nextSequence(ctx context.Context) (sequence uint64,
 	s.last++
 	sequence = s.last
 	s.dbStats.SequenceAssignedCount.Add(1)
-	s.dbStats.LastSequenceAssignedValue.Set(int64(sequence))
+	s.dbStats.LastSequenceAssignedValue.Set(sequence)
 	return sequence, sequencesReserved, nil
 }
 
@@ -389,8 +389,8 @@ func (s *sequenceAllocator) _incrementSequence(numToReserve uint64) (uint64, err
 		return value, err
 	}
 	s.dbStats.SequenceIncrCount.Add(1)
-	s.dbStats.SequenceReservedCount.Add(int64(numToReserve))
-	s.dbStats.LastSequenceReservedValue.Set(int64(value))
+	s.dbStats.SequenceReservedCount.Add(numToReserve)
+	s.dbStats.LastSequenceReservedValue.Set(value)
 	return value, nil
 }
 
@@ -428,7 +428,7 @@ func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequen
 		return 0, err
 	}
 	count := toSequence - fromSequence + 1
-	s.dbStats.SequenceReleasedCount.Add(int64(count))
+	s.dbStats.SequenceReleasedCount.Add(count)
 	base.DebugfCtx(ctx, base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return count, nil
 }

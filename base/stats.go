@@ -472,9 +472,9 @@ type CacheStats struct {
 	// The highest sequence number cached.
 	//
 	// There may be skipped sequences lower than high_seq_cached.
-	HighSeqCached *SgwIntStat `json:"high_seq_cached"`
+	HighSeqCached *SgwUIntStat `json:"high_seq_cached"`
 	// The highest contiguous sequence number that has been cached.
-	HighSeqStable         *SgwIntStat `json:"high_seq_stable"`
+	HighSeqStable         *SgwUIntStat `json:"high_seq_stable"`
 	NonMobileIgnoredCount *SgwIntStat `json:"non_mobile_ignored_count"`
 	// The total number of active channels.
 	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
@@ -606,9 +606,9 @@ type DatabaseStats struct {
 	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
 	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 	// The compaction_attachment_start_time.
-	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
+	CompactionAttachmentStartTime *SgwUIntStat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
-	CompactionTombstoneStartTime *SgwIntStat `json:"compaction_tombstone_start_time"`
+	CompactionTombstoneStartTime *SgwUIntStat `json:"compaction_tombstone_start_time"`
 	// The total number of writes that left the document in a conflicted state. Includes new conflicts, and mutations that don’t resolve existing conflicts.
 	ConflictWriteCount *SgwIntStat `json:"conflict_write_count"`
 	// The total number of instances during import when the document cas had changed, but the document was not imported because the document body had not changed.
@@ -630,7 +630,7 @@ type DatabaseStats struct {
 	// The total size of xattrs written (in bytes).
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
-	HighSeqFeed *SgwIntStat `json:"high_seq_feed"`
+	HighSeqFeed *SgwUIntStat `json:"high_seq_feed"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -653,19 +653,19 @@ type DatabaseStats struct {
 	// The total amount of bytes read over the public REST api
 	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
 	// The value of the last sequence number assigned. Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
-	LastSequenceAssignedValue *SgwIntStat `json:"last_sequence_assigned_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
+	LastSequenceAssignedValue *SgwUIntStat `json:"last_sequence_assigned_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
 	// The total number of sequence numbers assigned.
-	SequenceAssignedCount *SgwIntStat `json:"sequence_assigned_count"`
+	SequenceAssignedCount *SgwUIntStat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
 	SequenceGetCount *SgwIntStat `json:"sequence_get_count"`
 	// The total number of times the sequence counter document has been incremented.
 	SequenceIncrCount *SgwIntStat `json:"sequence_incr_count"`
 	// The total number of unused, reserved sequences released by Sync Gateway.
-	SequenceReleasedCount *SgwIntStat `json:"sequence_released_count"`
+	SequenceReleasedCount *SgwUIntStat `json:"sequence_released_count"`
 	// The value of the last sequence number reserved (which may not yet be assigned). Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
-	LastSequenceReservedValue *SgwIntStat `json:"last_sequence_reserved_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
+	LastSequenceReservedValue *SgwUIntStat `json:"last_sequence_reserved_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
 	// The total number of sequences reserved by Sync Gateway.
-	SequenceReservedCount *SgwIntStat `json:"sequence_reserved_count"`
+	SequenceReservedCount *SgwUIntStat `json:"sequence_reserved_count"`
 	// The total number of corrupt sequences above the MaxSequencesToRelease threshold seen at the sequence allocator
 	CorruptSequenceCount *SgwIntStat `json:"corrupt_sequence_count"`
 	// The total number of warnings relating to the channel name size.
@@ -986,6 +986,11 @@ type SgwIntStat struct {
 	AtomicInt
 }
 
+type SgwUIntStat struct {
+	SgwStat
+	AtomicUInt
+}
+
 // uint64 is used here because atomic ints do not support floats. Floats are encoded to uint64
 type SgwFloatStat struct {
 	SgwStat
@@ -1077,6 +1082,48 @@ func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
 
 func (s *SgwIntStat) String() string {
 	return strconv.FormatInt(s.Value(), 10)
+}
+
+func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue uint64) (*SgwUIntStat, error) {
+	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability, labelKeys, labelVals, statValueType)
+	if err != nil {
+		return nil, err
+	}
+
+	wrappedStat := &SgwUIntStat{
+		SgwStat: *stat,
+	}
+
+	wrappedStat.Set(initialValue)
+
+	if !SkipPrometheusStatsRegistration {
+		err := prometheus.Register(wrappedStat)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return wrappedStat, nil
+}
+
+func (s *SgwUIntStat) FormatString() string {
+	return StatFormatInt
+}
+
+func (s *SgwUIntStat) Describe(ch chan<- *prometheus.Desc) {
+	ch <- s.statDesc
+}
+
+func (s *SgwUIntStat) Collect(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
+}
+
+func (s *SgwUIntStat) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatUint(s.Value(), 10)), nil
+}
+
+func (s *SgwUIntStat) String() string {
+	return strconv.FormatUint(s.Value(), 10)
 }
 
 func NewFloatStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue float64) (*SgwFloatStat, error) {
@@ -1387,11 +1434,11 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.HighSeqCached, err = NewIntStat(SubsystemCacheKey, "high_seq_cached", StatUnitNoUnits, HighSeqCachedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.HighSeqCached, err = NewUIntStat(SubsystemCacheKey, "high_seq_cached", StatUnitNoUnits, HighSeqCachedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.HighSeqStable, err = NewIntStat(SubsystemCacheKey, "high_seq_stable", StatUnitNoUnits, HighStableSeqCachedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.HighSeqStable, err = NewUIntStat(SubsystemCacheKey, "high_seq_stable", StatUnitNoUnits, HighStableSeqCachedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1684,11 +1731,11 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.CompactionAttachmentStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", StatUnitUnixTimestamp, CompactionAttachmentStartTimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.CompactionAttachmentStartTime, err = NewUIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", StatUnitUnixTimestamp, CompactionAttachmentStartTimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.CompactionTombstoneStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_tombstone_start_time", StatUnitUnixTimestamp, CompactionTombstoneStartTimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.CompactionTombstoneStartTime, err = NewUIntStat(SubsystemDatabaseKey, "compaction_tombstone_start_time", StatUnitUnixTimestamp, CompactionTombstoneStartTimeDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1728,7 +1775,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.HighSeqFeed, err = NewIntStat(SubsystemDatabaseKey, "high_seq_feed", StatUnitNoUnits, HighSeqFeedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.HighSeqFeed, err = NewUIntStat(SubsystemDatabaseKey, "high_seq_feed", StatUnitNoUnits, HighSeqFeedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1776,11 +1823,11 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.SequenceAssignedCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", StatUnitNoUnits, SequenceAssignedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SequenceAssignedCount, err = NewUIntStat(SubsystemDatabaseKey, "sequence_assigned_count", StatUnitNoUnits, SequenceAssignedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.LastSequenceAssignedValue, err = NewIntStat(SubsystemDatabaseKey, "last_sequence_assigned_value", StatUnitNoUnits, LastSequenceAssignedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.LastSequenceAssignedValue, err = NewUIntStat(SubsystemDatabaseKey, "last_sequence_assigned_value", StatUnitNoUnits, LastSequenceAssignedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1792,15 +1839,15 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.SequenceReleasedCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_released_count", StatUnitNoUnits, SequenceReleasedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SequenceReleasedCount, err = NewUIntStat(SubsystemDatabaseKey, "sequence_released_count", StatUnitNoUnits, SequenceReleasedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.SequenceReservedCount, err = NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", StatUnitNoUnits, SequenceReservedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.SequenceReservedCount, err = NewUIntStat(SubsystemDatabaseKey, "sequence_reserved_count", StatUnitNoUnits, SequenceReservedCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	resUtil.LastSequenceReservedValue, err = NewIntStat(SubsystemDatabaseKey, "last_sequence_reserved_value", StatUnitNoUnits, LastSequenceReservedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.LastSequenceReservedValue, err = NewUIntStat(SubsystemDatabaseKey, "last_sequence_reserved_value", StatUnitNoUnits, LastSequenceReservedValueDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
