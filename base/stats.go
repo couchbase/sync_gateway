@@ -475,7 +475,7 @@ type CacheStats struct {
 	HighSeqCached *SgwUIntStat `json:"high_seq_cached"`
 	// The highest contiguous sequence number that has been cached.
 	HighSeqStable         *SgwUIntStat `json:"high_seq_stable"`
-	NonMobileIgnoredCount *SgwIntStat `json:"non_mobile_ignored_count"`
+	NonMobileIgnoredCount *SgwIntStat  `json:"non_mobile_ignored_count"`
 	// The total number of active channels.
 	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
 	// The total number of skipped sequences. This is a cumulative value.
