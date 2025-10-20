@@ -98,7 +98,7 @@ func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 		}
 	}
 
-	return user.UnauthError("You are not allowed to see this")
+	return user.UnauthError(errUnauthorized)
 }
 
 func (user *userImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
