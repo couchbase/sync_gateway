@@ -37,22 +37,37 @@ func (user *userImpl) SetCollectionJWTChannels(scope, collection string, channel
 	cc.ChannelInvalSeq = invalSeq
 }
 
-func (user *userImpl) CanSeeCollectionChannel(scope, collection, channel string) bool {
-	if user.roleImpl.CanSeeCollectionChannel(scope, collection, channel) {
-		return true
+func (user *userImpl) CanSeeCollectionChannel(scope, collection, channel string) (bool, error) {
+	canSee, err := user.roleImpl.CanSeeCollectionChannel(scope, collection, channel)
+	if err != nil {
+		return false, err
 	}
-	for _, role := range user.GetRoles() {
-		if role.CanSeeCollectionChannel(scope, collection, channel) {
-			return true
+	if canSee {
+		return true, nil
+	}
+	roles, err := user.GetRoles()
+	if err != nil {
+		return false, err
+	}
+	for _, role := range roles {
+		canSee, err := role.CanSeeCollectionChannel(scope, collection, channel)
+		if err != nil {
+			return false, err
+		} else if canSee {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.TimedSet {
+func (user *userImpl) InheritedCollectionChannels(scope, collection string) (ch.TimedSet, error) {
 
 	channels := user.CollectionChannels(scope, collection).Copy()
-	for _, role := range user.GetRoles() {
+	roles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
 		roleSince := user.RoleNames()[role.Name()]
 		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
 	}
@@ -68,7 +83,7 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 		}
 	})
 
-	return channels
+	return channels, nil
 }
 
 // Checks for user access to any channel in the set, including access inherited via roles
@@ -92,7 +107,11 @@ func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 	}
 
 	// Inherited role access
-	for _, role := range user.GetRoles() {
+	roles, err := user.GetRoles()
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
 		if role.AuthorizeAnyCollectionChannel(scope, collection, channels) == nil {
 			return nil
 		}
@@ -101,12 +120,22 @@ func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 	return user.UnauthError(errUnauthorized)
 }
 
-func (user *userImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
-	minSeq := user.roleImpl.canSeeCollectionChannelSince(scope, collection, channel)
-	for _, role := range user.GetRoles() {
-		if seq := role.canSeeCollectionChannelSince(scope, collection, channel); seq > 0 && (seq < minSeq || minSeq == 0) {
+func (user *userImpl) canSeeCollectionChannelSince(scope, collection, channel string) (uint64, error) {
+	minSeq, err := user.roleImpl.canSeeCollectionChannelSince(scope, collection, channel)
+	if err != nil {
+		return 0, err
+	}
+	roles, err := user.GetRoles()
+	if err != nil {
+		return 0, err
+	}
+	for _, role := range roles {
+		seq, err := role.canSeeCollectionChannelSince(scope, collection, channel)
+		if err != nil {
+			return 0, err
+		} else if seq > 0 && (seq < minSeq || minSeq == 0) {
 			minSeq = seq
 		}
 	}
-	return minSeq
+	return minSeq, nil
 }

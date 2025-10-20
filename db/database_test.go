@@ -2147,7 +2147,9 @@ func TestAccessFunctionDb(t *testing.T) {
 	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName, collection.Name))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName, collection.Name))
+	channels, err := user.InheritedCollectionChannels(collection.ScopeName, collection.Name)
+	require.NoError(t, err)
+	assert.Equal(t, expected, channels)
 }
 
 func TestDocIDs(t *testing.T) {
