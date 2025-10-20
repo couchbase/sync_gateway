@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -130,6 +129,6 @@ func missingError(user auth.User, what string, name string) error {
 	if user == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such %s %q", what, name)
 	} else {
-		return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", what, name))
+		return user.UnauthError(base.HTTPErrorf(http.StatusForbidden, "you are not allowed to call %s %q", what, name))
 	}
 }

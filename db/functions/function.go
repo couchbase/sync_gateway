@@ -288,7 +288,7 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 			}
 		}
 	}
-	return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", fn.typeName, fn.name))
+	return user.UnauthError(base.HTTPErrorf(http.StatusForbidden, "You are not allowed to call %s %q", fn.typeName, fn.name))
 }
 
 // Expands patterns of the form `${param}` in `pattern`, looking up each such
