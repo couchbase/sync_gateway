@@ -1253,36 +1253,6 @@ func (ai *AtomicInt) Value() int64 {
 	return atomic.LoadInt64(&ai.val)
 }
 
-type AtomicUInt struct {
-	val uint64
-}
-
-func (aui *AtomicUInt) Set(value uint64) {
-	atomic.StoreUint64(&aui.val, value)
-}
-
-func (aui *AtomicUInt) SetIfMax(value uint64) {
-	for {
-		cur := atomic.LoadUint64(&aui.val)
-		if cur >= value {
-			return
-		}
-
-		if atomic.CompareAndSwapUint64(&aui.val, cur, value) {
-			return
-		}
-	}
-}
-
-// Add adds the given value to the atomic int.
-func (aui *AtomicUInt) Add(value uint64) {
-	atomic.AddUint64(&aui.val, value)
-}
-
-func (aui *AtomicUInt) Value() uint64 {
-	return atomic.LoadUint64(&aui.val)
-}
-
 type SafeTerminator struct {
 	terminator       chan struct{}
 	terminatorClosed AtomicBool

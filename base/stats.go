@@ -76,6 +76,7 @@ const (
 	StatUnitUnixTimestamp = "unix timestamp"
 
 	StatFormatInt      = "int"
+	StatFormatUint     = "uint"
 	StatFormatFloat    = "float"
 	StatFormatDuration = "duration"
 	StatFormatBool     = "bool"
@@ -472,10 +473,10 @@ type CacheStats struct {
 	// The highest sequence number cached.
 	//
 	// There may be skipped sequences lower than high_seq_cached.
-	HighSeqCached *SgwUIntStat `json:"high_seq_cached"`
+	HighSeqCached *SgwUint64Stat `json:"high_seq_cached"`
 	// The highest contiguous sequence number that has been cached.
-	HighSeqStable         *SgwUIntStat `json:"high_seq_stable"`
-	NonMobileIgnoredCount *SgwIntStat  `json:"non_mobile_ignored_count"`
+	HighSeqStable         *SgwUint64Stat `json:"high_seq_stable"`
+	NonMobileIgnoredCount *SgwIntStat    `json:"non_mobile_ignored_count"`
 	// The total number of active channels.
 	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
 	// The total number of skipped sequences. This is a cumulative value.
@@ -606,9 +607,9 @@ type DatabaseStats struct {
 	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
 	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 	// The compaction_attachment_start_time.
-	CompactionAttachmentStartTime *SgwUIntStat `json:"compaction_attachment_start_time"`
+	CompactionAttachmentStartTime *SgwUint64Stat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
-	CompactionTombstoneStartTime *SgwUIntStat `json:"compaction_tombstone_start_time"`
+	CompactionTombstoneStartTime *SgwUint64Stat `json:"compaction_tombstone_start_time"`
 	// The total number of writes that left the document in a conflicted state. Includes new conflicts, and mutations that don’t resolve existing conflicts.
 	ConflictWriteCount *SgwIntStat `json:"conflict_write_count"`
 	// The total number of instances during import when the document cas had changed, but the document was not imported because the document body had not changed.
@@ -630,7 +631,7 @@ type DatabaseStats struct {
 	// The total size of xattrs written (in bytes).
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
-	HighSeqFeed *SgwUIntStat `json:"high_seq_feed"`
+	HighSeqFeed *SgwUint64Stat `json:"high_seq_feed"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -653,19 +654,19 @@ type DatabaseStats struct {
 	// The total amount of bytes read over the public REST api
 	PublicRestBytesRead *SgwIntStat `json:"public_rest_bytes_read"`
 	// The value of the last sequence number assigned. Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
-	LastSequenceAssignedValue *SgwUIntStat `json:"last_sequence_assigned_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
+	LastSequenceAssignedValue *SgwUint64Stat `json:"last_sequence_assigned_value"`
 	// The total number of sequence numbers assigned.
-	SequenceAssignedCount *SgwUIntStat `json:"sequence_assigned_count"`
+	SequenceAssignedCount *SgwUint64Stat `json:"sequence_assigned_count"`
 	// The total number of high sequence lookups.
 	SequenceGetCount *SgwIntStat `json:"sequence_get_count"`
 	// The total number of times the sequence counter document has been incremented.
 	SequenceIncrCount *SgwIntStat `json:"sequence_incr_count"`
 	// The total number of unused, reserved sequences released by Sync Gateway.
-	SequenceReleasedCount *SgwUIntStat `json:"sequence_released_count"`
+	SequenceReleasedCount *SgwUint64Stat `json:"sequence_released_count"`
 	// The value of the last sequence number reserved (which may not yet be assigned). Callers using Set should be holding a mutex or ensure concurrent updates to this value are otherwise safe.
-	LastSequenceReservedValue *SgwUIntStat `json:"last_sequence_reserved_value"` // TODO: CBG-4579 - Replace with SgwUintStat stat
+	LastSequenceReservedValue *SgwUint64Stat `json:"last_sequence_reserved_value"`
 	// The total number of sequences reserved by Sync Gateway.
-	SequenceReservedCount *SgwUIntStat `json:"sequence_reserved_count"`
+	SequenceReservedCount *SgwUint64Stat `json:"sequence_reserved_count"`
 	// The total number of corrupt sequences above the MaxSequencesToRelease threshold seen at the sequence allocator
 	CorruptSequenceCount *SgwIntStat `json:"corrupt_sequence_count"`
 	// The total number of warnings relating to the channel name size.
@@ -986,9 +987,9 @@ type SgwIntStat struct {
 	AtomicInt
 }
 
-type SgwUIntStat struct {
+type SgwUint64Stat struct {
 	SgwStat
-	AtomicUInt
+	atomic.Uint64
 }
 
 // uint64 is used here because atomic ints do not support floats. Floats are encoded to uint64
@@ -1084,13 +1085,43 @@ func (s *SgwIntStat) String() string {
 	return strconv.FormatInt(s.Value(), 10)
 }
 
-func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue uint64) (*SgwUIntStat, error) {
+// NewUIntStat creates and returns a new unsigned integer Sync Gateway stat (SgwUint64Stat).
+// The stat is initialized to initialValue and, unless SkipPrometheusStatsRegistration is true,
+// is registered with Prometheus. It returns an error if required metadata is missing or if
+// Prometheus registration fails.
+//
+// Parameters:
+//   subsystem: The Prometheus subsystem segment (e.g. resource_utilization, database) used to build the fully qualified metric name.
+//   key: The short metric key appended to the subsystem to form the final metric name.
+//   unit: The unit of measurement (e.g. bytes, seconds). Used for metadata export tooling.
+//   description: Human-readable help text for the metric. Must be non-empty.
+//   addedVersion: The Sync Gateway version the stat was introduced. Must be non-empty.
+//   deprecatedVersion: The version the stat was deprecated, or empty if not deprecated.
+//   stability: The stability level (committed, volatile, or internal). Must be non-empty.
+//   labelKeys: Slice of label keys for constant labels. Must align index-wise with labelVals.
+//   labelVals: Slice of label values corresponding to labelKeys. Length must match labelKeys.
+//   statValueType: The Prometheus value type (counter or gauge) controlling exposition semantics.
+//   initialValue: The initial uint64 value assigned to the stat's atomic counter.
+//
+// Behavior:
+//   - Validates required metadata (description, addedVersion, stability).
+//   - Builds a Prometheus descriptor with any constant labels.
+//   - Sets the initial value atomically.
+//   - Registers the metric with Prometheus unless SkipPrometheusStatsRegistration is true.
+//   - Returns (*SgwUint64Stat, error) where error is non-nil on validation or registration failure.
+//
+// Concurrency:
+//   The underlying value uses atomic.Uint64 for safe concurrent mutation by callers.
+//
+// Errors:
+//   Returned if required fields are missing or if prometheus.Register fails (e.g. duplicate registration).
+func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue uint64) (*SgwUint64Stat, error) {
 	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability, labelKeys, labelVals, statValueType)
 	if err != nil {
 		return nil, err
 	}
 
-	wrappedStat := &SgwUIntStat{
+	wrappedStat := &SgwUint64Stat{
 		SgwStat: *stat,
 	}
 
@@ -1106,24 +1137,49 @@ func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVers
 	return wrappedStat, nil
 }
 
-func (s *SgwUIntStat) FormatString() string {
-	return StatFormatInt
+func (s *SgwUint64Stat) FormatString() string {
+	return StatFormatUint
 }
 
-func (s *SgwUIntStat) Describe(ch chan<- *prometheus.Desc) {
+func (s *SgwUint64Stat) Describe(ch chan<- *prometheus.Desc) {
 	ch <- s.statDesc
 }
 
-func (s *SgwUIntStat) Collect(ch chan<- prometheus.Metric) {
+func (s *SgwUint64Stat) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
 }
 
-func (s *SgwUIntStat) MarshalJSON() ([]byte, error) {
+func (s *SgwUint64Stat) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.FormatUint(s.Value(), 10)), nil
 }
 
-func (s *SgwUIntStat) String() string {
+func (s *SgwUint64Stat) String() string {
 	return strconv.FormatUint(s.Value(), 10)
+}
+
+func (s *SgwUint64Stat) Set(value uint64) {
+	s.Store(value)
+}
+
+func (s *SgwUint64Stat) SetIfMax(value uint64) {
+	for {
+		cur := s.Load()
+		if cur >= value {
+			return
+		}
+
+		if s.CompareAndSwap(cur, value){
+			return
+		}
+	}
+}
+
+func (s *SgwUint64Stat) Add(value uint64){
+	s.Add(value)
+}
+
+func (s *SgwUint64Stat) Value() uint64 {
+	return s.Load()
 }
 
 func NewFloatStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue float64) (*SgwFloatStat, error) {
