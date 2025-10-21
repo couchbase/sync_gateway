@@ -1091,17 +1091,17 @@ func (s *SgwIntStat) String() string {
 // Prometheus registration fails.
 //
 // Parameters:
-//   subsystem: The Prometheus subsystem segment (e.g. resource_utilization, database) used to build the fully qualified metric name.
-//   key: The short metric key appended to the subsystem to form the final metric name.
-//   unit: The unit of measurement (e.g. bytes, seconds). Used for metadata export tooling.
-//   description: Human-readable help text for the metric. Must be non-empty.
-//   addedVersion: The Sync Gateway version the stat was introduced. Must be non-empty.
-//   deprecatedVersion: The version the stat was deprecated, or empty if not deprecated.
-//   stability: The stability level (committed, volatile, or internal). Must be non-empty.
-//   labelKeys: Slice of label keys for constant labels. Must align index-wise with labelVals.
-//   labelVals: Slice of label values corresponding to labelKeys. Length must match labelKeys.
-//   statValueType: The Prometheus value type (counter or gauge) controlling exposition semantics.
-//   initialValue: The initial uint64 value assigned to the stat's atomic counter.
+//	subsystem: The Prometheus subsystem segment (e.g. resource_utilization, database) used to build the fully qualified metric name.
+//	key: The short metric key appended to the subsystem to form the final metric name.
+//	unit: The unit of measurement (e.g. bytes, seconds). Used for metadata export tooling.
+//	description: Human-readable help text for the metric. Must be non-empty.
+//	addedVersion: The Sync Gateway version the stat was introduced. Must be non-empty.
+//	deprecatedVersion: The version the stat was deprecated, or empty if not deprecated.
+//	stability: The stability level (committed, volatile, or internal). Must be non-empty.
+//	labelKeys: Slice of label keys for constant labels. Must align index-wise with labelVals.
+//	labelVals: Slice of label values corresponding to labelKeys. Length must match labelKeys.
+//	statValueType: The Prometheus value type (counter or gauge) controlling exposition semantics.
+//	initialValue: The initial uint64 value assigned to the stat's atomic counter.
 //
 // Behavior:
 //   - Validates required metadata (description, addedVersion, stability).
@@ -1111,10 +1111,12 @@ func (s *SgwIntStat) String() string {
 //   - Returns (*SgwUint64Stat, error) where error is non-nil on validation or registration failure.
 //
 // Concurrency:
-//   The underlying value uses atomic.Uint64 for safe concurrent mutation by callers.
+//
+//	The underlying value uses atomic.Uint64 for safe concurrent mutation by callers.
 //
 // Errors:
-//   Returned if required fields are missing or if prometheus.Register fails (e.g. duplicate registration).
+//
+//	Returned if required fields are missing or if prometheus.Register fails (e.g. duplicate registration).
 func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue uint64) (*SgwUint64Stat, error) {
 	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability, labelKeys, labelVals, statValueType)
 	if err != nil {
@@ -1168,14 +1170,10 @@ func (s *SgwUint64Stat) SetIfMax(value uint64) {
 			return
 		}
 
-		if s.CompareAndSwap(cur, value){
+		if s.CompareAndSwap(cur, value) {
 			return
 		}
 	}
-}
-
-func (s *SgwUint64Stat) Add(value uint64){
-	s.Add(value)
 }
 
 func (s *SgwUint64Stat) Value() uint64 {
