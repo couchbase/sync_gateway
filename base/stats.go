@@ -1091,6 +1091,7 @@ func (s *SgwIntStat) String() string {
 // Prometheus registration fails.
 //
 // Parameters:
+//
 //	subsystem: The Prometheus subsystem segment (e.g. resource_utilization, database) used to build the fully qualified metric name.
 //	key: The short metric key appended to the subsystem to form the final metric name.
 //	unit: The unit of measurement (e.g. bytes, seconds). Used for metadata export tooling.
