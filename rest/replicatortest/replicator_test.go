@@ -4833,21 +4833,21 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
-		ctx2 := rt2.Context()
-		ctx1 := rt1.Context()
+		ctx2 := passiveRT.Context()
+		ctx1 := activeRT.Context()
 
-		// Create doc1 on rt1
+		// Create doc1 on activeRT
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
-		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
+		resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"activeRT","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
-		rt1.WaitForPendingChanges()
+		activeRT.WaitForPendingChanges()
 		replicationID := rest.SafeDocumentName(t, t.Name())
 		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
 		require.NoError(t, err)
@@ -4859,11 +4859,11 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: remoteURL,
 			ActiveDB: &db.Database{
-				DatabaseContext: rt1.GetDatabase(),
+				DatabaseContext: activeRT.GetDatabase(),
 			},
 			Continuous:          true,
 			ReplicationStatsMap: dbstats,
-			CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
+			CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 			// CBG-4786: remove this protocol line in this ticket
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -4874,24 +4874,26 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		require.NoError(t, ar.Start(ctx1))
 
+		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
 		pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
 		base.RequireWaitForStat(t, func() int64 {
 			return ar.Push.GetStats().SendRevCount.Value()
 		}, 1)
 
-		// wait for document originally written to rt1 to arrive at rt2
-		changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+		// wait for document originally written to activeRT to arrive at passiveRT
+		changesResults := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 		assert.Equal(t, docID, changesResults.Results[0].ID)
 		lastSeq := changesResults.Last_Seq.String()
 
-		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
+		rt1collection, rt1ctx := activeRT.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
+		assert.Equal(t, "activeRT", body["source"])
 
 		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
@@ -4902,30 +4904,30 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
 		var firstCheckpoint any
-		_, err = rt2.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
+		_, err = passiveRT.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
 		require.NoError(t, err)
 
-		// Create doc2 on rt1
-		resp = rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"rt1","channels":["alice"]}`)
+		// Create doc2 on activeRT
+		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"activeRT","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
-		rt1.WaitForPendingChanges()
+		activeRT.WaitForPendingChanges()
 
 		base.RequireWaitForStat(t, func() int64 {
 			return ar.Push.GetStats().SendRevCount.Value()
 		}, 2)
 
-		// wait for new document to arrive at rt2
-		changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+		// wait for new document to arrive at passiveRT
+		changesResults = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollectionWithUser()
-		doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		rt2collection, rt2ctx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
+		doc, err = rt2collection.GetDocument(rt2ctx, docID+"2", db.DocUnmarshalAll)
 		require.NoError(t, err)
 
 		body, err = doc.GetDeepMutableBody()
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
+		assert.Equal(t, "activeRT", body["source"])
 
 		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 		pushCheckpointer.CheckpointNow()
@@ -4934,7 +4936,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		require.NoError(t, ar.Stop())
 
 		// roll back checkpoint value to first one and remove the associated doc
-		err = rt2.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
+		err = passiveRT.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 		assert.NoError(t, err)
 
 		if !sgrRunner.IsV4Protocol() {
@@ -4948,26 +4950,33 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		}
 
 		require.NoError(t, rt2collection.FlushChannelCache(ctx2))
-		rt2.GetDatabase().FlushRevisionCacheForTest()
+		passiveRT.GetDatabase().FlushRevisionCacheForTest()
 
 		require.NoError(t, ar.Start(ctx1))
 
+		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
 		pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
-		// wait for new document to arrive at rt2 again
-		changesResults = rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+		// wait for new document to arrive at passiveRT again
+		changesResults = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-		doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
+		doc, err = rt2collection.GetDocument(rt2ctx, docID+"2", db.DocUnmarshalAll)
 		require.NoError(t, err)
 
 		body, err = doc.GetDeepMutableBody()
 		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
+		assert.Equal(t, "activeRT", body["source"])
 
 		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
-		pushCheckpointer.CheckpointNow()
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+		// wait for checkpoint set count to reach 1, there is small window between rev being sent to passive and awaiting
+		// response before adding sequence to processed sequence list. So calling CheckpointNow before this sent rev is
+		// added to processed sequences will mean CheckpointNow is a no-op. So we should wait for checkpoint count to increment.
+		base.RequireWaitForStat(t, func() int64 {
+			pushCheckpointer.CheckpointNow()
+			return pushCheckpointer.Stats().SetCheckpointCount
+		}, 1)
 		assert.NoError(t, ar.Stop())
 	})
 }
