@@ -7843,7 +7843,7 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 			dbName := fmt.Sprintf("db%d", i)
 			ctx := rt.Context()
 			defer func() {
-				require.True(t, rt.ServerContext().RemoveDatabase(ctx, dbName))
+				require.True(t, rt.ServerContext().RemoveDatabase(ctx, dbName, fmt.Sprintf("Removing database for %s", testCase.name)))
 			}()
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Name = dbName
@@ -7886,7 +7886,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	// remove the db context for rt1 off the server context
-	ok := rt1.ServerContext().RemoveDatabase(base.TestCtx(t), "db")
+	ok := rt1.ServerContext().RemoveDatabase(base.TestCtx(t), "db", "Removing database context for test")
 	require.True(t, ok)
 
 	// assert that the db context has been removed

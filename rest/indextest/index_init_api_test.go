@@ -318,7 +318,8 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		var body db.AsyncIndexInitManagerResponse
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
-		require.Equal(c, db.BackgroundProcessStateStopped, body.State)
+		assert.Equal(c, db.BackgroundProcessStateStopped, body.State, "body: %#+v", body)
+		require.Equal(c, "", body.LastErrorMessage, "expected no error when stopping, got: %s", body.LastErrorMessage)
 	}, 1*time.Minute, 1*time.Second)
 
 	// restart with new params
@@ -332,7 +333,9 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		var body db.AsyncIndexInitManagerResponse
 		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
 		require.NoError(c, err)
-		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
+		// immediately exit if the state turns to error
+		require.NotEqual(t, db.BackgroundProcessStateError, body.State, "body: %#+v", body)
+		assert.Equal(c, db.BackgroundProcessStateCompleted, body.State, "body: %#+v", body)
 	}, 1*time.Minute, 1*time.Second)
 }
 
