@@ -298,7 +298,7 @@ func (h *handler) handlePostIndexInit() error {
 	action := cmp.Or(h.getQuery("action"), "start")
 
 	if action == "stop" {
-		h.server.DatabaseInitManager.Cancel(h.db.Name)
+		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
 		if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
 			return err
 		}
@@ -1412,13 +1412,13 @@ func (h *handler) handleDeleteDB() error {
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
-		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
+		h.server.RemoveDatabase(h.ctx(), dbName, fmt.Sprintf("called from %s", h.rq.URL)) // unhandled 404 to allow broken config deletion (CBG-2420)
 		h.writeRawJSON([]byte("{}"))
 		base.Audit(h.ctx(), base.AuditIDDeleteDatabase, nil)
 		return nil
 	}
 
-	if !h.server.RemoveDatabase(h.ctx(), dbName) {
+	if !h.server.RemoveDatabase(h.ctx(), dbName, fmt.Sprintf("called from %s", h.rq.URL)) {
 		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	h.writeRawJSON([]byte("{}"))
