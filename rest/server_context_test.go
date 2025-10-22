@@ -152,7 +152,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb2")
 
-	status := serverContext.RemoveDatabase(ctx, "imdb2")
+	status := serverContext.RemoveDatabase(ctx, "imdb2", "Removing imdb2 in test")
 	assert.True(t, status, "Database should be removed from server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
