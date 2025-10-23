@@ -335,11 +335,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	defer func() {
 		// Now that we know the DB, add CORS headers to the response:
 		if h.privs != adminPrivs && h.privs != metricsPrivs {
-			cors := h.server.Config.API.CORS
-			if h.db != nil {
-				cors = h.db.CORS
-			}
-			if cors != nil {
+			cors := h.getCORSConfig()
+			if !cors.IsEmpty() {
 				cors.AddResponseHeaders(h.rq, h.response)
 			}
 		}
@@ -1787,4 +1784,12 @@ func (h *handler) pathTemplateContains(pattern string) bool {
 		return false
 	}
 	return strings.Contains(pathTemplate, pattern)
+}
+
+// getCORSConfig will return the CORS config for the handler's database if set, otherwise it will return the server CORS config
+func (h *handler) getCORSConfig() *auth.CORSConfig {
+	if h.db != nil {
+		return h.db.CORS
+	}
+	return h.server.Config.API.CORS
 }
