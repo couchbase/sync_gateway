@@ -76,7 +76,7 @@ const (
 	StatUnitUnixTimestamp = "unix timestamp"
 
 	StatFormatInt      = "int"
-	StatFormatUint     = "uint"
+	StatFormatUint     = "uint64"
 	StatFormatFloat    = "float"
 	StatFormatDuration = "duration"
 	StatFormatBool     = "bool"
@@ -1085,39 +1085,7 @@ func (s *SgwIntStat) String() string {
 	return strconv.FormatInt(s.Value(), 10)
 }
 
-// NewUIntStat creates and returns a new unsigned integer Sync Gateway stat (SgwUint64Stat).
-// The stat is initialized to initialValue and, unless SkipPrometheusStatsRegistration is true,
-// is registered with Prometheus. It returns an error if required metadata is missing or if
-// Prometheus registration fails.
-//
-// Parameters:
-//
-//	subsystem: The Prometheus subsystem segment (e.g. resource_utilization, database) used to build the fully qualified metric name.
-//	key: The short metric key appended to the subsystem to form the final metric name.
-//	unit: The unit of measurement (e.g. bytes, seconds). Used for metadata export tooling.
-//	description: Human-readable help text for the metric. Must be non-empty.
-//	addedVersion: The Sync Gateway version the stat was introduced. Must be non-empty.
-//	deprecatedVersion: The version the stat was deprecated, or empty if not deprecated.
-//	stability: The stability level (committed, volatile, or internal). Must be non-empty.
-//	labelKeys: Slice of label keys for constant labels. Must align index-wise with labelVals.
-//	labelVals: Slice of label values corresponding to labelKeys. Length must match labelKeys.
-//	statValueType: The Prometheus value type (counter or gauge) controlling exposition semantics.
-//	initialValue: The initial uint64 value assigned to the stat's atomic counter.
-//
-// Behavior:
-//   - Validates required metadata (description, addedVersion, stability).
-//   - Builds a Prometheus descriptor with any constant labels.
-//   - Sets the initial value atomically.
-//   - Registers the metric with Prometheus unless SkipPrometheusStatsRegistration is true.
-//   - Returns (*SgwUint64Stat, error) where error is non-nil on validation or registration failure.
-//
-// Concurrency:
-//
-//	The underlying value uses atomic.Uint64 for safe concurrent mutation by callers.
-//
-// Errors:
-//
-//	Returned if required fields are missing or if prometheus.Register fails (e.g. duplicate registration).
+// NewUIntStat creates a uint64 stat. The stat is initialized to initialValue.
 func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType, initialValue uint64) (*SgwUint64Stat, error) {
 	stat, err := newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability, labelKeys, labelVals, statValueType)
 	if err != nil {
@@ -1140,6 +1108,7 @@ func NewUIntStat(subsystem, key, unit, description, addedVersion, deprecatedVers
 	return wrappedStat, nil
 }
 
+// FormatString returns a name of the stat type used for generating documentation.
 func (s *SgwUint64Stat) FormatString() string {
 	return StatFormatUint
 }
@@ -1148,6 +1117,7 @@ func (s *SgwUint64Stat) Describe(ch chan<- *prometheus.Desc) {
 	ch <- s.statDesc
 }
 
+// Collect satisfies the prometheus.Collector interface communicates the stat to prometheus. This is known to truncate to float64, which is the only format that prometheus can accept.
 func (s *SgwUint64Stat) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value()))
 }
@@ -1160,6 +1130,7 @@ func (s *SgwUint64Stat) String() string {
 	return strconv.FormatUint(s.Value(), 10)
 }
 
+// Set updates the existing value. This satifies the AtomicUint interface but code can prefer SgwUint64Stat.Store to match atomic.Uint64.
 func (s *SgwUint64Stat) Set(value uint64) {
 	s.Store(value)
 }
@@ -1177,6 +1148,7 @@ func (s *SgwUint64Stat) SetIfMax(value uint64) {
 	}
 }
 
+// Value returns the value. This satifies the AtomicUint interface but new code should prefer SgwUint64Stat.Load to match atomic.Uint64 interface.
 func (s *SgwUint64Stat) Value() uint64 {
 	return s.Load()
 }
