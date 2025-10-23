@@ -326,8 +326,8 @@ func (h *handler) formatSessionResponse(user auth.User) db.Body {
 
 }
 
-// checkLoginCORS validates the auth.CORSConfig.LoginOrigin section of CORS for requests. The auth.CORSConfig.Origin is
-// checked in addition to this.
+// checkLoginCORS validates the auth.CORSConfig.LoginOrigin section of CORS for requests.
+// Note: Validation of the general Origin header against auth.CORSConfig.Origin happens separately in validateAndWriteHeaders.
 func (h *handler) checkLoginCORS() error {
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
