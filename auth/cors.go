@@ -32,6 +32,12 @@ func (cors *CORSConfig) AddResponseHeaders(request *http.Request, response http.
 	}
 }
 
+// IsEmpty returns true if the CORS configuration is empty - used instead of a nil check since we always initialize the CORS config struct.
+func (cors *CORSConfig) IsEmpty() bool {
+	return cors == nil ||
+		(len(cors.Origin) == 0 && len(cors.LoginOrigin) == 0 && len(cors.Headers) == 0 && cors.MaxAge == 0)
+}
+
 func MatchedOrigin(allowOrigins []string, rqOrigins []string) string {
 	for _, rv := range rqOrigins {
 		for _, av := range allowOrigins {
