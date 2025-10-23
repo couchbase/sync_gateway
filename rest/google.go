@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -29,20 +28,16 @@ type GoogleResponse struct {
 
 // POST /_google creates a google-based login session and sets its cookie.
 func (h *handler) handleGooglePOST() error {
-	// CORS not allowed for login #115 #762
-	originHeader := h.rq.Header["Origin"]
-	if len(originHeader) > 0 {
-		matched := auth.MatchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
-		if matched == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
-		}
+	err := h.checkLoginCORS()
+	if err != nil {
+		return err
 	}
 
 	var params struct {
 		IDToken string `json:"id_token"`
 	}
 
-	err := h.readJSONInto(&params)
+	err = h.readJSONInto(&params)
 	if err != nil {
 		return err
 	}

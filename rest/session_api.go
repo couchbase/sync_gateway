@@ -36,16 +36,9 @@ func (h *handler) handleSessionGET() error {
 
 // POST /_session creates a login session and sets its cookie
 func (h *handler) handleSessionPOST() error {
-	// CORS not allowed for login #115 #762
-	originHeader := h.rq.Header["Origin"]
-	if len(originHeader) > 0 {
-		matched := ""
-		if h.server.Config.API.CORS != nil {
-			matched = auth.MatchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
-		}
-		if matched == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
-		}
+	err := h.checkLoginCORS()
+	if err != nil {
+		return err
 	}
 
 	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkPublicAuth calls out into AuthenticateUntrustedJWT.
@@ -100,18 +93,10 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 
 // DELETE /_session logs out the current session
 func (h *handler) handleSessionDELETE() error {
-	// CORS not allowed for login #115 #762
-	originHeader := h.rq.Header["Origin"]
-	if len(originHeader) > 0 {
-		matched := ""
-		if h.server.Config.API.CORS != nil {
-			matched = auth.MatchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
-		}
-		if matched == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
-		}
+	err := h.checkLoginCORS()
+	if err != nil {
+		return err
 	}
-
 	cookie := h.db.Authenticator(h.ctx()).DeleteSessionForCookie(h.ctx(), h.rq)
 	if cookie == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no session")
@@ -339,4 +324,17 @@ func (h *handler) formatSessionResponse(user auth.User) db.Body {
 	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
 	return response
 
+}
+
+// checkLoginCORS validates the auth.CORSConfig.LoginOrigin section of CORS for requests.
+// Note: Validation of the general Origin header against auth.CORSConfig.Origin happens separately in validateAndWriteHeaders.
+func (h *handler) checkLoginCORS() error {
+	originHeader := h.rq.Header["Origin"]
+	if len(originHeader) > 0 {
+		cors := h.getCORSConfig()
+		if cors.IsEmpty() || auth.MatchedOrigin(cors.LoginOrigin, originHeader) == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
+		}
+	}
+	return nil
 }
