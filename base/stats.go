@@ -1130,7 +1130,7 @@ func (s *SgwUint64Stat) String() string {
 	return strconv.FormatUint(s.Value(), 10)
 }
 
-// Set updates the existing value. This satifies the AtomicUint interface but code can prefer SgwUint64Stat.Store to match atomic.Uint64.
+// Set updates the existing value. This satisfies the AtomicUint interface but code can prefer SgwUint64Stat.Store to match atomic.Uint64.
 func (s *SgwUint64Stat) Set(value uint64) {
 	s.Store(value)
 }
@@ -1148,7 +1148,7 @@ func (s *SgwUint64Stat) SetIfMax(value uint64) {
 	}
 }
 
-// Value returns the value. This satifies the AtomicUint interface but new code should prefer SgwUint64Stat.Load to match atomic.Uint64 interface.
+// Value returns the value. This satisfies the AtomicUint interface but new code should prefer SgwUint64Stat.Load to match atomic.Uint64 interface.
 func (s *SgwUint64Stat) Value() uint64 {
 	return s.Load()
 }
