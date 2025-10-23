@@ -4844,6 +4844,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		// Create doc1 on activeRT
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID2 := docID + "2"
 		resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"activeRT","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -4887,13 +4888,8 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		assert.Equal(t, docID, changesResults.Results[0].ID)
 		lastSeq := changesResults.Last_Seq.String()
 
-		rt1collection, rt1ctx := activeRT.GetSingleTestDatabaseCollection()
-		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "activeRT", body["source"])
+		_, doc1Body := activeRT.GetDoc(docID)
+		assert.Equal(t, "activeRT", doc1Body["source"])
 
 		// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
@@ -4908,7 +4904,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create doc2 on activeRT
-		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"2", `{"source":"activeRT","channels":["alice"]}`)
+		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID2, `{"source":"activeRT","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
 		activeRT.WaitForPendingChanges()
@@ -4919,15 +4915,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		// wait for new document to arrive at passiveRT
 		changesResults = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
+		assert.Equal(t, docID2, changesResults.Results[0].ID)
 
-		rt2collection, rt2ctx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
-		doc, err = rt2collection.GetDocument(rt2ctx, docID+"2", db.DocUnmarshalAll)
-		require.NoError(t, err)
-
-		body, err = doc.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "activeRT", body["source"])
+		_, doc2Body := passiveRT.GetDoc(docID2)
+		assert.Equal(t, "activeRT", doc2Body["source"])
 
 		assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 		pushCheckpointer.CheckpointNow()
@@ -4939,17 +4930,18 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		err = passiveRT.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 		assert.NoError(t, err)
 
+		passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
 		if !sgrRunner.IsV4Protocol() {
-			err = rt2collection.Purge(rt2ctx, docID+"2", true)
+			err = passiveRTCollection.Purge(passiveRTCtx, docID2, true)
 			assert.NoError(t, err)
 		} else {
 			// we need to remove the _vv xattr for the doc to be re-replicated successfully, otherwise SG sees the existing _vv
 			// and incoming vv and determines no new version to add
-			err = rt2collection.GetCollectionDatastore().DeleteWithXattrs(rt2ctx, docID+"2", []string{base.SyncXattrName, base.VvXattrName})
+			err = passiveRTCollection.GetCollectionDatastore().DeleteWithXattrs(passiveRTCtx, docID2, []string{base.SyncXattrName, base.VvXattrName})
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, rt2collection.FlushChannelCache(ctx2))
+		require.NoError(t, passiveRTCollection.FlushChannelCache(ctx2))
 		passiveRT.GetDatabase().FlushRevisionCacheForTest()
 
 		require.NoError(t, ar.Start(ctx1))
@@ -4960,14 +4952,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		// wait for new document to arrive at passiveRT again
 		changesResults = passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
-		assert.Equal(t, docID+"2", changesResults.Results[0].ID)
+		assert.Equal(t, docID2, changesResults.Results[0].ID)
 
-		doc, err = rt2collection.GetDocument(rt2ctx, docID+"2", db.DocUnmarshalAll)
-		require.NoError(t, err)
-
-		body, err = doc.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "activeRT", body["source"])
+		_, doc2Body = passiveRT.GetDoc(docID2)
+		assert.Equal(t, "activeRT", doc2Body["source"])
 
 		assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 		// wait for checkpoint set count to reach 1, there is small window between rev being sent to passive and awaiting
