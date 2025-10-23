@@ -427,8 +427,6 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker[T any] func() (shouldRetry bool, err error, value T)
 
-type RetryCasWorker func() (shouldRetry bool, err error, value uint64)
-
 type RetryTimeoutError struct {
 	description string
 	attempts    int
@@ -485,37 +483,6 @@ func RetryLoop[T any](ctx context.Context, description string, worker RetryWorke
 	}
 }
 
-// A version of RetryLoop that returns a strongly typed cas as uint64, to avoid interface conversion overhead for
-// high throughput operations.
-func RetryLoopCas(ctx context.Context, description string, worker RetryCasWorker, sleeper RetrySleeper) (error, uint64) {
-
-	numAttempts := 1
-
-	for {
-		shouldRetry, err, value := worker()
-		if !shouldRetry {
-			if err != nil {
-				return err, value
-			}
-			return nil, value
-		}
-		shouldContinue, sleepMs := sleeper(numAttempts)
-		if !shouldContinue {
-			if err == nil {
-				err = NewRetryTimeoutError(description, numAttempts)
-			}
-			WarnfCtx(ctx, "RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
-			return err, value
-		}
-		DebugfCtx(ctx, KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
-
-		<-time.After(time.Millisecond * time.Duration(sleepMs))
-
-		numAttempts += 1
-
-	}
-}
-
 // SleeperFuncCtx wraps the given RetrySleeper with a context, so it can be cancelled, or have a deadline.
 func SleeperFuncCtx(sleeperFunc RetrySleeper, ctx context.Context) RetrySleeper {
 	return func(retryCount int) (bool, int) {
@@ -547,7 +514,7 @@ func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySl
 
 }
 
-// Create a RetrySleeper that will double the retry time on every iteration with
+// CreateDoublingSleeperDurationFunc creates a RetrySleeper that will double the retry time on every iteration with
 // initial sleep time and a total max wait no longer than maxWait
 func CreateDoublingSleeperDurationFunc(initialTimeToSleepMs int, maxWait time.Duration) RetrySleeper {
 
@@ -588,7 +555,7 @@ func CreateLinearSleeperFunc(totalTime, timeToSleep time.Duration) RetrySleeper 
 	return CreateSleeperFunc(int(totalTime.Seconds()/timeToSleep.Seconds()), int(timeToSleep.Milliseconds()))
 }
 
-// Create a RetrySleeper that will double the retry time on every iteration, with each sleep not exceeding maxSleepPerRetryMs.
+// CreateMaxDoublingSleeperFunc creates a RetrySleeper that will double the retry time on every iteration, with each sleep not exceeding maxSleepPerRetryMs.
 func CreateMaxDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int, maxSleepPerRetryMs int) RetrySleeper {
 
 	timeToSleepMs := initialTimeToSleepMs
