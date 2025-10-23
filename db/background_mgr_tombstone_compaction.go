@@ -36,7 +36,7 @@ func NewTombstoneCompactionManager() *BackgroundManager {
 
 func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	database := options["database"].(*Database)
-	database.DbStats.Database().CompactionTombstoneStartTime.Set(time.Now().UTC().Unix())
+	database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
 
 	return nil
 }

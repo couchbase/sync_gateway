@@ -101,10 +101,10 @@ func (c *changeCache) updateStats(ctx context.Context) {
 	// grab skipped sequence stats
 	skippedSequenceListStats := c.skippedSeqs.getStats()
 
-	c.db.DbStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
+	c.db.DbStats.Database().HighSeqFeed.SetIfMax(c.internalStats.highSeqFeed)
 	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
 	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
-	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached(ctx)))
+	c.db.DbStats.Cache().HighSeqStable.Set(c._getMaxStableCached(ctx))
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(skippedSequenceListStats.NumCurrentSkippedSequencesStat)
 	c.db.DbStats.Cache().NumSkippedSeqs.Set(skippedSequenceListStats.NumCumulativeSkippedSequencesStat)
 	c.db.DbStats.Cache().SkippedSequenceSkiplistNodes.Set(skippedSequenceListStats.ListLengthStat)

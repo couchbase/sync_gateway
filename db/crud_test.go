@@ -1592,7 +1592,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 
 	expectedReleasedSequenceCount := otherClusterSequenceOffset
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
-	assert.Equal(t, int64(expectedReleasedSequenceCount), releasedSequenceCount)
+	assert.Equal(t, uint64(expectedReleasedSequenceCount), releasedSequenceCount)
 }
 
 // TestReleaseSequenceOnDocWrite:
@@ -1639,7 +1639,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
 	_ = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
 
-	assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+	assert.Equal(t, uint64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
 	// write doc that will return timeout but will actually be persisted successfully on server
 	// this mimics what was seen before
@@ -1652,8 +1652,8 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	// assert that no sequences were released + a sequence was cached
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.UpdateCalculatedStats(ctx)
-		assert.Equal(t, int64(0), db.DbStats.Database().SequenceReleasedCount.Value())
-		assert.Equal(t, int64(1), db.DbStats.Cache().HighSeqCached.Value())
+		assert.Equal(t, uint64(0), db.DbStats.Database().SequenceReleasedCount.Value())
+		assert.Equal(t, uint64(1), db.DbStats.Cache().HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// get cached changes + assert the document is present
@@ -1672,7 +1672,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	// assert that a sequence was released after the above write error
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.UpdateCalculatedStats(ctx)
-		assert.Equal(t, int64(1), db.DbStats.Database().SequenceReleasedCount.Value())
+		assert.Equal(t, uint64(1), db.DbStats.Database().SequenceReleasedCount.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 

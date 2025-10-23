@@ -31,7 +31,7 @@ func (db *DatabaseContext) UpdateCalculatedStats(ctx context.Context) {
 	channelCache := db.changeCache.getChannelCache()
 	if channelCache != nil {
 		db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize(ctx)))
-		db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
+		db.DbStats.Cache().HighSeqCached.Set(channelCache.GetHighCacheSequence())
 	}
 
 }

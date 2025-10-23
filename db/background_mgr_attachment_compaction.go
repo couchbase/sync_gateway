@@ -50,7 +50,7 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 
 func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	database := options["database"].(*Database)
-	database.DbStats.Database().CompactionAttachmentStartTime.Set(time.Now().UTC().Unix())
+	database.DbStats.Database().CompactionAttachmentStartTime.Set(uint64(time.Now().UTC().Unix()))
 
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()

@@ -238,11 +238,11 @@ func TestReleaseSequenceWait(t *testing.T) {
 
 func assertNewAllocatorStats(t *testing.T, stats *base.DatabaseStats, incrCount, reservedCount, assignedCount, releasedCount int64, lastAssignedValue, lastReservedValue uint64) {
 	assert.Equal(t, incrCount, stats.SequenceIncrCount.Value())
-	assert.Equal(t, reservedCount, stats.SequenceReservedCount.Value())
-	assert.Equal(t, assignedCount, stats.SequenceAssignedCount.Value())
-	assert.Equal(t, releasedCount, stats.SequenceReleasedCount.Value())
-	assert.Equal(t, int64(lastAssignedValue), stats.LastSequenceAssignedValue.Value())
-	assert.Equal(t, int64(lastReservedValue), stats.LastSequenceReservedValue.Value())
+	assert.Equal(t, uint64(reservedCount), stats.SequenceReservedCount.Value())
+	assert.Equal(t, uint64(assignedCount), stats.SequenceAssignedCount.Value())
+	assert.Equal(t, uint64(releasedCount), stats.SequenceReleasedCount.Value())
+	assert.Equal(t, lastAssignedValue, stats.LastSequenceAssignedValue.Value())
+	assert.Equal(t, lastReservedValue, stats.LastSequenceReservedValue.Value())
 }
 
 func TestNextSequenceGreaterThanSingleNode(t *testing.T) {
