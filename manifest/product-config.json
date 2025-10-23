@@ -708,7 +708,7 @@
             "start_build": 7,
             "trigger_blackduck": true
         },
-        "manifest/3.3.0.xml": {
+        "manifest/3.3/3.3.0.xml": {
             "do-build": false,
             "go_version": "1.24.4",
             "interval": 1440,
@@ -727,7 +727,7 @@
             "start_build": 1,
             "trigger_blackduck": true
         },
-        "manifest/4.0.0.xml": {
+        "manifest/4.0/4.0.0.xml": {
             "do-build": false,
             "go_version": "1.24.4",
             "interval": 1440,
