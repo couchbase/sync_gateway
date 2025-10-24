@@ -61,7 +61,7 @@ func (c *Collection) WriteWithXattrs(ctx context.Context, k string, exp uint32, 
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoop(ctx, "WriteWithXattrs", worker, DefaultRetrySleeper())
+	err, cas = RetryLoopCas(ctx, "WriteWithXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "WriteWithXattrs with key %v", UD(k).Redact())
 	}
@@ -111,7 +111,7 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoop(ctx, "WriteTombstoneWithXattrs", worker, DefaultRetrySleeper())
+	err, cas = RetryLoopCas(ctx, "WriteTombstoneWithXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during WriteTombstoneXattrs with key %v", UD(k).Redact())
 		return cas, err
@@ -138,7 +138,7 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 			return false, nil, casOut
 		}
 
-		err, cas = RetryLoop(ctx, "UpdateXattrDeleteBodySecondOp", worker, DefaultRetrySleeper())
+		err, cas = RetryLoopCas(ctx, "UpdateXattrDeleteBodySecondOp", worker, DefaultRetrySleeper())
 		if err != nil {
 			err = pkgerrors.Wrapf(err, "Error during UpdateTombstoneXattr delete op with key %v", UD(k).Redact())
 			return cas, err
@@ -165,7 +165,7 @@ func (c *Collection) WriteResurrectionWithXattrs(ctx context.Context, k string, 
 	}
 
 	// Kick off retry loop
-	err, cas := RetryLoop(ctx, "WriteResurrectionWithXattrs", worker, DefaultRetrySleeper())
+	err, cas := RetryLoopCas(ctx, "WriteResurrectionWithXattrs", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "WriteResurrectionWithXattrs with key %v", UD(k).Redact())
 	}
@@ -297,7 +297,7 @@ func SetXattrs(ctx context.Context, store *Collection, k string, xvs map[string]
 		return false, writeErr, 0
 	}
 
-	err, casOut = RetryLoop(ctx, "SetXattr", worker, DefaultRetrySleeper())
+	err, casOut = RetryLoopCas(ctx, "SetXattr", worker, DefaultRetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "SetXattr with key %v", UD(k).Redact())
 	}
