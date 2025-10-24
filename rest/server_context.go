@@ -600,25 +600,28 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 	} else {
 		server = serverConfig.Bootstrap.Server
 	}
-	var params *base.GoCBConnStringParams
-	if serverConfig.IsServerless() {
-		params = base.DefaultServerlessGoCBConnStringParams()
-	} else {
-		params = base.DefaultGoCBConnStringParams()
-	}
-	if config.Unsupported != nil {
-		if config.Unsupported.DCPReadBuffer != 0 {
-			params.DcpBufferSize = config.Unsupported.DCPReadBuffer
+
+	if strings.HasPrefix(server, "couchbase") || strings.HasPrefix(server, "http") {
+		var params *base.GoCBConnStringParams
+		if serverConfig.IsServerless() {
+			params = base.DefaultServerlessGoCBConnStringParams()
+		} else {
+			params = base.DefaultGoCBConnStringParams()
 		}
-		if config.Unsupported.KVBufferSize != 0 {
-			params.KvBufferSize = config.Unsupported.KVBufferSize
+		if config.Unsupported != nil {
+			if config.Unsupported.DCPReadBuffer != 0 {
+				params.DcpBufferSize = config.Unsupported.DCPReadBuffer
+			}
+			if config.Unsupported.KVBufferSize != 0 {
+				params.KvBufferSize = config.Unsupported.KVBufferSize
+			}
 		}
+		connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
+		if err != nil {
+			return base.BucketSpec{}, err
+		}
+		server = connStr
 	}
-	connStr, err := base.GetGoCBConnStringWithDefaults(server, params)
-	if err != nil {
-		return base.BucketSpec{}, err
-	}
-	server = connStr
 
 	spec := config.MakeBucketSpec(server)
 
