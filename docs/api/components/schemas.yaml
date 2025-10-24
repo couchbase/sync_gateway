@@ -384,31 +384,47 @@ Role:
       items:
         type: string
       readOnly: true
-    $ref: '#/CollectionAccessConfig'
+    $ref: "#/CollectionAccessConfig"
   title: Role
 User-session-information:
   type: object
   properties:
     authentication_handlers:
-      description: The ways authentication can be established to authenticate as the user.
+      description: The ways authentication can be established to authenticate as a user. Used for CouchDB compatability. Always contains "default" and "cookie".
       type: array
-      items:
-        type: string
+      enum:
+        - ["default", "string"]
+      default: ["default", "string"]
     ok:
+      description: Used for CouchDB compatability. Always true.
       type: boolean
+      enum:
+        - true
     userCtx:
       type: object
       properties:
         channels:
-          description: |
-            A map of the channels the user has access to and the sequence number each channel was created at.
-
-            The key is the channel name and the value is the sequence number.
+          description: A map of the channels in the default collection that the user is in along with the sequence number the user was granted access. This does not include inherited channels through roles.
           type: object
+          additionalProperties:
+            type: number
+            minimum: 1
+            description: The sequence number the user was granted access.
+            title: sequence number
+          example:
+            "!": 1
+            "channelA": 2
         name:
           description: The name of the user.
           type: string
-          nullable: true
+          minLength: 1
+      required:
+        - channels
+        - name
+  required:
+    - authentication_handlers
+    - ok
+    - userCtx
   title: User Session Information
 OIDC-callback:
   type: object
@@ -1162,24 +1178,10 @@ Database:
       type: number
       default: 1
     cors:
-      description: CORS configuration for this database; if present, overrides server's config.
-      type: object
-      properties:
-        headers:
-          description: List of allowed headers
-          type: array
-          items:
-            type: string
-        login_origin:
-          description: List of allowed login origins
-          type: array
-          items:
-            type: string
-        origin:
-          description: 'List of allowed origins, use [''*''] to allow access from everywhere'
-          type: array
-          items:
-            type: string
+      allOf:
+        - $ref: "#/CORS"
+        - type: object
+          description: CORS configuration for this database; if present, overrides server's config.
     delta_sync:
       description: |-
         Delta sync configuration settings.
@@ -2105,36 +2107,20 @@ Startup-config:
 
             By default, this will only be accessible to the localhost.
           type: string
-          default: '127.0.0.1:4985'
+          default: "127.0.0.1:4985"
         admin_interface_authentication:
           description: Whether the admin API requires authentication
           type: boolean
           default: true
         compress_responses:
-          description: 'If false, disables compression of HTTP responses'
+          description: "If false, disables compression of HTTP responses"
           type: boolean
           default: true
         cors:
-          type: object
-          properties:
-            headers:
-              description: List of allowed headers
-              type: array
-              items:
-                type: string
-            login_origin:
-              description: List of allowed login origins
-              type: array
-              items:
-                type: string
-            max_age:
-              description: Maximum age of the CORS Options request
-              type: integer
-            origin:
-              description: 'List of allowed origins, use [''*''] to allow access from everywhere'
-              type: array
-              items:
-                type: string
+          allOf:
+            - type: object
+              description: CORS configuration for all databases
+            - $ref: "#/CORS"
         enable_advanced_auth_dp:
           description: |-
             Whether to enable the DP permissions check feature of admin auth.
@@ -3167,10 +3153,42 @@ IndexInitStatus:
             "error": The index creation operation has failed.
     settings:
       allOf:
-        - $ref: '#/IndexSettings'
+        - $ref: "#/IndexSettings"
   required:
     - status
     - start_time
     - last_error
     - index_status
   title: IndexInitStatus
+CORS:
+  type: object
+  properties:
+    headers:
+      description: |-
+        List of allowed headers. These headers will be added the `Access-Control-Allow-Headers` response to a valid CORS request.
+
+        A recommended minimum set of values should be `["Accept-Encoding", "Authorization", "Content-Type", "If-Match"]`.
+      type: array
+      items:
+        type: string
+    login_origin:
+      description: |-
+        List of allowed origins to apply to public /{db}/_session API.
+
+        To use cors on `/{db}/_sesssion`, the domain must be present in both `login_origin` and `origin`.
+      type: array
+      items:
+        type: string
+      example: ["https://example.com"]
+    max_age:
+      description: Value for `Access-Control-Maximum-Age`. Uses 0 by default.
+      type: integer
+      default: 0
+    origin:
+      description: |-
+        List of allowed origins, use `['*']` to allow access from everywhere.
+      type: array
+      items:
+        type: string
+      example: ["https://example.com"]
+  title: Cors Configuration
