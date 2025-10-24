@@ -14,6 +14,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +22,11 @@ import (
 
 func TestUserXattrRevCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	// need to disable sequence batching given two rest testers allocating sequence batches
+	// can mean that the changes feed has to wait for sequences from another to be released to
+	// maintain ordering
+	defer db.SuspendSequenceBatching()()
 
 	ctx := base.TestCtx(t)
 	docKey := t.Name()
@@ -49,7 +55,6 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
-
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
