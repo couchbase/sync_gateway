@@ -601,7 +601,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		server = serverConfig.Bootstrap.Server
 	}
 
-	if strings.HasPrefix(server, "couchbase") {
+	if !base.ServerIsWalrus(server) {
 		var params *base.GoCBConnStringParams
 		if serverConfig.IsServerless() {
 			params = base.DefaultServerlessGoCBConnStringParams()
