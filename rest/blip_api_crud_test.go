@@ -384,7 +384,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	assert.True(t, receivedCaughtUpChange)
 
 	require.Equal(t, int64(1), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplTotalOneShot.Value())
-	require.Equal(t, int64(0), bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value())
+	base.RequireWaitForStat(t, bt.restTester.GetDatabase().DbStats.CBLReplicationPullStats.NumPullReplActiveOneShot.Value, 0)
 }
 
 // Test subChanges w/ docID filter
@@ -3363,6 +3363,11 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		defer rt.Close()
 		const alice = "alice"
 		rt.CreateUser(alice, []string{"*"})
+		rt.CreateTestDoc("doc1")
+		rt.WaitForPendingChanges()
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		err := collection.FlushChannelCache(ctx)
+		require.NoError(t, err)
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
 			&BlipTesterClientOpts{Username: alice},
 		)
@@ -3462,6 +3467,52 @@ func TestBlipPullConflict(t *testing.T) {
 			}, *postConflictHLV)
 			assert.Equal(c, string(body), cblBody)
 		}, time.Second*10, time.Millisecond*10)
+	})
+}
+
+func TestPushHLVOntoLegacyRev(t *testing.T) {
+	t.Skip("CBG-4909 skipping due to conflict resolution not yet implemented for CBL rev tree")
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // revtree subtest not relevant to this test
+	btcRunner.Run(func(t *testing.T) {
+		// Steps:
+		// 1. Rev 1-abc is created on SGW
+		// 2. Client pulls this revision (one shot)
+		// 3. Doc is mutated on SGW to get 2-abc (legacy rev only)
+		// 4. Doc is updated on CBL to get 100@CBL1 (HLV)
+		// 5. Client attempts to push this doc update
+		rt := NewRestTester(t,
+			&RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+			})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"ABC"})
+
+		opts := &BlipTesterClientOpts{Username: alice}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+
+		// create legacy doc on rt and have CBL pull it
+		doc := rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"ABC"}})
+		btcRunner.StartOneshotPull(client.id)
+
+		docInitVersion := doc.ExtractDocVersion()
+		btcRunner.WaitForVersion(client.id, docID, docInitVersion)
+
+		// update doc again in legacy mode on rt
+		_ = rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"ABC"}, "_rev": docInitVersion.RevTreeID})
+
+		// update doc on client to have vv given to it and attempt to push it
+		newVersion := btcRunner.AddRev(client.id, docID, &docInitVersion, []byte(`{"channels": ["ABC"]}`))
+
+		btcRunner.StartPush(client.id)
+		btcRunner.StartPull(client.id)
+
+		rt.WaitForVersion(docID, newVersion)
 	})
 }
 

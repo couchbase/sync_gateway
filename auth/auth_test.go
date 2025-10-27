@@ -493,7 +493,6 @@ func TestRebuildChannelsError(t *testing.T) {
 	auth := NewTestAuthenticator(t, dataStore, &computer, DefaultAuthenticatorOptions(base.TestCtx(t)))
 	role, err := auth.NewRole("testRole2", ch.BaseSetOf(t, "explicit1"))
 	require.NoError(t, err)
-	assert.NoError(t, err)
 	err = auth.Save(role)
 	require.NoError(t, err)
 

@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"iter"
 	"maps"
-	"math/bits"
 	"slices"
 	"sort"
 	"strconv"
@@ -952,6 +951,15 @@ func DefaultLWWConflictResolutionType(ctx context.Context, conflict Conflict) (B
 	if conflict.LocalHLV == nil || conflict.RemoteHLV == nil {
 		return nil, errors.New("local or incoming document is nil for resolveConflict")
 	}
+	localDeleted := conflict.LocalDocument.IsDeleted()
+	remoteDeleted := conflict.RemoteDocument.IsDeleted()
+	if localDeleted && !remoteDeleted {
+		return conflict.LocalDocument, nil
+	}
+	if remoteDeleted && !localDeleted {
+		return conflict.RemoteDocument, nil
+	}
+
 	// resolve conflict in favor of remote document, remote wins case
 	if conflict.RemoteHLV.Version > conflict.LocalHLV.Version {
 		// remote document wins
@@ -972,12 +980,13 @@ func LegacyRevToRevTreeEncodedVersion(legacyRev string) (Version, error) {
 	// trim to 40 bits (10 hex characters)
 	if len(digest) > 10 {
 		digest = digest[:10]
+	} else if len(digest) < 10 {
+		digest += strings.Repeat("0", 10-len(digest))
 	}
 	value, err := strconv.ParseUint(digest, 16, 64)
 	if err != nil {
 		return Version{}, err
 	}
-	value = value << (40 - bits.Len64(value)) // right pad zeros
 	return Version{
 		SourceID: encodedRevTreeSourceID,
 		Value:    (uint64(generation) << 40) | value,

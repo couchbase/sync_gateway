@@ -1600,7 +1600,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 			// Ensure we released the sequences for all the CAS retries we expected to make
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				sequenceReleasedCountAfter := db.sequences.dbStats.SequenceReleasedCount.Value()
-				assert.Equal(c, int64(expectedReleasedSequences), sequenceReleasedCountAfter-sequenceReleasedCountBefore)
+				assert.Equal(c, uint64(expectedReleasedSequences), sequenceReleasedCountAfter-sequenceReleasedCountBefore)
 			}, 5*time.Second, 100*time.Millisecond)
 		})
 	}
@@ -2351,8 +2351,8 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	db.UpdateCalculatedStats(ctx)
 	assert.Equal(t, int64(3), db.DbStats.Cache().NumCurrentSeqsSkipped.Value())
 	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
-	assert.Equal(t, int64(6), db.DbStats.Cache().HighSeqCached.Value())
-	assert.Equal(t, int64(2), db.DbStats.Cache().HighSeqStable.Value())
+	assert.Equal(t, uint64(6), db.DbStats.Cache().HighSeqCached.Value())
+	assert.Equal(t, uint64(2), db.DbStats.Cache().HighSeqStable.Value())
 	assert.Equal(t, uint64(7), db.changeCache.getNextSequence())
 
 	// alter sync data on doc2 to create recent sequence history to plug gap in sequences that have been pushed to skipped

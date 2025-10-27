@@ -139,7 +139,8 @@ func TestUserCollectionAccess(t *testing.T) {
 	require.ErrorIs(t, user.authorizeAllChannels(ch.BaseSetOf(t, "*")), errNotAllowedChannels)
 	require.ErrorIs(t, user.authorizeAnyChannel(ch.BaseSetOf(t, "x")), errUnauthorized)
 	require.ErrorIs(t, user.authorizeAnyChannel(ch.BaseSetOf(t, "*")), errUnauthorized)
-	require.ErrorIs(t, user.authorizeAnyChannel(ch.BaseSetOf(t)), errUnauthorized) // Matching named collection checks
+	require.ErrorIs(t, user.authorizeAnyChannel(ch.BaseSetOf(t)), errUnauthorized)
+	// Matching named collection checks
 	requireExpandCollectionWildCardChannels(t, user, scope, collection, []string{"*", "q"}, []string{"*"})
 	requireCanSeeCollectionChannels(t, scope, collection, user, "x", "y", "z", "q", "*")
 	require.NoError(t, user.authorizeAllCollectionChannels(scope, collection, ch.BaseSetOf(t, "x", "y")))

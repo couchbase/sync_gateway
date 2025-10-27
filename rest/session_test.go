@@ -41,16 +41,15 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 // #issue 991
 func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
+	// Set CORS to nil, RestTester initializes CORS by default and it is inherited when creating a DatabaseContext
+	rt.ServerContext().Config.API.CORS = nil
 
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
-
-	// Set CORS to nil
-	sc := rt.ServerContext()
-	sc.Config.API.CORS = nil
 
 	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
 	RequireStatus(t, response, 400)
@@ -88,16 +87,20 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 }
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
-	}
+	// Set CORS to nil, RestTester initializes CORS by default and it is inherited when creating a DatabaseContext
+	rt.ServerContext().Config.API.CORS = nil
 
-	// Set CORS to nil
-	sc := rt.ServerContext()
-	sc.Config.API.CORS = nil
+	const username = "alice"
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	rt.CreateUser(username, nil)
+
+	reqHeaders := map[string]string{
+		"Origin":        "http://example.com",
+		"Authorization": GetBasicAuthHeader(t, username, RestTesterDefaultUserPassword),
+	}
 
 	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
 	RequireStatus(t, response, 400)

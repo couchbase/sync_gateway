@@ -11,6 +11,7 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	httpprof "net/http/pprof"
 	"os"
@@ -290,7 +291,7 @@ func (h *handler) handleFlush() error {
 		config := h.server.GetDatabaseConfig(name)
 
 		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
-		h.server.RemoveDatabase(h.ctx(), name)
+		h.server.RemoveDatabase(h.ctx(), name, fmt.Sprintf("called from %s", h.rq.URL))
 
 		// Create a bucket connection spec from the database config
 		spec, err := GetBucketSpec(h.ctx(), &config.DatabaseConfig, h.server.Config)
@@ -329,7 +330,7 @@ func (h *handler) handleFlush() error {
 
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
-		h.server.RemoveDatabase(h.ctx(), name)
+		h.server.RemoveDatabase(h.ctx(), name, fmt.Sprintf("called from %s", h.rq.URL))
 		err := bucket.CloseAndDelete(h.ctx())
 		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
 		if err != nil {

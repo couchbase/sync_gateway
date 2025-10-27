@@ -1511,7 +1511,7 @@ func TestUnusedSequencesInSyncData(t *testing.T) {
 
 	// assert that only 2 sequences have been cached (unused sequences are not cached)
 	db.UpdateCalculatedStats(ctx)
-	assert.Equal(t, int64(6), db.DbStats.Cache().HighSeqCached.Value())
+	assert.Equal(t, uint64(6), db.DbStats.Cache().HighSeqCached.Value())
 	assert.Equal(t, int64(2), db.DbStats.Database().DCPCachingCount.Value())
 }
 
@@ -2292,7 +2292,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 		testChangeCache.updateStats(ctx)
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.SkippedSequenceSkiplistNodes.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, uint64(20), testChangeCache._getMaxStableCached(ctx))
@@ -2353,7 +2353,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(2), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(1), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2417,7 +2417,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 		assert.Equal(c, uint64(26), testChangeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
 }
@@ -2488,7 +2488,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(26), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(25), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// add a new contiguous sequence
@@ -2503,7 +2503,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	// assert we update cache as expected
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(26), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(26), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 		assert.Equal(c, uint64(27), testChangeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
 
@@ -2518,7 +2518,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(31), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(30), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(30), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2571,7 +2571,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(1), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(0), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// process change that should overload pending and push sequence 1 to skipped
@@ -2590,7 +2590,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// process single unused sequence range that should empty skipped list
@@ -2603,7 +2603,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		assert.Equal(c, int64(1), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		assert.Equal(c, uint64(3), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(2), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2672,7 +2672,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2728,7 +2728,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.PendingSeqLen.Value())
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unusedSeq range with pending seq equal to end
@@ -2742,7 +2742,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(21), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(20), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 
@@ -2810,7 +2810,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		assert.Equal(c, int64(16), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// process unusedSeq range with range containing duplicate sipped sequences
@@ -2825,7 +2825,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		assert.Equal(c, int64(9), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// Skipped should contain: (1-9) before processing this range
@@ -2839,7 +2839,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(19), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(18), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 
 	// assert a new contiguous sequence is processed correctly
@@ -2859,7 +2859,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		assert.Equal(c, int64(0), dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		assert.Equal(c, uint64(20), testChangeCache.nextSequence)
 		dbContext.UpdateCalculatedStats(ctx)
-		assert.Equal(c, int64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
 }
 

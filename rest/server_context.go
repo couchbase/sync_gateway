@@ -32,7 +32,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
-	"github.com/shirou/gopsutil/mem"
+	"github.com/shirou/gopsutil/v4/mem"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1631,14 +1631,14 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 }
 
 // RemoveDatabase is called when an external request is made to delete the database
-func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string) bool {
+func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string, reason string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
 	// If async init is running for the database, cancel it for an external remove.  (cannot be
 	// done in _removeDatabase, as this is called during reload)
 	if sc.DatabaseInitManager != nil && sc.DatabaseInitManager.HasActiveInitialization(dbName) {
-		sc.DatabaseInitManager.Cancel(dbName)
+		sc.DatabaseInitManager.Cancel(dbName, reason)
 	}
 
 	return sc._removeDatabase(ctx, dbName)
@@ -2226,7 +2226,9 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		return fmt.Errorf("failed to create cluster: %v", err)
 	}
 
-	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{})
+	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{
+		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to wait for cluster to become ready: %v", err)
 	}

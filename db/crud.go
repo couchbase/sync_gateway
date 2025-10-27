@@ -3707,6 +3707,9 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	} else if previousRevFormat == "revTreeID" && syncData.GetRevTreeID() == previousRev {
 		// Non-conflicting update, client's previous legacy revTreeID is server's currentRev
 		return ProposedRev_OK, ""
+	} else if hlv == nil {
+		// no HLV on this doc in SGW so if previousRev didn't match current rev then it is a conflict
+		return ProposedRev_Conflict, syncData.GetRevTreeID()
 	} else if previousRevFormat == "version" && localDocCV == previousVersion {
 		// Non-conflicting update, client's previous version is server's CV
 		return ProposedRev_OK, ""
