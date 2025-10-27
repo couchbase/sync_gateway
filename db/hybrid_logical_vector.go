@@ -581,12 +581,12 @@ func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, 
 //  4. cv, mv only:
 //     a. cv,mv,mv;
 //     b. cv,mv,mv
-//  4. cv,1-abc
-//  5. cv,1-def,1-abc
-//  6. cv,mv,mv;1-abc
-//  7. cv,mv,mv;1-def,1-abc
-//  8. cv,mv,mv;pv,1-abc
-//  9. cv;pv,1-abc
+//  5. cv,1-abc
+//  6. cv,1-def,1-abc
+//  7. cv,mv,mv;1-abc
+//  8. cv,mv,mv;1-def,1-abc
+//  9. cv,mv,mv;pv,1-abc
+//  10. cv;pv,1-abc
 //
 // Function will return list of revIDs if legacy rev ID was found in the HLV history section (PV)
 // TODO: CBG-3662 - Optimise once we've settled on and tested the format with CBL
