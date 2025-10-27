@@ -252,7 +252,7 @@ func ServerIsTLS(server string) bool {
 // Equivalent to the old regexp: `^(walrus:|file:|/|\.)`
 func ServerIsWalrus(server string) bool {
 	return strings.HasPrefix(server, "walrus:") ||
-		strings.HasPrefix(server, "rosmar:") ||
+		strings.HasPrefix(server, "rosmar") ||
 		strings.HasPrefix(server, "file:") ||
 		strings.HasPrefix(server, "/") ||
 		strings.HasPrefix(server, ".")
