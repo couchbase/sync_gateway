@@ -457,6 +457,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 				cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
 				require.NoError(t, err)
 				require.NotEmpty(t, cookie.Path)
+				require.Equal(t, http.SameSiteNoneMode, cookie.SameSite)
 				reqHeaders["Cookie"] = fmt.Sprintf("%s=%s", cookie.Name, cookie.Value)
 			}
 			resp = rt.SendRequestWithHeaders(http.MethodDelete, "/{{.db}}/_session", "", reqHeaders)
