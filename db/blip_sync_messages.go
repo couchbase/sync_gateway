@@ -393,6 +393,11 @@ func (rm *RevMessage) Rev() (rev string, found bool) {
 	return rev, found
 }
 
+func (rm *RevMessage) RevTree() (revTree string, found bool) {
+	revTree, found = rm.Properties[RevMessageTreeHistory]
+	return revTree, found
+}
+
 func (rm *RevMessage) Deleted() bool {
 	deleted, found := rm.Properties[RevMessageDeleted]
 	if !found {
@@ -463,6 +468,10 @@ func (rm *RevMessage) String() string {
 
 	if rev, foundRev := rm.Rev(); foundRev {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
+	}
+
+	if revTree, foundRevTree := rm.RevTree(); foundRevTree {
+		buffer.WriteString(fmt.Sprintf("RevTree:%v ", revTree))
 	}
 
 	if rm.HasDeletedProperty() {
