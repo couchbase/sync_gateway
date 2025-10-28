@@ -145,6 +145,7 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie
 		Expires:  session.Expiration,
 		Secure:   secureCookie,
 		HttpOnly: httpOnly,
+		SameSite: http.SameSiteNoneMode, // allow cross-site cookies for compatibility with cbl-js
 	}
 }
 
