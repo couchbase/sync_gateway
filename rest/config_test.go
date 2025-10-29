@@ -3355,3 +3355,62 @@ func TestConfigUserXattrKeyValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
+	tests := []struct {
+		name                string
+		unsupportedSettings *db.UnsupportedOptions
+		error               string
+	}{
+		{
+			name:                "no unsupportedSettings present",
+			unsupportedSettings: &db.UnsupportedOptions{},
+			error:               "",
+		},
+		{
+			name:                "no samesite, unsupportedSettings present",
+			unsupportedSettings: &db.UnsupportedOptions{},
+			error:               "",
+		},
+		{
+			name:                "valid value Lax",
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("Lax")},
+			error:               "",
+		},
+		{
+			name:                "valid value Strict",
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("Strict")},
+			error:               "",
+		},
+		{
+			name:                "valid value None",
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("None")},
+			error:               "",
+		},
+		{
+			name:                "invalid value",
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("invalid value")},
+			error:               "unsupported_options.same_site_cookie option",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dbConfig := DbConfig{
+				Name:        "db",
+				Unsupported: test.unsupportedSettings,
+			}
+
+			validateReplications := false
+			validateOIDC := false
+			ctx := base.TestCtx(t)
+			err := dbConfig.validate(ctx, validateOIDC, validateReplications)
+			if test.error != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.error)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

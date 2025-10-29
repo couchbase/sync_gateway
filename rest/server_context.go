@@ -922,6 +922,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		dbcontext.CORS = sc.Config.API.CORS
 	}
+	if !dbcontext.CORS.IsEmpty() {
+		dbcontext.SameSiteCookieMode = http.SameSiteNoneMode
+	}
+	if config.Unsupported != nil && config.Unsupported.SameSiteCookie != nil {
+		var err error
+		dbcontext.SameSiteCookieMode, err = config.Unsupported.GetSameSiteCookieMode()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
