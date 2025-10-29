@@ -17,6 +17,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -407,66 +408,93 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 	// Override the default (example.com) CORS configuration in the DbConfig for /db:
 	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
-	dbConfig := rt.NewDbConfig()
-	dbConfig.CORS = &auth.CORSConfig{
-		Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
-		LoginOrigin: []string{"http://couchbase.com"},
-		Headers:     []string{},
-	}
-	RequireStatus(t, rt.CreateDatabase("dbloginorigin", dbConfig), http.StatusCreated)
-
-	const username = "alice"
-	rt.CreateUser(username, nil)
-
 	testCases := []struct {
-		name              string
-		origin            string
-		responseCode      int
-		responseErrorBody string
+		name               string
+		unsupportedOptions *db.UnsupportedOptions
+		sameSite           http.SameSite
 	}{
 		{
-			name:         "CORS login origin allowed couchbase",
-			origin:       "http://couchbase.com",
-			responseCode: http.StatusOK,
+			name:               "No unsupported options",
+			unsupportedOptions: nil,
+			sameSite:           http.SameSiteNoneMode,
 		},
 		{
-			name:              "CORS login origin not allowed staging",
-			origin:            "http://staging.couchbase.com",
-			responseCode:      http.StatusBadRequest,
-			responseErrorBody: "No CORS",
+			name: "With unsupported options",
+			unsupportedOptions: &db.UnsupportedOptions{
+				SameSiteCookie: base.Ptr("Strict"),
+			},
+			sameSite: http.SameSiteStrictMode,
 		},
 	}
-	for _, test := range testCases {
-		rt.Run(test.name, func(t *testing.T) {
-			reqHeaders := map[string]string{
-				"Origin":        test.origin,
-				"Authorization": GetBasicAuthHeader(t, username, RestTesterDefaultUserPassword),
-			}
-			resp := rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "", reqHeaders)
-			RequireStatus(t, resp, test.responseCode)
-			if test.responseErrorBody != "" {
-				require.Contains(t, resp.Body.String(), test.responseErrorBody)
-				// the access control headers are returned based on Origin and not LoginOrigin which could be considered a bug
-				require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
-			} else {
-				require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
-			}
-			if test.responseCode == http.StatusOK {
-				cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
-				require.NoError(t, err)
-				require.NotEmpty(t, cookie.Path)
-				reqHeaders["Cookie"] = fmt.Sprintf("%s=%s", cookie.Name, cookie.Value)
-			}
-			resp = rt.SendRequestWithHeaders(http.MethodDelete, "/{{.db}}/_session", "", reqHeaders)
-			RequireStatus(t, resp, test.responseCode)
-			if test.responseErrorBody != "" {
-				require.Contains(t, resp.Body.String(), test.responseErrorBody)
-				// the access control headers are returned based on Origin and not LoginOrigin which could be considered a bug
-				require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
-			} else {
-				require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
-			}
+	for _, dbTestCases := range testCases {
+		rt.Run(dbTestCases.name, func(t *testing.T) {
+			// Override the default (example.com) CORS configuration in the DbConfig for /db:
+			rt := NewRestTesterPersistentConfigNoDB(t)
+			defer rt.Close()
 
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Unsupported = dbTestCases.unsupportedOptions
+			dbConfig.CORS = &auth.CORSConfig{
+				Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
+				LoginOrigin: []string{"http://couchbase.com"},
+				Headers:     []string{},
+			}
+			RequireStatus(t, rt.CreateDatabase(SafeDatabaseName(t, dbTestCases.name), dbConfig), http.StatusCreated)
+			const username = "alice"
+			rt.CreateUser(username, nil)
+
+			testCases := []struct {
+				name              string
+				origin            string
+				responseCode      int
+				responseErrorBody string
+			}{
+				{
+					name:         "CORS login origin allowed couchbase",
+					origin:       "http://couchbase.com",
+					responseCode: http.StatusOK,
+				},
+				{
+					name:              "CORS login origin not allowed staging",
+					origin:            "http://staging.couchbase.com",
+					responseCode:      http.StatusBadRequest,
+					responseErrorBody: "No CORS",
+				},
+			}
+			for _, test := range testCases {
+				rt.Run(test.name, func(t *testing.T) {
+					reqHeaders := map[string]string{
+						"Origin":        test.origin,
+						"Authorization": GetBasicAuthHeader(t, username, RestTesterDefaultUserPassword),
+					}
+					resp := rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "", reqHeaders)
+					RequireStatus(t, resp, test.responseCode)
+					if test.responseErrorBody != "" {
+						require.Contains(t, resp.Body.String(), test.responseErrorBody)
+						// the access control headers are returned based on Origin and not LoginOrigin which could be considered a bug
+						require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
+					} else {
+						require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
+					}
+					if test.responseCode == http.StatusOK {
+						cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
+						require.NoError(t, err)
+						require.NotEmpty(t, cookie.Path)
+						require.Equal(t, dbTestCases.sameSite, cookie.SameSite)
+						reqHeaders["Cookie"] = fmt.Sprintf("%s=%s", cookie.Name, cookie.Value)
+					}
+					resp = rt.SendRequestWithHeaders(http.MethodDelete, "/{{.db}}/_session", "", reqHeaders)
+					RequireStatus(t, resp, test.responseCode)
+					if test.responseErrorBody != "" {
+						require.Contains(t, resp.Body.String(), test.responseErrorBody)
+						// the access control headers are returned based on Origin and not LoginOrigin which could be considered a bug
+						require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
+					} else {
+						require.Equal(t, test.origin, resp.Header().Get(accessControlAllowOrigin))
+					}
+
+				})
+			}
 		})
 	}
 }

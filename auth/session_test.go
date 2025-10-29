@@ -116,14 +116,14 @@ func TestMakeSessionCookie(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	cookie := auth.MakeSessionCookie(mockSession, false, false)
+	cookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.Equal(t, DefaultCookieName, cookie.Name)
 	assert.Equal(t, sessionID, cookie.Value)
 	assert.NotEmpty(t, cookie.Expires)
 
 	// Cookies should not be created with uninitialized session
 	mockSession = nil
-	cookie = auth.MakeSessionCookie(mockSession, false, false)
+	cookie = auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.Empty(t, cookie)
 }
 
@@ -143,16 +143,16 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	unsecuredCookie := auth.MakeSessionCookie(mockSession, false, false)
+	unsecuredCookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.False(t, unsecuredCookie.Secure)
 
-	securedCookie := auth.MakeSessionCookie(mockSession, true, false)
+	securedCookie := auth.MakeSessionCookie(mockSession, true, false, http.SameSiteDefaultMode)
 	assert.True(t, securedCookie.Secure)
 
-	httpOnlyFalseCookie := auth.MakeSessionCookie(mockSession, false, false)
+	httpOnlyFalseCookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.False(t, httpOnlyFalseCookie.HttpOnly)
 
-	httpOnlyCookie := auth.MakeSessionCookie(mockSession, false, true)
+	httpOnlyCookie := auth.MakeSessionCookie(mockSession, false, true, http.SameSiteDefaultMode)
 	assert.True(t, httpOnlyCookie.HttpOnly)
 }
 
@@ -248,7 +248,7 @@ func TestCreateSessionChangePassword(t *testing.T) {
 
 			request, err := http.NewRequest(http.MethodGet, "", nil)
 			require.NoError(t, err)
-			request.AddCookie(auth.MakeSessionCookie(session, true, true))
+			request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 			recorder := httptest.NewRecorder()
 			_, err = auth.AuthenticateCookie(request, recorder)
@@ -304,7 +304,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 
 	request, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
-	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 	recorder := httptest.NewRecorder()
 	_, err = auth.AuthenticateCookie(request, recorder)
@@ -334,7 +334,7 @@ func TestUserDeleteAllSessions(t *testing.T) {
 
 	request, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
-	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 	recorder := httptest.NewRecorder()
 
 	_, err = auth.AuthenticateCookie(request, recorder)
