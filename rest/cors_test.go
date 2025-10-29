@@ -413,19 +413,19 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 	testCases := []struct {
 		name               string
 		unsupportedOptions *db.UnsupportedOptions
-		sameSite	http.SameSite
+		sameSite           http.SameSite
 	}{
 		{
 			name:               "No unsupported options",
 			unsupportedOptions: nil,
-			sameSite:    http.SameSiteNoneMode,
+			sameSite:           http.SameSiteNoneMode,
 		},
 		{
 			name: "With unsupported options",
 			unsupportedOptions: &db.UnsupportedOptions{
 				SameSiteCookie: base.Ptr("Strict"),
 			},
-				sameSite:    http.SameSiteStrictMode,
+			sameSite: http.SameSiteStrictMode,
 		},
 	}
 	for _, dbTestCases := range testCases {
