@@ -1785,7 +1785,7 @@ func (h *handler) pathTemplateContains(pattern string) bool {
 // getCORSConfig will return the CORS config for the handler's database if set, otherwise it will return the server CORS config
 func (h *handler) getCORSConfig() *auth.CORSConfig {
 	if h.db != nil {
-		return h.db.CORS()
+		return h.db.CORS
 	}
 	return h.server.Config.API.CORS
 }

@@ -413,32 +413,35 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 	testCases := []struct {
 		name               string
 		unsupportedOptions *db.UnsupportedOptions
+		sameSite	http.SameSite
 	}{
 		{
 			name:               "No unsupported options",
 			unsupportedOptions: nil,
+			sameSite:    http.SameSiteNoneMode,
 		},
 		{
 			name: "With unsupported options",
 			unsupportedOptions: &db.UnsupportedOptions{
 				SameSiteCookie: base.Ptr("Strict"),
 			},
+				sameSite:    http.SameSiteStrictMode,
 		},
 	}
-	for _, test := range testCases {
-		rt.Run(test.name, func(t *testing.T) {
+	for _, dbTestCases := range testCases {
+		rt.Run(dbTestCases.name, func(t *testing.T) {
 			// Override the default (example.com) CORS configuration in the DbConfig for /db:
 			rt := NewRestTesterPersistentConfigNoDB(t)
 			defer rt.Close()
 
 			dbConfig := rt.NewDbConfig()
-			dbConfig.Unsupported = test.unsupportedOptions
+			dbConfig.Unsupported = dbTestCases.unsupportedOptions
 			dbConfig.CORS = &auth.CORSConfig{
 				Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
 				LoginOrigin: []string{"http://couchbase.com"},
 				Headers:     []string{},
 			}
-			RequireStatus(t, rt.CreateDatabase(SafeDatabaseName(t, test.name), dbConfig), http.StatusCreated)
+			RequireStatus(t, rt.CreateDatabase(SafeDatabaseName(t, dbTestCases.name), dbConfig), http.StatusCreated)
 			const username = "alice"
 			rt.CreateUser(username, nil)
 
@@ -479,7 +482,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 						cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
 						require.NoError(t, err)
 						require.NotEmpty(t, cookie.Path)
-						require.Equal(t, http.SameSiteNoneMode, cookie.SameSite)
+						require.Equal(t, dbTestCases.sameSite, cookie.SameSite)
 						reqHeaders["Cookie"] = fmt.Sprintf("%s=%s", cookie.Name, cookie.Value)
 					}
 					resp = rt.SendRequestWithHeaders(http.MethodDelete, "/{{.db}}/_session", "", reqHeaders)

@@ -1479,7 +1479,7 @@ func createBlipTesterWithSpec(rt *RestTester, spec BlipTesterSpec) (*BlipTester,
 		protocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 	}
 
-	origin, err := hostOnlyCORS(bt.restTester.GetDatabase().CORS().Origin)
+	origin, err := hostOnlyCORS(bt.restTester.GetDatabase().CORS.Origin)
 	if err != nil {
 		return nil, err
 	}

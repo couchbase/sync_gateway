@@ -453,7 +453,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, serverType serverType, ro
 			if dbName != "" {
 				db, err := h.server.GetActiveDatabase(dbName)
 				if err == nil {
-					cors = db.CORS()
+					cors = db.CORS
 				}
 			}
 			if !cors.IsEmpty() && privs != adminPrivs && privs != metricsPrivs {

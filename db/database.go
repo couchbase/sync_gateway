@@ -154,6 +154,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	RequireAttachmentMigration   base.ScopeAndCollectionNames   // Collections that require the attachment migration background task to run against
+	CORS                         *auth.CORSConfig               // CORS configuration
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
@@ -163,7 +164,7 @@ type DatabaseContext struct {
 	CachedCCVStartingCas         *base.VBucketCAS               // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
-	sameSiteCookieMode           http.SameSite
+	SameSiteCookieMode           http.SameSite
 }
 
 type Scope struct {
@@ -216,7 +217,6 @@ type DatabaseContextOptions struct {
 	ImportVersion                    uint64            // Version included in import DCP checkpoints, incremented when collections added to db
 	DisablePublicAllDocs             bool              // Disable public access to the _all_docs endpoint for this database
 	StoreLegacyRevTreeData           *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
-	CORS                             auth.CORSConfig   // An empty CORS configuration is considered to have no CORS enabled
 }
 
 type ConfigPrincipals struct {
@@ -435,7 +435,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:           serverUUID,
 		UserFunctionTimeout:  defaultUserFunctionTimeout,
 		CachedCCVStartingCas: &base.VBucketCAS{},
-		sameSiteCookieMode:   http.SameSiteDefaultMode,
+		SameSiteCookieMode:   http.SameSiteDefaultMode,
 	}
 	dbContext.numVBuckets, err = bucket.GetMaxVbno()
 	if err != nil {
@@ -444,17 +444,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	err = dbContext.updateCCVSettings(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	if !dbContext.CORS().IsEmpty() {
-		dbContext.sameSiteCookieMode = http.SameSiteNoneMode
-	}
-	if dbContext.Options.UnsupportedOptions != nil {
-		var err error
-		dbContext.sameSiteCookieMode, err = dbContext.Options.UnsupportedOptions.GetSameSiteCookieMode()
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// set up cancellable context based on the background context (context lifecycle for the database
@@ -2598,11 +2587,6 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
-}
-
-// CORS returns the CORS configuration for the database.
-func (db *DatabaseContext) CORS() *auth.CORSConfig {
-	return &db.Options.CORS
 }
 
 // GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if
