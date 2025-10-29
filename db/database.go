@@ -139,6 +139,7 @@ type DatabaseContext struct {
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
+	SameSiteCookieMode           http.SameSite
 }
 
 type Scope struct {
@@ -251,6 +252,7 @@ type UnsupportedOptions struct {
 	KVBufferSize                     int                      `json:"kv_buffer,omitempty"`                            // Enables user to set their own KV pool buffer
 	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
 	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes if there are skipped sequences in the database
+	SameSiteCookie                   *string                  `json:"same_site_cookie,omitempty"`                     // Sets the SameSite attribute on session cookies.
 }
 
 type WarningThresholds struct {
@@ -418,6 +420,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID:      make(map[uint32]*DatabaseCollection),
 		ServerUUID:          serverUUID,
 		UserFunctionTimeout: defaultUserFunctionTimeout,
+		SameSiteCookieMode:  http.SameSiteDefaultMode,
 	}
 
 	// set up cancellable context based on the background context (context lifecycle for the database
@@ -2440,4 +2443,24 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 		}
 	}
 	return names
+}
+
+// GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if
+// an invalid string is set.
+func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
+	if o == nil || o.SameSiteCookie == nil {
+		return http.SameSiteDefaultMode, nil
+	}
+	switch *o.SameSiteCookie {
+	case "Lax":
+		return http.SameSiteLaxMode, nil
+	case "Strict":
+		return http.SameSiteStrictMode, nil
+	case "None":
+		return http.SameSiteNoneMode, nil
+	case "Default":
+		return http.SameSiteDefaultMode, nil
+	default:
+		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
+	}
 }

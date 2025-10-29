@@ -1080,6 +1080,13 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.Unsupported != nil {
+		_, err := dbConfig.Unsupported.GetSameSiteCookieMode()
+		if err != nil {
+			multiError = multiError.Append(err)
+		}
+	}
+
 	if validateReplications {
 		for name, r := range dbConfig.Replications {
 			if name == "" {
