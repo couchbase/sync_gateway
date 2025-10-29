@@ -1700,7 +1700,7 @@ Database:
           type: boolean
         same_site_cookie:
           description: |-
-            Override the session cookie SameSite behavior. By default, if CORS is enabled, a session cookie will have SameSite:None. `Default` will omit any SameSite option from the cookie.
+            Override the session cookie SameSite behavior. By default, a session cookie will have SameSite:None if CORS is enabled, and will have no SameSite attribute if CORS is not enabled.  Setting this property to`Default` will omit the SameSite attribute from the cookie.
           type: string
           enum:
             - "Default"

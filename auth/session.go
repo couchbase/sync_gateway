@@ -145,6 +145,7 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie
 		Expires:  session.Expiration,
 		Secure:   secureCookie,
 		HttpOnly: httpOnly,
+		// as of go 1.25, http.SameSiteDefaultMode will omit SameSite attribute from the cookie
 		SameSite: sameSite,
 	}
 }
