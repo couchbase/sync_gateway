@@ -1006,6 +1006,20 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		}
 	}
 
+	// check smuggled websocket token before cookie, since this is sure to be more explicit than cookie
+	if h.isBlipSync() {
+		sessionID := h.getWebsocketToken()
+		if sessionID != "" {
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
+			user, err := dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
+			fmt.Printf("WebSocket Token Auth attempt for session ID %s resulted in user %v and err %v\n", base.UD(sessionID), h.user, err)
+			if err == nil {
+				h.user = user
+			}
+			return err
+		}
+	}
+
 	// Check cookie
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
@@ -1031,6 +1045,32 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	return nil
+}
+
+// verifyWebsocketToken checks for a valid websocket token in the request headers. If present, invalidate the token so it can't be reused.
+//
+// Returns a nil error if there is no token on the header but no user object. If the header is found,
+func (h *handler) getWebsocketToken() string {
+	protocolHeaders := h.rq.Header.Values(secWebSocketProtocolHeader)
+	var sessionID string
+	for _, header := range protocolHeaders {
+		if !strings.HasPrefix(header, blipSessionIDPrefix) {
+			continue
+		}
+		sessionID = strings.TrimSpace(strings.TrimPrefix(header, blipSessionIDPrefix))
+		break
+	}
+	if sessionID == "" {
+		return ""
+	}
+	// Remove the websocket protocol so it doesn't get logged in BlipWebsocketServer.handshake
+	h.rq.Header.Del(secWebSocketProtocolHeader)
+	for _, header := range protocolHeaders {
+		if !strings.HasPrefix(header, blipSessionIDPrefix) {
+			h.rq.Header.Add(secWebSocketProtocolHeader, header)
+		}
+	}
+	return sessionID
 }
 
 func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {

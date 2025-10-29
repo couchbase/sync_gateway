@@ -37,6 +37,9 @@ post:
             password:
               description: Password of the user to generate the session for.
               type: string
+            one_time:
+              description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes.
+              type: boolean
   responses:
     '200':
       description: Session created successfully. Returned body is dependant on if using Public or Admin APIs
@@ -78,6 +81,9 @@ post:
                 required:
                   - channels
                   - name
+              one_time_session_id:
+                description: The id of a single use session.
+                type: boolean
             required:
               - authentication_handlers
               - ok

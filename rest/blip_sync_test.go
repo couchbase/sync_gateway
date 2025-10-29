@@ -10,9 +10,12 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostOnlyCORS(t *testing.T) {
@@ -69,4 +72,51 @@ func TestHostOnlyCORS(t *testing.T) {
 			assert.Equal(t, test.output, output)
 		})
 	}
+}
+
+func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", `{"one_time": true}`, username)
+	RequireStatus(t, resp, http.StatusOK)
+
+	var sessionResp struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &sessionResp))
+
+	require.NotEmpty(t, sessionResp.SessionID, "Expected non-empty session ID for %s", resp.BodyString())
+
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", nil)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", username)
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
+
+	// no header should show database not found
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", nil)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	// invalid token is header not known
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + "badtoken",
+	})
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	// first request will succeed
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + sessionResp.SessionID,
+	})
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
+
+	// one time token is expired
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + sessionResp.SessionID,
+	})
+	RequireStatus(t, resp, http.StatusUnauthorized)
 }

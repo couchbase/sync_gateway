@@ -18,12 +18,18 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-const kDefaultSessionTTL = 24 * time.Hour
+const (
+	// defaultSessionTTL is the default time-to-live for login sessions
+	defaultSessionTTL = 24 * time.Hour
+	// oneTimeSessionTTL is the time-to-live for one-time login sessions, log enough to complete the authentication
+	// flow, but disappear if they are unused
+	oneTimeSessionTTL = 5 * time.Minute
+)
 
 // Respond with a JSON struct containing info about the current login session
 func (h *handler) respondWithSessionInfo() error {
 
-	response := h.formatSessionResponse(h.user)
+	response := h.formatSessionResponse(h.user, "")
 
 	h.writeJSON(response)
 	return nil
@@ -41,50 +47,69 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 
-	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkPublicAuth calls out into AuthenticateUntrustedJWT.
-	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
-	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
-		return ErrLoginRequired
+	body, err := h.readBody()
+	if err != nil {
+		return err
 	}
-	user, err := h.getUserFromSessionRequestBody()
-
-	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user
-	if user == nil && h.user != nil && h.user.Name() != "" {
-		return h.makeSession(h.user)
-	} else {
-		if err != nil {
-			return err
-		}
-		return h.makeSession(user)
-	}
-
-}
-
-func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
+		OneTime  bool   `json:"one_time"`
 	}
-	err := h.readJSONInto(&params)
-	if err != nil {
-		return nil, err
+	user := h.user
+	if len(body) > 0 {
+		err := base.JSONUnmarshal(body, &params)
+		if err != nil {
+			return err
+		}
+		if params.Name != "" {
+			if h.db.Options.DisablePasswordAuthentication {
+				return ErrLoginRequired
+			}
+			user, err = h.getUser(params.Name, params.Password)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	var user auth.User
-	user, err = h.db.Authenticator(h.ctx()).GetUser(params.Name)
+	if user == nil || user.Name() == "" {
+		return ErrLoginRequired
+	}
+
+	ttl := defaultSessionTTL
+	if params.OneTime {
+		ttl = oneTimeSessionTTL
+	}
+
+	sessionID, err := h.makeSessionWithTTL(user, ttl, params.OneTime)
+	if err != nil {
+		return err
+	}
+	if params.OneTime {
+		h.writeJSON(h.formatSessionResponse(h.user, sessionID))
+	} else {
+		h.writeJSON(h.formatSessionResponse(h.user, ""))
+	}
+	return nil
+}
+
+// getUser returns a user object by authenticating the provided username and password.
+func (h *handler) getUser(username, password string) (auth.User, error) {
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
 	if err != nil {
 		return nil, err
 	}
 
 	if user == nil {
-		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(params.Name))
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(username))
 		return nil, nil
 	}
 
-	authenticated, reason := user.AuthenticateWithReason(params.Password)
+	authenticated, reason := user.AuthenticateWithReason(password)
 	if !authenticated {
-		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(username), reason)
 		return nil, nil
 	}
 
@@ -105,9 +130,10 @@ func (h *handler) handleSessionDELETE() error {
 	return nil
 }
 
+// makeSession creates a user session and responds with CouchDB compatible session info.
 func (h *handler) makeSession(user auth.User) error {
-
-	_, err := h.makeSessionWithTTL(user, kDefaultSessionTTL)
+	oneTime := false
+	_, err := h.makeSessionWithTTL(user, defaultSessionTTL, oneTime)
 	if err != nil {
 		return err
 	}
@@ -115,13 +141,13 @@ func (h *handler) makeSession(user auth.User) error {
 }
 
 // Creates a session with TTL and adds to the response.  Does NOT return the session info response.
-func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sessionID string, err error) {
+func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration, oneTime bool) (sessionID string, err error) {
 	if user == nil {
 		return "", ErrInvalidLogin
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())
-	session, err := auth.CreateSession(h.ctx(), h.user, expiry)
+	session, err := auth.CreateSession(h.ctx(), h.user, expiry, oneTime)
 	if err != nil {
 		return "", err
 	}
@@ -183,10 +209,11 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 func (h *handler) createUserSession() error {
 	h.assertAdminOnly()
 	var params struct {
-		Name string `json:"name"`
-		TTL  int    `json:"ttl"`
+		Name    string `json:"name"`
+		TTL     int    `json:"ttl"`
+		OneTime bool   `json:"one_time"`
 	}
-	params.TTL = int(kDefaultSessionTTL / time.Second)
+	params.TTL = int(defaultSessionTTL / time.Second)
 	err := h.readJSONInto(&params)
 	if err != nil {
 		return err
@@ -207,7 +234,7 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	session, err := authenticator.CreateSession(h.ctx(), user, ttl)
+	session, err := authenticator.CreateSession(h.ctx(), user, ttl, params.OneTime)
 	if err != nil {
 		return err
 	}
@@ -226,7 +253,7 @@ func (h *handler) createUserSession() error {
 func (h *handler) getUserSession() error {
 
 	h.assertAdminOnly()
-	session, err := h.db.Authenticator(h.ctx()).GetSession(h.PathVar("sessionid"))
+	session, _, err := h.db.Authenticator(h.ctx()).GetSession(h.PathVar("sessionid"))
 	if err != nil {
 		return err
 	}
@@ -271,7 +298,7 @@ func (h *handler) deleteUserSessionWithValidation(sessionId string, userName str
 
 	// Validate that the session being deleted belongs to the user.  This adds some
 	// overhead - for user-agnostic session deletion should use deleteSession
-	session, getErr := h.db.Authenticator(h.ctx()).GetSession(sessionId)
+	session, _, getErr := h.db.Authenticator(h.ctx()).GetSession(sessionId)
 	if getErr != nil {
 		return getErr
 	}
@@ -297,7 +324,7 @@ func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) e
 		return err
 	}
 
-	response := h.formatSessionResponse(user)
+	response := h.formatSessionResponse(user, "")
 	if response != nil {
 		h.writeJSON(response)
 	}
@@ -305,7 +332,7 @@ func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) e
 }
 
 // Formats session response similar to what is returned by CouchDB
-func (h *handler) formatSessionResponse(user auth.User) db.Body {
+func (h *handler) formatSessionResponse(user auth.User, oneTimeSessionID string) db.Body {
 
 	var name *string
 	allChannels := channels.TimedSet{}
@@ -322,6 +349,9 @@ func (h *handler) formatSessionResponse(user auth.User) db.Body {
 	userCtx := db.Body{"name": name, "channels": allChannels}
 	handlers := []string{"default", "cookie"}
 	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
+	if oneTimeSessionID != "" {
+		response["one_time_session_id"] = oneTimeSessionID
+	}
 	return response
 
 }

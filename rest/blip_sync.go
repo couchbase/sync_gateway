@@ -22,6 +22,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const (
+	secWebSocketProtocolHeader = "Sec-WebSocket-Protocol"
+	blipSessionIDPrefix        = "SyncGatewaySession="
+)
+
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx)
