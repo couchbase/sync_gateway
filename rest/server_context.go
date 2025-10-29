@@ -942,12 +942,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.RequireResync = collectionsRequiringResync
 	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
 
-	if config.CORS != nil {
-		dbcontext.CORS = config.DbConfig.CORS
-	} else {
-		dbcontext.CORS = sc.Config.API.CORS
-	}
-
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {
@@ -1440,6 +1434,12 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		NumIndexReplicas:            config.numIndexReplicas(),
 		DisablePublicAllDocs:        disablePublicAllDocs,
 		StoreLegacyRevTreeData:      base.Ptr(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
+	}
+
+	if config.CORS != nil {
+		contextOptions.CORS = *config.CORS
+	} else if sc.Config.API.CORS != nil {
+		contextOptions.CORS = *sc.Config.API.CORS
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {

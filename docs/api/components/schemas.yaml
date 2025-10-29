@@ -1698,6 +1698,15 @@ Database:
         remote_config_tls_skip_verify:
           description: Enable self-signed certificates for external JavaScript load.
           type: boolean
+        same_site_cookie:
+          description: |-
+            Override the session cookie SameSite behavior. By default, if CORS is enabled, a session cookie will have SameSite:None. `Default` will omit any SameSite option from the cookie.
+          type: string
+          enum:
+            - "Default"
+            - "Lax"
+            - "None"
+            - "Strict"
         sgr_tls_skip_verify:
           description: Enable self-signed certificates for SG-replicate testing.
           type: boolean

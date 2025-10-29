@@ -381,12 +381,15 @@ func TestCORSOrigin(t *testing.T) {
 			sc := rt.ServerContext()
 			defer func() {
 				sc.Config.API.CORS.Origin = defaultTestingCORSOrigin
+				rt.GetDatabase().Options.CORS.Origin = defaultTestingCORSOrigin
 			}()
 
-			sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+			updatedOrigin := []string{"http://example.com", "http://staging.example.com"}
+			sc.Config.API.CORS.Origin = updatedOrigin
+			rt.GetDatabase().Options.CORS.Origin = updatedOrigin
 			if !base.StringSliceContains(sc.Config.API.CORS.Origin, tc.origin) {
 				for _, method := range []string{http.MethodGet, http.MethodOptions} {
-					response := rt.SendRequestWithHeaders(method, "/{{.keyspace}}/", "", reqHeaders)
+					response := rt.SendRequestWithHeaders(method, "/{{.db}}/", "", reqHeaders)
 					assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 				}
 			}
