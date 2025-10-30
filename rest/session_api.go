@@ -21,7 +21,7 @@ import (
 const (
 	// defaultSessionTTL is the default time-to-live for login sessions
 	defaultSessionTTL = 24 * time.Hour
-	// oneTimeSessionTTL is the time-to-live for one-time login sessions, log enough to complete the authentication
+	// oneTimeSessionTTL is the time-to-live for one-time login sessions, long enough to complete the authentication
 	// flow, but disappear if they are unused
 	oneTimeSessionTTL = 5 * time.Minute
 )
