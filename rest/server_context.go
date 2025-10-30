@@ -595,13 +595,13 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config 
 func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (base.BucketSpec, error) {
 
 	var server string
-	if config.Server != nil {
+	if config.Server != nil && *config.Server != "" {
 		server = *config.Server
 	} else {
 		server = serverConfig.Bootstrap.Server
 	}
 
-	if !base.ServerIsWalrus(server) && server != "" {
+	if !base.ServerIsWalrus(server) {
 		var params *base.GoCBConnStringParams
 		if serverConfig.IsServerless() {
 			params = base.DefaultServerlessGoCBConnStringParams()
@@ -718,10 +718,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	// set this early so we have dbName available in db-init related logging, before we have an actual database
 	ctx = base.DatabaseLogCtx(ctx, dbName, contextOptions.LoggingConfig)
-
-	if spec.Server == "" {
-		spec.Server = sc.Config.Bootstrap.Server
-	}
 
 	// Connect to bucket
 	base.InfofCtx(ctx, base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
