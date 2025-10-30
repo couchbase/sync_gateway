@@ -1010,12 +1010,9 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	if h.isBlipSync() {
 		sessionID := h.getWebsocketToken()
 		if sessionID != "" {
+			var err error
 			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
-			user, err := dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
-			fmt.Printf("WebSocket Token Auth attempt for session ID %s resulted in user %v and err %v\n", base.UD(sessionID), h.user, err)
-			if err == nil {
-				h.user = user
-			}
+			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
 			return err
 		}
 	}
