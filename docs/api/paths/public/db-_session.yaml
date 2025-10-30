@@ -83,7 +83,7 @@ post:
                   - name
               one_time_session_id:
                 description: The id of a single use session.
-                type: boolean
+                type: string
             required:
               - authentication_handlers
               - ok
