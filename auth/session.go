@@ -90,9 +90,6 @@ func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessi
 	if err != nil && !base.IsDocNotFoundError(err) {
 		base.InfofCtx(ctx, base.KeyAuth, "Error deleting one-time session %s: %v, it will expire due to TTL soon", base.UD(sessionID), err)
 	}
-	if err != nil {
-		return nil, err
-	}
 	return user, nil
 }
 
