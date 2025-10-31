@@ -11,10 +11,10 @@ get:
   summary: Get information about the current user
   description: This will get the information about the current user.
   responses:
-    '200':
+    "200":
       $ref: ../../components/responses.yaml#/User-session-information
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    "401":
+      $ref: ../../components/responses.yaml#/Unauthorized
   tags:
     - Session
   operationId: get_db-_session
@@ -23,7 +23,7 @@ post:
   description: |-
     Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
 
-    If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+    If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
   parameters:
     - name: one_time
       description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes if not used.
@@ -31,17 +31,19 @@ post:
       schema:
         type: boolean
   requestBody:
-    description: The body can depend on if using the Public or Admin APIs.
+    description: When name and password are included in the request body, the session will be created for the specified user.  Otherwise the session will be created for the authenticated user making the request.
+    required: false
     content:
       application/json:
         schema:
           type: object
+          title: "User Credentials"
           properties:
             name:
-              description: User name to generate the session for.
+              description: User name to generate the session for. Omit this value to generate a session for the authenticated user.
               type: string
             password:
-              description: Password of the user to generate the session for.
+              description: Password of the user to generate the session for. Omit this value to generate a session for the authenticated user.
               type: string
   responses:
     '200':
@@ -49,53 +51,18 @@ post:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              authentication_handlers:
-                description: Used for CouchDB compatability. Always contains "default" and "cookie".
-                type: array
-                items:
-                  type: string
-                  enum:
-                    - default
-                    - cookie
-              ok:
-                description: Used for CouchDB compatability. Always true.
-                type: boolean
-                default: true
-              userCtx:
-                type: object
+            allOf:
+              - $ref: ../../components/schemas.yaml#/User-session-information
+              - type: object
                 properties:
-                  channels:
-                    description: A map of the channels the user is in along with the sequence number the user was granted access.
-                    type: object
-                    additionalProperties:
-                      type: number
-                      minimum: 1
-                      description: The sequence number the user was granted access.
-                      title: sequence number
-                    example:
-                      "!": 1
-                      "channelA": 2
-                  name:
-                    description: The name of the user.
+                  one_time_session_id:
+                    description: The id of a single use session if `one_time=true` query parameter was used.
                     type: string
-                    minLength: 1
-                required:
-                  - channels
-                  - name
-              one_time_session_id:
-                description: The id of a single use session.
-                type: string
-                example: c5af80a039db4ed9d2b6865576b6999935282689
-            required:
-              - authentication_handlers
-              - ok
-              - userCtx
-    '400':
-      $ref: ../../components/responses.yaml#/Invalid-CORS
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+                    example: c5af80a039db4ed9d2b6865576b6999935282689
+    "400":
+      $ref: ../../components/responses.yaml#/Invalid-CORS-LoginOrigin
+    "401":
+      $ref: ../../components/responses.yaml#/Unauthorized
   tags:
     - Session
   operationId: post_db-_session
@@ -104,14 +71,24 @@ delete:
   description: |-
     Invalidates the session for the currently authenticated user and removes their session cookie.
 
-    If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+    If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
   responses:
-    '200':
+    "200":
       description: Successfully removed session (logged out)
-    '400':
-      description: Bad Request
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    "400":
+      $ref: ../../components/responses.yaml#/Invalid-CORS-LoginOrigin
+    "401":
+      $ref: ../../components/responses.yaml#/Unauthorized
+    "404":
+      description: Return if session not found.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: not_found
+            reason: no session
+
   tags:
     - Session
   operationId: delete_db-_session

@@ -25,8 +25,13 @@ import (
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
+
+	// force TLS mode to test SameSite=None cookie attribute
+	rt.ServerContext().Config.API.HTTPS.TLSCertPath = "/pretend/valid/cert"
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
