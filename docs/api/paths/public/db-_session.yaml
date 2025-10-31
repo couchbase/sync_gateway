@@ -27,7 +27,7 @@ post:
 
     If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
   requestBody:
-    description: The body can be used to override the credentials of the authenticating user, or blank if getting a user session for the authenticating user.
+    description: When name and password are included in the request body, the session will be created for the specified user.  Otherwise the session will be created for the authenticated user making the request.
     required: false
     content:
       application/json:
