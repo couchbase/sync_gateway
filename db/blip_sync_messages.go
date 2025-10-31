@@ -393,11 +393,6 @@ func (rm *RevMessage) Rev() (rev string, found bool) {
 	return rev, found
 }
 
-func (rm *RevMessage) RevTree() (revTree string, found bool) {
-	revTree, found = rm.Properties[RevMessageTreeHistory]
-	return revTree, found
-}
-
 func (rm *RevMessage) Deleted() bool {
 	deleted, found := rm.Properties[RevMessageDeleted]
 	if !found {
@@ -461,6 +456,10 @@ func (rm *RevMessage) String() string {
 
 	if id, foundId := rm.ID(); foundId {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
+	}
+
+	if rev, foundRev := rm.Rev(); foundRev {
+		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
 
 	if coll, ok := rm.Collection(); ok {
