@@ -1005,6 +1005,17 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		}
 	}
 
+	// check smuggled websocket token before cookie, since this is sure to be more explicit than cookie
+	if h.isBlipSync() {
+		sessionID := h.getWebsocketToken()
+		if sessionID != "" {
+			var err error
+			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
+			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
+			return err
+		}
+	}
+
 	// Check cookie
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
@@ -1030,6 +1041,30 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	return nil
+}
+
+// verifyWebsocketToken checks for a valid websocket token in the request headers. If present, invalidate the token so it can't be reused.
+//
+// Returns a nil error if there is no token on the header but no user object. If the header is found,
+func (h *handler) getWebsocketToken() string {
+	// go blip expects only one Sec-WebSocket-Protocol header, with comma separated values
+	protocolHeaders := h.rq.Header.Get(secWebSocketProtocolHeader)
+	var outputHeaders []string
+	var sessionID string
+	for header := range strings.SplitSeq(protocolHeaders, ",") {
+		trimmedHeader := strings.TrimSpace(header)
+		if !strings.HasPrefix(trimmedHeader, blipSessionIDPrefix) {
+			outputHeaders = append(outputHeaders, header)
+			continue
+		}
+		sessionID = strings.TrimPrefix(trimmedHeader, blipSessionIDPrefix)
+	}
+	if sessionID == "" {
+		return ""
+	}
+	// Remove the websocket protocol so it doesn't get logged in BlipWebsocketServer.handshake
+	h.rq.Header.Set(secWebSocketProtocolHeader, strings.Join(outputHeaders, ","))
+	return sessionID
 }
 
 func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, user auth.User) *auth.PrincipalConfig {
