@@ -24,13 +24,10 @@ const (
 	// Version Vectors/HLV
 	CBMobileReplicationV4
 
-	// _nextCBMobileSubprotocolVersions reserved for maxCBMobileSubprotocolVersion
-	_nextCBMobileSubprotocolVersions
-
 	// minCBMobileSubprotocolVersion is the minimum supported subprotocol version by SG
 	minCBMobileSubprotocolVersion = CBMobileReplicationV2
 	// maxCBMobileSubprotocolVersion is the maximum supported subprotocol version by SG
-	maxCBMobileSubprotocolVersion = _nextCBMobileSubprotocolVersions - 1
+	maxCBMobileSubprotocolVersion = CBMobileReplicationV3
 )
 
 const cbMobileBLIPSubprotocolPrefix = "CBMobile_"
