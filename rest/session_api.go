@@ -9,6 +9,8 @@
 package rest
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"time"
 
@@ -47,6 +49,12 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 
+	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkPublicAuth calls out into AuthenticateUntrustedJWT.
+	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
+	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
+		return ErrLoginRequired
+	}
+
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -59,7 +67,7 @@ func (h *handler) handleSessionPOST() error {
 	}
 	user := h.user
 	if len(body) > 0 {
-		err := base.JSONUnmarshal(body, &params)
+		err := ReadJSONFromMIME(h.rq.Header, io.NopCloser(bytes.NewReader(body)), &params)
 		if err != nil {
 			return err
 		}
