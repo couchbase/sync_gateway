@@ -144,23 +144,23 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 			error: "expected handshake response status code 101 but got 500",
 		},
 		{
-			name: "V4 Protocol",
-			protocols: []string{
-				blipProtocolPrefix + db.CBMobileReplicationV4.SubprotocolString(),
-			},
-		},
-		{
 			name: "V3 Protocol",
 			protocols: []string{
 				blipProtocolPrefix + db.CBMobileReplicationV3.SubprotocolString(),
 			},
 		},
 		{
+			name: "V2 Protocol",
+			protocols: []string{
+				blipProtocolPrefix + db.CBMobileReplicationV2.SubprotocolString(),
+			},
+		},
+		{
 			name: "Multiple Protocols",
 			protocols: []string{
 				"some-other-protocol",
-				blipProtocolPrefix + db.CBMobileReplicationV4.SubprotocolString(),
 				blipProtocolPrefix + db.CBMobileReplicationV3.SubprotocolString(),
+				blipProtocolPrefix + db.CBMobileReplicationV2.SubprotocolString(),
 			},
 		},
 	}
