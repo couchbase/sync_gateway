@@ -41,7 +41,7 @@ func (dcp *dcpDataGen) vBucketCreation(ctx context.Context) {
 	delayIndex := 0
 	// vBucket creation logic
 	for i := range 1024 {
-		time.Sleep(500 * time.Millisecond) // we need a slight delay each iteration otherwise many vBuckets end up writing at the same times
+		time.Sleep(100 * time.Millisecond) // we need a slight delay each iteration otherwise many vBuckets end up writing at the same times
 		if i == 520 {
 			go dcp.syncSeqVBucketCreation(ctx, uint16(i), 2*time.Second) // sync seq hot vBucket so high delay
 		} else {
