@@ -412,18 +412,35 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 		name               string
 		unsupportedOptions *db.UnsupportedOptions
 		sameSite           http.SameSite
+		useTLS             bool
 	}{
 		{
-			name:               "No unsupported options",
+			name:               "No unsupported options with TLS",
 			unsupportedOptions: nil,
 			sameSite:           http.SameSiteNoneMode,
+			useTLS:             true,
 		},
 		{
-			name: "With unsupported options",
+			name:               "No unsupported options without TLS",
+			unsupportedOptions: nil,
+			sameSite:           0, // go 1.25 doesn't have a constant for not present when reading from Set-Cookie, this could turn into SameSiteDefaultMode (1) in future
+			useTLS:             false,
+		},
+		{
+			name: "With unsupported options and TLS",
 			unsupportedOptions: &db.UnsupportedOptions{
 				SameSiteCookie: base.Ptr("Strict"),
 			},
 			sameSite: http.SameSiteStrictMode,
+			useTLS:   true,
+		},
+		{
+			name: "With unsupported options and no TLS",
+			unsupportedOptions: &db.UnsupportedOptions{
+				SameSiteCookie: base.Ptr("Strict"),
+			},
+			sameSite: http.SameSiteStrictMode, // forces strict mode even though this would result in an unusable cookie
+			useTLS:   false,
 		},
 	}
 	for _, dbTestCases := range testCases {
@@ -431,6 +448,13 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 			// Override the default (example.com) CORS configuration in the DbConfig for /db:
 			rt := NewRestTesterPersistentConfigNoDB(t)
 			defer rt.Close()
+
+			// fake TLS on public port
+			if dbTestCases.useTLS {
+				rt.ServerContext().Config.API.HTTPS.TLSCertPath = "/pretend/valid/cert"
+			} else {
+				require.Empty(t, rt.ServerContext().Config.API.HTTPS.TLSCertPath)
+			}
 
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Unsupported = dbTestCases.unsupportedOptions
@@ -480,7 +504,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 						cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
 						require.NoError(t, err)
 						require.NotEmpty(t, cookie.Path)
-						require.Equal(t, dbTestCases.sameSite, cookie.SameSite)
+						require.Equal(t, dbTestCases.sameSite, cookie.SameSite, "Cookie=%#+v", cookie)
 						reqHeaders["Cookie"] = fmt.Sprintf("%s=%s", cookie.Name, cookie.Value)
 					}
 					resp = rt.SendRequestWithHeaders(http.MethodDelete, "/{{.db}}/_session", "", reqHeaders)
