@@ -77,6 +77,11 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
+	err = auth.deleteOneTimeSession(auth.LogCtx, &session)
+	if err != nil {
+		return nil, err
+	}
+
 	return user, err
 }
 
@@ -88,19 +93,30 @@ func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessi
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 	}
 
-	if session.OneTime != nil && *session.OneTime {
-		err = auth.datastore.Delete(auth.DocIDForSession(sessionID))
-		if err != nil {
-			// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
-			// If the delete error comes from another source, still treat this as an error, expecting the client to retry
-			// due to a temporary KV issue.
-			if !base.IsDocNotFoundError(err) {
-				base.InfofCtx(ctx, base.KeyAuth, "Unable to delete one-time session %s. Not allowing login: %v", base.UD(sessionID), err)
-			}
-			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
-		}
+	err = auth.deleteOneTimeSession(ctx, session)
+	if err != nil {
+		return nil, err
 	}
 	return user, nil
+}
+
+// deleteOneTimeSession deletes the session if it is marked as a one-time session. If the session can be not deleted, or
+// was already deleted an error is returned.
+func (auth *Authenticator) deleteOneTimeSession(ctx context.Context, session *LoginSession) error {
+	if session.OneTime == nil || !*session.OneTime {
+		return nil
+	}
+	err := auth.datastore.Delete(auth.DocIDForSession(session.ID))
+	if err != nil {
+		// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
+		// If the delete error comes from another source, still treat this as an error, expecting the client to retry
+		// due to a temporary KV issue.
+		if !base.IsDocNotFoundError(err) {
+			base.InfofCtx(ctx, base.KeyAuth, "Unable to delete one-time session %s. Not allowing login: %v", base.UD(session.ID), err)
+		}
+		return base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+	}
+	return nil
 }
 
 // CreateSession creates a new login session for the specified user with the specified TTL. If oneTime is true, the
