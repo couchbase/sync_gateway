@@ -393,8 +393,8 @@ User-session-information:
       description: The ways authentication can be established to authenticate as a user. Used for CouchDB compatability. Always contains "default" and "cookie".
       type: array
       enum:
-        - ["default", "string"]
-      default: ["default", "string"]
+        - ["default", "cookie"]
+      default: ["default", "cookie"]
     ok:
       description: Used for CouchDB compatability. Always true.
       type: boolean
@@ -3190,7 +3190,7 @@ CORS:
       description: |-
         List of allowed origins to apply to public `/{db}/_session` API.
 
-        To use cors on `/{db}/_sesssion`, the domain must be present in both `login_origin` and `origin`.
+        To use cors on `/{db}/_session`, the domain must be present in both `login_origin` and `origin`.
 
         If configured, `Authorization` must be included in headers.
       type: array
