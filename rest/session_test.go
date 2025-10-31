@@ -37,6 +37,15 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertGatewayStatus(t, response, 401)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+	cookie, err := http.ParseSetCookie(response.Header().Get("Set-Cookie"))
+	require.NoError(t, err)
+	require.Equal(t, cookie.SameSite, http.SameSiteNoneMode)
 }
 
 // #issue 991
@@ -53,6 +62,15 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 
 	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
 	RequireStatus(t, response, 400)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+	cookie, err := http.ParseSetCookie(response.Header().Get("Set-Cookie"))
+	require.NoError(t, err)
+	require.NotContains(t, cookie.String(), "SameSite")
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
