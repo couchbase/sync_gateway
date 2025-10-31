@@ -3564,6 +3564,8 @@ func TestECCV(t *testing.T) {
 	var clusterInfo ClusterInfoResponse
 	err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
 	assert.NoError(t, err)
+}
+
 func TestUnsupportedServerConfigOptions(t *testing.T) {
 	tests := []struct {
 		name            string
