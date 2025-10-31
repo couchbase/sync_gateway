@@ -3564,4 +3564,121 @@ func TestECCV(t *testing.T) {
 	var clusterInfo ClusterInfoResponse
 	err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
 	assert.NoError(t, err)
+func TestUnsupportedServerConfigOptions(t *testing.T) {
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		kvBuffer        int
+		dcpBuffer       int
+		serverless      bool
+		params          string
+	}{
+		{
+			name:            "serverless-no_query_param-no_unsupported_options",
+			serverless:      true,
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+		},
+		{
+			name:            "non_serverless-no_query_param_and_no_unsupported_options",
+			serverless:      false,
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+		},
+		{
+			name:            "serverless-no_query_param-unsupported_options",
+			serverless:      true,
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "non_serverless-no_query_param-unsupported_options",
+			serverless:      false,
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "serverless-dcp_buffer_query_param-kv_buffer_unsupported_option",
+			serverless:      true,
+			params:          "?dcp_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+		},
+		{
+			name:            "non_serverless-dcp_buffer_query_param-kv_buffer_unsupported_option",
+			serverless:      false,
+			params:          "?dcp_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+		},
+		{
+			name:            "serverless-dcp_buffer_query_param-dcp_buffer_unsupported_option",
+			serverless:      true,
+			params:          "?dcp_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "non_serverless-dcp_buffer_query_param-dcp_buffer_unsupported_option",
+			serverless:      false,
+			params:          "?dcp_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "serverless-kv_buffer_query_param-kv_buffer_unsupported_option",
+			serverless:      true,
+			params:          "?kv_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+		},
+		{
+			name:            "non_serverless-kv_buffer_query_param-kv_buffer_unsupported_option",
+			serverless:      false,
+			params:          "?kv_buffer_size=20",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+		},
+		{
+			name:            "serverless-kv_buffer_query_param-dcp_buffer_unsupported_option",
+			serverless:      true,
+			params:          "?kv_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "non_serverless-kv_buffer_query_param-dcp_buffer_unsupported_option",
+			serverless:      false,
+			params:          "?kv_buffer_size=20",
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			dcpBuffer:       3000,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			serverBase := "couchbases://example.com"
+			sc := &StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server: serverBase + test.params,
+				},
+				Unsupported: UnsupportedConfig{
+					Serverless: ServerlessConfig{
+						Enabled: base.Ptr(test.serverless),
+					},
+				},
+			}
+			dbConfig := &DatabaseConfig{
+				DbConfig: DbConfig{
+					Unsupported: &db.UnsupportedOptions{
+						KVBufferSize:  test.kvBuffer,
+						DCPReadBuffer: test.dcpBuffer,
+					},
+				},
+			}
+			spec, err := GetBucketSpec(ctx, dbConfig, sc)
+			require.NoError(t, err)
+			require.Equal(t, serverBase+test.expectedConnStr, spec.Server)
+		})
+	}
 }
