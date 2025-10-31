@@ -1048,25 +1048,23 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 //
 // Returns a nil error if there is no token on the header but no user object. If the header is found,
 func (h *handler) getWebsocketToken() string {
-	protocolHeaders := h.rq.Header.Values(secWebSocketProtocolHeader)
+	// go blip expects only one Sec-WebSocket-Protocol header, with comma separated values
+	protocolHeaders := h.rq.Header.Get(secWebSocketProtocolHeader)
+	var outputHeaders []string
 	var sessionID string
-	for _, header := range protocolHeaders {
+	for _, header := range strings.Split(protocolHeaders, ",") {
+		header := strings.TrimSpace(header)
 		if !strings.HasPrefix(header, blipSessionIDPrefix) {
+			outputHeaders = append(outputHeaders, header)
 			continue
 		}
 		sessionID = strings.TrimSpace(strings.TrimPrefix(header, blipSessionIDPrefix))
-		break
 	}
 	if sessionID == "" {
 		return ""
 	}
 	// Remove the websocket protocol so it doesn't get logged in BlipWebsocketServer.handshake
-	h.rq.Header.Del(secWebSocketProtocolHeader)
-	for _, header := range protocolHeaders {
-		if !strings.HasPrefix(header, blipSessionIDPrefix) {
-			h.rq.Header.Add(secWebSocketProtocolHeader, header)
-		}
-	}
+	h.rq.Header.Set(secWebSocketProtocolHeader, strings.Join(outputHeaders, ","))
 	return sessionID
 }
 
