@@ -279,7 +279,8 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 
 	if !provider.DisableSession {
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
-		sessionID, err := h.makeSessionWithTTL(user, sessionTTL)
+		oneTime := false
+		sessionID, err := h.makeSessionWithTTL(user, sessionTTL, oneTime)
 		return user.Name(), sessionID, err
 	}
 	return user.Name(), "", nil
