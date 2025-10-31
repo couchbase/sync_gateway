@@ -390,13 +390,13 @@ User-session-information:
   type: object
   properties:
     authentication_handlers:
-      description: The ways authentication can be established to authenticate as a user. Used for CouchDB compatability. Always contains "default" and "cookie".
+      description: The ways authentication can be established to authenticate as a user. Used for CouchDB compatibility. Always contains "default" and "cookie".
       type: array
       enum:
         - ["default", "cookie"]
       default: ["default", "cookie"]
     ok:
-      description: Used for CouchDB compatability. Always true.
+      description: Used for CouchDB compatibility. Always true.
       type: boolean
       enum:
         - true
