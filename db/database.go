@@ -164,6 +164,7 @@ type DatabaseContext struct {
 	CachedCCVStartingCas         *base.VBucketCAS               // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
+	SameSiteCookieMode           http.SameSite
 }
 
 type Scope struct {
@@ -278,6 +279,7 @@ type UnsupportedOptions struct {
 	KVBufferSize                     int                      `json:"kv_buffer,omitempty"`                            // Enables user to set their own KV pool buffer
 	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
 	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes if there are skipped sequences in the database
+	SameSiteCookie                   *string                  `json:"same_site_cookie,omitempty"`                     // Sets the SameSite attribute on session cookies.
 }
 
 type WarningThresholds struct {
@@ -433,6 +435,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:           serverUUID,
 		UserFunctionTimeout:  defaultUserFunctionTimeout,
 		CachedCCVStartingCas: &base.VBucketCAS{},
+		SameSiteCookieMode:   http.SameSiteDefaultMode,
 	}
 	dbContext.numVBuckets, err = bucket.GetMaxVbno()
 	if err != nil {
@@ -2584,4 +2587,24 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
+}
+
+// GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if
+// an invalid string is set.
+func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
+	if o == nil || o.SameSiteCookie == nil {
+		return http.SameSiteDefaultMode, nil
+	}
+	switch *o.SameSiteCookie {
+	case "Lax":
+		return http.SameSiteLaxMode, nil
+	case "Strict":
+		return http.SameSiteStrictMode, nil
+	case "None":
+		return http.SameSiteNoneMode, nil
+	case "Default":
+		return http.SameSiteDefaultMode, nil
+	default:
+		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
+	}
 }
