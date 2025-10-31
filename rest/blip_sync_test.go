@@ -10,9 +10,16 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/coder/websocket"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHostOnlyCORS(t *testing.T) {
@@ -69,4 +76,118 @@ func TestHostOnlyCORS(t *testing.T) {
 			assert.Equal(t, test.output, output)
 		})
 	}
+}
+
+func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(t, resp, http.StatusOK)
+
+	var sessionResp struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &sessionResp))
+
+	require.NotEmpty(t, sessionResp.SessionID, "Expected non-empty session ID for %s", resp.BodyString())
+
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", nil)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	resp = rt.SendUserRequest(http.MethodGet, "/{{.db}}/_blipsync", "", username)
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
+
+	// no header should show database not found
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", nil)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	// invalid token is header not known
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + "badtoken",
+	})
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	// first request will succeed
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + sessionResp.SessionID,
+	})
+	RequireStatus(t, resp, http.StatusUpgradeRequired)
+
+	// one time token is expired
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + sessionResp.SessionID,
+	})
+	RequireStatus(t, resp, http.StatusUnauthorized)
+
+	srv := httptest.NewServer(rt.TestPublicHandler())
+	defer srv.Close()
+
+	// Construct URL to connect to blipsync target endpoint
+	destURL := fmt.Sprintf("%s/%s/_blipsync", srv.URL, rt.GetDatabase().Name)
+	u, err := url.Parse(destURL)
+	require.NoError(t, err)
+	u.Scheme = "ws"
+
+	blipProtocolPrefix := "BLIP_3+"
+	testCases := []struct {
+		name      string
+		protocols []string
+		error     string
+	}{
+		{
+			name:  "No Protocols",
+			error: "expected handshake response status code 101 but got 500",
+		},
+		{
+			name: "V3 Protocol",
+			protocols: []string{
+				blipProtocolPrefix + db.CBMobileReplicationV3.SubprotocolString(),
+			},
+		},
+		{
+			name: "V2 Protocol",
+			protocols: []string{
+				blipProtocolPrefix + db.CBMobileReplicationV2.SubprotocolString(),
+			},
+		},
+		{
+			name: "Multiple Protocols",
+			protocols: []string{
+				"some-other-protocol",
+				blipProtocolPrefix + db.CBMobileReplicationV3.SubprotocolString(),
+				blipProtocolPrefix + db.CBMobileReplicationV2.SubprotocolString(),
+			},
+		},
+	}
+	for _, tc := range testCases {
+		rt.Run(tc.name, func(t *testing.T) {
+			// Create new one-time session for each sub-test
+			resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "{}", username)
+			RequireStatus(t, resp, http.StatusOK)
+
+			var sessionResp struct {
+				SessionID string `json:"one_time_session_id"`
+			}
+
+			require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &sessionResp))
+			require.NotEmpty(t, sessionResp.SessionID, "Expected non-empty session ID for %s", resp.BodyString())
+
+			protocols := []string{blipSessionIDPrefix + sessionResp.SessionID}
+			protocols = append(protocols, tc.protocols...)
+			ctx := rt.Context()
+			ws, _, err := websocket.Dial(ctx, destURL, &websocket.DialOptions{Subprotocols: protocols})
+			if tc.error != "" {
+				require.ErrorContains(t, err, tc.error)
+				return
+			}
+			require.NoError(t, err)
+			require.NoError(t, ws.Close(websocket.StatusNormalClosure, "test complete"))
+		})
+	}
+
 }
