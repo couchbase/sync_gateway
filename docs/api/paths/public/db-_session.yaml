@@ -39,7 +39,7 @@ post:
               description: User name to generate the session for. Omit this value to generate a session for the authenticated user.
               type: string
             password:
-              description: Password of the user to generate the session for. Omit this value to use the authenticating user's credentials.
+              description: Password of the user to generate the session for. Omit this value to generate a session for the authenticated user.
               type: string
   responses:
     "200":
