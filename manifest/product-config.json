@@ -614,8 +614,8 @@
             "go_version": "1.24.4",
             "interval": 120,
             "production": true,
-            "release": "3.2.6",
-            "release_name": "Couchbase Sync Gateway 3.2.6",
+            "release": "3.2.7",
+            "release_name": "Couchbase Sync Gateway 3.2.7",
             "start_build": 1,
             "trigger_blackduck": true
         },
@@ -708,12 +708,22 @@
             "start_build": 7,
             "trigger_blackduck": true
         },
+        "manifest/3.2/3.2.6.xml": {
+            "do-build": false,
+            "go_version": "1.24.2",
+            "interval": 1440,
+            "production": true,
+            "release": "3.2.6",
+            "release_name": "Couchbase Sync Gateway 3.2.6",
+            "start_build": 1,
+            "trigger_blackduck": true
+        },
         "manifest/3.3.xml": {
             "go_version": "1.24.4",
             "interval": 120,
             "production": true,
-            "release": "3.3.0.2",
-            "release_name": "Couchbase Sync Gateway 3.3.0.2",
+            "release": "3.3.1",
+            "release_name": "Couchbase Sync Gateway 3.3.1",
             "start_build": 1,
             "trigger_blackduck": true
         },
@@ -724,6 +734,16 @@
             "production": true,
             "release": "3.3.0.1",
             "release_name": "Couchbase Sync Gateway 3.3.0.1",
+            "start_build": 2,
+            "trigger_blackduck": true
+        },
+        "manifest/3.3/3.3.0.2.xml": {
+            "do-build": false,
+            "go_version": "1.24.4",
+            "interval": 1440,
+            "production": true,
+            "release": "3.3.0.2",
+            "release_name": "Couchbase Sync Gateway 3.3.0.2",
             "start_build": 2,
             "trigger_blackduck": true
         },
@@ -741,8 +761,8 @@
             "go_version": "1.24.4",
             "interval": 120,
             "production": true,
-            "release": "4.0.0.2",
-            "release_name": "Couchbase Sync Gateway 4.0.0.2",
+            "release": "4.0.1",
+            "release_name": "Couchbase Sync Gateway 4.0.1",
             "start_build": 1,
             "trigger_blackduck": true
         },
@@ -753,6 +773,16 @@
             "production": true,
             "release": "4.0.0.1",
             "release_name": "Couchbase Sync Gateway 4.0.0.1",
+            "start_build": 2,
+            "trigger_blackduck": true
+        },
+        "manifest/4.0/4.0.0.2.xml": {
+            "do-build": false,
+            "go_version": "1.24.4",
+            "interval": 1440,
+            "production": true,
+            "release": "4.0.0.2",
+            "release_name": "Couchbase Sync Gateway 4.0.0.2",
             "start_build": 2,
             "trigger_blackduck": true
         },
