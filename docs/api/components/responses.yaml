@@ -15,6 +15,12 @@ Not-found:
       example:
         error: not_found
         reason: no such database "invalid-db"
+Unauthorized:
+  description: User does not have access to resource, or resource does not exist
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/HTTP-Error
 Conflict:
   description: Resource already exists under that name
   content:
@@ -33,12 +39,15 @@ Role:
     application/json:
       schema:
         $ref: ./schemas.yaml#/Role
-Invalid-CORS:
-  description: Origin is not in the approved list of allowed origins
+Invalid-CORS-LoginOrigin:
+  description: Value of `Origin` is not in the approved list of allowed origins in `LoginOrigin` of Sync Gateway bootstrap or database configuration.
   content:
     application/json:
       schema:
         $ref: ./schemas.yaml#/HTTP-Error
+      example:
+        error: "Bad Request"
+        reason: "No CORS"
 User-session-information:
   description: Properties associated with a user session
   content:
