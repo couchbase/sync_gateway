@@ -747,3 +747,25 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
 	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
 }
+
+func TestOneTimeSessionWithCookie(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	username := "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(t, resp, http.StatusOK)
+
+	headers := map[string]string{
+		"Cookie": resp.Header().Get("Set-Cookie"),
+	}
+
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Second request should fail since it's a one-time session
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
+	RequireStatus(t, resp, http.StatusUnauthorized)
+}
