@@ -85,7 +85,7 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 	const username = "alice"
 	rt.CreateUser(username, []string{"*"})
 
-	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", `{"one_time": true}`, username)
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
 	RequireStatus(t, resp, http.StatusOK)
 
 	var sessionResp struct {
@@ -167,7 +167,7 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 	for _, tc := range testCases {
 		rt.Run(tc.name, func(t *testing.T) {
 			// Create new one-time session for each sub-test
-			resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", `{"one_time": true}`, username)
+			resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "{}", username)
 			RequireStatus(t, resp, http.StatusOK)
 
 			var sessionResp struct {

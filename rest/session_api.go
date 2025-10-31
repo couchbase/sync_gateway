@@ -9,8 +9,7 @@
 package rest
 
 import (
-	"bytes"
-	"io"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -49,58 +48,72 @@ func (h *handler) handleSessionPOST() error {
 		return err
 	}
 
+	oneTime := h.getBoolQuery("one_time")
+
 	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkPublicAuth calls out into AuthenticateUntrustedJWT.
 	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
 	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
 		return ErrLoginRequired
 	}
+	user, err := h.getUserFromSessionRequestBody()
+	fmt.Printf("user from body: %+v, err: %v\n", user, err)
 
-	body, err := h.readBody()
-	if err != nil {
-		return err
+	ttl := defaultSessionTTL
+	if oneTime {
+		ttl = oneTimeSessionTTL
 	}
+	var sessionID string
+	// If we fail to get a user from the body and we've got a non-GUEST authenticated user, create the session based on that user
+	if user == nil && h.user != nil && h.user.Name() != "" {
+		sessionID, err = h.makeSessionWithTTL(h.user, ttl, oneTime)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+		sessionID, err = h.makeSessionWithTTL(user, ttl, oneTime)
+		if err != nil {
+			return err
+		}
+	}
+	if oneTime {
+		h.writeJSON(h.formatSessionResponse(user, sessionID))
+	} else {
+		h.writeJSON(h.formatSessionResponse(user, ""))
+	}
+	return nil
+}
+
+func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 
 	var params struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
-		OneTime  bool   `json:"one_time"`
 	}
-	user := h.user
-	if len(body) > 0 {
-		err := ReadJSONFromMIME(h.rq.Header, io.NopCloser(bytes.NewReader(body)), &params)
-		if err != nil {
-			return err
-		}
-		if params.Name != "" {
-			if h.db.Options.DisablePasswordAuthentication {
-				return ErrLoginRequired
-			}
-			user, err = h.getUser(params.Name, params.Password)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if user == nil || user.Name() == "" {
-		return ErrLoginRequired
-	}
-
-	ttl := defaultSessionTTL
-	if params.OneTime {
-		ttl = oneTimeSessionTTL
-	}
-
-	sessionID, err := h.makeSessionWithTTL(user, ttl, params.OneTime)
+	err := h.readJSONInto(&params)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if params.OneTime {
-		h.writeJSON(h.formatSessionResponse(h.user, sessionID))
-	} else {
-		h.writeJSON(h.formatSessionResponse(h.user, ""))
+
+	var user auth.User
+	user, err = h.db.Authenticator(h.ctx()).GetUser(params.Name)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	if user == nil {
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(params.Name))
+		return nil, nil
+	}
+
+	authenticated, reason := user.AuthenticateWithReason(params.Password)
+	if !authenticated {
+		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(params.Name), reason)
+		return nil, nil
+	}
+
+	return user, nil
 }
 
 // getUser returns a user object by authenticating the provided username and password.
@@ -217,9 +230,8 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 func (h *handler) createUserSession() error {
 	h.assertAdminOnly()
 	var params struct {
-		Name    string `json:"name"`
-		TTL     int    `json:"ttl"`
-		OneTime bool   `json:"one_time"`
+		Name string `json:"name"`
+		TTL  int    `json:"ttl"`
 	}
 	params.TTL = int(defaultSessionTTL / time.Second)
 	err := h.readJSONInto(&params)
@@ -242,7 +254,8 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	session, err := authenticator.CreateSession(h.ctx(), user, ttl, params.OneTime)
+	oneTime := false
+	session, err := authenticator.CreateSession(h.ctx(), user, ttl, oneTime)
 	if err != nil {
 		return err
 	}

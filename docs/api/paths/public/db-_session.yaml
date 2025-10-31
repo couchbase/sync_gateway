@@ -24,6 +24,12 @@ post:
     Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
 
     If CORS is enabled, the origin must match an allowed login origin otherwise an error will be returned.
+  parameters:
+    - name: one_time
+      description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes if not used.
+      in: query
+      schema:
+        type: boolean
   requestBody:
     description: The body can depend on if using the Public or Admin APIs.
     content:
@@ -37,9 +43,6 @@ post:
             password:
               description: Password of the user to generate the session for.
               type: string
-            one_time:
-              description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes.
-              type: boolean
   responses:
     '200':
       description: Session created successfully. Returned body is dependant on if using Public or Admin APIs
@@ -84,6 +87,7 @@ post:
               one_time_session_id:
                 description: The id of a single use session.
                 type: string
+                example: c5af80a039db4ed9d2b6865576b6999935282689
             required:
               - authentication_handlers
               - ok
