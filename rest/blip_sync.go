@@ -24,7 +24,7 @@ import (
 
 const (
 	secWebSocketProtocolHeader = "Sec-WebSocket-Protocol"
-	blipSessionIDPrefix        = "SyncGatewaySession="
+	blipSessionIDPrefix        = "SyncGatewaySession_"
 )
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
