@@ -15,8 +15,6 @@ get:
       $ref: ../../components/responses.yaml#/User-session-information
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
-    "404":
-      $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Session
   operationId: get_db-_session
@@ -48,8 +46,6 @@ post:
       $ref: ../../components/responses.yaml#/Invalid-CORS-LoginOrigin
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
-    "404":
-      $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Session
   operationId: post_db-_session
@@ -67,7 +63,15 @@ delete:
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
     "404":
-      $ref: ../../components/responses.yaml#/Not-found
+      description: Return if session not found.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: not_found
+            reason: no session
+
   tags:
     - Session
   operationId: delete_db-_session

@@ -7,6 +7,17 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get information about the current user
+  description: This will get the information about the current user.
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/User-session-information
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Session
+  operationId: get_db-_session
 post:
   summary: Create a new user session
   description: |-
@@ -57,7 +68,14 @@ post:
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
     '404':
-      $ref: ../../components/responses.yaml#/Not-found
+      description: Return if database does not exist
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: not_found
+            reason: no such database "invalid-db"
   tags:
     - Session
   operationId: post_db-_session
