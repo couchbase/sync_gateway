@@ -449,6 +449,7 @@ func (rm *RevMessage) SetProperties(properties blip.Properties) {
 	maps.Copy(rm.Properties, properties)
 }
 
+// The RevMessage Stringer function will not return Rev and RevHistory property
 func (rm *RevMessage) String() string {
 
 	buffer := bytes.NewBufferString("")
@@ -457,12 +458,12 @@ func (rm *RevMessage) String() string {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
 	}
 
-	if coll, ok := rm.Collection(); ok {
-		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))
-	}
-
 	if rev, foundRev := rm.Rev(); foundRev {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
+	}
+
+	if coll, ok := rm.Collection(); ok {
+		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))
 	}
 
 	if rm.HasDeletedProperty() {
