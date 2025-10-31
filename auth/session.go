@@ -95,7 +95,7 @@ func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessi
 			// If the delete error comes from another source, still treat this as an error, expecting the client to retry
 			// due to a temporary KV issue.
 			if !base.IsDocNotFoundError(err) {
-				base.InfofCtx(ctx, base.KeyAuth, "Error deleting one-time session %s. Not allowing login: %v", base.UD(sessionID), err)
+				base.InfofCtx(ctx, base.KeyAuth, "Unable to delete one-time session %s. Not allowing login: %v", base.UD(sessionID), err)
 			}
 			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 		}
