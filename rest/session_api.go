@@ -67,6 +67,7 @@ func (h *handler) handleSessionPOST() error {
 		if err != nil {
 			return err
 		}
+		user = h.user
 	} else if err != nil {
 		return err
 	} else {
