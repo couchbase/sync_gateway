@@ -25,6 +25,7 @@ type LoginSession struct {
 	Expiration  time.Time     `json:"expiration"`
 	Ttl         time.Duration `json:"ttl"`
 	SessionUUID string        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
+	OneTime     *bool         `json:"one_time,omitempty"`
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -76,10 +77,51 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
+	err = auth.deleteOneTimeSession(auth.LogCtx, &session)
+	if err != nil {
+		return nil, err
+	}
+
 	return user, err
 }
 
-func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl time.Duration) (*LoginSession, error) {
+// AuthenticateOneTimeSession authenticates a session and deletes it upon successful authentication if it was marked as
+// a one time sesssion. If it is a one time session, delete the session.
+func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessionID string) (User, error) {
+	session, user, err := auth.GetSession(sessionID)
+	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+	}
+
+	err = auth.deleteOneTimeSession(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// deleteOneTimeSession deletes the session if it is marked as a one-time session. If the session can be not deleted, or
+// was already deleted an error is returned.
+func (auth *Authenticator) deleteOneTimeSession(ctx context.Context, session *LoginSession) error {
+	if session.OneTime == nil || !*session.OneTime {
+		return nil
+	}
+	err := auth.datastore.Delete(auth.DocIDForSession(session.ID))
+	if err != nil {
+		// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
+		// If the delete error comes from another source, still treat this as an error, expecting the client to retry
+		// due to a temporary KV issue.
+		if !base.IsDocNotFoundError(err) {
+			base.InfofCtx(ctx, base.KeyAuth, "Unable to delete one-time session %s. Not allowing login: %v", base.UD(session.ID), err)
+		}
+		return base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+	}
+	return nil
+}
+
+// CreateSession creates a new login session for the specified user with the specified TTL. If oneTime is true, the
+// session is marked as a one-time session and will be removed with a successful authentication.
+func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl time.Duration, oneTime bool) (*LoginSession, error) {
 	ttlSec := int(ttl.Seconds())
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
@@ -103,6 +145,10 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 		Ttl:         ttl,
 		SessionUUID: user.GetSessionUUID(),
 	}
+	// only serialize one_time if set
+	if oneTime {
+		session.OneTime = &oneTime
+	}
 	if err := auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
 	}
@@ -115,24 +161,24 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 }
 
 // GetSession returns a session by ID. Return a not found error if the session is not found, or is invalid.
-func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
+func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, error) {
 	var session LoginSession
 	_, err := auth.datastore.Get(auth.DocIDForSession(sessionID), &session)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	user, err := auth.GetUser(session.Username)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if user == nil {
-		return nil, base.ErrNotFound
+		return nil, nil, base.ErrNotFound
 	}
 	if session.SessionUUID != user.GetSessionUUID() {
-		return nil, base.ErrNotFound
+		return nil, nil, base.ErrNotFound
 	}
 
-	return &session, nil
+	return &session, user, nil
 }
 
 func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie bool, httpOnly bool) *http.Cookie {

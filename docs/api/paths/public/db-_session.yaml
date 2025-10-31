@@ -24,6 +24,12 @@ post:
     Generates a login session for the user based on the credentials provided in the request body or if that fails (due to invalid credentials or none provided at all), generates the new session for the currently authenticated user instead. On a successful session creation, a session cookie is stored to keep the user authenticated for future API calls.
 
     If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
+  parameters:
+    - name: one_time
+      description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes if not used.
+      in: query
+      schema:
+        type: boolean
   requestBody:
     description: When name and password are included in the request body, the session will be created for the specified user.  Otherwise the session will be created for the authenticated user making the request.
     required: false
@@ -40,8 +46,19 @@ post:
               description: Password of the user to generate the session for. Omit this value to generate a session for the authenticated user.
               type: string
   responses:
-    "200":
-      $ref: ../../components/responses.yaml#/User-session-information
+    '200':
+      description: Session created successfully. Returned body is dependant on if using Public or Admin APIs
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: ../../components/schemas.yaml#/User-session-information
+              - type: object
+                properties:
+                  one_time_session_id:
+                    description: The id of a single use session if `one_time=true` query parameter was used.
+                    type: string
+                    example: c5af80a039db4ed9d2b6865576b6999935282689
     "400":
       $ref: ../../components/responses.yaml#/Invalid-CORS-LoginOrigin
     "401":
