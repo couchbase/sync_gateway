@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -56,7 +55,6 @@ func (h *handler) handleSessionPOST() error {
 		return ErrLoginRequired
 	}
 	user, err := h.getUserFromSessionRequestBody()
-	fmt.Printf("user from body: %+v, err: %v\n", user, err)
 
 	ttl := defaultSessionTTL
 	if oneTime {
