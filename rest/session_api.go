@@ -116,27 +116,6 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 	return user, nil
 }
 
-// getUser returns a user object by authenticating the provided username and password.
-func (h *handler) getUser(username, password string) (auth.User, error) {
-	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
-	if err != nil {
-		return nil, err
-	}
-
-	if user == nil {
-		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: not found", base.UD(username))
-		return nil, nil
-	}
-
-	authenticated, reason := user.AuthenticateWithReason(password)
-	if !authenticated {
-		base.InfofCtx(h.ctx(), base.KeyAuth, "Couldn't create session for user %q: %s", base.UD(username), reason)
-		return nil, nil
-	}
-
-	return user, nil
-}
-
 // DELETE /_session logs out the current session
 func (h *handler) handleSessionDELETE() error {
 	err := h.checkLoginCORS()
