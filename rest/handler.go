@@ -1038,7 +1038,7 @@ func (h *handler) getWebsocketToken() string {
 	protocolHeaders := h.rq.Header.Get(secWebSocketProtocolHeader)
 	var outputHeaders []string
 	var sessionID string
-	for header := range strings.SplitSeq(protocolHeaders, ",") {
+	for _, header := range strings.Split(protocolHeaders, ",") {
 		trimmedHeader := strings.TrimSpace(header)
 		if !strings.HasPrefix(trimmedHeader, blipSessionIDPrefix) {
 			outputHeaders = append(outputHeaders, header)
