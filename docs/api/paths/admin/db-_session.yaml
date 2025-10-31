@@ -65,10 +65,17 @@ post:
                 session_id: c5af80a039db4ed9d2b6865576b6999935282689
                 expires: '2022-01-21T15:24:44Z'
                 cookie_name: SyncGatewaySession
-    '400':
-      $ref: ../../components/responses.yaml#/Invalid-CORS
+    "401":
+      $ref: ../../components/responses.yaml#/Unauthorized
     '404':
-      $ref: ../../components/responses.yaml#/Not-found
+      description: Return if database does not exist
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: not_found
+            reason: no such database "invalid-db"
   tags:
     - Session
   operationId: post_db-_session
