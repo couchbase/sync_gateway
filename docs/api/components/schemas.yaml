@@ -3203,7 +3203,7 @@ CORS:
       default: 0
     origin:
       description: |-
-        List of allowed origins for the public API.
+        List of allowed origins for the public API. The request `Origin` header is checked against these values. If successful the `Origin` header is returned in the HTTP response header as `Access-Control-Allow-Origin`.
       type: array
       items:
         type: string
