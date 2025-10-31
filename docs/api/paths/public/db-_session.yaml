@@ -28,21 +28,19 @@ post:
     If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
   requestBody:
     description: The body can be used to override the credentials of the authenticating user, or blank if getting a user session for the authenticating user.
+    required: false
     content:
       application/json:
         schema:
-          oneOf:
-            - type: "null"
-              title: "Empty Body"
-            - type: object
-              title: "User Credentials"
-              properties:
-                name:
-                  description: User name to generate the session for.
-                  type: string
-                password:
-                  description: Password of the user to generate the session for.
-                  type: string
+          type: object
+          title: "User Credentials"
+          properties:
+            name:
+              description: User name to generate the session for. Omit this value to use the authenticating user's credentials.
+              type: string
+            password:
+              description: Password of the user to generate the session for. Omit this value to use the authenticating user's credentials.
+              type: string
   responses:
     "200":
       $ref: ../../components/responses.yaml#/User-session-information

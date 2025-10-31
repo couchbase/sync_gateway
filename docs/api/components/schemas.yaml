@@ -384,7 +384,7 @@ Role:
       items:
         type: string
       readOnly: true
-    $ref: "#/CollectionAccessConfig"
+    $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
   type: object
@@ -407,6 +407,7 @@ User-session-information:
           description: A map of the channels in the default collection that the user is in along with the sequence number the user was granted access. This does not include inherited channels through roles.
           type: object
           additionalProperties:
+            x-additionalPropertiesName: channelName
             type: number
             minimum: 1
             description: The sequence number the user was granted access.
@@ -2116,13 +2117,13 @@ Startup-config:
 
             By default, this will only be accessible to the localhost.
           type: string
-          default: "127.0.0.1:4985"
+          default: '127.0.0.1:4985'
         admin_interface_authentication:
           description: Whether the admin API requires authentication
           type: boolean
           default: true
         compress_responses:
-          description: "If false, disables compression of HTTP responses"
+          description: 'If false, disables compression of HTTP responses'
           type: boolean
           default: true
         cors:
@@ -3162,7 +3163,7 @@ IndexInitStatus:
             "error": The index creation operation has failed.
     settings:
       allOf:
-        - $ref: "#/IndexSettings"
+        - $ref: '#/IndexSettings'
   required:
     - status
     - start_time
@@ -3180,11 +3181,18 @@ CORS:
       type: array
       items:
         type: string
+      example:
+        - Accept-Encoding
+        - Authorization
+        - Content-Type
+        - If-Match
     login_origin:
       description: |-
-        List of allowed origins to apply to public /{db}/_session API.
+        List of allowed origins to apply to public `/{db}/_session` API.
 
         To use cors on `/{db}/_sesssion`, the domain must be present in both `login_origin` and `origin`.
+
+        If configured, `Authorization` must be included in headers.
       type: array
       items:
         type: string
@@ -3195,7 +3203,7 @@ CORS:
       default: 0
     origin:
       description: |-
-        List of allowed origins, use `['*']` to allow access from everywhere.
+        List of allowed origins for the public API.
       type: array
       items:
         type: string

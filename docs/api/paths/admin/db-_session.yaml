@@ -32,7 +32,7 @@ post:
               description: Time until the session expires. Uses default value of 24 hours if left blank. This value must be greater or equal to 1.
               type: integer
   responses:
-    "200":
+    '200':
       description: Session created successfully. Returned body is dependant on if using Public or Admin APIs.
       content:
         application/json:
@@ -52,11 +52,11 @@ post:
             Example:
               value:
                 session_id: c5af80a039db4ed9d2b6865576b6999935282689
-                expires: "2022-01-21T15:24:44Z"
+                expires: '2022-01-21T15:24:44Z'
                 cookie_name: SyncGatewaySession
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
-    "404":
+    '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Session
