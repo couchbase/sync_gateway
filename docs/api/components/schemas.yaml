@@ -390,25 +390,42 @@ User-session-information:
   type: object
   properties:
     authentication_handlers:
-      description: The ways authentication can be established to authenticate as the user.
+      description: The ways authentication can be established to authenticate as a user. Used for CouchDB compatibility. Always contains "default" and "cookie".
       type: array
-      items:
-        type: string
+      enum:
+        - ["default", "cookie"]
+      default: ["default", "cookie"]
     ok:
+      description: Used for CouchDB compatibility. Always true.
       type: boolean
+      enum:
+        - true
     userCtx:
       type: object
       properties:
         channels:
-          description: |
-            A map of the channels the user has access to and the sequence number each channel was created at.
-
-            The key is the channel name and the value is the sequence number.
+          description: A map of the channels in the default collection that the user is in along with the sequence number the user was granted access. This does not include inherited channels through roles.
           type: object
+          additionalProperties:
+            x-additionalPropertiesName: channelName
+            type: number
+            minimum: 1
+            description: The sequence number the user was granted access.
+            title: sequence number
+          example:
+            "!": 1
+            "channelA": 2
         name:
           description: The name of the user.
           type: string
-          nullable: true
+          minLength: 1
+      required:
+        - channels
+        - name
+  required:
+    - authentication_handlers
+    - ok
+    - userCtx
   title: User Session Information
 OIDC-callback:
   type: object
@@ -1644,24 +1661,9 @@ Database:
 
         This also sets the default value of query param `request_plus` for [GET /{keyspace}/_changes](#operation/get_keyspace-_changes) or `request_plus` for [POST /{keyspace}/_changes](#operation/post_keyspace-_changes).
     cors:
-      description: CORS configuration for this database; if present, overrides server's config.
-      type: object
-      properties:
-        origin:
-          description: 'List of allowed origins, use [''*''] to allow access from everywhere'
-          type: array
-          items:
-            type: string
-        login_origin:
-          description: List of allowed login origins
-          type: array
-          items:
-            type: string
-        headers:
-          description: List of allowed headers
-          type: array
-          items:
-            type: string
+      allOf:
+        - $ref: "#/CORS"
+        - type: object
     logging:
       description: Per-database logging configuration.
       type: object
@@ -2145,26 +2147,10 @@ Startup-config:
               description: The TLS key file to use for the REST APIs
               type: string
         cors:
-          type: object
-          properties:
-            origin:
-              description: 'List of allowed origins, use [''*''] to allow access from everywhere'
-              type: array
-              items:
-                type: string
-            login_origin:
-              description: List of allowed login origins
-              type: array
-              items:
-                type: string
-            headers:
-              description: List of allowed headers
-              type: array
-              items:
-                type: string
-            max_age:
-              description: Maximum age of the CORS Options request
-              type: integer
+          allOf:
+            - type: object
+              description: CORS configuration for all databases
+            - $ref: "#/CORS"
       readOnly: true
     logging:
       description: The configuration settings for modifying Sync Gateway logging.
@@ -2977,3 +2963,42 @@ DatabaseState:
     Starting: The database is in the process of going online.
     Stopping: The database is no longer accepting connections and is being taken offline or deleted.
     Resyncing: The database is offline and performing a resync operation.
+CORS:
+  type: object
+  properties:
+    headers:
+      description: |-
+        List of allowed headers. These headers will be added the `Access-Control-Allow-Headers` response to a valid CORS request.
+
+        A recommended minimum set of values should be `["Accept-Encoding", "Authorization", "Content-Type", "If-Match"]`.
+      type: array
+      items:
+        type: string
+      example:
+        - Accept-Encoding
+        - Authorization
+        - Content-Type
+        - If-Match
+    login_origin:
+      description: |-
+        List of allowed origins to apply to public `/{db}/_session` API.
+
+        To use cors on `/{db}/_session`, the domain must be present in both `login_origin` and `origin`.
+
+        If configured, `Authorization` must be included in headers.
+      type: array
+      items:
+        type: string
+      example: ["https://example.com"]
+    max_age:
+      description: Value for `Access-Control-Maximum-Age`. Uses 0 by default.
+      type: integer
+      default: 0
+    origin:
+      description: |-
+        List of allowed origins for the public API. The request `Origin` header is checked against these values. If successful the `Origin` header is returned in the HTTP response header as `Access-Control-Allow-Origin`.
+      type: array
+      items:
+        type: string
+      example: ["https://example.com"]
+  title: Cors Configuration
