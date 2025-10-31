@@ -80,25 +80,25 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	return user, err
 }
 
-// AuthenticateOneTimeSession authenticates a session and deletes it upon successful authentication.
+// AuthenticateOneTimeSession authenticates a session and deletes it upon successful authentication if it was marked as
+// a one time sesssion. If it is a one time session, delete the session.
 func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessionID string) (User, error) {
 	session, user, err := auth.GetSession(sessionID)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 	}
 
-	if session.OneTime == nil || !*session.OneTime {
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Not a one time session Invalid")
-	}
-	err = auth.datastore.Delete(auth.DocIDForSession(sessionID))
-	if err != nil {
-		// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
-		// If the delete error comes from another source, still treat this as an error, expecting the client to retry
-		// due to a temporary KV issue.
-		if !base.IsDocNotFoundError(err) {
-			base.InfofCtx(ctx, base.KeyAuth, "Error deleting one-time session %s. Not allowing login: %v", base.UD(sessionID), err)
+	if session.OneTime != nil && *session.OneTime {
+		err = auth.datastore.Delete(auth.DocIDForSession(sessionID))
+		if err != nil {
+			// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
+			// If the delete error comes from another source, still treat this as an error, expecting the client to retry
+			// due to a temporary KV issue.
+			if !base.IsDocNotFoundError(err) {
+				base.InfofCtx(ctx, base.KeyAuth, "Error deleting one-time session %s. Not allowing login: %v", base.UD(sessionID), err)
+			}
+			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 		}
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 	}
 	return user, nil
 }

@@ -138,12 +138,11 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 		name      string
 		protocols []string
 		error     string
-	}{ /*
-			{
-				name:  "No Protocols",
-				error: "expected handshake response status code 101 but got 500",
-			},
-		*/
+	}{
+		{
+			name:  "No Protocols",
+			error: "expected handshake response status code 101 but got 500",
+		},
 		{
 			name: "V4 Protocol",
 			protocols: []string{
@@ -180,7 +179,6 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 
 			protocols := []string{blipSessionIDPrefix + sessionResp.SessionID}
 			protocols = append(protocols, tc.protocols...)
-			fmt.Printf("protocols=%#+v\n", protocols)
 			ctx := rt.Context()
 			ws, _, err := websocket.Dial(ctx, destURL, &websocket.DialOptions{Subprotocols: protocols})
 			if tc.error != "" {
