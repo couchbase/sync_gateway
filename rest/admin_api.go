@@ -2293,7 +2293,8 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry GatewayRegistry `json:"registry"`
+	Registry                     GatewayRegistry `json:"registry"`
+	EnableCrossClusterVersioning bool            `json:"enable_cross_cluster_versioning"`
 }
 
 // Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
@@ -2322,8 +2323,11 @@ func (h *handler) handleGetClusterInfo() error {
 				continue
 			}
 
+			eccv := h.server.getBucketCCVSettings(bucketName)
+
 			bucketInfo := BucketInfo{
-				Registry: *registry,
+				Registry:                     *registry,
+				EnableCrossClusterVersioning: eccv,
 			}
 			clusterInfo.Buckets[bucketName] = bucketInfo
 		}

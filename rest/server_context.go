@@ -2328,3 +2328,13 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	}
 	return base.ParseClusterUUID(output)
 }
+
+func (sc *ServerContext) getBucketCCVSettings(bucketName string) bool {
+	for _, _db := range sc.databases_ {
+		if _db.BucketSpec.BucketName == bucketName {
+			return _db.CachedCCVEnabled.Load()
+		}
+
+	}
+	return false
+}

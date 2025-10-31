@@ -3532,3 +3532,36 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	assert.Error(t, err, errResp)
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
+
+// TestECCV validates if the ECCV value of the bucket is returned as a response
+// for _cluster_info endpoint. ECCV value is returned for each bucket, if the
+// bucket does not contain any SGW database, the value will be set to false
+func TestECCV(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since it requires a gocb bucket")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db"
+
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	type BucketInfoResponse struct {
+		EnableCrossClusterVersioning bool `json:"enable_cross_cluster_versioning"`
+	}
+	type ClusterInfoResponse struct {
+		LegacyConfig bool                          `json:"legacy_config,omitempty"`
+		Buckets      map[string]BucketInfoResponse `json:"buckets,omitempty"`
+	}
+	var clusterInfo ClusterInfoResponse
+	err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
+	assert.NoError(t, err)
+}
