@@ -188,8 +188,7 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			ws.Close(websocket.StatusNormalClosure, "test complete")
-
+			require.NoError(t, ws.Close(websocket.StatusNormalClosure, "test complete"))
 		})
 	}
 
