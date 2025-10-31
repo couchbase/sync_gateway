@@ -710,12 +710,12 @@
         },
         "manifest/3.2/3.2.6.xml": {
             "do-build": false,
-            "go_version": "1.24.2",
+            "go_version": "1.24.4",
             "interval": 1440,
             "production": true,
             "release": "3.2.6",
             "release_name": "Couchbase Sync Gateway 3.2.6",
-            "start_build": 1,
+            "start_build": 2,
             "trigger_blackduck": true
         },
         "manifest/3.3.xml": {
