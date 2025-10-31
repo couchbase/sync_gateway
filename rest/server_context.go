@@ -949,7 +949,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		dbcontext.CORS = sc.Config.API.CORS
 	}
-	if !dbcontext.CORS.IsEmpty() {
+	if !dbcontext.CORS.IsEmpty() && dbcontext.Options.SecureCookieOverride {
 		dbcontext.SameSiteCookieMode = http.SameSiteNoneMode
 	}
 	if config.Unsupported != nil && config.Unsupported.SameSiteCookie != nil {
