@@ -449,6 +449,7 @@ func (rm *RevMessage) SetProperties(properties blip.Properties) {
 	maps.Copy(rm.Properties, properties)
 }
 
+// The RevMessage Stringer function will not return Rev and RevHistory property
 func (rm *RevMessage) String() string {
 
 	buffer := bytes.NewBufferString("")
