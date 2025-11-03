@@ -458,12 +458,12 @@ func (rm *RevMessage) String() string {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
 	}
 
-	if rev, foundRev := rm.Rev(); foundRev {
-		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
-	}
-
 	if coll, ok := rm.Collection(); ok {
 		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))
+	}
+
+	if rev, foundRev := rm.Rev(); foundRev {
+		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
 
 	if rm.HasDeletedProperty() {
