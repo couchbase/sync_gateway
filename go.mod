@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.5
+	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/couchbase/cbgt v1.4.10
 	github.com/couchbase/clog v0.1.0
@@ -32,7 +33,7 @@ require (
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
-	github.com/shirou/gopsutil/v4 v4.25.9
+	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.43.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
@@ -44,7 +45,6 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.12 // indirect
 	github.com/couchbase/blance v0.1.6 // indirect
 	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
