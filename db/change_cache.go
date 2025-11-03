@@ -596,11 +596,12 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
+	var channelSet channels.Set
 	changedChannels := c.processEntry(ctx, change)
-	channelSet := channels.SetFromArrayNoValidate(changedChannels)
 	if changedChannels == nil {
 		channelSet = channels.SetOfNoValidate(unusedSeqChannelID)
 	} else {
+		channelSet = channels.SetFromArrayNoValidate(changedChannels)
 		channelSet.Add(unusedSeqChannelID)
 	}
 	if c.notifyChange != nil && len(channelSet) > 0 {
