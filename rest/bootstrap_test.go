@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -246,4 +247,19 @@ func DevTestFetchConfigManual(t *testing.T) {
 
 	time.Sleep(15 * time.Second)
 
+}
+
+func TestRosmarServer(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace)
+
+	config := BootstrapStartupConfigForTest(t) // share config between both servers in test to share a groupID
+	config.Bootstrap.Server = rosmar.InMemoryURL
+	sc, closeFn := StartServerWithConfig(t, &config)
+	defer closeFn()
+
+	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", `{}`)
+	resp.RequireStatus(http.StatusCreated)
+
+	resp = BootstrapAdminRequest(t, sc, http.MethodPost, "/db1/_flush", `{}`)
+	resp.RequireStatus(http.StatusOK)
 }
