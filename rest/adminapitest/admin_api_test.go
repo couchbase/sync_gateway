@@ -386,23 +386,33 @@ func TestFlush(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
 	}
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
+	for _, persistentConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("persistentConfig=%t", persistentConfig), func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: persistentConfig})
+			defer rt.Close()
 
-	rt.CreateTestDoc("doc1")
-	rt.CreateTestDoc("doc2")
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
+			if persistentConfig {
+				rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+			}
+			rt.CreateTestDoc("doc1")
+			rt.CreateTestDoc("doc2")
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
 
-	log.Printf("Flushing db...")
-	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
-	rt.SetAdminParty(true) // needs to be re-enabled after flush since guest user got wiped
+			log.Printf("Flushing db...")
+			rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
 
-	// After the flush, the db exists but the documents are gone:
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
+			// After the flush, the db exists but the documents are gone:
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
 
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 404)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 404)
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 404)
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 404)
+
+			// recreate document
+			rt.CreateTestDoc("doc1")
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
+		})
+	}
 }
 
 // Test a single call to take DB offline
