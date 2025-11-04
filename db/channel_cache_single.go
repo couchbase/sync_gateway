@@ -280,7 +280,10 @@ func (c *singleChannelCacheImpl) _pruneCacheLength(ctx context.Context) (pruned 
 	}
 
 	if pruned > 0 {
-		base.DebugfCtx(ctx, base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelID))
+		// Only enter trace log line if trace ius enabled, to avoid the cost of UD() calls
+		if base.LogTraceEnabled(ctx, base.KeyCache) {
+			base.TracefCtx(ctx, base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelID))
+		}
 	}
 
 	return pruned
@@ -306,7 +309,10 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 		pruned++
 	}
 	if pruned > 0 {
-		base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelID))
+		// Only enter trace log line if trace ius enabled, to avoid the cost of UD() calls
+		if base.LogTraceEnabled(ctx, base.KeyCache) {
+			base.TracefCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelID))
+		}
 	}
 
 }
