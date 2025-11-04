@@ -250,16 +250,21 @@ func DevTestFetchConfigManual(t *testing.T) {
 }
 
 func TestRosmarServer(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	config := BootstrapStartupConfigForTest(t) // share config between both servers in test to share a groupID
-	config.Bootstrap.Server = rosmar.InMemoryURL
-	sc, closeFn := StartServerWithConfig(t, &config)
-	defer closeFn()
+	rosmarDiskDir := t.TempDir()
+	for _, server := range []string{rosmar.InMemoryURL, rosmarDiskDir} {
+		t.Run(server, func(t *testing.T) {
+			config := BootstrapStartupConfigForTest(t) // share config between both servers in test to share a groupID
+			config.Bootstrap.Server = rosmarDiskDir
+			sc, closeFn := StartServerWithConfig(t, &config)
+			defer closeFn()
 
-	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", `{}`)
-	resp.RequireStatus(http.StatusCreated)
+			resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", `{}`)
+			resp.RequireStatus(http.StatusCreated)
 
-	resp = BootstrapAdminRequest(t, sc, http.MethodPost, "/db1/_flush", `{}`)
-	resp.RequireStatus(http.StatusOK)
+			resp = BootstrapAdminRequest(t, sc, http.MethodPost, "/db1/_flush", `{}`)
+			resp.RequireStatus(http.StatusOK)
+		})
+	}
 }

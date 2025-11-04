@@ -37,7 +37,7 @@ func (c *RosmarCluster) GetConfigBuckets() ([]string, error) {
 
 // GetMetadataDocument returns a metadata document from the default collection for the specified bucket.
 func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +48,7 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 
 // InsertMetadataDocument inserts a metadata document, and fails if it already exists.
 func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
 	}
@@ -59,7 +59,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
 func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
 	}
@@ -72,7 +72,7 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 // trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
 
 func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
 	}
@@ -84,7 +84,7 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 
 // DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
 func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, key string, cas uint64) error {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, ke
 
 // UpdateMetadataDocument updates a given document and retries on CAS mismatch.
 func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return 0, err
 	}
@@ -140,7 +140,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 
 // KeyExists checks whether a key exists in the default collection for the specified bucket
 func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (exists bool, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, location, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, location, rosmar.CreateOrOpen)
 	if err != nil {
 		return false, err
 	}
@@ -152,7 +152,7 @@ func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (
 // GetDocument fetches a document from the default collection.  Does not use configPersistence - callers
 // requiring configPersistence handling should use GetMetadataDocument.
 func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID string, rv any) (exists bool, err error) {
-	bucket, err := rosmar.OpenBucket(c.serverURL, bucketName, rosmar.CreateOrOpen)
+	bucket, err := rosmar.OpenBucketIn(c.serverURL, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
 		return false, err
 	}
