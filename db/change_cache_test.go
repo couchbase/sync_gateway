@@ -1338,10 +1338,10 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 //
 // Create doc1 w/ unused sequences 1, actual sequence 3.
 // Create doc2 w/ sequence 2, channel ABC
-// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
-// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
+// Send feed event for doc2. This won't trigger notifyChangeFunc, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChangeFunc for channel ABC.
 //
-// Verify that notifyChange for channel ABC was sent.
+// Verify that notifyChangeFunc for channel ABC was sent.
 func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -1359,12 +1359,12 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
-	// -------- Setup notifyChange callback ----------------
+	// -------- Setup notifyChangeFunc callback ----------------
 
-	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
+	//  Detect whether the 2nd was ignored using an notifyChangeFunc listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
+	db.changeCache.notifyChangeFunc = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("ABC", collectionID)
 		for ch := range chans {
 			if ch == expectedChan {
@@ -1445,7 +1445,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
+	// Send feed event for doc2. This won't trigger notifyChangeFunc, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
 		Synchronous:  true,
 		Key:          []byte(doc2Id),
@@ -1455,7 +1455,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	db.changeCache.DocChanged(feedEventDoc2, DocTypeDocument)
 
-	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChangeFunc for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
 		Synchronous:  true,
 		Key:          []byte(doc1Id),
@@ -1466,7 +1466,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Wait for waitgroup ----------------
 
-	// Block until the notifyChange callback was invoked with the expected channels.
+	// Block until the notifyChangeFunc callback was invoked with the expected channels.
 	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
 
@@ -1620,7 +1620,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 }
 
-// Verify that notifyChange for channel zero is sent even when the channel isn't active in the cache.
+// Verify that notifyChangeFunc for channel zero is sent even when the channel isn't active in the cache.
 func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Enable relevant logging
@@ -1633,10 +1633,10 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 
-	// -------- Setup notifyChange callback ----------------
+	// -------- Setup notifyChangeFunc callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(_ context.Context, chans channels.Set) {
+	db.changeCache.notifyChangeFunc = func(_ context.Context, chans channels.Set) {
 		expectedChan := channels.NewID("zero", collectionID)
 		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
