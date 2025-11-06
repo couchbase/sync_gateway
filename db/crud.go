@@ -1363,6 +1363,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				if err != nil {
 					return nil, nil, false, nil, err
 				}
+				doc.RevConflict = true
 				base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for existing doc %s, generated implicit CV from rev tree id, updated CV %#v", base.UD(doc.ID), doc.HLV.ExtractCurrentVersionFromHLV())
 			}
 		}

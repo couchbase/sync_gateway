@@ -289,6 +289,7 @@ type Document struct {
 	inlineSyncData    bool
 	localWinsConflict bool   // True if this document is the result of a local-wins conflict resolution
 	RevSeqNo          uint64 // Server rev seq no for a document
+	RevConflict       bool
 }
 
 // GlobalSyncData is the structure for the system xattr that is migrated with XDCR.
@@ -1494,8 +1495,7 @@ func (doc *Document) IsInConflict(ctx context.Context, db *DatabaseCollectionWit
 	}
 	// we need to check if local CV version was generated from a revID if so we need to perform conflict check on rev tree history
 	if doc.HLV.HasRevEncodedCV() {
-		_, _, isConflictErr := db.revTreeConflictCheck(ctx, putOpts.RevTreeHistory, doc, putOpts.NewDoc.Deleted)
-		if isConflictErr != nil {
+		if doc.RevConflict {
 			return HLVConflict
 		}
 		return HLVNoConflict
