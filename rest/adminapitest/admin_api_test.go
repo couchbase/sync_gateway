@@ -382,17 +382,30 @@ func TestGetStatus(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
-	}
 	for _, persistentConfig := range []bool{false, true} {
 		t.Run(fmt.Sprintf("persistentConfig=%t", persistentConfig), func(t *testing.T) {
-			rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: persistentConfig})
+			unsupportedOptions := &db.UnsupportedOptions{
+				APIEndpoints: &db.APIEndpoints{
+					EnableCouchbaseBucketFlush: true,
+				},
+			}
+
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: persistentConfig,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Unsupported: unsupportedOptions,
+					},
+				},
+			})
 			defer rt.Close()
 
 			if persistentConfig {
-				rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+				dbConfig := rt.NewDbConfig()
+				if !base.UnitTestUrlIsWalrus() {
+					dbConfig.Unsupported = unsupportedOptions
+				}
+				rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 			}
 			rt.CreateTestDoc("doc1")
 			rt.CreateTestDoc("doc2")

@@ -2330,3 +2330,63 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	}
 	return base.ParseClusterUUID(output)
 }
+
+// removeBucketAndRecreateDatabase will flush all data from the backing bucket associated with this database. Note, this will take down
+// other databases backed by the same bucket. It will recreate an empty database from the existing configuration.
+func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, dbName string, deleteFunc func(base.BucketSpec) error) error {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	config, ok := sc.dbConfigs[dbName]
+	if !ok {
+		return fmt.Errorf("no config found for database %q", dbName)
+	}
+	for otherDBName, dbCtx := range sc.databases_ {
+		if dbCtx.Bucket.GetName() == *config.Bucket {
+			// If async init is running for the database, cancel it for an external remove.  (cannot be
+			// done in _removeDatabase, as this is called during reload)
+			if sc.DatabaseInitManager != nil && sc.DatabaseInitManager.HasActiveInitialization(otherDBName) {
+				sc.DatabaseInitManager.Cancel(dbName, fmt.Sprintf("flush db %s", otherDBName))
+			}
+			if !sc._removeDatabase(ctx, otherDBName) {
+				return base.RedactErrorf("could not remove database %s as part of flushing %s. Bucket %s is left in an unstable state", base.UD(otherDBName), base.UD(dbName), base.UD(*config.Bucket))
+			}
+		}
+	}
+
+	spec, err := GetBucketSpec(ctx, &config.DatabaseConfig, sc.Config)
+	if err != nil {
+		return err
+	}
+
+	err = deleteFunc(spec)
+	if err != nil {
+		return err
+	}
+
+	if sc.persistentConfig {
+		ctx := context.WithoutCancel(ctx)
+		cas, err := sc.BootstrapContext.InsertConfig(ctx, spec.BucketName, sc.Config.Bootstrap.ConfigGroupID, &config.DatabaseConfig)
+		if err != nil {
+			base.WarnfCtx(ctx, "Could not re-insert database config after flush and re-adding bucket: %v", err)
+			return err
+		}
+		_, err = sc._fetchAndLoadDatabase(base.NewNonCancelCtxForDatabase(ctx), dbName, true)
+		if err != nil {
+			base.WarnfCtx(ctx, "Could not reload database after flush and re-adding bucket: %v", err)
+			return err
+		}
+		// store cas in db config after update
+		sc.dbConfigs[dbName].cfgCas = cas
+	} else {
+		// Re-open database and add to Sync Gateway
+		_, err := sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig,
+			getOrAddDatabaseConfigOptions{
+				useExisting: false,
+				failFast:    false,
+			})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

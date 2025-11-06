@@ -21,9 +21,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/felixge/fgprof"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -274,77 +274,52 @@ func (h *handler) handleCompact() error {
 }
 
 func (h *handler) handleFlush() error {
+	var deleteFunc func(base.BucketSpec) error
 
-	baseBucket := base.GetBaseBucket(h.db.Bucket)
-
-	// If it can be flushed, then flush it
-	if _, ok := baseBucket.(sgbucket.FlushableStore); ok {
-
-		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
-		if !h.db.BucketSpec.IsWalrusBucket() {
-			if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
-				return errors.New("Flush not allowed on Couchbase buckets by default.")
-			}
+	if _, err := base.AsGocbV2Bucket(h.db.Bucket); err == nil {
+		if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
+			return errors.New("Flush not allowed on Couchbase buckets by default.")
 		}
-
-		name := h.db.Name
-		config := h.server.GetDatabaseConfig(name)
-
-		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
-		h.server.RemoveDatabase(h.ctx(), name, fmt.Sprintf("called from %s", h.rq.URL))
-
-		// Create a bucket connection spec from the database config
-		spec, err := GetBucketSpec(h.ctx(), &config.DatabaseConfig, h.server.Config)
-		if err != nil {
-			return err
-		}
-
-		// Manually re-open a temporary bucket connection just for flushing purposes
-		tempBucketForFlush, err := db.ConnectToBucket(h.ctx(), spec, false)
-		if err != nil {
-			return err
-		}
-		defer tempBucketForFlush.Close(h.ctx()) // Close the temporary connection to the bucket that was just for purposes of flushing it
-
-		// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
-		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableStore); ok {
-
-			// Flush
-			err := tempBucketForFlush.Flush()
+		deleteFunc = func(spec base.BucketSpec) error {
+			// open a copy of the bucket to flush
+			bucket, err := db.ConnectToBucket(h.ctx(), spec, false)
 			if err != nil {
 				return err
 			}
-
+			defer bucket.Close(h.ctx())
+			// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
+			gocbBucket, err := base.AsGocbV2Bucket(bucket)
+			if err != nil {
+				return err
+			}
+			return gocbBucket.Flush(h.ctx())
 		}
+	} else if _, ok := h.db.Bucket.(*rosmar.Bucket); ok {
+		deleteFunc = func(spec base.BucketSpec) error {
+			bucket, err := db.ConnectToBucket(h.ctx(), spec, false)
+			if err != nil {
+				return fmt.Errorf("could not open bucket in order to delete it: %w", err)
+			}
 
-		// Re-open database and add to Sync Gateway
-		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
-		if err2 != nil {
-			return err2
+			rosmarBucket, ok := bucket.(*rosmar.Bucket)
+			if !ok {
+				return fmt.Errorf("bucket %T does not support rosmar delete", bucket)
+			}
+			err = rosmarBucket.CloseAndDelete(h.ctx())
+			if err != nil {
+				return err
+			}
+			return nil
 		}
-		base.Audit(h.ctx(), base.AuditIDDatabaseFlush, nil)
-
-	} else if bucket, ok := baseBucket.(sgbucket.DeleteableStore); ok {
-
-		// If it's not flushable, but it's deletable, then delete it
-
-		name := h.db.Name
-		config := h.server.GetDatabaseConfig(name)
-		h.server.RemoveDatabase(h.ctx(), name, fmt.Sprintf("called from %s", h.rq.URL))
-		err := bucket.CloseAndDelete(h.ctx())
-		_, err2 := h.server.AddDatabaseFromConfig(h.ctx(), config.DatabaseConfig)
-		if err != nil {
-			return err
-		} else if err2 != nil {
-			return err2
-		}
-		base.Audit(h.ctx(), base.AuditIDDatabaseFlush, nil)
-		return nil
 	} else {
-
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush or delete")
-
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket type %T does not support flush or delete", h.db.Bucket)
 	}
+
+	err := h.server.removeBucketAndRecreateDatabase(h.ctx(), h.db.Name, deleteFunc)
+	if err != nil {
+		return err
+	}
+	base.Audit(h.ctx(), base.AuditIDDatabaseFlush, nil)
 
 	return nil
 

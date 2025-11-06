@@ -426,8 +426,7 @@ func setBootstrapConnectionOptsFromDbConfig(opts *bootstrapConnectionOpts, dbCon
 
 func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnectionOpts) (base.BootstrapConnection, error) {
 	if base.ServerIsWalrus(opts.server) {
-		cluster := base.NewRosmarCluster(opts.server)
-		return cluster, nil
+		return base.NewRosmarCluster(opts.server)
 	}
 
 	var connStr string
