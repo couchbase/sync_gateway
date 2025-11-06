@@ -473,7 +473,9 @@ func TestBaseBucket(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			baseBucket := GetBaseBucket(test.bucket)
 			_, ok := baseBucket.(*rosmar.Bucket)
-			assert.True(t, ok, "Base bucket wasn't walrus bucket")
+			assert.True(t, ok, "Base bucket is rosmar")
+			_, err := AsRosmarBucket(test.bucket)
+			require.NoError(t, err)
 		})
 	}
 }
