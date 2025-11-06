@@ -366,8 +366,8 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -410,8 +410,8 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -491,8 +491,8 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "suspendable": true}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "suspendable": true}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -686,9 +686,6 @@ func TestImportPartitionsServerless(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test requires cbgt")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("tests import which is not available without xattrs")
-	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16
@@ -735,7 +732,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 				RequireStatus(t, resp, http.StatusCreated)
 				dbconf = sc.GetDbConfig("db")
 			} else {
-				dbconf = DefaultDbConfig(sc.Config, base.TestUseXattrs())
+				dbconf = DefaultDbConfig(sc.Config, true)
 			}
 
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)

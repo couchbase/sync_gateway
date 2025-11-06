@@ -119,7 +119,7 @@ func TestResyncDCPInit(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 
-			resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+			resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 			require.NotNil(t, resyncMgr)
 			db.ResyncManager = resyncMgr
 
@@ -181,7 +181,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
@@ -244,7 +244,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		scopeName := scopeAndCollectionName.ScopeName()
 		collectionName := scopeAndCollectionName.CollectionName()
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 
 		require.NotNil(t, resyncMgr)
 		db.ResyncManager = resyncMgr
@@ -290,7 +290,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		scopeName := scopeAndCollectionName.ScopeName()
 		collectionName := scopeAndCollectionName.CollectionName()
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 		require.NotNil(t, resyncMgr)
 
 		initialStats := getResyncStats(resyncMgr.Process)
@@ -341,7 +341,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
-	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
@@ -398,7 +398,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
@@ -481,7 +481,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 	defer db.Close(ctx)
 
-	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 	require.NotNil(t, resyncMgr)
 	db.ResyncManager = resyncMgr
 
@@ -623,9 +623,6 @@ func TestResyncMou(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("_mou is written to xattrs only")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
@@ -709,7 +706,7 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 	_, err := collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
-	resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+	resyncMgr := NewResyncManagerDCP(db.MetadataStore, db.MetadataKeys)
 	require.NotNil(t, resyncMgr)
 
 	initialStats := getResyncStats(resyncMgr.Process)

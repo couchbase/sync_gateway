@@ -50,7 +50,8 @@ func TestBootstrapRefCounting(t *testing.T) {
 
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
 	forcePerBucketAuth := false
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), forcePerBucketAuth, perBucketCredentialsConfig, TestUseXattrs(), CachedClusterConnections)
+	storeConfigAsXattrs := true
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), forcePerBucketAuth, perBucketCredentialsConfig, storeConfigAsXattrs, CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)

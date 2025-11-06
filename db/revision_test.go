@@ -101,7 +101,6 @@ func TestBackupOldRevision(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	deltasEnabled := base.IsEnterpriseEdition()
-	xattrsEnabled := base.TestUseXattrs()
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,
@@ -122,7 +121,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
 	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
-	if deltasEnabled && xattrsEnabled {
+	if deltasEnabled {
 		require.NoError(t, err)
 	} else {
 		require.Error(t, err)
@@ -136,7 +135,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// now in all cases we'll have revtree ID 1 backed up (for at least 5 minutes)
 	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
-	if deltasEnabled && xattrsEnabled {
+	if deltasEnabled {
 		// and optionally keyed by CV
 		_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	}
@@ -144,7 +143,7 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
 	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
-	if deltasEnabled && xattrsEnabled {
+	if deltasEnabled {
 		require.NoError(t, err)
 	} else {
 		require.Error(t, err)

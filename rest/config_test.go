@@ -974,7 +974,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
-	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
@@ -989,8 +988,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -999,8 +997,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -1009,8 +1006,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb2User,
 				Password: tb2Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 	}
 
@@ -2782,8 +2778,8 @@ func TestDatabaseConfigDropScopes(t *testing.T) {
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":{}}`,
-		rt.Bucket().GetName(), base.TestUseXattrs()))
+		`{"bucket": "%s", "num_index_replicas": 0, "scopes":{}}`,
+		rt.Bucket().GetName()))
 	RequireStatus(t, resp, http.StatusBadRequest)
 	require.Contains(t, resp.Body.String(), "cannot change scope")
 

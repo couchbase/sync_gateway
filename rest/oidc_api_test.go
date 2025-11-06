@@ -2824,8 +2824,8 @@ func TestPutDBConfigOIDC(t *testing.T) {
 
 	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	resp.RequireStatus(http.StatusCreated)
@@ -2835,7 +2835,6 @@ func TestPutDBConfigOIDC(t *testing.T) {
 		`{
 			"bucket": "%s",
 			"num_index_replicas": 0,
-			"enable_shared_bucket_access": %t,
 			"use_views": %t,
 			"oidc": {
 				"providers": {
@@ -2846,7 +2845,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 				}
 			}
 		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		tb.GetName(), base.TestsDisableGSI(),
 	)
 
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", invalidOIDCConfig)
@@ -2861,7 +2860,6 @@ func TestPutDBConfigOIDC(t *testing.T) {
 		`{
 			"bucket": "%s",
 			"num_index_replicas": 0,
-			"enable_shared_bucket_access": %t,
 			"use_views": %t,
 			"unsupported": {
 				"oidc_test_provider": {
@@ -2877,7 +2875,7 @@ func TestPutDBConfigOIDC(t *testing.T) {
 				}
 			}
 		}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), mustGetServerAddr(t, sc, publicServer),
+		tb.GetName(), base.TestsDisableGSI(), mustGetServerAddr(t, sc, publicServer),
 	)
 
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)

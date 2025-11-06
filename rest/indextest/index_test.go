@@ -60,21 +60,10 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 
 	if !base.TestsDisableGSI() {
 		// use example indexes to make sure metadata and non metadata are created
-		indexSyncDocs := "sg_syncDocs"
-		indexAccess := "sg_access"
-		indexRoles := "sg_roles"
-		indexUsers := "sg_users"
-		if base.TestUseXattrs() {
-			indexSyncDocs += "_x1"
-			indexAccess += "_x1"
-			indexRoles += "_x1"
-			indexUsers += "_x1"
-		} else {
-			indexSyncDocs += "_1"
-			indexAccess += "_1"
-			indexRoles += "_1"
-			indexUsers += "_1"
-		}
+		indexSyncDocs := "sg_syncDocs_x1"
+		indexAccess := "sg_access_x1"
+		indexRoles := "sg_roles_x1"
+		indexUsers := "sg_users_x1"
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
 		require.NoError(t, err)
 		indexNames, err := metadataCollection.GetIndexes()
@@ -237,9 +226,6 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 func TestAsyncInitWithResync(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("this test uses xattrs for verification of sync metadata")
 	}
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
@@ -898,15 +884,13 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		}
 	}
 	bucketName := tb.GetName()
-	enableXattrs := base.TestUseXattrs()
 
 	dbConfig := rest.DbConfig{
 		BucketConfig: rest.BucketConfig{
 			Bucket: &bucketName,
 		},
-		EnableXattrs: &enableXattrs,
-		Scopes:       scopesConfig,
-		AutoImport:   false, // disable import to streamline index tests and avoid teardown races
+		Scopes:     scopesConfig,
+		AutoImport: false, // disable import to streamline index tests and avoid teardown races
 	}
 	if base.TestsDisableGSI() {
 		dbConfig.UseViews = base.Ptr(true)
@@ -960,9 +944,6 @@ func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, ch
 func TestPartitionedIndexes(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test requires Couchbase Server for GSI")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("Partitioned indexes are only supported with non xattr indexes")
 	}
 	if base.TestsDisableGSI() {
 		t.Skip("Partitioned indexes are not supported with views")

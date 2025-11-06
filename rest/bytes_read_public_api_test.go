@@ -439,8 +439,8 @@ func TestPutDBBytesRead(t *testing.T) {
 	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
 
 	input := fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t,"username": "%s", "password":"%s"}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+		`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t,"username": "%s", "password":"%s"}`,
+		tb.GetName(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
 	)
 
 	db := rt.GetDatabase() // get database before we add a new one

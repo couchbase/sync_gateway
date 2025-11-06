@@ -41,7 +41,7 @@ func TestRoleQuery(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
+				useXattrs:              true,
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
@@ -121,7 +121,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
+				useXattrs:              true,
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
@@ -203,7 +203,7 @@ func TestGetRoleIDs(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
+				useXattrs:              true,
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
@@ -329,9 +329,7 @@ func TestInitializeIndexes(t *testing.T) {
 			bucket := base.GetTestBucket(t)
 			defer bucket.Close(ctx)
 
-			options := db.DatabaseContextOptions{
-				EnableXattr: test.xattrs,
-			}
+			options := db.DatabaseContextOptions{}
 			if test.collections {
 				base.TestRequiresCollections(t)
 				options.Scopes = db.GetScopesOptions(t, bucket, 1)
@@ -442,7 +440,7 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 			setupIndexes(t, bucket, testIndexCreationOptions{
 				numPartitions:          db.DefaultNumIndexPartitions,
 				useLegacySyncDocsIndex: false,
-				useXattrs:              base.TestUseXattrs(),
+				useXattrs:              true,
 			})
 		}()
 	}
@@ -450,15 +448,11 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 }
 
 func TestPartitionedIndexes(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
-	}
-
 	numPartitions := uint32(13)
 	database := setupIndexAndDB(t, testIndexCreationOptions{
 		useLegacySyncDocsIndex: true,
 		numPartitions:          numPartitions,
-		useXattrs:              base.TestUseXattrs(),
+		useXattrs:              true,
 	})
 
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)

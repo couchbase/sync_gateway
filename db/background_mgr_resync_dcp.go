@@ -47,10 +47,10 @@ type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys *base.MetadataKeys) *BackgroundManager {
+func NewResyncManagerDCP(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
-		Process: &ResyncManagerDCP{useXattrs: useXattrs},
+		Process: &ResyncManagerDCP{useXattrs: true},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,

@@ -38,9 +38,6 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
-	if !base.TestUseXattrs() {
-		t.Skip("Requires xattrs")
-	}
 	attDigest := db.Sha1DigestKey(attBody)
 
 	attDocID := db.MakeAttachmentKey(db.AttVersion1, docID, attDigest)

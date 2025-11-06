@@ -37,7 +37,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 			},
 			dbOptions: db.DatabaseContextOptions{
 				CacheOptions: base.Ptr(db.DefaultCacheOptions()),
-				EnableXattr:  true,
 				Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 			},
 			expectedRemovedIndexes: []string{
@@ -58,7 +57,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 			},
 			dbOptions: db.DatabaseContextOptions{
 				CacheOptions: base.Ptr(db.DefaultCacheOptions()),
-				EnableXattr:  false,
 				Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 			},
 			expectedRemovedIndexes: []string{
@@ -156,7 +154,6 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	})
 	database, ctx := db.CreateTestDatabase(t, bucket, db.DatabaseContextOptions{
 		CacheOptions: base.Ptr(db.DefaultCacheOptions()),
-		EnableXattr:  true,
 		Scopes:       db.GetScopesOptions(t, bucket, numCollections),
 	})
 
@@ -220,7 +217,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 					})
 					database, ctx := db.CreateTestDatabase(t, bucket, db.DatabaseContextOptions{
 						CacheOptions: base.Ptr(db.DefaultCacheOptions()),
-						EnableXattr:  useXattrs,
 						Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 						UseViews:     useViews,
 					})

@@ -113,7 +113,6 @@ func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
 	} else {
 		dbOptions.Scopes = db.GetScopesOptions(t, bucket, numCollections)
 	}
-	dbOptions.EnableXattr = opts.useXattrs
 
 	database, ctx := db.CreateTestDatabase(t, bucket, dbOptions)
 

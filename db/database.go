@@ -595,7 +595,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, metaKeys)
 
 	return dbContext, nil
 }
@@ -1999,7 +1999,7 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 }
 
 func (context *DatabaseContext) UseXattrs() bool {
-	return context.Options.EnableXattr
+	return true
 }
 
 // numIndexPartitions returns the number of index partitions to use for the database's indexes.
@@ -2044,7 +2044,7 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, options DatabaseContextOptions) (*base.DbStats, error) {
 
 	enabledDeltaSync := options.DeltaSyncOptions.Enabled
-	enabledImport := autoImport || options.EnableXattr
+	enabledImport := true
 	enabledViews := options.UseViews
 
 	var queryNames []string

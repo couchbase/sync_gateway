@@ -1398,15 +1398,9 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		History:  revTree,
 	}
 	var doc1DCPBytes []byte
-	if base.TestUseXattrs() {
-		body, syncXattr, _, _, _, err := doc1.MarshalWithXattrs()
-		require.NoError(t, err)
-		doc1DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
-	} else {
-		var err error
-		doc1DCPBytes, err = doc1.MarshalJSON()
-		require.NoError(t, err)
-	}
+	body, syncXattr, _, _, _, err := doc1.MarshalWithXattrs()
+	require.NoError(t, err)
+	doc1DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 	// Create doc2 w/ sequence 2, channel ABC
 	doc2Id := "doc2Id"
 	doc2 := Document{
@@ -1434,16 +1428,10 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	var doc2DCPBytes []byte
 	var dataType sgbucket.FeedDataType = base.MemcachedDataTypeJSON
-	if base.TestUseXattrs() {
-		dataType |= base.MemcachedDataTypeXattr
-		body, syncXattr, _, _, _, err := doc2.MarshalWithXattrs()
-		require.NoError(t, err)
-		doc2DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
-	} else {
-		var err error
-		doc2DCPBytes, err = doc2.MarshalJSON()
-		require.NoError(t, err)
-	}
+	dataType |= base.MemcachedDataTypeXattr
+	body, syncXattr, _, _, _, err = doc2.MarshalWithXattrs()
+	require.NoError(t, err)
+	doc2DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 
 	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
@@ -1473,10 +1461,6 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 }
 
 func TestUnusedSequencesInSyncData(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it writes directly to the xattr")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	db, ctx := setupTestDB(t)
@@ -3127,9 +3111,6 @@ func TestAddPendingLogs(t *testing.T) {
 }
 
 func TestChangeInBroadcastForSkipped(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Skipped test as it requires xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 
 	opts := DefaultCacheOptions()

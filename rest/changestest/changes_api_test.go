@@ -1004,10 +1004,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
-	}
+	t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 	pendingMaxWait := uint32(5)
@@ -1122,10 +1119,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
-	}
+	t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 	pendingMaxWait := uint32(5)
@@ -1240,10 +1234,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
-	}
+	t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
@@ -3448,10 +3439,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 func TestTombstoneCompaction(t *testing.T) {
 	base.LongRunningTest(t)
-
-	if !base.TestUseXattrs() {
-		t.Skip("If running with no xattrs compact acts as a no-op")
-	}
 
 	tests := []struct {
 		numDocs                      int

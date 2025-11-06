@@ -181,8 +181,8 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	defer rt.Close()
 	resp := rt.SendAdminRequest(http.MethodPut, "/newdb/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -339,8 +339,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 func TestImportFilterEndpoint(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1354,7 +1352,6 @@ func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig Scopes
 }
 
 func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) DbConfig {
-	enableXattrs := base.TestUseXattrs()
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: &bucketName,
@@ -1362,8 +1359,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		EnableXattrs: &enableXattrs,
-		Scopes:       scopesConfig,
+		Scopes: scopesConfig,
 	}
 	if scopesConfig != nil {
 		dbConfig.Scopes = scopesConfig

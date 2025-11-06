@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -506,186 +504,6 @@ func TestAddingAttachment(t *testing.T) {
 
 }
 
-// Reproduces panic seen in https://github.com/couchbase/sync_gateway/issues/2528
-func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		// Since we now store attachment metadata in sync data,
-		// this test cannot modify the xattrs to reproduce the panic
-		t.Skip("This test only works with XATTRS disabled")
-	}
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	const (
-		doc1ID         = "doc"
-		doc2ID         = "doc2"
-		attachmentName = "attach1"
-	)
-
-	doc1Version := rt.PutDoc(doc1ID, `{"prop":true}`)
-	doc2Version := rt.PutDoc(doc2ID, `{"prop":true}`)
-
-	// attach to existing document with correct rev (should succeed)
-	attachmentBody := "this is the body of attachment"
-	_ = rt.storeAttachment(doc1ID, doc1Version, attachmentName, attachmentBody)
-
-	// Get the couchbase doc
-	couchbaseDoc := db.Body{}
-	_, err := rt.GetSingleDataStore().Get(doc1ID, &couchbaseDoc)
-	assert.NoError(t, err, "Error getting couchbaseDoc")
-
-	// Doc at this point
-	/*
-		{
-		  "_attachments": {
-			"attach1": {
-			  "content_type": "content/type",
-			  "digest": "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=",
-			  "length": 30,
-			  "revpos": 2,
-			  "stub": true
-			}
-		  },
-		  "prop": true
-		}
-	*/
-
-	// Modify the doc directly in the bucket to delete the digest field
-	s, ok := couchbaseDoc[base.SyncPropertyName].(map[string]any)
-	require.True(t, ok)
-	couchbaseDoc["_attachments"], ok = s["attachments"].(map[string]any)
-	require.True(t, ok)
-	attachments, ok := couchbaseDoc["_attachments"].(map[string]any)
-	require.True(t, ok)
-
-	attach1, ok := attachments[attachmentName].(map[string]any)
-	require.True(t, ok)
-
-	delete(attach1, "digest")
-	delete(attach1, "content_type")
-	delete(attach1, "length")
-	attachments[attachmentName] = attach1
-	log.Printf("couchbase doc after: %+v", couchbaseDoc)
-
-	// Doc at this point
-	/*
-		{
-		  "_attachments": {
-			"attach1": {
-			  "revpos": 2,
-			  "stub": true
-			}
-		  },
-		  "prop": true
-		}
-	*/
-
-	// Put the doc back into couchbase
-	err = rt.GetSingleDataStore().Set(doc1ID, 0, nil, couchbaseDoc)
-	assert.NoError(t, err, "Error putting couchbaseDoc")
-
-	// Flush rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
-	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
-	// short-circuits Sync Gateway and directly updates the bucket.
-	// Reset at the end of the test, to avoid bleed into other tests
-	rt.GetDatabase().FlushRevisionCacheForTest()
-
-	// Get latest rev id
-	version, _ := rt.GetDoc(doc1ID)
-
-	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
-	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, doc1ID, version.RevTreeID, doc2ID, doc2Version.RevTreeID)
-	bulkGetResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?revs=true&attachments=true&revs_limit=2", bulkGetDocs)
-	if bulkGetResponse.Code != 200 {
-		panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
-	}
-
-	bulkGetResponse.DumpBody()
-
-	// Parse multipart/mixed docs and create reader
-	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
-	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
-	assert.Equal(t, "multipart/mixed", contentType)
-	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
-
-	// Make sure we see both docs
-	sawDoc1 := false
-	sawDoc2 := false
-
-	// Iterate over multipart parts and make assertions on each part
-	// Should get the following docs in their own parts:
-	/*
-		{
-		   "error":"500",
-		   "id":"doc",
-		   "reason":"Internal error: Unable to load attachment for doc: doc with name: attach1 and revpos: 2 due to missing digest field",
-		   "rev":"2-d501cf345b2e906547fe27dbbedf825b",
-		   "status":500
-		}
-
-			and:
-
-		{
-		   "_id":"doc2",
-		   "_rev":"1-45ca73d819d5b1c9b8eea95290e79004",
-		   "_revisions":{
-			  "ids":[
-				 "45ca73d819d5b1c9b8eea95290e79004"
-			  ],
-			  "start":1
-		   },
-		   "prop":true
-		}
-	*/
-	for {
-
-		// Get the next part.  Break out of the loop if we hit EOF
-		part, err := reader.NextPart()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-		}
-
-		partBytes, err := io.ReadAll(part)
-		assert.NoError(t, err, "Unexpected error")
-
-		log.Printf("multipart part: %+v", string(partBytes))
-
-		partJson := map[string]any{}
-		err = base.JSONUnmarshal(partBytes, &partJson)
-		assert.NoError(t, err, "Unexpected error")
-
-		// Assert expectations for the doc with attachment errors
-		rawId, ok := partJson["id"]
-		if ok {
-			// expect an error
-			_, hasErr := partJson["error"]
-			assert.True(t, hasErr, "Expected error field for this doc")
-			assert.Equal(t, rawId, doc1ID)
-			sawDoc1 = true
-
-		}
-
-		// Assert expectations for the doc with no attachment errors
-		rawId, ok = partJson[db.BodyId]
-		if ok {
-			_, hasErr := partJson["error"]
-			assert.True(t, !hasErr, "Did not expect error field for this doc")
-			assert.Equal(t, rawId, doc2ID)
-			sawDoc2 = true
-		}
-
-	}
-
-	assert.True(t, sawDoc2, "Did not see doc 2")
-	assert.True(t, sawDoc1, "Did not see doc 1")
-
-}
-
 func TestConflictWithInvalidAttachment(t *testing.T) {
 	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
@@ -743,46 +561,6 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	// Send changed / conflict doc
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", newBody)
 	RequireStatus(t, response, http.StatusBadRequest)
-}
-
-// Create doc with attachment at rev 1 using pre-2.5 metadata (outside of _sync)
-// Create rev 2 with stub using att revpos 1 and make sure we fetch the attachment correctly
-// Reproduces CBG-616
-func TestAttachmentRevposPre25Metadata(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("Skipping with xattrs due to use of AddRaw _sync data")
-	}
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	ok, err := rt.GetSingleDataStore().Add("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev=1-6e5a9ed9e2e8637d495ac5dd2fa90479", `{"test":false,"_attachments":{"hello.txt":{"stub":true,"revpos":1}}}`)
-	RequireStatus(t, response, 201)
-	var putResp struct {
-		OK  bool   `json:"ok"`
-		Rev string `json:"rev"`
-	}
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &putResp))
-	require.True(t, putResp.OK)
-
-	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
-	RequireStatus(t, response, 200)
-	var body struct {
-		Test        bool             `json:"test"`
-		Attachments db.AttachmentMap `json:"_attachments"`
-	}
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.False(t, body.Test)
-	att, ok := body.Attachments["hello.txt"]
-	require.True(t, ok)
-	assert.Equal(t, 1, att.Revpos)
-	assert.True(t, att.Stub)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", att.Digest)
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
@@ -1687,10 +1465,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test requires xattrs")
-		}
-
 		// Create a document with inline attachment.
 		docID := "foo10"
 		attName := "foo.txt"
@@ -1733,10 +1507,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test requires xattrs")
-		}
-
 		// Create a document with inline attachment.
 		docID := "foo11"
 		attName := "foo.txt"
@@ -1880,9 +1650,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with Xattrs")
-		}
 		docID := "foo15"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -1904,9 +1671,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with and Xattrs")
-		}
 		docID1 := "foo16"
 		docID2 := "bar16"
 		attBody := []byte(`hi`)
@@ -1942,9 +1706,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with with xattrs")
-		}
 		docID := "foo17"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -1966,9 +1727,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with xattrs")
-		}
 		docID1 := "foo18"
 		docID2 := "bar18"
 		attBody := []byte(`hi`)
@@ -1999,9 +1757,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with xattrs")
-		}
 		docID := "foo19"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -2017,9 +1772,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with and xattrs")
-		}
 		docID1 := "foo20"
 		docID2 := "bar20"
 		attBody := []byte(`hi`)
@@ -2220,7 +1972,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.Ptr(base.TestUseXattrs())
+	dbConfig.AutoImport = true
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()

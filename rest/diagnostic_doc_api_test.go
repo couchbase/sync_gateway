@@ -67,15 +67,14 @@ func TestGetAlldocChannels(t *testing.T) {
 func TestGetDocDryRuns(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 	bucket := rt.Bucket().GetName()
 	ImportFilter := `"function(doc) { if (doc.user.num) { return true; } else { return false; } }"`
 	SyncFn := `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`
 	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		bucket, base.TestUseXattrs(), SyncFn, ImportFilter))
+		`{"bucket":"%s", "num_index_replicas": 0, "sync":%s, "import_filter":%s}`,
+		bucket, SyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_sync", `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`)
 	RequireStatus(t, response, http.StatusOK)
@@ -95,8 +94,8 @@ func TestGetDocDryRuns(t *testing.T) {
 	assert.Equal(t, respMap.Roles, channels.AccessMap{"user": channels.BaseSetOf(t, "role1")})
 	newSyncFn := `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`
 	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
-		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
+		`{"bucket":"%s", "num_index_replicas": 0, "sync":%s, "import_filter":%s}`,
+		bucket, newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	_ = rt.PutDoc("doc", `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`)
@@ -196,8 +195,8 @@ func TestGetDocDryRuns(t *testing.T) {
 
 	newSyncFn = `"function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }"`
 	resp = rt.SendAdminRequest("POST", "/db/_config", fmt.Sprintf(
-		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
+		`{"bucket":"%s", "num_index_replicas": 0, "sync":%s, "import_filter":%s}`,
+		bucket, newSyncFn, ImportFilter))
 	RequireStatus(t, resp, http.StatusCreated)
 	_ = rt.PutDoc("doc22", `{"chan1":"channel1", "channel":"chanOld"}`)
 

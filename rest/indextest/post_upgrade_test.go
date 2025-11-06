@@ -34,7 +34,7 @@ func TestPostUpgrade(t *testing.T) {
 	// create legacy syncDocs index + all non metadata indexes
 	require.NoError(t, db.InitializeIndexes(ctx, defaultDataStore, db.InitializeIndexOptions{
 		NumReplicas:         0,
-		UseXattrs:           base.TestUseXattrs(),
+		UseXattrs:           true,
 		NumPartitions:       db.DefaultNumIndexPartitions,
 		LegacySyncDocsIndex: true,
 		MetadataIndexes:     db.IndexesAll,
@@ -64,7 +64,7 @@ func TestPostUpgrade(t *testing.T) {
 	// create sg_users_x1 and sg_roles_x1 indexes
 	require.NoError(t, db.InitializeIndexes(ctx, defaultDataStore, db.InitializeIndexOptions{
 		NumReplicas:         0,
-		UseXattrs:           base.TestUseXattrs(),
+		UseXattrs:           true,
 		NumPartitions:       db.DefaultNumIndexPartitions,
 		LegacySyncDocsIndex: false,
 		MetadataIndexes:     db.IndexesMetadataOnly,
@@ -132,16 +132,6 @@ func TestPostUpgrade(t *testing.T) {
 				"`_default`.`_default`.sg_roleAccess_x1",
 				"`_default`.`_default`.sg_syncDocs_x1",
 				"`_default`.`_default`.sg_tombstones_x1",
-			}
-			if !base.TestUseXattrs() {
-				expectedRemovedIndexes = []string{
-					"`_default`.`_default`.sg_access_1",
-					"`_default`.`_default`.sg_allDocs_1",
-					"`_default`.`_default`.sg_channels_1",
-					"`_default`.`_default`.sg_roleAccess_1",
-					"`_default`.`_default`.sg_syncDocs_1",
-				}
-
 			}
 			require.Equal(t, rest.PostUpgradeResponse{
 				Result: rest.PostUpgradeResult{

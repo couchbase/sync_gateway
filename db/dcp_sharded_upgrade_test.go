@@ -218,9 +218,8 @@ func TestShardedDCPUpgrade(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
-		GroupID:     "",
-		EnableXattr: true,
-		UseViews:    base.TestsDisableGSI(),
+		GroupID:  "",
+		UseViews: base.TestsDisableGSI(),
 		ImportOptions: ImportOptions{
 			ImportPartitions: numPartitions,
 		},

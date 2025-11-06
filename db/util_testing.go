@@ -393,7 +393,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
 		options := InitializeIndexOptions{
-			UseXattrs:                  base.TestUseXattrs(),
+			UseXattrs:                  true,
 			NumReplicas:                0,
 			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 			LegacySyncDocsIndex:        false,
@@ -564,10 +564,6 @@ func IsCovered(plan map[string]any) bool {
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
@@ -756,18 +752,13 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		History:   revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
-	if base.TestUseXattrs() {
 
-		opts := &sgbucket.MutateInOptions{
-			MacroExpansion: macroExpandSpec(base.SyncXattrName),
-		}
-		ctx := base.TestCtx(t)
-		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
-		require.NoError(t, err)
-	} else {
-		_, err := collection.dataStore.Add(key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
-		require.NoError(t, err)
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
+	ctx := base.TestCtx(t)
+	_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
+	require.NoError(t, err)
 }
 
 // GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.

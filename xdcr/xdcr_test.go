@@ -641,11 +641,11 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	srcBucket, srcDs, dstBucket, _ := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)
 
-	srcDB, srcCtx := db.CreateTestDatabase(t, base.NoCloseClone(srcBucket), db.DatabaseContextOptions{EnableXattr: true, Scopes: db.GetScopesOptions(t, srcBucket, 1)})
+	srcDB, srcCtx := db.CreateTestDatabase(t, base.NoCloseClone(srcBucket), db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, srcBucket, 1)})
 	defer srcDB.Close(srcCtx)
 	srcColl, srcCtx := db.GetSingleDatabaseCollectionWithUser(srcCtx, t, srcDB)
 
-	dstDB, dstCtx := db.CreateTestDatabase(t, base.NoCloseClone(dstBucket), db.DatabaseContextOptions{EnableXattr: true, Scopes: db.GetScopesOptions(t, dstBucket, 1)})
+	dstDB, dstCtx := db.CreateTestDatabase(t, base.NoCloseClone(dstBucket), db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, dstBucket, 1)})
 	defer dstDB.Close(dstCtx)
 	dstColl, dstCtx := db.GetSingleDatabaseCollectionWithUser(dstCtx, t, dstDB)
 
