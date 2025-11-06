@@ -2345,7 +2345,7 @@ func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, db
 			// If async init is running for the database, cancel it for an external remove.  (cannot be
 			// done in _removeDatabase, as this is called during reload)
 			if sc.DatabaseInitManager != nil && sc.DatabaseInitManager.HasActiveInitialization(otherDBName) {
-				sc.DatabaseInitManager.Cancel(dbName, fmt.Sprintf("flush db %s", otherDBName))
+				sc.DatabaseInitManager.Cancel(otherDBName, fmt.Sprintf("flush db %s with same backing bucket", dbName))
 			}
 			if !sc._removeDatabase(ctx, otherDBName) {
 				return base.RedactErrorf("could not remove database %s as part of flushing %s. Bucket %s is left in an unstable state", base.UD(otherDBName), base.UD(dbName), base.UD(*config.Bucket))

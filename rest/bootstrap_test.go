@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -251,6 +252,12 @@ func DevTestFetchConfigManual(t *testing.T) {
 }
 
 func TestBootstrapRosmarServer(t *testing.T) {
+	tempDir := t.TempDir()
+	diskURL := "rosmar://" + tempDir
+	if runtime.GOOS == "windows" {
+		// rosmar requires prefix forward slash and forward slashes
+		diskURL = "rosmar:///" + filepath.ToSlash(tempDir)
+	}
 	testCases := []struct {
 		name      string
 		rosmarURL string
@@ -261,7 +268,7 @@ func TestBootstrapRosmarServer(t *testing.T) {
 		},
 		{
 			name:      "DiskBased",
-			rosmarURL: "rosmar://" + filepath.ToSlash(t.TempDir()),
+			rosmarURL: diskURL,
 		},
 	}
 	for _, tc := range testCases {

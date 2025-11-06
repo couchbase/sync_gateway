@@ -134,7 +134,6 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
-		fmt.Printf("err = %#+v", err)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(contextNoCancel.Ctx, dbName)

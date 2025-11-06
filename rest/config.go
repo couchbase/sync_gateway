@@ -1782,7 +1782,9 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	return nil
 }
 
-// findBucketWithCallback ensures the bucket exists in the BootstrapContext and calls the callback function. Returns an erorr if the boostrap context can't find the bucket or the callback function returns an err and exit parameter for callback is true.
+// findBucketWithCallback ensures the bucket exists in the BootstrapContext and calls the callback
+// function. Returns an error if the bootstrap context can't find the bucket or the callback function returns an
+// error and the exit return value for callback is true.
 func (sc *ServerContext) findBucketWithCallback(ctx context.Context, callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string

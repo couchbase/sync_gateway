@@ -40,7 +40,7 @@ func NewRosmarCluster(serverURL string) (*RosmarCluster, error) {
 		directory := u.Path
 		err = os.MkdirAll(directory, 0750)
 		if err != nil {
-			return nil, fmt.Errorf("could not create or access directory for to open rosmar cluster %q: %w", serverURL, err)
+			return nil, fmt.Errorf("could not create or access directory to open rosmar cluster %q: %w", serverURL, err)
 		}
 		cluster.bucketDirectory = directory
 	}
