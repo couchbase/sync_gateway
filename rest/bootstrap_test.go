@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -260,7 +261,7 @@ func TestBootstrapRosmarServer(t *testing.T) {
 		},
 		{
 			name:      "DiskBased",
-			rosmarURL: "rosmar://" + t.TempDir(),
+			rosmarURL: "rosmar://" + filepath.ToSlash(t.TempDir()),
 		},
 	}
 	for _, tc := range testCases {
