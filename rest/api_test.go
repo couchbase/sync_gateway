@@ -3541,29 +3541,56 @@ func TestECCV(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server since it requires a gocb bucket")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
-	defer rt.Close()
-
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Name = "db"
-
-	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-
-	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
-	RequireStatus(t, resp, http.StatusOK)
-
-	type BucketInfoResponse struct {
-		EnableCrossClusterVersioning bool `json:"enable_cross_cluster_versioning"`
+	tests := []struct {
+		name             string
+		persistentConfig bool
+		dbName           string
+	}{
+		{
+			name:             "PersistentConfig=true",
+			persistentConfig: true,
+			dbName:           "db1",
+		},
+		{
+			name:             "PersistentConfig=false",
+			persistentConfig: false,
+			dbName:           "db2",
+		},
 	}
-	type ClusterInfoResponse struct {
-		LegacyConfig bool                          `json:"legacy_config,omitempty"`
-		Buckets      map[string]BucketInfoResponse `json:"buckets,omitempty"`
+
+	for _, tests := range tests {
+		t.Run(tests.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: tests.persistentConfig,
+			})
+			defer rt.Close()
+
+			if tests.persistentConfig {
+				dbConfig := rt.NewDbConfig()
+				dbConfig.Name = tests.dbName
+
+				RequireStatus(t, rt.CreateDatabase(tests.dbName, dbConfig), http.StatusCreated)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			bucketName := rt.GetDatabase().Bucket.GetName()
+
+			type BucketInfoResponse struct {
+				EnableCrossClusterVersioning bool `json:"enable_cross_cluster_versioning"`
+			}
+			type ClusterInfoResponse struct {
+				LegacyConfig bool                          `json:"legacy_config,omitempty"`
+				Buckets      map[string]BucketInfoResponse `json:"buckets,omitempty"`
+			}
+			var clusterInfo ClusterInfoResponse
+			err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
+			require.NoError(t, err)
+			assert.True(t, clusterInfo.Buckets[bucketName].EnableCrossClusterVersioning)
+			//RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/", tests.dbName), ""), http.StatusOK)
+		})
 	}
-	var clusterInfo ClusterInfoResponse
-	err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
-	assert.NoError(t, err)
 }
 
 func TestUnsupportedServerConfigOptions(t *testing.T) {

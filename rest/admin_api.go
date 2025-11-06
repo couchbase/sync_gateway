@@ -2293,7 +2293,7 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry                     GatewayRegistry `json:"registry"`
+	Registry                     GatewayRegistry `json:"registry,omitempty"`
 	EnableCrossClusterVersioning bool            `json:"enable_cross_cluster_versioning"`
 }
 
@@ -2302,9 +2302,10 @@ type BucketInfo struct {
 func (h *handler) handleGetClusterInfo() error {
 
 	clusterInfo := ClusterInfo{
-		LegacyConfig: true,
+		Buckets: make(map[string]BucketInfo),
 	}
 
+	eccv := h.server.getBucketCCVSettings()
 	if h.server.persistentConfig {
 
 		bucketNames, err := h.server.GetBucketNames()
@@ -2323,11 +2324,18 @@ func (h *handler) handleGetClusterInfo() error {
 				continue
 			}
 
-			eccv := h.server.getBucketCCVSettings(bucketName)
-
 			bucketInfo := BucketInfo{
 				Registry:                     *registry,
-				EnableCrossClusterVersioning: eccv,
+				EnableCrossClusterVersioning: eccv[bucketName],
+			}
+			clusterInfo.Buckets[bucketName] = bucketInfo
+		}
+	} else {
+		clusterInfo.LegacyConfig = true
+
+		for bucketName, eccvVal := range eccv {
+			bucketInfo := BucketInfo{
+				EnableCrossClusterVersioning: eccvVal,
 			}
 			clusterInfo.Buckets[bucketName] = bucketInfo
 		}

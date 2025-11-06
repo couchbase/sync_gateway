@@ -2331,12 +2331,11 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	return base.ParseClusterUUID(output)
 }
 
-func (sc *ServerContext) getBucketCCVSettings(bucketName string) bool {
+func (sc *ServerContext) getBucketCCVSettings() map[string]bool {
+	bucketCCVSettings := make(map[string]bool)
 	for _, _db := range sc.databases_ {
-		if _db.BucketSpec.BucketName == bucketName {
-			return _db.CachedCCVEnabled.Load()
-		}
-
+		bucketName := _db.BucketSpec.BucketName
+		bucketCCVSettings[bucketName] = _db.CachedCCVEnabled.Load()
 	}
-	return false
+	return bucketCCVSettings
 }
