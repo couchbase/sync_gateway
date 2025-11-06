@@ -1286,24 +1286,10 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 //     false and len(RevTreeHistory) > 0 then this means the local version of this doc does not have an HLV so this parameter
 //     will be used to check for conflicts.
 func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Context, opts PutDocOptions) (doc *Document, cv *Version, newRevID string, err error) {
-	var matchRev string
-	if opts.ExistingDoc != nil {
-		doc, unmarshalErr := db.unmarshalDocumentWithXattrs(ctx, opts.NewDoc.ID, opts.ExistingDoc.Body, opts.ExistingDoc.Xattrs, opts.ExistingDoc.Cas, DocUnmarshalRev)
-		if unmarshalErr != nil {
-			return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Error unmarshaling existing doc")
-		}
-		matchRev = doc.GetRevTreeID()
-	}
-	generation, _ := ParseRevID(ctx, matchRev)
-	if generation < 0 {
-		return nil, nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
-	}
-	generation++ //nolint
 
 	docUpdateEvent := ExistingVersion
-	allowImport := db.UseXattrs()
 	updateRevCache := true
-	doc, newRevID, err = db.updateAndReturnDoc(ctx, opts.NewDoc.ID, allowImport, &opts.NewDoc.DocExpiry, nil, docUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(ctx, opts.NewDoc.ID, true, &opts.NewDoc.DocExpiry, nil, docUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
