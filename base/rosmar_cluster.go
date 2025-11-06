@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"runtime"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
@@ -38,6 +40,9 @@ func NewRosmarCluster(serverURL string) (*RosmarCluster, error) {
 			return nil, err
 		}
 		directory := u.Path
+		if runtime.GOOS == "windows" {
+			directory = strings.TrimPrefix(directory, "/")
+		}
 		err = os.MkdirAll(directory, 0750)
 		if err != nil {
 			return nil, fmt.Errorf("could not create or access directory to open rosmar cluster %q: %w", serverURL, err)
