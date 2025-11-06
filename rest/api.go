@@ -294,14 +294,14 @@ func (h *handler) handleFlush() error {
 			}
 			return gocbBucket.Flush(h.ctx())
 		}
-	} else if _, ok := h.db.Bucket.(*rosmar.Bucket); ok {
+	} else if _, ok := base.GetBaseBucket(h.db.Bucket).(*rosmar.Bucket); ok {
 		deleteFunc = func(spec base.BucketSpec) error {
 			bucket, err := db.ConnectToBucket(h.ctx(), spec, false)
 			if err != nil {
 				return fmt.Errorf("could not open bucket in order to delete it: %w", err)
 			}
 
-			rosmarBucket, ok := bucket.(*rosmar.Bucket)
+			rosmarBucket, ok := base.GetBaseBucket(bucket).(*rosmar.Bucket)
 			if !ok {
 				return fmt.Errorf("bucket %T does not support rosmar delete", bucket)
 			}
