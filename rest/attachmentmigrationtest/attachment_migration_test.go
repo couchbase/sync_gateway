@@ -298,7 +298,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 
 	// assert that number of docs processed is equal to docs in collection 1
 	// Without the DCP cleaning of bucket pool, this number would be equal
-	assert.GreaterOrEqual(t, int64(totalDocsAdded), postRunStatus.DocsProcessed)
+	assert.GreaterOrEqual(t, postRunStatus.DocsProcessed, int64(totalDocsAdded))
 
 	// assert that sync info with metadata version written to both collections
 	db.AssertSyncInfoMetaVersion(t, ds0)
