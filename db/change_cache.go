@@ -662,8 +662,6 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
 		// unblock any pending sequences we can after new range(s) have been pushed to pending
 		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
-		//channelSet := channels.SetFromArrayNoValidate(changedChannels)
-		//allChangedChannels = allChangedChannels.Update(channelSet)
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
 	} else {
 		// An unused sequence range than includes c.nextSequence in the middle of the range
