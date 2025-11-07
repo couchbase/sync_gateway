@@ -206,7 +206,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 
 	// assert that number of docs processed is greater or equal to docs in collection 1.
 	// Without the DCP cleaning of bucket pool, this number would be equal
-	assert.GreaterOrEqual(t, int64(totalDocsAddedCollOne), mgrStatus.DocsProcessed)
+	assert.GreaterOrEqual(t, mgrStatus.DocsProcessed, int64(totalDocsAddedCollOne))
 
 	// assert sync info meta version exists for this collection
 	db.AssertSyncInfoMetaVersion(t, ds0)
