@@ -931,7 +931,9 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	require.NoError(t, err)
 }
 
-func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
+// RequireBackgroundManagerState waits for a BackgroundManager to reach a given state within 10 seconds or fails test
+// harness.
+func RequireBackgroundManagerState(t testing.TB, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var status BackgroundManagerStatus
 		rawStatus, err := mgr.GetStatus(ctx)

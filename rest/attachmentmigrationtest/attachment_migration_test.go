@@ -26,23 +26,14 @@ import (
 //   - Grab attachment migration manager and assert it has run upon db startup
 //   - Assert job has written syncInfo metaVersion as expected to the bucket
 func TestMigrationJobStartOnDbStart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
+	base.TestRequiresOneShotDCPClient(t)
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
-	ctx := rt.Context()
 
-	ds := rt.GetSingleDataStore()
-	dbCtx := rt.GetDatabase()
-
-	mgr := dbCtx.AttachmentMigrationManager
-
-	// wait for migration job to finish
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
+	waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
 	// assert that sync info with metadata version written to the collection
-	db.AssertSyncInfoMetaVersion(t, ds)
+	db.AssertSyncInfoMetaVersion(t, rt.GetSingleDataStore())
 }
 
 // TestChangeDbCollectionsRestartMigrationJob:
@@ -55,9 +46,7 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 //     to be processed twice in the job, so we can assert that the job has processed more docs than we added
 //   - Assert sync info: metaVersion is written to BOTH collections in the db config
 func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
+	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
@@ -119,11 +108,9 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
-	mgr := dbCtx.AttachmentMigrationManager
 	scNames := base.ScopeAndCollectionNames{base.ScopeAndCollectionName{Scope: scope, Collection: collection1}}
 	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
-	// wait for migration job to start
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
+	waitForAttachmentMigrationState(rt, db.BackgroundProcessStateRunning)
 
 	// update db config to include second collection
 	dbConfig = rt.NewDbConfig()
@@ -132,19 +119,11 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// wait for attachment migration job to start and finish
 	dbCtx = rt.GetDatabase()
-	mgr = dbCtx.AttachmentMigrationManager
 	scNames = append(scNames, base.ScopeAndCollectionName{Scope: scope, Collection: collection2})
 	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateRunning)
+	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
-
-	var mgrStatus db.AttachmentMigrationManagerResponse
-	stat, err := mgr.GetStatus(ctx)
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(stat, &mgrStatus))
 	// assert that number of docs precessed is greater than the total docs added, this will be because when updating
 	// the db config to include a new collection this should force reset of DCP checkpoints and start DCP feed from 0 again
 	assert.Greater(t, mgrStatus.DocsProcessed, int64(totalDocsAdded))
@@ -164,9 +143,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 //     after update to db config + assert on collections requiring migration
 //   - Assert that syncInfo: metaVersion is written for new collection (and is still present in original collection)
 func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
+	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -223,17 +200,13 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
-	mgr := dbCtx.AttachmentMigrationManager
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on single collection
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
+	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
-	var mgrStatus db.AttachmentMigrationManagerResponse
-	stat, err := mgr.GetStatus(ctx)
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(stat, &mgrStatus))
-	// assert that number of docs precessed is equal to docs in collection 1
-	assert.Equal(t, int64(totalDocsAddedCollOne), mgrStatus.DocsProcessed)
+	// assert that number of docs processed is greater or equal to docs in collection 1.
+	// Without the DCP cleaning of bucket pool, this number would be equal
+	assert.GreaterOrEqual(t, mgrStatus.DocsProcessed, int64(totalDocsAddedCollOne))
 
 	// assert sync info meta version exists for this collection
 	db.AssertSyncInfoMetaVersion(t, ds0)
@@ -248,18 +221,14 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx = rt.GetDatabase()
-	mgr = dbCtx.AttachmentMigrationManager
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on the new collection
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
+	mgrStatus = waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
-	mgrStatus = db.AttachmentMigrationManagerResponse{}
-	stat, err = mgr.GetStatus(ctx)
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(stat, &mgrStatus))
 	// assert that number of docs precessed is equal to docs in collection 2 (not the total number of docs added across
 	// the collections, as we'd expect if the process had reset)
-	assert.Equal(t, int64(totalDocsAddedCollTwo), mgrStatus.DocsProcessed)
+	// Without the DCP cleaning of bucket pool, this number would be equal
+	assert.GreaterOrEqual(t, mgrStatus.DocsProcessed, int64(totalDocsAddedCollTwo))
 
 	// assert that sync info with metadata version written to both collections
 	db.AssertSyncInfoMetaVersion(t, ds0)
@@ -273,9 +242,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 //   - Assert that the migration job is not re-run (docs processed is the same as before + collections
 //     requiring migration is empty)
 func TestMigrationNoReRunStartStopDb(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
+	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -326,16 +293,12 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 
 	dbCtx := rt.GetDatabase()
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
-	mgr := dbCtx.AttachmentMigrationManager
 	// wait for migration job to finish on both collections
-	db.RequireBackgroundManagerState(t, ctx, mgr, db.BackgroundProcessStateCompleted)
+	postRunStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
-	var mgrStatus db.AttachmentMigrationManagerResponse
-	stat, err := mgr.GetStatus(ctx)
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(stat, &mgrStatus))
-	// assert that number of docs precessed is equal to docs in collection 1
-	assert.Equal(t, int64(totalDocsAdded), mgrStatus.DocsProcessed)
+	// assert that number of docs processed is equal to docs in collection 1
+	// Without the DCP cleaning of bucket pool, this number would be equal
+	assert.GreaterOrEqual(t, postRunStatus.DocsProcessed, int64(totalDocsAdded))
 
 	// assert that sync info with metadata version written to both collections
 	db.AssertSyncInfoMetaVersion(t, ds0)
@@ -348,15 +311,8 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx = rt.GetDatabase()
-	mgr = dbCtx.AttachmentMigrationManager
-	// assert that the job remains in completed state (not restarted)
-	mgrStatus = db.AttachmentMigrationManagerResponse{}
-	stat, err = mgr.GetStatus(ctx)
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(stat, &mgrStatus))
-	assert.Equal(t, db.BackgroundProcessStateCompleted, mgrStatus.State)
-	assert.Equal(t, int64(totalDocsAdded), mgrStatus.DocsProcessed)
+	postReloadStatus := getAttachmentMigrationManagerStatus(rt)
+	require.Equal(t, postRunStatus, postReloadStatus)
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 0)
 }
 
@@ -365,9 +321,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 //   - Wait for migration job to start
 //   - Attempt to start job again on manager, assert we get error
 func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
+	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 1)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -411,12 +365,26 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	dbConfig.Scopes = scopesConfig
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	dbCtx := rt.GetDatabase()
-	nodeMgr := dbCtx.AttachmentMigrationManager
 	// wait for migration job to start
-	db.RequireBackgroundManagerState(t, ctx, nodeMgr, db.BackgroundProcessStateRunning)
+	waitForAttachmentMigrationState(rt, db.BackgroundProcessStateRunning)
 
-	err = nodeMgr.Start(ctx, nil)
+	err = rt.GetDatabase().AttachmentMigrationManager.Start(ctx, nil)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "Process already running")
+}
+
+// getAttachmentMigrationManagerStatusMigrationManagerStatus returns the status of the AttachmentMigrationManager for a single database RestTester.
+func getAttachmentMigrationManagerStatus(rt *rest.RestTester) db.AttachmentMigrationManagerResponse {
+	var mgrStatus db.AttachmentMigrationManagerResponse
+	stat, err := rt.GetDatabase().AttachmentMigrationManager.GetStatus(rt.Context())
+	require.NoError(rt.TB(), err)
+	require.NoError(rt.TB(), base.JSONUnmarshal(stat, &mgrStatus))
+	return mgrStatus
+}
+
+// waitForAttachmentMigrationState waits for the AttachmentMigrationManager to reach the expected state and then returns
+// its status.
+func waitForAttachmentMigrationState(rt *rest.RestTester, expectedState db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
+	db.RequireBackgroundManagerState(rt.TB(), rt.Context(), rt.GetDatabase().AttachmentMigrationManager, expectedState)
+	return getAttachmentMigrationManagerStatus(rt)
 }
