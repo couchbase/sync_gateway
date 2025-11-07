@@ -228,7 +228,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	// assert that number of docs precessed is equal to docs in collection 2 (not the total number of docs added across
 	// the collections, as we'd expect if the process had reset)
 	// Without the DCP cleaning of bucket pool, this number would be equal
-	assert.GreaterOrEqual(t, int64(totalDocsAddedCollTwo), mgrStatus.DocsProcessed)
+	assert.GreaterOrEqual(t, mgrStatus.DocsProcessed, int64(totalDocsAddedCollTwo))
 
 	// assert that sync info with metadata version written to both collections
 	db.AssertSyncInfoMetaVersion(t, ds0)
