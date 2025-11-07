@@ -277,11 +277,9 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	// Trigger _addPendingLogs to process any entries that have been pending too long:
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs(ctx)
-	if c.notifyChangeFunc != nil && len(changedChannels) > 0 {
-		channelSet := channels.SetFromArrayNoValidate(changedChannels)
-		c.notifyChangeFunc(ctx, channelSet)
-	}
 	c.lock.Unlock()
+
+	c.notifyChange(ctx, changedChannels)
 
 	return nil
 }
@@ -563,6 +561,13 @@ type cachePrincipal struct {
 	Sequence uint64 `json:"sequence"`
 }
 
+func (c *changeCache) notifyChange(ctx context.Context, chs []channels.ID) {
+	if c.notifyChangeFunc == nil || len(chs) == 0 {
+		return
+	}
+	c.notifyChangeFunc(ctx, channels.SetFromArrayNoValidate(chs))
+}
+
 func (c *changeCache) Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	return c.channelCache.Remove(ctx, collectionID, docIDs, startTime)
 }
@@ -634,7 +639,8 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 	}
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
-	allChangedChannels = c.processUnusedRange(ctx, fromSequence, toSequence, allChangedChannels, timeReceived)
+	changedChannels := c.processUnusedRange(ctx, fromSequence, toSequence, timeReceived)
+	allChangedChannels.Update(channels.SetFromArrayNoValidate(changedChannels))
 
 	if c.notifyChangeFunc != nil {
 		c.notifyChangeFunc(ctx, allChangedChannels)
@@ -642,11 +648,12 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 }
 
 // processUnusedRange handles pushing unused range to pending or skipped lists
-func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, allChangedChannels channels.Set, timeReceived channels.FeedTimestamp) channels.Set {
+func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) []channels.ID {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	var numSkipped int64
+	var changedChannels []channels.ID
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
 		numSkipped = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
@@ -654,9 +661,9 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
 		// unblock any pending sequences we can after new range(s) have been pushed to pending
-		changedChannels := c._addPendingLogs(ctx)
-		channelSet := channels.SetFromArrayNoValidate(changedChannels)
-		allChangedChannels = allChangedChannels.Update(channelSet)
+		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
+		//channelSet := channels.SetFromArrayNoValidate(changedChannels)
+		//allChangedChannels = allChangedChannels.Update(channelSet)
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
 	} else {
 		// An unused sequence range than includes c.nextSequence in the middle of the range
@@ -670,7 +677,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
-	return allChangedChannels
+	return changedChannels
 }
 
 // _pushRangeToPending will push an unused sequence range to pendingLogs
@@ -740,11 +747,8 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	base.InfofCtx(ctx, base.KeyChanges, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(ctx, change)
-	channelSet := channels.SetFromArrayNoValidate(changedChannels)
 
-	if c.notifyChangeFunc != nil && len(channelSet) > 0 {
-		c.notifyChangeFunc(ctx, channelSet)
-	}
+	c.notifyChange(ctx, changedChannels)
 }
 
 // processEntry handles a newly-arrived LogEntry and returns the changes channels from this revision.
