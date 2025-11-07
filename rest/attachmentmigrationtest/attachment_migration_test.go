@@ -204,7 +204,7 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	// wait for migration job to finish on single collection
 	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
-	// assert that number of docs precessed is greater or equal to docs in collection 1.
+	// assert that number of docs processed is greater or equal to docs in collection 1.
 	// Without the DCP cleaning of bucket pool, this number would be equal
 	assert.GreaterOrEqual(t, int64(totalDocsAddedCollOne), mgrStatus.DocsProcessed)
 
