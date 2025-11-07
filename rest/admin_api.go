@@ -2293,7 +2293,7 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry                     GatewayRegistry `json:"registry,omitempty"`
+	Registry                     *GatewayRegistry `json:"registry,omitempty"`
 	EnableCrossClusterVersioning bool            `json:"enable_cross_cluster_versioning"`
 }
 
@@ -2325,7 +2325,7 @@ func (h *handler) handleGetClusterInfo() error {
 			}
 
 			bucketInfo := BucketInfo{
-				Registry:                     *registry,
+				Registry:                     registry,
 				EnableCrossClusterVersioning: eccv[bucketName],
 			}
 			clusterInfo.Buckets[bucketName] = bucketInfo

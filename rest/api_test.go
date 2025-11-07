@@ -3588,7 +3588,6 @@ func TestECCV(t *testing.T) {
 			err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
 			require.NoError(t, err)
 			assert.True(t, clusterInfo.Buckets[bucketName].EnableCrossClusterVersioning)
-			//RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/%s/", tests.dbName), ""), http.StatusOK)
 		})
 	}
 }
