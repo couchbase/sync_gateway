@@ -3281,3 +3281,49 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		})
 	}
 }
+
+func TestBlipBadHistory(t *testing.T) {
+	base.LongRunningTest(t)
+
+	rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		opts := &BlipTesterClientOpts{
+			SupportedBLIPProtocols: SupportedBLIPProtocols,
+		}
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		const (
+			docID  = "doc1"
+			revID1 = "1-abc"
+		)
+
+		bt := client.pushReplication.bt
+
+		rq := blip.NewRequest()
+		rq.SetProfile(db.MessageRev)
+		rq.Properties[db.RevMessageID] = docID
+		rq.Properties[db.RevMessageRev] = revID1
+		rq.Properties[db.RevMessageHistory] = "3-def"
+		rq.SetBody([]byte(`{"key":"value"}`))
+		client.addCollectionProperty(rq)
+
+		require.True(t, bt.sender.Send(rq))
+		revResponse := rq.Response()
+		rspBody, err := revResponse.Body()
+		require.NoError(t, err)
+		require.NotContains(t, revResponse.Properties, "Error-Code", "Unexpected Error-Code in response, properties: %#+v, body:%s", revResponse.Properties, string(rspBody))
+
+		btcRunner.StartPull(client.id)
+
+		// this will panic
+		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevID: revID1})
+
+	})
+}
