@@ -3549,3 +3549,38 @@ func TestTombstoneCount(t *testing.T) {
 	})
 
 }
+
+func TestBlipBadHistory(t *testing.T) {
+	base.LongRunningTest(t)
+
+	rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // revtree only
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		const (
+			docID  = "doc1"
+			revID1 = "1-abc"
+		)
+
+		bt := client.pushReplication.bt
+		rq := bt.newRevMessage(docID, revID1, []byte(`{"key": "val"}`), blip.Properties{db.RevMessageHistory: "3-def"})
+		bt.Send(rq)
+		revResponse := rq.Response()
+		rspBody, err := revResponse.Body()
+		require.NoError(t, err)
+		require.NotContains(t, revResponse.Properties, "Error-Code", "Unexpected Error-Code in response, properties: %#+v, body:%s", revResponse.Properties, string(rspBody))
+
+		btcRunner.StartPull(client.id)
+
+		// this will panic
+		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: revID1})
+
+	})
+}
