@@ -16,29 +16,5 @@ package rest
 // registerSignalHandlerForStackTrace will register a signal handler to capture stack traces
 // - SIGUSR1 causes Sync Gateway to record a stack trace of all running goroutines.
 func (sc *ServerContext) registerSignalHandlerForStackTrace(ctx context.Context) {
-	signalChannel := make(chan os.Signal, 1)
-	signal.Notify(signalChannel, syscall.SIGUSR1)
-
-	defer func() {
-		signal.Stop(signalChannel)
-		close(signalChannel)
-	}()
-
-	go func() {
-		select {
-		case sig := <-signalChannel:
-			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
-			switch sig {
-			case syscall.SIGUSR1:
-				// stack trace signal received
-				currentTime := time.Now()
-				timestamp := currentTime.Format(time.RFC3339)
-				sc.logStackTraces(ctx, timestamp)
-			default:
-				// unhandled signal here
-			}
-		case <-ctx.Done():
-			return
-		}
-	}()
+	// No-op on Windows
 }
