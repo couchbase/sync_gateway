@@ -233,7 +233,7 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int, conflictResolution X
 	body.Set("numReplicas", strconv.Itoa(numReplicas))
 	body.Set("ramQuotaMB", fmt.Sprintf("%d", quotaMB))
 	// for GSI, use default storage backend: magma for 8.0+ or couchstore for <8.0
-	// views isn't supported with magma
+	// views aren't supported with magma
 	if TestsDisableGSI() {
 		body.Set("storageBackend", "couchstore")
 	}
