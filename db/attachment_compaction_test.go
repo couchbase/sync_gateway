@@ -25,10 +25,6 @@ import (
 )
 
 func TestAttachmentMark(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
-
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
@@ -256,7 +252,6 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	var garbageVBUUID gocbcore.VbUUID = 1234
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
-	collectionID := collection.GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -284,9 +279,10 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
 	require.NoError(t, err)
 	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
-	clientOptions, err := getCompactionDCPClientOptions(collectionID, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
-	require.NoError(t, err)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, nil, *clientOptions, bucket)
+	clientOptions := getCompactionDCPClientOptions(dataStore, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
+	clientOptions.ID = dcpFeedKey
+
+	dcpClient, err := base.NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
 
 	// alter dcp metadata to feed into the compaction manager

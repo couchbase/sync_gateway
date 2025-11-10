@@ -47,19 +47,17 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-// StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-
+func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) (*GoCBDCPClient, error) {
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var collectionIDs []uint32
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		cm, err := bucket.GetCollectionManifest()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// should only be one args.Scope so cheaper to iterate this way around
@@ -84,18 +82,18 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 				if len(collectionsFound) != len(collections) {
 					for _, collectionName := range collections {
 						if _, ok := collectionsFound[collectionName]; !ok {
-							return RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
+							return nil, RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
 						}
 					}
 				}
 				break
 			}
 			if !scopeFound {
-				return RedactErrorf("scope %s not found", MD(scopeName))
+				return nil, RedactErrorf("scope %s not found", MD(scopeName))
 			}
 		}
 	}
-	options := DCPClientOptions{
+	options := GoCBDCPClientOptions{
 		MetadataStoreType: metadataStoreType,
 		GroupID:           groupID,
 		DbStats:           dbStats,
@@ -107,22 +105,28 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 	if args.Backfill == sgbucket.FeedNoBackfill {
 		metadata, err := getHighSeqMetadata(bucket)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		options.InitialMetadata = metadata
 	}
 
-	dcpClient, err := NewDCPClient(
+	return NewGocbDCPClient(
 		ctx,
 		feedName,
 		callback,
 		options,
 		bucket)
+}
+
+// StartGocbDCPFeed starts a DCP Feed.
+func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
+	dcpClient, err := newGocbDCPClient(ctx, bucket, bucketName, args, callback, dbStats, metadataStoreType, groupID)
 	if err != nil {
 		return err
 	}
+	feedName := dcpClient.ID
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		// simplify in CBG-2234
