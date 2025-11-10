@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
-	"slices"
 	"sync/atomic"
 	"time"
 
@@ -393,7 +392,7 @@ func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outp
 
 	memoryProfile := pprof.Lookup("heap")
 	filename := filepath.Join(outputDir, pprofPrefix+timestamp+".pb.gz")
-	file, err := os.Create(filename)
+	file, err := base.CreateFileInLoggingDirectory(filename)
 	defer func() {
 		err = file.Close()
 		if err != nil {
@@ -407,20 +406,8 @@ func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outp
 	if err != nil {
 		return fmt.Errorf("Error writing memory profile to %q: %w", filename, err)
 	}
-	existingProfiles, err := filepath.Glob(filepath.Join(outputDir, pprofPrefix+"*.pb.gz"))
-	if err != nil {
-		return fmt.Errorf("Error listing existing memory profiles in %q: %w", outputDir, err)
-	}
-	if len(existingProfiles) <= 10 {
-		return nil
-	}
-	slices.Reverse(existingProfiles)
-	var multiErr *base.MultiError
-	for _, profile := range existingProfiles[10:] {
-		err = os.Remove(profile)
-		if err != nil {
-			multiErr = multiErr.Append(fmt.Errorf("Error removing old memory profile %q: %w", profile, err))
-		}
-	}
-	return multiErr.ErrorOrNil()
+
+	// rotate old profiles
+	path := filepath.Join(outputDir, pprofPrefix+"*.pb.gz")
+	return base.RotateProfilesIfNeeded(path)
 }

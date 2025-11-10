@@ -20,12 +20,15 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -58,6 +61,8 @@ var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named co
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
 var allServers = []serverType{publicServer, adminServer, metricsServer, diagnosticServer}
+
+const stackFilePrefix = "sg_stack_trace_"
 
 // serverInfo represents an instance of an HTTP server from sync gateway
 type serverInfo struct {
@@ -204,7 +209,31 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 
 	sc.startStatsLogger(ctx)
 
+	sc.registerSignalHandlerForStackTrace(ctx)
+
 	return sc
+}
+
+// registerSignalHandlerForStackTrace will register a signal handler to capture stack traces
+// - SIGUSR1 causes Sync Gateway to record a stack trace of all running goroutines.
+func (sc *ServerContext) registerSignalHandlerForStackTrace(ctx context.Context) {
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, syscall.SIGUSR1)
+
+	go func() {
+		for sig := range signalChannel {
+			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
+			switch sig {
+			case syscall.SIGUSR1:
+				// stack trace signal received
+				currentTime := time.Now()
+				timestamp := currentTime.Format(time.RFC3339)
+				sc.logStackTraces(ctx, timestamp)
+			default:
+				// unhandled signal here
+			}
+		}
+	}()
 }
 
 func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
@@ -1842,6 +1871,38 @@ func (sc *ServerContext) logStats(ctx context.Context) error {
 
 	return sc.statsContext.collectMemoryProfile(ctx, sc.Config.Logging.LogFilePath, timestamp)
 
+}
+
+func (sc *ServerContext) logStackTraces(ctx context.Context, timestamp string) {
+
+	base.InfofCtx(ctx, base.KeyAll, "Collecting stack trace for all goroutines")
+	stackTrace := base.GetStackTrace()
+
+	// log to console
+	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace)
+
+	filename := filepath.Join(sc.Config.Logging.LogFilePath, stackFilePrefix+timestamp+".log")
+	file, err := base.CreateFileInLoggingDirectory(filename)
+	defer func() {
+		err = file.Close()
+		if err != nil {
+			base.WarnfCtx(ctx, "Error closing stack trace file %s: %v", filename, err)
+		}
+	}()
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAll, "Error opening stack trace file %s: %v", filename, err)
+	}
+
+	_, err = file.WriteString(fmt.Sprintf("Stack trace:\n%s\n", stackTrace))
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAll, "Error writing stack trace to file %s: %v", filename, err)
+	}
+
+	rotatePath := filepath.Join(sc.Config.Logging.LogFilePath, stackFilePrefix+"*.log")
+	err = base.RotateProfilesIfNeeded(rotatePath)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyAll, "Error rotating stack trace files in path %s: %v", rotatePath, err)
+	}
 }
 
 func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {

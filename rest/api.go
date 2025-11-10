@@ -693,6 +693,14 @@ func (h *handler) handleFgprof() error {
 	return stopFn()
 }
 
+func (h *handler) handleCollectStackTrace() error {
+
+	stackTrace := base.GetStackTrace()
+
+	h.writeText([]byte(stackTrace))
+	return nil
+}
+
 func (h *handler) handlePprofBlock() error {
 	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
 	if sec <= 0 || err != nil {

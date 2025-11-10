@@ -27,6 +27,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -1830,4 +1832,45 @@ func IsRevTreeID(s string) bool {
 		break
 	}
 	return false
+}
+
+func GetStackTrace() string {
+	// this nees logging in to warmn if we don;t successfully grab the stack in 10 tries
+	// mnaybe use some switch retyr logic
+	buf := make([]byte, 1<<20)
+	count := 0
+	for count < 10 {
+		n := runtime.Stack(buf, true)
+		fmt.Println("n", n)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+		count++
+	}
+	return string(buf)
+}
+
+func RotateProfilesIfNeeded(filename string) error {
+	existingFiles, err := filepath.Glob(filename)
+	if err != nil {
+		return fmt.Errorf("Error listing existing profiles in %q: %w", filename, err)
+	}
+	if len(existingFiles) <= 10 {
+		return nil
+	}
+	slices.Reverse(existingFiles)
+	var multiErr *MultiError
+	for _, profile := range existingFiles[10:] {
+		err = os.Remove(profile)
+		if err != nil {
+			multiErr = multiErr.Append(fmt.Errorf("Error removing old profile %q: %w", profile, err))
+		}
+	}
+	return multiErr.ErrorOrNil()
+}
+
+func CreateFileInLoggingDirectory(filename string) (*os.File, error) {
+	return os.Create(filename)
 }
