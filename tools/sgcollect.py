@@ -278,6 +278,7 @@ def make_http_client_pprof_tasks(
 
     return pprof_tasks
 
+
 def make_http_client_stack_trace_task(
     sg_url: str, auth_headers: dict[str, str]
 ) -> PythonTask:
@@ -295,8 +296,6 @@ def make_http_client_stack_trace_task(
     stack_trace_task.no_header = True
 
     return stack_trace_task
-
-
 
 
 def to_lower_case_keys_dict(original_dict):

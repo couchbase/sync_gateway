@@ -74,12 +74,12 @@ def test_make_collect_logs_heap_profile(tmpdir):
 
 def test_make_collect_logs_stacktrace(tmpdir):
     with unittest.mock.patch(
-            "sgcollect.urlopen",
-            return_value=io.BytesIO(
-                '{{"logfilepath": "{logpath}"}}'.format(
-                    logpath=normalize_path_for_json(tmpdir),
-                ).encode("utf-8")
-            ),
+        "sgcollect.urlopen",
+        return_value=io.BytesIO(
+            '{{"logfilepath": "{logpath}"}}'.format(
+                logpath=normalize_path_for_json(tmpdir),
+            ).encode("utf-8")
+        ),
     ):
         stacktrace_file = tmpdir.join("sg_stack_trace.log")
         stacktrace_file.write("foo")
@@ -91,7 +91,6 @@ def test_make_collect_logs_stacktrace(tmpdir):
         assert [tasks[0].log_file] == [stacktrace_file.basename]
         # ensure that this is not redacted task
         assert tasks[0].description.startswith("Contents of")
-
 
 
 @pytest.mark.parametrize("should_redact", [True, False])
