@@ -97,6 +97,8 @@ paths:
     $ref: ./paths/admin/_debug-pprof-trace.yaml
   /_debug/fgprof:
     $ref: ./paths/admin/_debug-fgprof.yaml
+  /_debug/stacktrace:
+    $ref: ./paths/admin/_debug-stack_trace.yaml
   /_post_upgrade:
     $ref: ./paths/admin/_post_upgrade.yaml
   '/{db}/_config':
