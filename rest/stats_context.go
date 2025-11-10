@@ -392,7 +392,7 @@ func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outp
 
 	memoryProfile := pprof.Lookup("heap")
 	filename := filepath.Join(outputDir, pprofPrefix+timestamp+".pb.gz")
-	file, err := base.CreateFileInLoggingDirectory(filename)
+	file, err := base.CreateFileInDirectory(filename)
 	defer func() {
 		err = file.Close()
 		if err != nil {

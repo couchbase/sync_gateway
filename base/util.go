@@ -1834,24 +1834,24 @@ func IsRevTreeID(s string) bool {
 	return false
 }
 
+// GetStackTrace will return goroutine stack traces for all goroutines in Sync Gateway.
 func GetStackTrace() string {
-	// this nees logging in to warmn if we don;t successfully grab the stack in 10 tries
-	// mnaybe use some switch retyr logic
+	// make 1MB buffer but if this buffer isn't big enough, runtime.Stack will
+	// return nothing, thus have 5 retires doubling the capacity each time.
 	buf := make([]byte, 1<<20)
-	count := 0
-	for count < 10 {
+	for range 5 {
 		n := runtime.Stack(buf, true)
-		fmt.Println("n", n)
 		if n < len(buf) {
 			buf = buf[:n]
 			break
 		}
 		buf = make([]byte, 2*len(buf))
-		count++
 	}
 	return string(buf)
 }
 
+// RotateProfilesIfNeeded will remove old files if there are more than
+// 10 matching the given filename pattern.
 func RotateProfilesIfNeeded(filename string) error {
 	existingFiles, err := filepath.Glob(filename)
 	if err != nil {
@@ -1871,6 +1871,7 @@ func RotateProfilesIfNeeded(filename string) error {
 	return multiErr.ErrorOrNil()
 }
 
-func CreateFileInLoggingDirectory(filename string) (*os.File, error) {
+// CreateFileInDirectory will create a file in directory specified by filename.
+func CreateFileInDirectory(filename string) (*os.File, error) {
 	return os.Create(filename)
 }

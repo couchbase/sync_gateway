@@ -1882,7 +1882,7 @@ func (sc *ServerContext) logStackTraces(ctx context.Context, timestamp string) {
 	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace)
 
 	filename := filepath.Join(sc.Config.Logging.LogFilePath, stackFilePrefix+timestamp+".log")
-	file, err := base.CreateFileInLoggingDirectory(filename)
+	file, err := base.CreateFileInDirectory(filename)
 	defer func() {
 		err = file.Close()
 		if err != nil {
