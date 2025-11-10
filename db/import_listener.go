@@ -202,7 +202,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			il.importStats.ImportErrorCount.Add(1)
 			return
 		}
-		var cv cvExtractor
+		var cv *rawHLV
 		vv := rawDoc.Xattrs[base.VvXattrName]
 		if len(vv) > 0 {
 			cv = base.Ptr(rawHLV(vv))
