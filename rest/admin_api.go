@@ -2294,7 +2294,7 @@ type ClusterInfo struct {
 
 type BucketInfo struct {
 	Registry                     *GatewayRegistry `json:"registry,omitempty"`
-	EnableCrossClusterVersioning bool            `json:"enable_cross_cluster_versioning"`
+	EnableCrossClusterVersioning bool             `json:"enable_cross_cluster_versioning"`
 }
 
 // Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
