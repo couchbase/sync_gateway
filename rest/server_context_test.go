@@ -1077,7 +1077,7 @@ func TestCollectStackTraceFile(t *testing.T) {
 	timeStamp := "01"
 	serverContext.logStackTraces(ctx, timeStamp)
 	require.Len(t, getFilenames(t, tempPath), 1)
-	slices.Contains(getFilenames(t, tempPath), stackFilePrefix+timeStamp+".log")
+	assert.True(t, slices.Contains(getFilenames(t, tempPath), stackFilePrefix+timeStamp+".log"))
 
 	// trigger rotation and assert we don't go above 10 files
 	expectedFiles := make([]string, 0, 10)

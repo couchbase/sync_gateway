@@ -1870,8 +1870,3 @@ func RotateProfilesIfNeeded(filename string) error {
 	}
 	return multiErr.ErrorOrNil()
 }
-
-// CreateFileInDirectory will create a file in directory specified by filename.
-func CreateFileInDirectory(filename string) (*os.File, error) {
-	return os.Create(filename)
-}

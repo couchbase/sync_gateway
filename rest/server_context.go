@@ -98,6 +98,7 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
+	signalContextFunc             context.CancelFunc
 	// handle sgcollect processes for a given Server
 	SGCollect *sgCollect
 }
@@ -209,7 +210,9 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 
 	sc.startStatsLogger(ctx)
 
-	sc.registerSignalHandlerForStackTrace(ctx)
+	signalCtx, cancelFunc := context.WithCancel(ctx)
+	sc.signalContextFunc = cancelFunc
+	sc.registerSignalHandlerForStackTrace(signalCtx)
 
 	return sc
 }
@@ -220,8 +223,14 @@ func (sc *ServerContext) registerSignalHandlerForStackTrace(ctx context.Context)
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGUSR1)
 
+	defer func() {
+		signal.Stop(signalChannel)
+		close(signalChannel)
+	}()
+
 	go func() {
-		for sig := range signalChannel {
+		select {
+		case sig := <-signalChannel:
 			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGUSR1:
@@ -232,6 +241,8 @@ func (sc *ServerContext) registerSignalHandlerForStackTrace(ctx context.Context)
 			default:
 				// unhandled signal here
 			}
+		case <-ctx.Done():
+			return
 		}
 	}()
 }
@@ -303,6 +314,9 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
+
+	// cancel any signal handlers
+	sc.signalContextFunc()
 
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -1882,26 +1896,26 @@ func (sc *ServerContext) logStackTraces(ctx context.Context, timestamp string) {
 	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace)
 
 	filename := filepath.Join(sc.Config.Logging.LogFilePath, stackFilePrefix+timestamp+".log")
-	file, err := base.CreateFileInDirectory(filename)
+	file, err := os.Create(filename)
 	defer func() {
-		err = file.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "Error closing stack trace file %s: %v", filename, err)
+		closeErr := file.Close()
+		if closeErr != nil {
+			base.WarnfCtx(ctx, "Error closing stack trace file %s: %v", filename, closeErr)
 		}
 	}()
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAll, "Error opening stack trace file %s: %v", filename, err)
+		base.WarnfCtx(ctx, "Error opening stack trace file %s: %v", filename, err)
 	}
 
 	_, err = file.WriteString(fmt.Sprintf("Stack trace:\n%s\n", stackTrace))
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAll, "Error writing stack trace to file %s: %v", filename, err)
+		base.WarnfCtx(ctx, "Error writing stack trace to file %s: %v", filename, err)
 	}
 
 	rotatePath := filepath.Join(sc.Config.Logging.LogFilePath, stackFilePrefix+"*.log")
 	err = base.RotateProfilesIfNeeded(rotatePath)
 	if err != nil {
-		base.DebugfCtx(ctx, base.KeyAll, "Error rotating stack trace files in path %s: %v", rotatePath, err)
+		base.WarnfCtx(ctx, "Error rotating stack trace files in path %s: %v", rotatePath, err)
 	}
 }
 
