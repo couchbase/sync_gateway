@@ -387,7 +387,7 @@ def make_collect_logs_tasks(
         "sg_debug.log": "sg_debug.log",
         "sg_trace.log": "sg_trace.log",
         "sg_stats.log": "sg_stats.log",
-        #"sg_stack_trace.log": "sg_stack_trace.log",
+        "sg_stack_trace.log": "sg_stack_trace.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
         "pprof.pb": "pprof.pb",
