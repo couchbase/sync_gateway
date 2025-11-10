@@ -12,11 +12,13 @@ package rest
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,6 +220,47 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 					}
 
 				})
+			}
+		})
+	}
+}
+
+func TestHandlerRecoverLog(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
+	testCases := []struct {
+		name       string
+		panicArg   any
+		shouldWarn bool
+	}{
+		{name: "string panic", panicArg: "test panic", shouldWarn: true},
+		{name: "error panic", panicArg: fmt.Errorf("test error panic"), shouldWarn: true},
+		{name: "ErrAbortHandler", panicArg: http.ErrAbortHandler, shouldWarn: false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := BootstrapStartupConfigForTest(t) // share config between both servers in test to share a groupID
+			sc, closeFn := StartServerWithConfig(t, &config)
+			defer closeFn()
+
+			startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+			handler := makeHandlerWithOptions(sc, regularPrivs, nil, nil, func(_ *handler) error {
+				panic(tc.panicArg)
+			}, handlerOptions{})
+			r := mux.NewRouter()
+			r.Use(withServerType(publicServer))
+			r.Handle("/", handler)
+			server := httptest.NewServer(r)
+			defer server.Close()
+
+			client := server.Client()
+			resp, err := client.Get(server.URL)
+			if tc.shouldWarn {
+				require.ErrorIs(t, err, io.EOF)
+				require.Equal(t, startWarnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+			} else {
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+				require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 			}
 		})
 	}

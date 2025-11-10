@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -127,8 +128,21 @@ type handlerMethod func(*handler) error
 // makeHandlerWithOptions creates an http.Handler that will run a handler with the given method handlerOptions
 func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		ctx := rq.Context()
+		defer func() {
+			// ErrAbortHandler is a sentinel panic used by http.ServeHTTP and should not be logged.
+			if err := recover(); err != nil && err != http.ErrAbortHandler {
+				// use leading spaces to match typical request logging
+				base.PanicRecoveryfCtx(ctx, "          --> panicked:\n%s", debug.Stack())
+				// repanic here so that http.ServeHTTP can catch the panic and perform usual close connection behavior
+				panic(err)
+			}
+		}()
 		serverType := getCtxServerType(rq.Context())
 		h := newHandler(server, privs, serverType, r, rq, options)
+
+		// re-assign ctx and serial number for panic handler
+		ctx = h.ctx()
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		if !options.skipLogDuration {

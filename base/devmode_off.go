@@ -14,3 +14,5 @@ package base
 const cbSGDevModeBuildTagSet = false
 
 var assertLogFn logFn = ErrorfCtx
+
+var panicRecoveryLogFn logFn = WarnfCtx
