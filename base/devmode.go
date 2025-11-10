@@ -28,3 +28,8 @@ func AssertfCtx(ctx context.Context, format string, args ...any) {
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
 	assertLogFn(ctx, AssertionFailedPrefix+format, args...)
 }
+
+func PanicRecoveryfCtx(ctx context.Context, format string, args ...any) {
+	SyncGatewayStats.GlobalStats.ResourceUtilization.PanicCount.Add(1)
+	panicRecoveryLogFn(ctx, format, args...)
+}

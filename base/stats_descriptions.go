@@ -67,7 +67,8 @@ const (
 	WarnCountDesc          = "The total number of warnings logged."
 	AssertionFailCountDesc = "The total number of assertion failures logged. This is a good indicator of a bug and should be reported."
 
-	UptimeDesc = "The total uptime."
+	PanicCountDesc = "The number of panics that have occurred in the process."
+	UptimeDesc     = "The total uptime."
 )
 
 // error stat
