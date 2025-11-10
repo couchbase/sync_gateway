@@ -22,3 +22,4 @@ get:
             type: string
   tags:
     - Profiling
+  operationId: get__debug-stacktrace

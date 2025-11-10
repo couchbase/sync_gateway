@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -210,9 +211,11 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 
 	sc.startStatsLogger(ctx)
 
-	signalCtx, cancelFunc := context.WithCancel(ctx)
-	sc.signalContextFunc = cancelFunc
-	sc.registerSignalHandlerForStackTrace(signalCtx)
+	if runtime.GOOS != "windows" {
+		signalCtx, cancelFunc := context.WithCancel(ctx)
+		sc.signalContextFunc = cancelFunc
+		sc.registerSignalHandlerForStackTrace(signalCtx)
+	}
 
 	return sc
 }
