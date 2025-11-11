@@ -32,9 +32,8 @@ const AllChannelWildcard = "*"    // wildcard for 'all channels'
 
 // ID represents a single channel inside a collection
 type ID struct {
-	Name          string // name of channel
-	CollectionID  uint32 // collection it belongs to
-	serialization string // private method for logging and matching inside changeWaiter notification
+	Name         string // name of channel
+	CollectionID uint32 // collection it belongs to
 }
 
 func (c ID) String() string {
