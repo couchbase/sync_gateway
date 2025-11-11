@@ -1354,8 +1354,6 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		// variables to keep track if there was rev tree conflict check and storing the status of the check
 		revTreeConflictCheck := false
 		revTreeConflictCheckStatus := false
-		revTreeConflictParent := ""
-		revTreeConflictCurrentIndex := 0
 
 		// if local doc is a pre-upgraded mutation and the rev tree is conflicting with incoming, assign this local
 		// version an implicit hlv based on its rev tree ID + this nodes sourceID to allow HLV conflict resolution to occur
@@ -1363,7 +1361,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		if doc.HLV == nil && doc.Cas != 0 && !allowConflictingTombstone {
 			revTreeConflictCheck = true
 			var conflictErr error
-			revTreeConflictParent, revTreeConflictCurrentIndex, conflictErr = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
+			_, _, conflictErr = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 			if conflictErr != nil {
 				// conflict detected between incoming rev and local rev revtrees, allow hlv conflict resolvers
 				// below to fix (for ISGR pull)
@@ -1419,13 +1417,13 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 					}
 
-					revTreeConflictParent, revTreeConflictCurrentIndex, err = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
+					parent, currentRevIndex, err := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 					if err != nil {
 						base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, and conflict found in rev tree history", base.UD(doc.ID))
 						return nil, nil, false, nil, err
 					}
 
-					_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, revTreeConflictCurrentIndex, revTreeConflictParent, opts.RevTreeHistory)
+					_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
