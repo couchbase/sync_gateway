@@ -938,7 +938,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 	roleNames, err := getSGUserRolesForAudit(dbCtx, h.user)
 	if err != nil {
-		base.InfofCtx(h.ctx(), base.KeyHTTP, "Error getting user roles for audit logging: %v", err)
+		base.InfofCtx(h.ctx(), base.KeyHTTP, "Unable to retrieve user roles for audit logging, will be omitted from audit entry: %v", err)
 	}
 	h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
 	base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
