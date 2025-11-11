@@ -1431,7 +1431,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		for channel, removal := range populatedDoc.Channels {
 			canSee, err := db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel)
 			if err != nil {
-				return nil, err
+				return nil, base.RedactErrorf("could not retrieve collection channels for %s while creating a change entry: %w", base.UD(db.user.Name), err)
 			}
 			if canSee && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true

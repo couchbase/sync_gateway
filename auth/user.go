@@ -585,9 +585,8 @@ func (user *userImpl) GetRoles() ([]Role, error) {
 		deletedRoles := make([]Role, 0)
 		for name := range user.RoleNames() {
 			role, err := user.auth.GetRoleIncDeleted(name)
-			// base.InfofCtx(user.auth.LogCtx, base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
-				return nil, fmt.Errorf("Error getting user role %q: %w", name, err)
+				return nil, base.RedactErrorf("Error getting user role %q: %w", base.UD(name), err)
 			} else if role != nil {
 				if role.IsDeleted() {
 					deletedRoles = append(deletedRoles, role)
