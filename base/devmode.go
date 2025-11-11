@@ -25,10 +25,15 @@ func IsDevMode() bool {
 // The SG test harness will ensure AssertionFailCount is zero at the end of tests, even without devmode enabled.
 // Note: Callers MUST ensure code is safe to continue executing after the Assert (e.g. by returning an error) and MUST NOT be used like a panic that will halt.
 func AssertfCtx(ctx context.Context, format string, args ...any) {
+
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
 	assertLogFn(ctx, AssertionFailedPrefix+format, args...)
 }
 
+// PanicRecoveryfCtx logs a warning message. This function is suitable for recovering from a panic in a location where
+// it is expected to continue operation, like HTTP handlers.
+// When compiled with the `cb_sg_devmode` build tag this function panics to fail the test harness for better dev-time visibility.
+// In all cases, the PanicCount stat is incremented.
 func PanicRecoveryfCtx(ctx context.Context, format string, args ...any) {
 	SyncGatewayStats.GlobalStats.ResourceUtilization.PanicCount.Add(1)
 	panicRecoveryLogFn(ctx, format, args...)
