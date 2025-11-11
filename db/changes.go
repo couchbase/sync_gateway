@@ -676,7 +676,7 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 		if col.user != nil {
 			previousChannels, err = col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
 			if err != nil {
-				base.WarnfCtx(ctx, "Error getting previous channels for user %q: %v", base.UD(col.user.Name()), err)
+				base.WarnfCtx(ctx, "Unable to retrieve inherited channels for user %q: %v", base.UD(col.user.Name()), err)
 				return false, 0, nil, err
 			}
 			previousRoles := col.user.RoleNames()
