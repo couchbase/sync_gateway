@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -1835,19 +1836,10 @@ func IsRevTreeID(s string) bool {
 }
 
 // GetStackTrace will return goroutine stack traces for all goroutines in Sync Gateway.
-func GetStackTrace() string {
-	// make 1MB buffer but if this buffer isn't big enough, runtime.Stack will
-	// return nothing, thus have 5 retires doubling the capacity each time.
-	buf := make([]byte, 1<<20)
-	for range 5 {
-		n := runtime.Stack(buf, true)
-		if n < len(buf) {
-			buf = buf[:n]
-			break
-		}
-		buf = make([]byte, 2*len(buf))
-	}
-	return string(buf)
+func GetStackTrace() (bytes.Buffer, error) {
+	profBuf := bytes.Buffer{}
+	err := pprof.Lookup("goroutine").WriteTo(&profBuf, 2)
+	return profBuf, err
 }
 
 // RotateProfilesIfNeeded will remove old files if there are more than
@@ -1869,4 +1861,33 @@ func RotateProfilesIfNeeded(filename string) error {
 		}
 	}
 	return multiErr.ErrorOrNil()
+}
+
+func LogStackTraces(ctx context.Context, logDirectory string, stackTrace bytes.Buffer, timestamp string) {
+
+	// log to console
+	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace.String())
+
+	filename := filepath.Join(logDirectory, StackFilePrefix+timestamp+".log")
+	file, err := os.Create(filename)
+	defer func() {
+		closeErr := file.Close()
+		if closeErr != nil {
+			WarnfCtx(ctx, "Error closing stack trace file %s: %v", filename, closeErr)
+		}
+	}()
+	if err != nil {
+		WarnfCtx(ctx, "Error opening stack trace file %s: %v", filename, err)
+	}
+
+	_, err = file.WriteString(fmt.Sprintf("Stack trace:\n%s\n", stackTrace.String()))
+	if err != nil {
+		WarnfCtx(ctx, "Error writing stack trace to file %s: %v", filename, err)
+	}
+
+	rotatePath := filepath.Join(logDirectory, StackFilePrefix+"*.log")
+	err = RotateProfilesIfNeeded(rotatePath)
+	if err != nil {
+		WarnfCtx(ctx, "Error rotating stack trace files in path %s: %v", rotatePath, err)
+	}
 }

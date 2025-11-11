@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,7 +39,7 @@ func ServerMain() {
 
 // TODO: Pass ctx down into HTTP servers so that serverMain can be stopped.
 func serverMain(ctx context.Context, osArgs []string) error {
-	RegisterSignalHandler(ctx)
+	sigChan := RegisterSignalHandler(ctx, "")
 	defer base.FatalPanicHandler()
 
 	base.InitializeMemoryLoggers()
@@ -50,6 +52,12 @@ func serverMain(ctx context.Context, osArgs []string) error {
 			return nil
 		}
 		return err
+	}
+	if runtime.GOOS != "windows" {
+		// stop signal handlers and register for stack trace handling, this is not supported for windows environments
+		signal.Stop(sigChan)
+		close(sigChan)
+		RegisterSignalHandler(ctx, flagStartupConfig.Logging.LogFilePath)
 	}
 
 	if *disablePersistentConfig {

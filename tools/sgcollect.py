@@ -285,7 +285,7 @@ def make_http_client_stack_trace_task(
     """
     This task uses the python http client to collect the raw stack trace data
     """
-    stack_trace_url = "{0}/_debug/stacktrace".format(sg_url)
+    stack_trace_url = "{0}/_debug/pprof/goroutine?debug=2".format(sg_url)
 
     stack_trace_task = make_curl_task(
         name="Collect stack trace via http client",

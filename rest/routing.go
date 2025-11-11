@@ -316,8 +316,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofTrace, handlerOptions{sgcollect: true})).Methods("GET", "POST")
 	r.Handle("/_debug/fgprof",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFgprof, handlerOptions{sgcollect: true})).Methods("GET", "POST")
-	r.Handle("/_debug/stacktrace",
-		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleCollectStackTrace, handlerOptions{sgcollect: true})).Methods("GET")
 
 	r.Handle("/_post_upgrade",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
