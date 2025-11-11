@@ -687,7 +687,7 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 			// check whether channel set has changed
 			channels, err := col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
 			if err != nil {
-				base.WarnfCtx(ctx, "Error getting channels for user %q: %v", base.UD(col.user.Name()), err)
+				base.WarnfCtx(ctx, "Unable to retrieve inherited channels for user %q: %v", base.UD(col.user.Name()), err)
 				return false, 0, nil, err
 			}
 			changedChannels = channels.CompareKeys(previousChannels)
