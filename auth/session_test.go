@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,50 +24,66 @@ import (
 )
 
 func TestCreateSession(t *testing.T) {
-	const username = "Alice"
-	const invalidSessionTTLError = "400 Invalid session time-to-live"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	ctx := base.TestCtx(t)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close(ctx)
-	dataStore := testBucket.GetSingleDataStore()
-	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+	for _, oneTime := range []bool{true, false} {
+		t.Run(fmt.Sprintf("oneTime=%t", oneTime), func(t *testing.T) {
+			const username = "Alice"
+			const invalidSessionTTLError = "400 Invalid session time-to-live"
+			ctx := base.TestCtx(t)
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close(ctx)
+			dataStore := testBucket.GetSingleDataStore()
+			auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 
-	user, err := auth.NewUser(username, "password", base.Set{})
-	require.NoError(t, err)
-	require.NotNil(t, user)
-	require.NoError(t, auth.Save(user))
+			user, err := auth.NewUser(username, "password", base.Set{})
+			require.NoError(t, err)
+			require.NotNil(t, user)
+			require.NoError(t, auth.Save(user))
 
-	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
-	require.NoError(t, err)
+			// Create session with a username and valid TTL of 2 hours.
+			session, err := auth.CreateSession(ctx, user, 2*time.Hour, oneTime)
+			require.NoError(t, err)
 
-	assert.Equal(t, username, session.Username)
-	assert.Equal(t, 2*time.Hour, session.Ttl)
-	assert.NotEmpty(t, session.ID)
-	assert.NotEmpty(t, session.Expiration)
+			assert.Equal(t, username, session.Username)
+			assert.Equal(t, 2*time.Hour, session.Ttl)
+			assert.NotEmpty(t, session.ID)
+			assert.NotEmpty(t, session.Expiration)
+			if oneTime {
+				require.NotNil(t, session.OneTime)
+				require.True(t, *session.OneTime)
+			} else {
+				assert.Empty(t, session.OneTime)
+			}
 
-	// Once the session is created, the details should be persisted on the bucket
-	// and it must be accessible anytime later within the session expiration time.
-	session, err = auth.GetSession(session.ID)
-	assert.NoError(t, err)
+			// Once the session is created, the details should be persisted on the bucket
+			// and it must be accessible anytime later within the session expiration time.
+			session, _, err = auth.GetSession(session.ID)
+			assert.NoError(t, err)
 
-	assert.Equal(t, username, session.Username)
-	assert.Equal(t, 2*time.Hour, session.Ttl)
-	assert.NotEmpty(t, session.ID)
-	assert.NotEmpty(t, session.Expiration)
+			assert.Equal(t, username, session.Username)
+			assert.Equal(t, 2*time.Hour, session.Ttl)
+			assert.NotEmpty(t, session.ID)
+			assert.NotEmpty(t, session.Expiration)
+			if oneTime {
+				require.NotNil(t, session.OneTime)
+				require.True(t, *session.OneTime)
+			} else {
+				assert.Empty(t, session.OneTime)
+			}
 
-	// Session must not be created with zero TTL; it's illegal.
-	session, err = auth.CreateSession(ctx, user, time.Duration(0))
-	assert.Nil(t, session)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), invalidSessionTTLError)
+			// Session must not be created with zero TTL; it's illegal.
+			session, err = auth.CreateSession(ctx, user, time.Duration(0), oneTime)
+			assert.Nil(t, session)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), invalidSessionTTLError)
 
-	// Session must not be created with negative TTL; it's illegal.
-	session, err = auth.CreateSession(ctx, user, time.Duration(-1))
-	assert.Nil(t, session)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), invalidSessionTTLError)
+			// Session must not be created with negative TTL; it's illegal.
+			session, err = auth.CreateSession(ctx, user, time.Duration(-1), oneTime)
+			assert.Nil(t, session)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), invalidSessionTTLError)
+		})
+	}
 }
 
 func TestDeleteSession(t *testing.T) {
@@ -91,7 +108,7 @@ func TestDeleteSession(t *testing.T) {
 	assert.NoError(t, dataStore.Set(auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(ctx, mockSession.ID, ""))
 
-	session, err := auth.GetSession(mockSession.ID)
+	session, _, err := auth.GetSession(mockSession.ID)
 	assert.Nil(t, session)
 	base.RequireDocNotFoundError(t, err)
 }
@@ -116,14 +133,14 @@ func TestMakeSessionCookie(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	cookie := auth.MakeSessionCookie(mockSession, false, false)
+	cookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.Equal(t, DefaultCookieName, cookie.Name)
 	assert.Equal(t, sessionID, cookie.Value)
 	assert.NotEmpty(t, cookie.Expires)
 
 	// Cookies should not be created with uninitialized session
 	mockSession = nil
-	cookie = auth.MakeSessionCookie(mockSession, false, false)
+	cookie = auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.Empty(t, cookie)
 }
 
@@ -143,16 +160,16 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	unsecuredCookie := auth.MakeSessionCookie(mockSession, false, false)
+	unsecuredCookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.False(t, unsecuredCookie.Secure)
 
-	securedCookie := auth.MakeSessionCookie(mockSession, true, false)
+	securedCookie := auth.MakeSessionCookie(mockSession, true, false, http.SameSiteDefaultMode)
 	assert.True(t, securedCookie.Secure)
 
-	httpOnlyFalseCookie := auth.MakeSessionCookie(mockSession, false, false)
+	httpOnlyFalseCookie := auth.MakeSessionCookie(mockSession, false, false, http.SameSiteDefaultMode)
 	assert.False(t, httpOnlyFalseCookie.HttpOnly)
 
-	httpOnlyCookie := auth.MakeSessionCookie(mockSession, false, true)
+	httpOnlyCookie := auth.MakeSessionCookie(mockSession, false, true, http.SameSiteDefaultMode)
 	assert.True(t, httpOnlyCookie.HttpOnly)
 }
 
@@ -239,16 +256,17 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			require.NotNil(t, user)
 			require.NoError(t, auth.Save(user))
 
+			oneTime := false
 			// Create session with a username and valid TTL of 2 hours.
-			session, err := auth.CreateSession(ctx, user, 2*time.Hour)
+			session, err := auth.CreateSession(ctx, user, 2*time.Hour, oneTime)
 			require.NoError(t, err)
 
-			session, err = auth.GetSession(session.ID)
+			session, _, err = auth.GetSession(session.ID)
 			require.NoError(t, err)
 
 			request, err := http.NewRequest(http.MethodGet, "", nil)
 			require.NoError(t, err)
-			request.AddCookie(auth.MakeSessionCookie(session, true, true))
+			request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 			recorder := httptest.NewRecorder()
 			_, err = auth.AuthenticateCookie(request, recorder)
@@ -295,16 +313,16 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
-	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
+	oneTime := false
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour, oneTime)
 	require.NoError(t, err)
 
-	session, err = auth.GetSession(session.ID)
+	session, _, err = auth.GetSession(session.ID)
 	require.NoError(t, err)
 
 	request, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
-	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 	recorder := httptest.NewRecorder()
 	_, err = auth.AuthenticateCookie(request, recorder)
@@ -325,16 +343,16 @@ func TestUserDeleteAllSessions(t *testing.T) {
 	require.NotNil(t, user)
 	require.NoError(t, auth.Save(user))
 
-	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(ctx, user, 2*time.Hour)
+	oneTime := false
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour, oneTime)
 	require.NoError(t, err)
 
-	session, err = auth.GetSession(session.ID)
+	session, _, err = auth.GetSession(session.ID)
 	require.NoError(t, err)
 
 	request, err := http.NewRequest(http.MethodGet, "", nil)
 	require.NoError(t, err)
-	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 	recorder := httptest.NewRecorder()
 
 	_, err = auth.AuthenticateCookie(request, recorder)
@@ -347,4 +365,41 @@ func TestUserDeleteAllSessions(t *testing.T) {
 
 	_, err = auth.AuthenticateCookie(request, recorder)
 	require.EqualError(t, err, "401 Session no longer valid for user")
+}
+
+func TestCreateOneTimeSession(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+	const username = "Alice"
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NoError(t, auth.Save(user))
+
+	oneTime := true
+	session, err := auth.CreateSession(ctx, user, 2*time.Hour, oneTime)
+	require.NoError(t, err)
+
+	session, user, err = auth.GetSession(session.ID)
+	require.NoError(t, err)
+	require.Equal(t, username, session.Username)
+	require.Equal(t, username, user.Name())
+
+	// make sure this can be retrieved again if not through AuthenticateOneTimeSession
+	session, user, err = auth.GetSession(session.ID)
+	require.NoError(t, err)
+	require.Equal(t, username, session.Username)
+	require.Equal(t, username, user.Name())
+
+	// now test AuthenticateOneTimeSession deletes it
+	user, err = auth.AuthenticateOneTimeSession(ctx, session.ID)
+	require.NoError(t, err)
+	require.Equal(t, username, user.Name())
+
+	// make sure session is deleted
+	session, _, err = auth.GetSession(session.ID)
+	require.Nil(t, session)
+	base.RequireDocNotFoundError(t, err)
 }

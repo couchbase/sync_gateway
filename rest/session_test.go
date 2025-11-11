@@ -25,8 +25,13 @@ import (
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
+
+	// force TLS mode to test SameSite=None cookie attribute
+	rt.ServerContext().Config.API.HTTPS.TLSCertPath = "/pretend/valid/cert"
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
@@ -37,6 +42,15 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertGatewayStatus(t, response, 401)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+	cookie, err := http.ParseSetCookie(response.Header().Get("Set-Cookie"))
+	require.NoError(t, err)
+	require.Equal(t, cookie.SameSite, http.SameSiteNoneMode)
 }
 
 // #issue 991
@@ -53,6 +67,15 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 
 	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
 	RequireStatus(t, response, 400)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+	cookie, err := http.ParseSetCookie(response.Header().Get("Set-Cookie"))
+	require.NoError(t, err)
+	require.NotContains(t, cookie.String(), "SameSite")
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
@@ -728,4 +751,26 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
 	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
+}
+
+func TestOneTimeSessionWithCookie(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	username := "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(t, resp, http.StatusOK)
+
+	headers := map[string]string{
+		"Cookie": resp.Header().Get("Set-Cookie"),
+	}
+
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Second request should fail since it's a one-time session
+	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
+	RequireStatus(t, resp, http.StatusUnauthorized)
 }

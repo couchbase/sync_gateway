@@ -18,13 +18,13 @@ licenses/APL2.txt.
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
     <project name="build" path="cbbuild" remote="couchbase" revision="b1dc2359603ab411ce0788854ea879ce804c9055">
-        <annotation name="VERSION" value="3.2.7" keep="true"/>
+        <annotation name="VERSION" value="4.0.0.1" keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="release/3.2.7"/>
+    <project name="sync_gateway" path="sync_gateway" remote="couchbase" revision="3e99b8d7884f9abf0120b521b9a15b56256e63a3"/>
 
 </manifest>
