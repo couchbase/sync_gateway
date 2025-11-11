@@ -45,7 +45,7 @@ func (h *handler) getAllUserChannelsResponse(user auth.User) (map[string]map[str
 		keyspace := dsName.ScopeName() + "." + dsName.CollectionName()
 		currentChannels, err := user.InheritedCollectionChannels(dsName.ScopeName(), dsName.CollectionName())
 		if err != nil {
-			return nil, fmt.Errorf("error getting user channels: %w", err)
+			return nil, fmt.Errorf("error retrieving inherited user channels: %w", err)
 		}
 		chanHistory := user.CollectionChannelHistory(dsName.ScopeName(), dsName.CollectionName())
 
