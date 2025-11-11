@@ -1171,7 +1171,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			if userChanged && col.user != nil {
 				newChannelsSince, _, err := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
 				if err != nil {
-					base.WarnfCtx(ctx, "Error filtering to available channels for user %q: %v", base.UD(col.user.Name()), err)
+					base.WarnfCtx(ctx, "Unable to filter to available channels for user %q: %v", base.UD(col.user.Name()), err)
 					change := makeErrorEntry("Error filtering channels to user - terminating changes feed")
 					select {
 					case output <- &change:
