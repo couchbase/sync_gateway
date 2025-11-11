@@ -38,15 +38,14 @@ type ID struct {
 }
 
 func (c ID) String() string {
-	return c.serialization
+	return strconv.FormatUint(uint64(c.CollectionID), 10) + "." + base.UserDataPrefix + c.Name + base.UserDataSuffix
 }
 
 // NewID returns a new ChannelID
 func NewID(channelName string, collectionID uint32) ID {
 	return ID{
-		Name:          channelName,
-		CollectionID:  collectionID,
-		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + base.UserDataPrefix + channelName + base.UserDataSuffix,
+		Name:         channelName,
+		CollectionID: collectionID,
 	}
 }
 
