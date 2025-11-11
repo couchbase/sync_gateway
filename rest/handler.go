@@ -1029,7 +1029,7 @@ func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFie
 			var err error
 			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
-			return err
+			return auditFields, err
 		}
 	}
 
