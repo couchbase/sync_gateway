@@ -43,7 +43,7 @@ func NewRosmarCluster(serverURL string) (*RosmarCluster, error) {
 		if runtime.GOOS == "windows" {
 			directory = strings.TrimPrefix(directory, "/")
 		}
-		err = os.MkdirAll(directory, 0750)
+		err = os.MkdirAll(directory, 0700)
 		if err != nil {
 			return nil, fmt.Errorf("could not create or access directory to open rosmar cluster %q: %w", serverURL, err)
 		}

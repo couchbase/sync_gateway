@@ -28,7 +28,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/rosmar"
 	pkgerrors "github.com/pkg/errors"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -204,15 +203,6 @@ func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
 		return gocbv2Bucket, nil
 	}
 	return nil, fmt.Errorf("bucket is not a gocb bucket (type %T)", baseBucket)
-}
-
-// AsRosmar returns a bucket as a rosmar.Bucket, or an error if it is not one.
-func AsRosmarBucket(bucket Bucket) (*rosmar.Bucket, error) {
-	baseBucket := GetBaseBucket(bucket)
-	if rosmarBucket, ok := baseBucket.(*rosmar.Bucket); ok {
-		return rosmarBucket, nil
-	}
-	return nil, fmt.Errorf("bucket is not a rosmar bucket (type %T)", baseBucket)
 }
 
 func (b *GocbV2Bucket) GetName() string {

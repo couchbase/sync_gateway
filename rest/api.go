@@ -286,7 +286,7 @@ func (h *handler) handleFlush() error {
 				return err
 			}
 			defer bucket.Close(h.ctx())
-			// Flush the bucket (assuming it conforms to sgbucket.DeleteableStore interface
+			// Flush the bucket
 			gocbBucket, err := base.AsGocbV2Bucket(bucket)
 			if err != nil {
 				return err
