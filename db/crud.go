@@ -1352,16 +1352,15 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		allowConflictingTombstone := opts.ForceAllowConflictingTombstone && doc.IsDeleted()
 
 		// variables to keep track if there was rev tree conflict check and storing the status of the check
-		revTreeConflictCheck := false
+		revTreeConflictChecked := false
 		revTreeConflictCheckStatus := false
 
 		// if local doc is a pre-upgraded mutation and the rev tree is conflicting with incoming, assign this local
 		// version an implicit hlv based on its rev tree ID + this nodes sourceID to allow HLV conflict resolution to occur
 		// between the two versions.
 		if doc.HLV == nil && doc.Cas != 0 && !allowConflictingTombstone {
-			revTreeConflictCheck = true
-			var conflictErr error
-			_, _, conflictErr = db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
+			revTreeConflictChecked = true
+			_, _, conflictErr := db.revTreeConflictCheck(ctx, opts.RevTreeHistory, doc, opts.NewDoc.Deleted)
 			if conflictErr != nil {
 				// conflict detected between incoming rev and local rev revtrees, allow hlv conflict resolvers
 				// below to fix (for ISGR pull)
@@ -1387,7 +1386,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				}
 			}
 		} else {
-			conflictStatus := doc.IsInConflict(ctx, db, opts.NewDocHLV, opts, revTreeConflictCheck, revTreeConflictCheckStatus)
+			conflictStatus := doc.IsInConflict(ctx, db, opts.NewDocHLV, opts, revTreeConflictChecked, revTreeConflictCheckStatus)
 			switch conflictStatus {
 			case HLVNoConflictRevAlreadyPresent:
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(opts.NewDoc.ID), doc.HLV, opts.NewDocHLV)
@@ -1412,7 +1411,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			case HLVConflict:
 				// if we have been supplied a rev tree from cbl, perform conflict check on rev tree history
 				if len(opts.RevTreeHistory) > 0 && !opts.ISGRWrite {
-					if revTreeConflictCheck && revTreeConflictCheckStatus {
+					if revTreeConflictChecked && revTreeConflictCheckStatus {
 						base.DebugfCtx(ctx, base.KeyCRUD, "conflict detected between the two HLV's for doc %s, and conflict found in rev tree history", base.UD(doc.ID))
 						return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 					}
