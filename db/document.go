@@ -44,6 +44,7 @@ const (
 	DocUnmarshalRev                                      // Unmarshals revTreeID + CAS only (no HLV)
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
+	DocUnmarshalRevAndFlags                              // Unmarshals revTreeID + CAS and Flags (no HLV)
 )
 
 const (
@@ -165,6 +166,14 @@ func (sd *SyncData) getCurrentChannels() base.Set {
 func (sd *SyncData) SetCV(hlv *HybridLogicalVector) {
 	sd.RevAndVersion.CurrentSource = hlv.SourceID
 	sd.RevAndVersion.CurrentVersion = string(base.Uint64CASToLittleEndianHex(hlv.Version))
+}
+
+func (sd *SyncData) hasFlag(flag uint8) bool {
+	return sd.Flags&flag != 0
+}
+
+func (sd *SyncData) IsDeleted() bool {
+	return sd.hasFlag(channels.Deleted)
 }
 
 // RedactRawGlobalSyncData runs HashRedact on the given global sync data.
@@ -306,6 +315,11 @@ type revOnlySyncData struct {
 	CurrentRev channels.RevAndVersion `json:"rev"`
 }
 
+type revAndFlagsSyncData struct {
+	revOnlySyncData
+	Flags uint8 `json:"flags"`
+}
+
 type casOnlySyncData struct {
 	Cas string `json:"cas"`
 }
@@ -329,10 +343,6 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	} else {
 		return base.JSONMarshal(doc)
 	}
-}
-
-func (doc *Document) IsDeleted() bool {
-	return doc.hasFlag(channels.Deleted)
 }
 
 func (doc *Document) BodyWithSpecialProperties(ctx context.Context) ([]byte, error) {
@@ -752,10 +762,6 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 		}
 	}
 	return true, true, false
-}
-
-func (doc *Document) hasFlag(flag uint8) bool {
-	return doc.Flags&flag != 0
 }
 
 func (doc *Document) setFlag(flag uint8, state bool) {
@@ -1331,6 +1337,23 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			}
 			doc.SyncData = SyncData{
 				Cas: casOnlyMeta.Cas,
+			}
+		} else {
+			doc.SyncData = SyncData{}
+		}
+		doc._rawBody = data
+	case DocUnmarshalRevAndFlags:
+		// Unmarshal rev ,cas and flags from sync metadata
+		if syncXattrData != nil {
+			var revOnlyMeta revAndFlagsSyncData
+			unmarshalErr := base.JSONUnmarshal(syncXattrData, &revOnlyMeta)
+			if unmarshalErr != nil {
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			}
+			doc.SyncData = SyncData{
+				RevAndVersion: revOnlyMeta.CurrentRev,
+				Cas:           revOnlyMeta.Cas,
+				Flags:         revOnlyMeta.Flags,
 			}
 		} else {
 			doc.SyncData = SyncData{}

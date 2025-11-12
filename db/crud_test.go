@@ -2282,3 +2282,97 @@ func TestSyncDataCVEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestProposedRev(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create 3 documents
+	body := Body{"key1": "value1", "key2": 1234}
+	_, doc1, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
+	doc1Rev := doc1.GetRevTreeID()
+
+	_, doc2, err := collection.Put(ctx, "doc2", body)
+	require.NoError(t, err)
+	doc2Rev1 := doc2.GetRevTreeID()
+	_, doc2, err = collection.Put(ctx, "doc2", Body{"_rev": doc2Rev1, "key1": "value2", "key2": 5678})
+	require.NoError(t, err)
+	doc2Rev2 := doc2.GetRevTreeID()
+
+	_, doc3, err := collection.Put(ctx, "doc3", body)
+	require.NoError(t, err)
+	doc3Rev1 := doc3.GetRevTreeID()
+	_, doc3, err = collection.Put(ctx, "doc3", Body{"_rev": doc3Rev1, "_deleted": true})
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name           string
+		revID          string
+		parentRevID    string
+		expectedStatus ProposedRevStatus
+		currentRev     string
+		docID          string
+	}{
+		{
+			name:           "no existing document",
+			revID:          "1-abc",
+			parentRevID:    "",
+			expectedStatus: ProposedRev_OK_IsNew,
+			currentRev:     "",
+			docID:          "doc",
+		},
+		{
+			name:           "existing revision with no previous version",
+			revID:          doc1Rev,
+			parentRevID:    "",
+			expectedStatus: ProposedRev_Exists,
+			currentRev:     "",
+			docID:          "doc1",
+		},
+		{
+			name:           "existing revision with previous version",
+			revID:          doc2Rev2,
+			parentRevID:    doc2Rev1,
+			expectedStatus: ProposedRev_Exists,
+			currentRev:     "",
+			docID:          "doc2",
+		},
+		{
+			name:           "new revision with previous version",
+			revID:          "2-abc",
+			parentRevID:    doc1Rev,
+			expectedStatus: ProposedRev_OK,
+			currentRev:     "",
+			docID:          "doc1",
+		},
+		{
+			name:           "new revision with previous revision as tombstone",
+			revID:          "1-abc",
+			parentRevID:    "",
+			expectedStatus: ProposedRev_OK,
+			currentRev:     "",
+			docID:          "doc3",
+		},
+		{
+			name:           "conflicting revision with previous version",
+			revID:          "2-abc",
+			parentRevID:    doc2Rev1,
+			expectedStatus: ProposedRev_Conflict,
+			currentRev:     doc2Rev2,
+			docID:          "doc2",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, rev := collection.CheckProposedRev(ctx, tc.docID, tc.revID, tc.parentRevID)
+			assert.Equal(t, tc.expectedStatus, status)
+			assert.Equal(t, tc.currentRev, rev)
+		})
+	}
+}
