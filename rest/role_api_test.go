@@ -339,13 +339,16 @@ func TestRoleAccessChanges(t *testing.T) {
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/d1", `{"channel":"delta"}`), 201)
 
 	// Check user access:
-	alice, _ := a.GetUser("alice")
+	alice, err := a.GetUser("alice")
+	require.NoError(t, err)
+	chs, err := alice.InheritedCollectionChannels(s, c)
+	require.NoError(t, err)
 	assert.Equal(t,
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
-		}, alice.InheritedCollectionChannels(s, c))
+		}, chs)
 
 	assert.Equal(t,
 		channels.TimedSet{
@@ -353,13 +356,15 @@ func TestRoleAccessChanges(t *testing.T) {
 			"hipster": channels.NewVbSimpleSequence(roleGrantSequence),
 		}, alice.RoleNames())
 
-	zegpold, _ := a.GetUser("zegpold")
+	zegpold, err := a.GetUser("zegpold")
+	require.NoError(t, err)
+	chs, err = zegpold.InheritedCollectionChannels(s, c)
+	require.NoError(t, err)
 	assert.Equal(t,
-
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(1),
 			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
-		}, zegpold.InheritedCollectionChannels(s, c))
+		}, chs)
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
@@ -387,20 +392,26 @@ func TestRoleAccessChanges(t *testing.T) {
 	updatedRoleGrantSequence := rt.GetDocumentSequence("fashion")
 
 	// Check user access again:
-	alice, _ = a.GetUser("alice")
+	alice, err = a.GetUser("alice")
+	require.NoError(t, err)
+	chs, err = alice.InheritedCollectionChannels(s, c)
+	require.NoError(t, err)
 	assert.Equal(t,
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-		}, alice.InheritedCollectionChannels(s, c))
+		}, chs)
 
-	zegpold, _ = a.GetUser("zegpold")
+	zegpold, err = a.GetUser("zegpold")
+	require.NoError(t, err)
+	chs, err = zegpold.InheritedCollectionChannels(s, c)
+	require.NoError(t, err)
 	assert.Equal(t,
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
-		}, zegpold.InheritedCollectionChannels(s, c))
+		}, chs)
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()
