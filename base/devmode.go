@@ -33,8 +33,8 @@ func AssertfCtx(ctx context.Context, format string, args ...any) {
 // PanicRecoveryfCtx logs a warning message. This function is suitable for recovering from a panic in a location where
 // it is expected to continue operation, like HTTP handlers.
 // When compiled with the `cb_sg_devmode` build tag this function panics to fail the test harness for better dev-time visibility.
-// In all cases, the ErrorCount stat is incremented.
+// In all cases, the WarnCount stat is incremented.
 func PanicRecoveryfCtx(ctx context.Context, format string, args ...any) {
-	SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.Add(1)
+	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Add(1)
 	panicRecoveryLogFn(ctx, format, args...)
 }
