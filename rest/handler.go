@@ -131,7 +131,7 @@ func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPer
 		ctx := rq.Context()
 		defer func() {
 			if r := recover(); r != nil {
-				base.PanicRecoveryfCtx(ctx, "Unexpected panic in HTTP handler: \n %s", debug.Stack())
+				base.PanicRecoveryfCtx(ctx, "Unexpected panic in HTTP handler:\n%s", debug.Stack())
 				panic(r)
 			}
 		}()
