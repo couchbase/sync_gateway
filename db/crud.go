@@ -1737,8 +1737,11 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		return nil, err, nil
 	}
 
-	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap,
-		MakeUserCtx(db.user, db.ScopeName, db.Name))
+	syncOptions, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
+	if err != nil {
+		return nil, err, nil
+	}
+	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 
 	return output, nil, err
 }
@@ -3250,8 +3253,12 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = col.ChannelMapper.MapToChannelsAndAccess(ctx, body, oldJson, metaMap,
-			MakeUserCtx(col.user, col.ScopeName, col.Name))
+		var syncOptions map[string]any
+		syncOptions, err = MakeUserCtx(col.user, col.ScopeName, col.Name)
+		if err != nil {
+			return result, access, roles, expiry, oldJson, err
+		}
+		output, err = col.ChannelMapper.MapToChannelsAndAccess(ctx, body, oldJson, metaMap, syncOptions)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
@@ -3306,15 +3313,19 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 }
 
 // Creates a userCtx object to be passed to the sync function
-func MakeUserCtx(user auth.User, scopeName string, collectionName string) map[string]any {
+func MakeUserCtx(user auth.User, scopeName string, collectionName string) (map[string]any, error) {
 	if user == nil {
-		return nil
+		return nil, nil
+	}
+	channels, err := user.InheritedCollectionChannels(scopeName, collectionName)
+	if err != nil {
+		return nil, err
 	}
 	return map[string]any{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
-		"channels": user.InheritedCollectionChannels(scopeName, collectionName).AllKeys(),
-	}
+		"channels": channels.AllKeys(),
+	}, nil
 }
 
 // Are the principal and role names in an AccessMap all valid?

@@ -883,18 +883,21 @@ func needRolesForAudit(db *db.DatabaseContext, domain base.UserIDDomain) bool {
 }
 
 // getSGUserRolesForAudit returns a list of role names for the given user, if audit role filtering is enabled.
-func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
+func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) ([]string, error) {
 	if user == nil {
-		return nil
+		return nil, nil
 	}
 
 	if !needRolesForAudit(db, base.UserDomainSyncGateway) {
-		return nil
+		return nil, nil
 	}
 
-	roles := user.GetRoles()
+	roles, err := user.GetRoles()
+	if err != nil {
+		return nil, err
+	}
 	if len(roles) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	roleNames := make([]string, 0, len(roles))
@@ -902,11 +905,11 @@ func getSGUserRolesForAudit(db *db.DatabaseContext, user auth.User) []string {
 		roleNames = append(roleNames, role.Name())
 	}
 
-	return roleNames
+	return roleNames, nil
 }
 
-// checkPublicAuth verifies that the current request is authenticated for the given database.
-//
+// checkPublicAuth verifies that the current request is authenticated for the given database. Returns an HTTPError if
+// authentication fails.
 // NOTE: checkPublicAuth is not used for the admin interface.
 func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 
@@ -915,40 +918,53 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 		return nil
 	}
 
-	var auditFields base.AuditFields
-
-	// Record Auth stats
-	defer func(t time.Time) {
-		delta := time.Since(t).Nanoseconds()
-		dbCtx.DbStats.Security().TotalAuthTime.Add(delta)
-		if err != nil {
-			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
-			if errors.Is(err, ErrInvalidLogin) {
-				base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticationFailed, auditFields)
-			}
-		} else {
-			dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
-
-			username := ""
-			if h.isGuest() {
-				username = base.GuestUsername
-			} else if h.user != nil {
-				username = h.user.Name()
-			}
-			roleNames := getSGUserRolesForAudit(dbCtx, h.user)
-			h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
-			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
+	start := time.Now()
+	auditFields, err := h.setUserForPublicAuth(dbCtx)
+	dbCtx.DbStats.Security().TotalAuthTime.Add(time.Since(start).Nanoseconds())
+	if err != nil {
+		dbCtx.DbStats.Security().AuthFailedCount.Add(1)
+		if errors.Is(err, ErrInvalidLogin) {
+			base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticationFailed, auditFields)
 		}
-	}(time.Now())
+		return
+	}
+	dbCtx.DbStats.Security().AuthSuccessCount.Add(1)
 
+	username := ""
+	if h.isGuest() {
+		username = base.GuestUsername
+	} else if h.user != nil {
+		username = h.user.Name()
+	}
+	roleNames, err := getSGUserRolesForAudit(dbCtx, h.user)
+	if err != nil {
+		base.InfofCtx(h.ctx(), base.KeyHTTP, "Unable to retrieve user roles for audit logging, will be omitted from audit entry: %v", err)
+	}
+	h.rqCtx = base.UserLogCtx(h.ctx(), username, base.UserDomainSyncGateway, roleNames)
+	base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticated, auditFields)
+	return err
+}
+
+// setUserForPublicAuth sets h.user based on the authentication information in the request. Returns an error if the user
+// can not authenticate successfully, and returns AuditFields even in the case that there is an error in the request.
+//
+// Uses:
+//
+//  1. Bearer token (OIDC JWT) if present and OIDC is enabled
+//  2. Basic auth if present and password authentication is not disabled
+//  3. Cookie auth if present
+//  4. Guest access if enabled
+func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFields, error) {
+	var auditFields base.AuditFields
 	// If oidc enabled, check for bearer ID token
 	if dbCtx.Options.OIDCOptions != nil || len(dbCtx.LocalJWTProviders) > 0 {
 		if token := h.getBearerToken(); token != "" {
 			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "bearer"}
 			var updates auth.PrincipalConfig
+			var err error
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
-				return ErrInvalidLogin
+				return auditFields, ErrInvalidLogin
 			}
 			if issuer := h.user.JWTIssuer(); issuer != "" {
 				auditFields["oidc_issuer"] = issuer
@@ -956,15 +972,15 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
-			_, _, err := dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			_, _, err = dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
 			if err != nil {
-				return fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
+				return auditFields, fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
 			if updates.Name != nil {
 				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
 			}
-			return err
+			return auditFields, err
 		}
 
 		/*
@@ -979,8 +995,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 				provider := dbCtx.Options.OIDCOptions.Providers.GetProviderForIssuer(h.ctx(), issuerUrlForDB(h, dbCtx.Name), testProviderAudiences)
 				if provider != nil && provider.ValidationKey != nil {
 					if base.ValDefault(provider.ClientID, "") == username && *provider.ValidationKey == password {
-						auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
-						return nil
+						return base.AuditFields{base.AuditFieldAuthMethod: "basic"}, nil
 					}
 				}
 			}
@@ -990,19 +1005,20 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	// Check basic auth first
 	if !dbCtx.Options.DisablePasswordAuthentication {
 		if userName, password := h.getBasicAuth(); userName != "" {
-			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "basic"}
+			auditFields := base.AuditFields{base.AuditFieldAuthMethod: "basic"}
+			var err error
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateUser(userName, password)
 			if err != nil {
-				return err
+				return auditFields, err
 			}
 			if h.user == nil {
 				auditFields["username"] = userName
 				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 				}
-				return ErrInvalidLogin
+				return auditFields, ErrInvalidLogin
 			}
-			return nil
+			return auditFields, nil
 		}
 	}
 
@@ -1013,35 +1029,36 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			var err error
 			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
 			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
-			return err
+			return auditFields, err
 		}
 	}
 
 	// Check cookie
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
+	var err error
 	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
-		return err
+		return auditFields, err
 	} else if h.user != nil {
-		return nil
+		return auditFields, nil
 	}
 
 	// No auth given -- check guest access
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "guest"}
 	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
-		return err
+		return auditFields, err
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
 		if h.providedAuthCredentials() {
-			return ErrInvalidLogin
+			return auditFields, ErrInvalidLogin
 		}
-		return ErrLoginRequired
+		return auditFields, ErrLoginRequired
 	}
 
-	return nil
+	return auditFields, nil
 }
 
 // verifyWebsocketToken checks for a valid websocket token in the request headers. If present, invalidate the token so it can't be reused.

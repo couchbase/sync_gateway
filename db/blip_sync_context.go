@@ -67,7 +67,10 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
-		u.InitializeRoles()
+		err := u.InitializeRoles()
+		if err != nil {
+			return nil, err
+		}
 		if u.Name() == "" && db.IsGuestReadOnly() {
 			bsc.readOnly = true
 		}

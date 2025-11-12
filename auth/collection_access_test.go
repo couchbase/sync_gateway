@@ -22,14 +22,18 @@ import (
 // requireCanSeeCollectionChannels asserts that the principal can see all the specified channels in the given collection
 func requireCanSeeCollectionChannels(t *testing.T, scope, collection string, princ Principal, channels ...string) {
 	for _, channel := range channels {
-		require.True(t, princ.CanSeeCollectionChannel(scope, collection, channel), "Expected %s to be able to see channel %q in %s.%s", princ.Name(), channel, scope, collection)
+		canSee, err := princ.CanSeeCollectionChannel(scope, collection, channel)
+		require.NoError(t, err)
+		require.True(t, canSee, "Expected %s to be able to see channel %q in %s.%s", princ.Name(), channel, scope, collection)
 	}
 }
 
 // requireCannotSeeCollectionChannels asserts that the principal cannot see any of the specified channels in the given collection
 func requireCannotSeeCollectionChannels(t *testing.T, scope, collection string, princ Principal, channels ...string) {
 	for _, channel := range channels {
-		require.False(t, princ.CanSeeCollectionChannel(scope, collection, channel), "Expected %s to NOT be able to see channel %q in %s.%s", princ.Name(), channel, scope, collection)
+		canSee, err := princ.CanSeeCollectionChannel(scope, collection, channel)
+		require.NoError(t, err)
+		require.False(t, canSee, "Expected %s to NOT be able to see channel %q in %s.%s", princ.Name(), channel, scope, collection)
 	}
 }
 
@@ -277,5 +281,7 @@ func TestPrincipalConfigSetExplicitChannels(t *testing.T) {
 
 // requireExpandCollectionWildCardChannels asserts that the channels will be expanded to the expected channels for the given collection
 func requireExpandCollectionWildCardChannels(t *testing.T, user User, scope, collection string, expectedChannels []string, channelsToExpand []string) {
-	require.Equal(t, base.SetFromArray(expectedChannels), user.expandCollectionWildCardChannel(scope, collection, base.SetFromArray(channelsToExpand)), "Expected channels %v for %s.%s from %v on user %s", expectedChannels, scope, collection, channelsToExpand, user.Name())
+	expandedChannels, err := user.expandCollectionWildCardChannel(scope, collection, base.SetFromArray(channelsToExpand))
+	require.NoError(t, err)
+	require.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v for %s.%s from %v on user %s", expectedChannels, scope, collection, channelsToExpand, user.Name())
 }

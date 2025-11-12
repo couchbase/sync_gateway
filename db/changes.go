@@ -674,14 +674,23 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(col.user))
 
 		if col.user != nil {
-			previousChannels = col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
+			previousChannels, err = col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to retrieve inherited channels for user %q: %v", base.UD(col.user.Name()), err)
+				return false, 0, nil, err
+			}
 			previousRoles := col.user.RoleNames()
 			if err := col.ReloadUser(ctx); err != nil {
 				base.WarnfCtx(ctx, "Error reloading user %q: %v", base.UD(col.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			changedChannels = col.user.InheritedCollectionChannels(col.ScopeName, col.Name).CompareKeys(previousChannels)
+			channels, err := col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to retrieve inherited channels for user %q: %v", base.UD(col.user.Name()), err)
+				return false, 0, nil, err
+			}
+			changedChannels = channels.CompareKeys(previousChannels)
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
 			}
@@ -763,7 +772,17 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 		var channelsSince channels.TimedSet
 		if col.user != nil {
 			var channelsRemoved []string
-			channelsSince, channelsRemoved = col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
+			var err error
+			channelsSince, channelsRemoved, err = col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
+			if err != nil {
+				base.WarnfCtx(ctx, "Unable to filter to available channels for user %q: %v", base.UD(col.user.Name()), err)
+				change := makeErrorEntry("Error filtering channels to user - terminating changes feed")
+				select {
+				case output <- &change:
+				case <-options.ChangesCtx.Done():
+				}
+				return
+			}
 			if len(channelsRemoved) > 0 {
 				base.InfofCtx(ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(col.user.Name()))
 			}
@@ -920,7 +939,16 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			}
 
 			if options.Revocations && col.user != nil && !options.ActiveOnly {
-				channelsToRevoke := col.user.RevokedCollectionChannels(col.ScopeName, col.Name, options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+				channelsToRevoke, err := col.user.RevokedCollectionChannels(col.ScopeName, col.Name, options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+				if err != nil {
+					base.WarnfCtx(ctx, "Error retrieving revoked channels for user %q: %v", base.UD(col.user.Name()), err)
+					change := makeErrorEntry("Error retrieving revoked channels - terminating changes feed")
+					select {
+					case output <- &change:
+					case <-options.ChangesCtx.Done():
+					}
+					return
+				}
 				for channel, revokedSeq := range channelsToRevoke {
 					revocationSinceSeq := options.Since.SafeSequence()
 					revokeFrom := uint64(0)
@@ -1141,7 +1169,16 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				return
 			}
 			if userChanged && col.user != nil {
-				newChannelsSince, _ := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
+				newChannelsSince, _, err := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
+				if err != nil {
+					base.WarnfCtx(ctx, "Unable to filter to available channels for user %q: %v", base.UD(col.user.Name()), err)
+					change := makeErrorEntry("Error filtering channels to user - terminating changes feed")
+					select {
+					case output <- &change:
+					case <-options.ChangesCtx.Done():
+					}
+					return
+				}
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 
 				if len(changedChannels) > 0 {
@@ -1315,12 +1352,16 @@ func (db *DatabaseCollectionWithUser) DocIDChangesFeed(ctx context.Context, user
 
 	// Subroutine that creates a response row for a document:
 	output := make(chan *ChangeEntry, len(explicitDocIds))
+	defer close(output)
 	rowMap := make(map[uint64]*ChangeEntry)
 
 	// Sort results by sequence
 	var sequences base.SortedUint64Slice
 	for _, docID := range explicitDocIds {
-		row := createChangesEntry(ctx, docID, db, options)
+		row, err := createChangesEntry(ctx, docID, db, options)
+		if err != nil {
+			return nil, err
+		}
 		if row != nil {
 			rowMap[row.Seq.Seq] = row
 			sequences = append(sequences, row.Seq.Seq)
@@ -1339,23 +1380,21 @@ func (db *DatabaseCollectionWithUser) DocIDChangesFeed(ctx context.Context, user
 		}
 	}
 
-	close(output)
-
 	return output, nil
 }
 
 // createChangesEntry is used when creating a doc ID filtered changes feed
-func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectionWithUser, options ChangesOptions) *ChangeEntry {
+func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectionWithUser, options ChangesOptions) (*ChangeEntry, error) {
 	row := &ChangeEntry{ID: docid}
 
 	populatedDoc, err := db.GetDocument(ctx, docid, DocUnmarshalSync)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
-		return nil
+		return nil, nil
 	}
 
 	if populatedDoc.Sequence <= options.Since.Seq {
-		return nil
+		return nil, nil
 	}
 
 	versionRequested := options.VersionType
@@ -1390,7 +1429,11 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			canSee, err := db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel)
+			if err != nil {
+				return nil, base.RedactErrorf("could not retrieve collection channels for %s while creating a change entry: %w", base.UD(db.user.Name), err)
+			}
+			if canSee && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
 				if removal != nil {
@@ -1404,7 +1447,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	}
 
 	if !userCanSeeDocChannel {
-		return nil
+		return nil, nil
 	}
 
 	row.Removed = base.SetFromArray(removedChannels)
@@ -1414,7 +1457,7 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 		}
 	}
 
-	return row
+	return row, nil
 }
 
 func (options ChangesOptions) String() string {

@@ -277,9 +277,13 @@ func TestCanSeeChannelSince(t *testing.T) {
 		"video": channels.NewVbSimpleSequence(1)})
 
 	for channel := range freeChannels {
-		assert.Equal(t, uint64(1), user.canSeeChannelSince(channel))
+		seq, err := user.canSeeChannelSince(channel)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(1), seq, "expected to see channels %q since %q", channel, seq)
 	}
-	assert.Equal(t, uint64(0), user.canSeeChannelSince("unknown"))
+	seq, err := user.canSeeChannelSince("unknown")
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), seq)
 }
 
 func TestGetAddedChannels(t *testing.T) {
@@ -306,10 +310,10 @@ func TestGetAddedChannels(t *testing.T) {
 		"music": channels.NewVbSimpleSequence(0x5),
 		"video": channels.NewVbSimpleSequence(0x6)})
 
-	addedChannels := user.(*userImpl).GetAddedChannels(channels.TimedSet{
+	addedChannels, err := user.(*userImpl).GetAddedChannels(channels.TimedSet{
 		"ESPN": channels.NewVbSimpleSequence(0x5),
 		"HBO":  channels.NewVbSimpleSequence(0x6)})
-
+	require.NoError(t, err)
 	expectedChannels := channels.BaseSetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
 	log.Printf("Added Channels: %v", addedChannels)
 	assert.Equal(t, expectedChannels, addedChannels)
