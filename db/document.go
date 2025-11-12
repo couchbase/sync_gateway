@@ -37,14 +37,14 @@ const DocumentHistoryMaxEntriesPerChannel = 5
 type DocumentUnmarshalLevel uint8
 
 const (
-	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals metadata and body
-	DocUnmarshalSync                                     // Unmarshals metadata
-	DocUnmarshalNoHistory                                // Unmarshals metadata excluding revtree history
-	DocUnmarshalHistory                                  // Unmarshals revtree history + rev + CAS only
-	DocUnmarshalRev                                      // Unmarshals revTreeID + CAS only (no HLV)
-	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
-	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
-	DocUnmarshalRevAndFlags                              // Unmarshals revTreeID + CAS and Flags (no HLV)
+	DocUnmarshalAll         = DocumentUnmarshalLevel(iota) // Unmarshals metadata and body
+	DocUnmarshalSync                                       // Unmarshals metadata
+	DocUnmarshalNoHistory                                  // Unmarshals metadata excluding revtree history
+	DocUnmarshalHistory                                    // Unmarshals revtree history + rev + CAS only
+	DocUnmarshalRev                                        // Unmarshals revTreeID + CAS only (no HLV)
+	DocUnmarshalCAS                                        // Unmarshals CAS (for import check) only
+	DocUnmarshalNone                                       // No unmarshalling (skips import/upgrade check)
+	DocUnmarshalRevAndFlags                                // Unmarshals revTreeID + CAS and Flags (no HLV)
 )
 
 const (

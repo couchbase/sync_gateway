@@ -2307,7 +2307,7 @@ func TestProposedRev(t *testing.T) {
 	_, doc3, err := collection.Put(ctx, "doc3", body)
 	require.NoError(t, err)
 	doc3Rev1 := doc3.GetRevTreeID()
-	_, doc3, err = collection.Put(ctx, "doc3", Body{"_rev": doc3Rev1, "_deleted": true})
+	_, _, err = collection.Put(ctx, "doc3", Body{"_rev": doc3Rev1, "_deleted": true})
 	require.NoError(t, err)
 
 	testCases := []struct {
