@@ -129,11 +129,12 @@ type handlerMethod func(*handler) error
 func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, options handlerOptions) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		ctx := rq.Context()
+		var serialNumber string
 		defer func() {
 			// ErrAbortHandler is a sentinel panic used by http.ServeHTTP and should not be logged.
 			if err := recover(); err != nil && err != http.ErrAbortHandler {
 				// use leading spaces to match typical request logging
-				base.PanicRecoveryfCtx(ctx, "          --> panicked:\n%s", debug.Stack())
+				base.PanicRecoveryfCtx(ctx, "HTTP %s:     --> panicked:\n%s", serialNumber, debug.Stack())
 				// repanic here so that http.ServeHTTP can catch the panic and perform usual close connection behavior
 				panic(err)
 			}
@@ -143,6 +144,7 @@ func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPer
 
 		// re-assign ctx and serial number for panic handler
 		ctx = h.ctx()
+		serialNumber = h.formatSerialNumber()
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		if !options.skipLogDuration {

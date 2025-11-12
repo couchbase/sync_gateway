@@ -35,6 +35,5 @@ func AssertfCtx(ctx context.Context, format string, args ...any) {
 // When compiled with the `cb_sg_devmode` build tag this function panics to fail the test harness for better dev-time visibility.
 // In all cases, the WarnCount stat is incremented.
 func PanicRecoveryfCtx(ctx context.Context, format string, args ...any) {
-	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Add(1)
 	panicRecoveryLogFn(ctx, format, args...)
 }
