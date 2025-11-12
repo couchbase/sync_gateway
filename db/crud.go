@@ -3641,7 +3641,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	} else if syncData.GetRevTreeID() == parentRevID {
 		// Proposed rev's parent is my current revision; OK to add:
 		return ProposedRev_OK, ""
-	} else if parentRevID == "" && syncData.hasFlag(channels.Deleted) {
+	} else if parentRevID == "" && syncData.IsDeleted() {
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
 		return ProposedRev_OK, ""
 	} else {

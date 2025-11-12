@@ -1343,12 +1343,12 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 		}
 		doc._rawBody = data
 	case DocUnmarshalRevAndFlags:
-		// Unmarshal rev ,cas and flags from sync metadata
+		// Unmarshal rev, cas and flags from sync metadata
 		if syncXattrData != nil {
 			var revOnlyMeta revAndFlagsSyncData
 			unmarshalErr := base.JSONUnmarshal(syncXattrData, &revOnlyMeta)
 			if unmarshalErr != nil {
-				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+				return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattrs() doc with id: %s (DocUnmarshalRevAndFlags).  Error: %v", base.UD(doc.ID), unmarshalErr))
 			}
 			doc.SyncData = SyncData{
 				RevAndVersion: revOnlyMeta.CurrentRev,
