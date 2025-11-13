@@ -231,3 +231,12 @@ func (c *RosmarCluster) Close() {
 }
 
 func (c *RosmarCluster) SetConnectionStringServerless() error { return nil }
+
+// AsRosmarBucket returns a bucket as a rosmar.Bucket, or an error if it is not one.
+func AsRosmarBucket(bucket Bucket) (*rosmar.Bucket, error) {
+	baseBucket := GetBaseBucket(bucket)
+	if b, ok := baseBucket.(*rosmar.Bucket); ok {
+		return b, nil
+	}
+	return nil, fmt.Errorf("bucket is not a rosmar bucket (type %T)", baseBucket)
+}
