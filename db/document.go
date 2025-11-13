@@ -168,10 +168,12 @@ func (sd *SyncData) SetCV(hlv *HybridLogicalVector) {
 	sd.RevAndVersion.CurrentVersion = string(base.Uint64CASToLittleEndianHex(hlv.Version))
 }
 
+// hasFlag returns true if the document has this bit flag
 func (sd *SyncData) hasFlag(flag uint8) bool {
 	return sd.Flags&flag != 0
 }
 
+// IsDeleted returns true if the document metadata indicates it is a tombstone.
 func (sd *SyncData) IsDeleted() bool {
 	return sd.hasFlag(channels.Deleted)
 }
