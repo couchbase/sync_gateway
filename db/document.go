@@ -1486,7 +1486,7 @@ func (doc *Document) ExtractDocVersion() DocVersion {
 }
 
 // IsInConflict is true if the incoming HLV is in conflict with the current document.
-func (doc *Document) IsInConflict(ctx context.Context, db *DatabaseCollectionWithUser, incomingHLV *HybridLogicalVector, putOpts PutDocOptions) HLVConflictStatus {
+func (doc *Document) IsInConflict(ctx context.Context, db *DatabaseCollectionWithUser, incomingHLV *HybridLogicalVector, putOpts PutDocOptions, revTreeConflictCheck, revTreeConflictCheckStatus bool) HLVConflictStatus {
 	// If there is no SyncData, then the document can not be in conflict.
 	if doc.SyncData.Sequence == 0 {
 		return HLVNoConflict
@@ -1494,9 +1494,17 @@ func (doc *Document) IsInConflict(ctx context.Context, db *DatabaseCollectionWit
 	}
 	// we need to check if local CV version was generated from a revID if so we need to perform conflict check on rev tree history
 	if doc.HLV.HasRevEncodedCV() {
-		_, _, isConflictErr := db.revTreeConflictCheck(ctx, putOpts.RevTreeHistory, doc, putOpts.NewDoc.Deleted)
-		if isConflictErr != nil {
-			return HLVConflict
+		if revTreeConflictCheck {
+			if revTreeConflictCheckStatus {
+				return HLVConflict
+			} else {
+				return HLVNoConflict
+			}
+		} else {
+			_, _, isConflictErr := db.revTreeConflictCheck(ctx, putOpts.RevTreeHistory, doc, putOpts.NewDoc.Deleted)
+			if isConflictErr != nil {
+				return HLVConflict
+			}
 		}
 		return HLVNoConflict
 	}
