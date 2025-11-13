@@ -291,7 +291,7 @@ def make_http_client_stack_trace_task(
         name="Collect stack trace via http client",
         auth_headers=auth_headers,
         url=stack_trace_url,
-        log_file="sg_stack_trace.log",
+        log_file="sg_goroutines.log",
     )
     stack_trace_task.no_header = True
 
@@ -386,7 +386,7 @@ def make_collect_logs_tasks(
         "sg_debug.log": "sg_debug.log",
         "sg_trace.log": "sg_trace.log",
         "sg_stats.log": "sg_stats.log",
-        "sg_stack_trace.log": "sg_stack_trace.log",
+        "sg_goroutines.log": "sg_goroutines.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
         "pprof.pb": "pprof.pb",

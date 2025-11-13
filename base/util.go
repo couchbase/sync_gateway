@@ -1842,9 +1842,9 @@ func GetStackTrace() (bytes.Buffer, error) {
 	return profBuf, err
 }
 
-// RotateProfilesIfNeeded will remove old files if there are more than
+// RotateFilenamesIfNeeded will remove old files if there are more than
 // 10 matching the given filename pattern.
-func RotateProfilesIfNeeded(filename string) error {
+func RotateFilenamesIfNeeded(filename string) error {
 	existingFiles, err := filepath.Glob(filename)
 	if err != nil {
 		return fmt.Errorf("Error listing existing profiles in %q: %w", filename, err)
@@ -1868,6 +1868,19 @@ func LogStackTraces(ctx context.Context, logDirectory string, stackTrace bytes.B
 	// log to console
 	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace.String())
 
+	err := writeStackTraceFile(ctx, logDirectory, timestamp, stackTrace)
+	if err != nil {
+		return
+	}
+
+	rotatePath := filepath.Join(logDirectory, StackFilePrefix+"*.log")
+	err = RotateFilenamesIfNeeded(rotatePath)
+	if err != nil {
+		WarnfCtx(ctx, "Error rotating stack trace files in path %s: %v", rotatePath, err)
+	}
+}
+
+func writeStackTraceFile(ctx context.Context, logDirectory, timestamp string, stackTrace bytes.Buffer) error {
 	filename := filepath.Join(logDirectory, StackFilePrefix+timestamp+".log")
 	file, err := os.Create(filename)
 	defer func() {
@@ -1878,16 +1891,13 @@ func LogStackTraces(ctx context.Context, logDirectory string, stackTrace bytes.B
 	}()
 	if err != nil {
 		WarnfCtx(ctx, "Error opening stack trace file %s: %v", filename, err)
+		return err
 	}
 
 	_, err = file.WriteString(fmt.Sprintf("Stack trace:\n%s\n", stackTrace.String()))
 	if err != nil {
 		WarnfCtx(ctx, "Error writing stack trace to file %s: %v", filename, err)
+		return err
 	}
-
-	rotatePath := filepath.Join(logDirectory, StackFilePrefix+"*.log")
-	err = RotateProfilesIfNeeded(rotatePath)
-	if err != nil {
-		WarnfCtx(ctx, "Error rotating stack trace files in path %s: %v", rotatePath, err)
-	}
+	return nil
 }

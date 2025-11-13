@@ -81,7 +81,7 @@ def test_make_collect_logs_stacktrace(tmpdir):
             ).encode("utf-8")
         ),
     ):
-        stacktrace_file = tmpdir.join("sg_stack_trace.log")
+        stacktrace_file = tmpdir.join("sg_goroutines.log")
         stacktrace_file.write("foo")
         tasks = sgcollect.make_collect_logs_tasks(
             sg_url="fakeurl",

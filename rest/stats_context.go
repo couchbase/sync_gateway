@@ -409,5 +409,5 @@ func (statsContext *statsContext) collectMemoryProfile(ctx context.Context, outp
 
 	// rotate old profiles
 	path := filepath.Join(outputDir, pprofPrefix+"*.pb.gz")
-	return base.RotateProfilesIfNeeded(path)
+	return base.RotateFilenamesIfNeeded(path)
 }

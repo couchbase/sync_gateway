@@ -157,7 +157,7 @@ const (
 	FromConnStrWarningThreshold = 10 * time.Second
 
 	// StackFilePrefix is the prefix used when writing stack trace files
-	StackFilePrefix = "sg_stack_trace_"
+	StackFilePrefix = "sg_goroutines_"
 )
 
 // SyncGatewayRawDocXattrs is a list of xattrs that Sync Gateway will fetch when reading a raw document.
