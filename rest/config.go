@@ -1749,7 +1749,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 // migrateV30Configs checks for configs stored in the 3.0 location, and migrates them to the db registry
 func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	groupID := sc.Config.Bootstrap.ConfigGroupID
-	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets()
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
 	if err != nil {
 		return err
 	}
@@ -1782,7 +1782,10 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 	return nil
 }
 
-func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (exit bool, err error)) (err error) {
+// findBucketWithCallback ensures the bucket exists in the BootstrapContext and calls the callback
+// function. Returns an error if the bootstrap context can't find the bucket or the callback function returns an
+// error and the exit return value for callback is true.
+func (sc *ServerContext) findBucketWithCallback(ctx context.Context, callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
 	if sc.Config.IsServerless() {
@@ -1791,7 +1794,7 @@ func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (ex
 			buckets = append(buckets, bucket)
 		}
 	} else {
-		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
+		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
 		if err != nil {
 			return fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
@@ -1869,7 +1872,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 		return foundInBucket, callbackErr
 	}
 
-	err = sc.findBucketWithCallback(callback)
+	err = sc.findBucketWithCallback(ctx, callback)
 
 	if err != nil {
 		return false, nil, err
@@ -1921,7 +1924,7 @@ func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string
 		}
 		return false, nil
 	}
-	err := sc.findBucketWithCallback(callback)
+	err := sc.findBucketWithCallback(ctx, callback)
 	if err != nil {
 		return "", false
 	}
@@ -1951,7 +1954,7 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 }
 
 // GetBucketNames returns a slice of the bucket names associated with the server context
-func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
+func (sc *ServerContext) GetBucketNames(ctx context.Context) (buckets []string, err error) {
 	if sc.Config.IsServerless() {
 		buckets = make([]string, len(sc.Config.BucketCredentials))
 		for bucket, _ := range sc.Config.BucketCredentials {
@@ -1968,7 +1971,7 @@ func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 		//	}
 		// }
 	} else {
-		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
+		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
@@ -1979,7 +1982,7 @@ func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 // FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 
-	buckets, err := sc.GetBucketNames()
+	buckets, err := sc.GetBucketNames(ctx)
 	if err != nil {
 		return nil, err
 	}

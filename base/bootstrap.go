@@ -25,7 +25,7 @@ import (
 // Manages retrieval of set of buckets, and generic interaction with bootstrap metadata documents from those buckets.
 type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
-	GetConfigBuckets() ([]string, error)
+	GetConfigBuckets(context.Context) ([]string, error)
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
 	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, err error)
 	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
@@ -258,7 +258,7 @@ func (cc *CouchbaseCluster) getClusterConnection() (*gocb.Cluster, error) {
 
 }
 
-func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
+func (cc *CouchbaseCluster) GetConfigBuckets(context.Context) ([]string, error) {
 	if cc == nil {
 		return nil, errors.New("nil CouchbaseCluster")
 	}

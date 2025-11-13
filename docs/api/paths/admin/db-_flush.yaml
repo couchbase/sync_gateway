@@ -12,7 +12,7 @@ post:
   description: |-
     **This is unsupported**
 
-    This will purge *all* documents.
+    This will purge *all* documents and remove any other database that is backed by this bucket.
 
     The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
 

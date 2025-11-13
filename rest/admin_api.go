@@ -2322,7 +2322,7 @@ func (h *handler) handleGetClusterInfo() error {
 	eccv := h.server.getBucketCCVSettings()
 	if h.server.persistentConfig {
 
-		bucketNames, err := h.server.GetBucketNames()
+		bucketNames, err := h.server.GetBucketNames(h.ctx())
 		if err != nil {
 			return err
 		}
