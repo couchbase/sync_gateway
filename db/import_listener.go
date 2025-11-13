@@ -135,7 +135,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	docID := string(event.Key)
 	defer func() {
 		if r := recover(); r != nil {
-			base.WarnfCtx(ctx, "[%s] Unexpected panic importing document %s - skipping import: \n %s", r, base.UD(docID), debug.Stack())
+			base.PanicRecoveryfCtx(ctx, "[%s] Unexpected panic importing document %s - skipping import: \n %s", r, base.UD(docID), debug.Stack())
 			if il.importStats != nil {
 				il.importStats.ImportErrorCount.Add(1)
 			}
