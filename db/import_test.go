@@ -1477,3 +1477,20 @@ func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
 	}, 1)
 
 }
+
+func TestImportWithSyncCVAndNoVV(t *testing.T) {
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docID := SafeDocumentName(t, t.Name())
+
+	_, doc, err := collection.Put(ctx, docID, Body{"foo": "baz"})
+	require.NoError(t, err)
+
+	err = collection.dataStore.RemoveXattrs(ctx, docID, []string{base.VvXattrName}, doc.Cas)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, db.DbStats.Database().Crc32MatchCount.Value, 1)
+
+}
