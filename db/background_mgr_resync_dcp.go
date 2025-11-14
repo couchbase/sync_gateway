@@ -163,28 +163,23 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return err
-	}
-
 	if r.hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
 	} else {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(r.collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
-
-	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	clientOptions := getResyncDCPClientOptions(r.ResyncedCollections, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions.ID = GenerateResyncDCPStreamName(r.ResyncID)
+	clientOptions.Callback = callback
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
-	doneChan, err := dcpClient.Start()
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, clientOptions.ID)
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
 		_ = dcpClient.Close()
@@ -404,13 +399,13 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
-	return &base.DCPClientOptions{
+func getResyncDCPClientOptions(collectionNames base.DCPCollections, groupID string, prefix string) base.DCPClientOptions {
+	return base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
-		CollectionIDs:     collectionIDs,
+		Scopes:            collectionNames,
 		CheckpointPrefix:  prefix,
 	}
 }
