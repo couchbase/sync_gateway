@@ -22,12 +22,10 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -2316,29 +2314,6 @@ func PersistentConfigKey30(ctx context.Context, groupID string) string {
 
 func HandleSighup(ctx context.Context) {
 	base.RotateLogfiles(ctx)
-}
-
-// RegisterSignalHandler invokes functions based on the given signals:
-// - SIGHUP causes Sync Gateway to rotate log files.
-// - SIGINT or SIGTERM causes Sync Gateway to exit cleanly.
-// - SIGKILL cannot be handled by the application.
-func RegisterSignalHandler(ctx context.Context) {
-	signalChannel := make(chan os.Signal, 1)
-	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		for sig := range signalChannel {
-			base.InfofCtx(ctx, base.KeyAll, "Handling signal: %v", sig)
-			switch sig {
-			case syscall.SIGHUP:
-				HandleSighup(ctx)
-			default:
-				// Ensure log buffers are flushed before exiting.
-				base.FlushLogBuffers()
-				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
-			}
-		}
-	}()
 }
 
 // toDbLogConfig converts the stored logging in a DbConfig to a runtime DbLogConfig for evaluation at log time.
