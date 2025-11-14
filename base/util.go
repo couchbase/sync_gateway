@@ -27,10 +27,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"runtime/pprof"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1839,4 +1843,71 @@ func IsRevTreeID(s string) bool {
 		break
 	}
 	return false
+}
+
+// GetStackTrace will return goroutine stack traces for all goroutines in Sync Gateway.
+func GetStackTrace() (bytes.Buffer, error) {
+	profBuf := bytes.Buffer{}
+	err := pprof.Lookup("goroutine").WriteTo(&profBuf, 2)
+	return profBuf, err
+}
+
+// RotateFilenamesIfNeeded will remove old files if there are more than
+// 10 matching the given filename pattern.
+func RotateFilenamesIfNeeded(filename string) error {
+	existingFiles, err := filepath.Glob(filename)
+	if err != nil {
+		return fmt.Errorf("Error listing existing profiles in %q: %w", filename, err)
+	}
+	if len(existingFiles) <= 10 {
+		return nil
+	}
+	slices.Reverse(existingFiles)
+	var multiErr *MultiError
+	for _, profile := range existingFiles[10:] {
+		err = os.Remove(profile)
+		if err != nil {
+			multiErr = multiErr.Append(fmt.Errorf("Error removing old profile %q: %w", profile, err))
+		}
+	}
+	return multiErr.ErrorOrNil()
+}
+
+func LogStackTraces(ctx context.Context, logDirectory string, stackTrace bytes.Buffer, timestamp string) {
+
+	// log to console
+	_, _ = fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace.String())
+
+	err := writeStackTraceFile(ctx, logDirectory, timestamp, stackTrace)
+	if err != nil {
+		return
+	}
+
+	rotatePath := filepath.Join(logDirectory, StackFilePrefix+"*.log")
+	err = RotateFilenamesIfNeeded(rotatePath)
+	if err != nil {
+		WarnfCtx(ctx, "Error rotating stack trace files in path %s: %v", rotatePath, err)
+	}
+}
+
+func writeStackTraceFile(ctx context.Context, logDirectory, timestamp string, stackTrace bytes.Buffer) error {
+	filename := filepath.Join(logDirectory, StackFilePrefix+timestamp+".log")
+	file, err := os.Create(filename)
+	defer func() {
+		closeErr := file.Close()
+		if closeErr != nil {
+			WarnfCtx(ctx, "Error closing stack trace file %s: %v", filename, closeErr)
+		}
+	}()
+	if err != nil {
+		WarnfCtx(ctx, "Error opening stack trace file %s: %v", filename, err)
+		return err
+	}
+
+	_, err = file.WriteString(fmt.Sprintf("Stack trace:\n%s\n", stackTrace.String()))
+	if err != nil {
+		WarnfCtx(ctx, "Error writing stack trace to file %s: %v", filename, err)
+		return err
+	}
+	return nil
 }

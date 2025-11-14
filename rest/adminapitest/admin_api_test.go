@@ -2269,6 +2269,17 @@ func TestHandleSGCollect(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestHandleGetStackTrace(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_debug/pprof/goroutine?debug=2", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rawResponseStr := resp.Body.String()
+	assert.Contains(t, rawResponseStr, "goroutine")
+	assert.Contains(t, rawResponseStr, "handlePprofGoroutine")
+}
+
 func TestConfigRedaction(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.Ptr("password")}}}}})
 	defer rt.Close()
