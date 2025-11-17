@@ -9,14 +9,17 @@ import (
 	"github.com/couchbaselabs/rosmar"
 )
 
+// DCPClient is an interface for all DCP implementations.
 type DCPClient interface {
+	// Start will start the DCP feed. It returns a channel marking the end of the feed.
 	Start(ctx context.Context) (chan error, error)
+	// Close will shut down the DCP feed.
 	Close() error
-	GetMetadata() []DCPMetadata
+	// GetMetadata returns the current DCP metadata.
+	GetMetadata() ([]DCPMetadata, error)
+	// GetMetadataKeyPrefix returns the key prefix used for storing any persistent data.
 	GetMetadataKeyPrefix() string
 }
-
-type DCPCollections map[string][]string
 
 type DCPClientOptions struct {
 	ID                string                         // name of the DCP feed, used for logging locally and stored by Couchbase Server
@@ -27,8 +30,8 @@ type DCPClientOptions struct {
 	CheckpointPrefix  string                         // start of the checkpoint documents
 	Callback          sgbucket.FeedEventCallbackFunc // callback function for DCP events
 	DBStats           *expvar.Map
-	Scopes            map[string][]string // scopes and collections to monitor
-	InitialMetadata   []DCPMetadata       // initial metadata to seed the DCP client with
+	Scopes            CollectionNames // scopes and collections to monitor
+	InitialMetadata   []DCPMetadata   // initial metadata to seed the DCP client with
 }
 
 func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DCPClient, error) {
@@ -44,13 +47,4 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		return newGocbDCPClient(ctx, gocbBucket, gocbBucket.GetName(), feedArgs, opts.Callback, opts.DBStats, opts.MetadataStoreType, opts.GroupID)
 	}
 	return nil, fmt.Errorf("bucket type %T does not have a DCPClient implementation", underlyingBucket)
-}
-
-func (c DCPCollections) Add(ds ...sgbucket.DataStoreName) {
-	for _, d := range ds {
-		if _, ok := c[d.ScopeName()]; !ok {
-			c[d.ScopeName()] = []string{}
-		}
-		c[d.ScopeName()] = append(c[d.ScopeName()], d.CollectionName())
-	}
 }
