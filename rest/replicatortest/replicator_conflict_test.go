@@ -25,6 +25,7 @@ import (
 
 func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	base.RequireNumTestBuckets(t, 2)
 	testCases := []struct {

@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -373,14 +374,14 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{1.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
+			output: "{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
 			redactedOutput: []string{
-				"{1.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
-				"{1.<ud>A</ud>, 2.<ud>B</ud>, 1.<ud>C</ud>}",
-				"{1.<ud>C</ud>, 1.<ud>A</ud>, 2.<ud>B</ud>}",
-				"{1.<ud>C</ud>, 2.<ud>B</ud>, 1.<ud>A</ud>}",
-				"{2.<ud>B</ud>, 1.<ud>A</ud>, 1.<ud>C</ud>}",
-				"{2.<ud>B</ud>, 1.<ud>C</ud>, 1.<ud>A</ud>}",
+				"{<ud>A</ud>, <ud>C</ud>, <ud>B</ud>}",
+				"{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
+				"{<ud>C</ud>, <ud>A</ud>, <ud>B</ud>}",
+				"{<ud>C</ud>, <ud>B</ud>, <ud>A</ud>}",
+				"{<ud>B</ud>, <ud>A</ud>, <ud>C</ud>}",
+				"{<ud>B</ud>, <ud>C</ud>, <ud>A</ud>}",
 			},
 		},
 		{
@@ -390,14 +391,14 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{1.<ud>C</ud>, 2.<ud>A</ud>, 2.<ud>B</ud>}",
+			output: "{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
 			redactedOutput: []string{
-				"{2.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
-				"{2.<ud>A</ud>, 2.<ud>B</ud>, 1.<ud>C</ud>}",
-				"{1.<ud>C</ud>, 2.<ud>A</ud>, 2.<ud>B</ud>}",
-				"{1.<ud>C</ud>, 2.<ud>B</ud>, 2.<ud>A</ud>}",
-				"{2.<ud>B</ud>, 2.<ud>A</ud>, 1.<ud>C</ud>}",
-				"{2.<ud>B</ud>, 1.<ud>C</ud>, 2.<ud>A</ud>}",
+				"{<ud>A</ud>, <ud>C</ud>, <ud>B</ud>}",
+				"{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
+				"{<ud>C</ud>, <ud>A</ud>, <ud>B</ud>}",
+				"{<ud>C</ud>, <ud>B</ud>, <ud>A</ud>}",
+				"{<ud>B</ud>, <ud>A</ud>, <ud>C</ud>}",
+				"{<ud>B</ud>, <ud>C</ud>, <ud>A</ud>}",
 			},
 		},
 		{
@@ -405,13 +406,14 @@ func TestSetString(t *testing.T) {
 			input: Set{
 				NewID("A", 1): present{},
 			},
-			output:         "{1.<ud>A</ud>}",
-			redactedOutput: []string{"{1.<ud>A</ud>}"},
+			output:         "{<ud>A</ud>}",
+			redactedOutput: []string{"{<ud>A</ud>}"},
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.output, test.input.String())
+			fmt.Println(base.UD(test.input), base.UD(test.input).Redact())
 			require.Contains(t, test.redactedOutput, base.UD(test.input).Redact())
 		})
 	}
