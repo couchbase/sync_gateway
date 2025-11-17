@@ -373,7 +373,7 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
+			output: "{A, B, C}",
 			redactedOutput: []string{
 				"{<ud>A</ud>, <ud>C</ud>, <ud>B</ud>}",
 				"{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
@@ -390,7 +390,7 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
+			output: "{A, B, C}",
 			redactedOutput: []string{
 				"{<ud>A</ud>, <ud>C</ud>, <ud>B</ud>}",
 				"{<ud>A</ud>, <ud>B</ud>, <ud>C</ud>}",
@@ -405,7 +405,7 @@ func TestSetString(t *testing.T) {
 			input: Set{
 				NewID("A", 1): present{},
 			},
-			output:         "{<ud>A</ud>}",
+			output:         "{A}",
 			redactedOutput: []string{"{<ud>A</ud>}"},
 		},
 	}

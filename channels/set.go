@@ -36,7 +36,7 @@ type ID struct {
 }
 
 func (c ID) String() string {
-	return base.UserDataPrefix + c.Name + base.UserDataSuffix
+	return c.Name
 }
 
 // NewID returns a new ChannelID
@@ -193,7 +193,7 @@ func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
 	tmp := []byte("{")
 	iterationCount := 0
 	for setItem, _ := range redactorSet.set {
-		tmp = append(tmp, redactorSet.redactorFunc(setItem).String()...)
+		tmp = append(tmp, redactorSet.redactorFunc(setItem).Redact()...)
 		iterationCount++
 		if iterationCount != len(redactorSet.set) {
 			tmp = append(tmp, ", "...)
