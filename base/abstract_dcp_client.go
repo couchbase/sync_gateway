@@ -16,24 +16,26 @@ type DCPClient interface {
 	// Close will shut down the DCP feed.
 	Close() error
 	// GetMetadata returns the current DCP metadata.
-	GetMetadata() ([]DCPMetadata, error)
+	GetMetadata() []DCPMetadata
 	// GetMetadataKeyPrefix returns the key prefix used for storing any persistent data.
 	GetMetadataKeyPrefix() string
 }
 
+// DCPClientOptions are options for creating a DCPClient.
 type DCPClientOptions struct {
 	ID                string                         // name of the DCP feed, used for logging locally and stored by Couchbase Server
-	OneShot           bool                           // if true, the feed runs to latest document found when the client is started
-	FailOnRollback    bool                           // if true, fail Start if the current DCP checkpoints encounter a rollback condition
-	MetadataStoreType DCPMetadataStoreType           // persistent or in memory storage
-	GroupID           string                         // name of groupID of rest.ServerContext in order to isolate DCP checkpoints
-	CheckpointPrefix  string                         // start of the checkpoint documents
 	Callback          sgbucket.FeedEventCallbackFunc // callback function for DCP events
 	DBStats           *expvar.Map
-	Scopes            CollectionNames // scopes and collections to monitor
-	InitialMetadata   []DCPMetadata   // initial metadata to seed the DCP client with
+	GroupID           string               // name of groupID of rest.ServerContext in order to isolate DCP checkpoints
+	CheckpointPrefix  string               // start of the checkpoint documents
+	Scopes            CollectionNames      // scopes and collections to monitor
+	InitialMetadata   []DCPMetadata        // initial metadata to seed the DCP client with
+	MetadataStoreType DCPMetadataStoreType // persistent or in memory storage
+	OneShot           bool                 // if true, the feed runs to latest document found when the client is started
+	FailOnRollback    bool                 // if true, fail Start if the current DCP checkpoints encounter a rollback condition
 }
 
+// NewDCPClient creates a new DCPClient to receive events from a bucket.
 func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DCPClient, error) {
 	underlyingBucket := GetBaseBucket(bucket)
 	if _, ok := underlyingBucket.(*rosmar.Bucket); ok {
