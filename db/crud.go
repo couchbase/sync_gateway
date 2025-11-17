@@ -3635,10 +3635,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 		return ProposedRev_OK, "" // Users can't upload design docs, so ignore them
 	}
 
-	level := DocUnmarshalRev
-	if parentRevID == "" {
-		level = DocUnmarshalHistory // doc.History only needed in this case (see below)
-	}
+	level := DocUnmarshalRevAndFlags
 	syncData, _, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) && !base.IsXattrNotFoundError(err) {
@@ -3653,7 +3650,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	} else if syncData.GetRevTreeID() == parentRevID {
 		// Proposed rev's parent is my current revision; OK to add:
 		return ProposedRev_OK, ""
-	} else if parentRevID == "" && syncData.History[syncData.GetRevTreeID()].Deleted {
+	} else if parentRevID == "" && syncData.IsDeleted() {
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
 		return ProposedRev_OK, ""
 	} else {

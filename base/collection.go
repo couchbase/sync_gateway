@@ -196,6 +196,7 @@ var (
 	_ sgbucket.DynamicDataStoreBucket = &GocbV2Bucket{}
 )
 
+// AsGocbV2Bucket returns a bucket as a GocbV2Bucket, or an error if it is not one.
 func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
 	baseBucket := GetBaseBucket(bucket)
 	if gocbv2Bucket, ok := baseBucket.(*GocbV2Bucket); ok {

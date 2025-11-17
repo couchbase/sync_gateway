@@ -279,6 +279,25 @@ def make_http_client_pprof_tasks(
     return pprof_tasks
 
 
+def make_http_client_stack_trace_task(
+    sg_url: str, auth_headers: dict[str, str]
+) -> PythonTask:
+    """
+    This task uses the python http client to collect the raw stack trace data
+    """
+    stack_trace_url = "{0}/_debug/pprof/goroutine?debug=2".format(sg_url)
+
+    stack_trace_task = make_curl_task(
+        name="Collect stack trace via http client",
+        auth_headers=auth_headers,
+        url=stack_trace_url,
+        log_file="sg_stack_trace.log",
+    )
+    stack_trace_task.no_header = True
+
+    return stack_trace_task
+
+
 def to_lower_case_keys_dict(original_dict):
     result = {}
     for k, v in list(original_dict.items()):
@@ -367,6 +386,7 @@ def make_collect_logs_tasks(
         "sg_debug.log": "sg_debug.log",
         "sg_trace.log": "sg_trace.log",
         "sg_stats.log": "sg_stats.log",
+        "sg_stack_trace.log": "sg_stack_trace.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
         "pprof.pb": "pprof.pb",
@@ -761,6 +781,10 @@ def make_sg_tasks(
 
     http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url, auth_headers)
 
+    http_client_stack_trace_task = make_http_client_stack_trace_task(
+        sg_url, auth_headers
+    )
+
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(
         sg_config_path, sg_url, auth_headers, should_redact
@@ -781,6 +805,7 @@ def make_sg_tasks(
             collect_logs_tasks,
             py_expvar_task,
             http_client_pprof_tasks,
+            http_client_stack_trace_task,
             config_tasks,
             status_tasks,
         ]

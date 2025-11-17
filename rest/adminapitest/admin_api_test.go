@@ -382,27 +382,50 @@ func TestGetStatus(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
+	for _, persistentConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("persistentConfig=%t", persistentConfig), func(t *testing.T) {
+			unsupportedOptions := &db.UnsupportedOptions{
+				APIEndpoints: &db.APIEndpoints{
+					EnableCouchbaseBucketFlush: true,
+				},
+			}
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: persistentConfig,
+				DatabaseConfig: &rest.DatabaseConfig{
+					DbConfig: rest.DbConfig{
+						Unsupported: unsupportedOptions,
+					},
+				},
+			})
+			defer rt.Close()
+
+			if persistentConfig {
+				dbConfig := rt.NewDbConfig()
+				if !base.UnitTestUrlIsWalrus() {
+					dbConfig.Unsupported = unsupportedOptions
+				}
+				rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+			}
+			rt.CreateTestDoc("doc1")
+			rt.CreateTestDoc("doc2")
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
+
+			log.Printf("Flushing db...")
+			rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
+
+			// After the flush, the db exists but the documents are gone:
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
+
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 404)
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 404)
+
+			// recreate document
+			rt.CreateTestDoc("doc1")
+			rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
+		})
 	}
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	rt.CreateTestDoc("doc1")
-	rt.CreateTestDoc("doc2")
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
-
-	log.Printf("Flushing db...")
-	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
-	rt.SetAdminParty(true) // needs to be re-enabled after flush since guest user got wiped
-
-	// After the flush, the db exists but the documents are gone:
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
-
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 404)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 404)
 }
 
 // Test a single call to take DB offline
@@ -2267,6 +2290,17 @@ func TestHandleSGCollect(t *testing.T) {
 	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
+}
+
+func TestHandleGetStackTrace(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_debug/pprof/goroutine?debug=2", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rawResponseStr := resp.Body.String()
+	assert.Contains(t, rawResponseStr, "goroutine")
+	assert.Contains(t, rawResponseStr, "handlePprofGoroutine")
 }
 
 func TestConfigRedaction(t *testing.T) {

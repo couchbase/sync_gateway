@@ -25,10 +25,20 @@ func TestImportFeedEventRecover(t *testing.T) {
 		},
 	}
 	startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+
 	// assert false to indicate that this checkpoint will not be incremented
-	require.False(t, listener.ProcessFeedEvent(sgbucket.FeedEvent{
-		Key:    []byte("example-doc"),
-		Opcode: sgbucket.FeedOpMutation,
-	}))
+	if base.IsDevMode() {
+		require.Panics(t, func() {
+			listener.ProcessFeedEvent(sgbucket.FeedEvent{
+				Key:    []byte("example-doc"),
+				Opcode: sgbucket.FeedOpMutation,
+			})
+		})
+	} else {
+		require.False(t, listener.ProcessFeedEvent(sgbucket.FeedEvent{
+			Key:    []byte("example-doc"),
+			Opcode: sgbucket.FeedOpMutation,
+		}))
+	}
 	require.Equal(t, startWarnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 }

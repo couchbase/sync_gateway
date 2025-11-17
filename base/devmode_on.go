@@ -11,6 +11,14 @@
 
 package base
 
+import "context"
+
 const cbSGDevModeBuildTagSet = true
 
 var assertLogFn logFn = PanicfCtx
+
+func panicRecoveryLogFn(ctx context.Context, format string, args ...any) {
+	// add a warn count since the devmode=off path also adds a warn count
+	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Add(1)
+	PanicfCtx(ctx, format, args...)
+}

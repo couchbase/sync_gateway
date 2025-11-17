@@ -59,7 +59,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, clusterConnection)
 
-	buckets, err := cluster.GetConfigBuckets()
+	buckets, err := cluster.GetConfigBuckets(ctx)
 	require.NoError(t, err)
 	// ensure these are sorted for determinstic bootstraping
 	sortedBuckets := make([]string, len(buckets))

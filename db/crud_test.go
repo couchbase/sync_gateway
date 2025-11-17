@@ -1810,7 +1810,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 
 	// Update the client's HLV to include the latest SGW version.
 	incomingHLV.PreviousVersions[currentSourceID] = docUpdateVersion
-	// TODO: because currentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
+	// TODO: because expectedCurrentRev isn't being updated, storeOldBodyInRevTreeAndUpdateCurrent isn't
 	//  updating the document body.   Need to review whether it makes sense to keep using
 	// storeOldBodyInRevTreeAndUpdateCurrent, or if this needs a larger overhaul to support VV
 	doc, cv, _, err = collection.PutExistingCurrentVersion(ctx, opts)
@@ -2279,6 +2279,177 @@ func TestSyncDataCVEqual(t *testing.T) {
 				Value:    testCase.cvValue,
 			}
 			require.Equal(t, testCase.cvEqual, testCase.syncData.CVEqual(cv))
+		})
+	}
+}
+
+func TestProposedRev(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create 3 documents
+	const (
+		SingleRevDoc  = "SingleRevDoc"
+		MultiRevDoc   = "MultiRevDoc"
+		TombstonedDoc = "TombstonedDoc"
+	)
+	body := Body{"key1": "value1", "key2": 1234}
+	_, doc1, err := collection.Put(ctx, SingleRevDoc, body)
+	require.NoError(t, err)
+	doc1Rev := doc1.GetRevTreeID()
+
+	_, doc2, err := collection.Put(ctx, MultiRevDoc, body)
+	require.NoError(t, err)
+	doc2Rev1 := doc2.GetRevTreeID()
+	_, doc2, err = collection.Put(ctx, MultiRevDoc, Body{"_rev": doc2Rev1, "key1": "value2", "key2": 5678})
+	require.NoError(t, err)
+	doc2Rev2 := doc2.GetRevTreeID()
+	_, doc2, err = collection.Put(ctx, MultiRevDoc, Body{"_rev": doc2Rev2, "key1": "value3", "key2": 91011})
+	require.NoError(t, err)
+	doc2Rev3 := doc2.GetRevTreeID()
+
+	_, doc3, err := collection.Put(ctx, TombstonedDoc, body)
+	require.NoError(t, err)
+	doc3Rev1 := doc3.GetRevTreeID()
+	_, _, err = collection.Put(ctx, TombstonedDoc, Body{"_rev": doc3Rev1, "_deleted": true})
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name               string
+		revID              string
+		parentRevID        string
+		expectedStatus     ProposedRevStatus
+		expectedCurrentRev string
+		docID              string
+	}{
+		{
+			name:               "no_existing_document-curr_rev-no_parent",
+			revID:              "1-abc",
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_OK_IsNew,
+			expectedCurrentRev: "",
+			docID:              "doc",
+		},
+		{
+			name:               "no_existing_document-curr_rev-with_parent",
+			revID:              "2-def",
+			parentRevID:        "1-abc",
+			expectedStatus:     ProposedRev_OK_IsNew,
+			expectedCurrentRev: "",
+			docID:              "doc",
+		},
+		{
+			name:               "one_rev_doc-curr_rev-without_parent",
+			revID:              doc1Rev,
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_Exists,
+			expectedCurrentRev: "",
+			docID:              SingleRevDoc,
+		},
+		{
+			name:               "one_rev_doc-incorrect_curr_rev-without_parent",
+			revID:              "1-abc",
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc1Rev,
+			docID:              SingleRevDoc,
+		},
+		{
+			name:               "one_rev_doc-new_curr_rev-without_parent",
+			revID:              "2-abc",
+			parentRevID:        doc1Rev,
+			expectedStatus:     ProposedRev_OK,
+			expectedCurrentRev: "",
+			docID:              SingleRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-rev1-without_parent",
+			revID:              doc2Rev1,
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-rev2-with_rev1_parent",
+			revID:              doc2Rev2,
+			parentRevID:        doc2Rev1,
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-rev2-with_incorrect_parent",
+			revID:              doc2Rev2,
+			parentRevID:        "1-abc",
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-rev2-without_parent",
+			revID:              doc2Rev2,
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-conflicting_rev2-with_parent",
+			revID:              "2-abc",
+			parentRevID:        doc2Rev1,
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-conflicting_rev3-without_parent",
+			revID:              doc2Rev3,
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_Exists,
+			expectedCurrentRev: "",
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-conflicting_rev3-with_parent",
+			revID:              doc2Rev3,
+			parentRevID:        doc2Rev2,
+			expectedStatus:     ProposedRev_Exists,
+			expectedCurrentRev: "",
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-conflicting_rev3-with_incorrect_parent",
+			revID:              doc2Rev3,
+			parentRevID:        doc2Rev1,
+			expectedStatus:     ProposedRev_Exists,
+			expectedCurrentRev: "",
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "multi_rev_doc-conflicting_incorrect_rev3-with_parent",
+			revID:              "3-abc",
+			parentRevID:        doc2Rev2,
+			expectedStatus:     ProposedRev_Conflict,
+			expectedCurrentRev: doc2Rev3,
+			docID:              MultiRevDoc,
+		},
+		{
+			name:               "new revision with previous revision as tombstone",
+			revID:              "1-abc",
+			parentRevID:        "",
+			expectedStatus:     ProposedRev_OK,
+			expectedCurrentRev: "",
+			docID:              TombstonedDoc,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, rev := collection.CheckProposedRev(ctx, tc.docID, tc.revID, tc.parentRevID)
+			assert.Equal(t, tc.expectedStatus, status)
+			assert.Equal(t, tc.expectedCurrentRev, rev)
 		})
 	}
 }

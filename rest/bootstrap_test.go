@@ -11,11 +11,14 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -246,4 +249,73 @@ func DevTestFetchConfigManual(t *testing.T) {
 
 	time.Sleep(15 * time.Second)
 
+}
+
+func TestBootstrapRosmarServer(t *testing.T) {
+	tempDir := t.TempDir()
+	diskURL := "rosmar://" + tempDir
+	if runtime.GOOS == "windows" {
+		// rosmar requires prefix forward slash and forward slashes
+		diskURL = "rosmar:///" + filepath.ToSlash(tempDir)
+	}
+	testCases := []struct {
+		name      string
+		rosmarURL string
+	}{
+		{
+			name:      "InMemory",
+			rosmarURL: rosmar.InMemoryURL,
+		},
+		{
+			name:      "DiskBased",
+			rosmarURL: diskURL,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			dbName := "testrosmarboostrap"
+			bucketName := dbName // bucket name will match db name by default
+			defer func() {
+				// buckets are cached by name _across_ rosmar URIs (including in-memory), so ensure we clean up after ourselves
+				bucket, err := rosmar.OpenBucketIn(tc.rosmarURL, bucketName, rosmar.CreateOrOpen)
+				assert.NoError(t, err)
+				assert.NoError(t, bucket.CloseAndDelete(ctx))
+			}()
+			config := BootstrapStartupConfigForTest(t)
+			config.Bootstrap.Server = tc.rosmarURL
+			// set ConfigUpdateFrequency so high to avoid it running, trigger this manually below
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
+			sc, closeFn := StartServerWithConfig(t, &config)
+			defer closeFn()
+
+			resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/", fmt.Sprintf(`{"bucket": "%s", "scopes":{"_default":{"collections":{"_default":{}}}}}`, bucketName))
+			resp.RequireStatus(http.StatusCreated)
+
+			collectionDBName := "namedcollectiondb"
+			resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/"+collectionDBName+"/", fmt.Sprintf(`{"bucket": "%s", "scopes":{"custom_scope":{"collections":{"custom_collection":{}}}}}`, bucketName))
+			resp.RequireStatus(http.StatusCreated)
+
+			resp = BootstrapAdminRequest(t, sc, http.MethodPost, "/"+dbName+"/_flush", `{}`)
+			resp.RequireStatus(http.StatusOK)
+
+			// make sure collection database is removed
+			resp = BootstrapAdminRequest(t, sc, http.MethodGet, "/"+collectionDBName+"/", "")
+			resp.RequireStatus(http.StatusNotFound)
+
+			// ensure that config polling won't reload the database
+			preBootstrapDB, err := sc.GetActiveDatabase(dbName)
+			require.NoError(t, err)
+
+			// manually bootstrap poll
+			count, err := sc.fetchAndLoadConfigs(ctx, false)
+			require.NoError(t, err)
+			require.Equal(t, 0, count, "expected 0 databases to be loaded on config polling")
+
+			postBoostrapDB, err := sc.GetActiveDatabase(dbName)
+			require.NoError(t, err)
+			// compare pointers of the database
+			assert.Equal(t, preBootstrapDB, postBoostrapDB)
+		})
+	}
 }
