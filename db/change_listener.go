@@ -181,7 +181,8 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	docType := listener.DocumentType(event.Key)
 	if docType == DocTypeUser || docType == DocTypeRole {
 		// defer to notify after callback completion
-		defer listener.notifyKey(listener.ctx, string(event.Key))
+		key := channels.NewID(string(event.Key), 0)
+		defer listener.notifyKey(listener.ctx, key)
 	}
 
 	listener.OnDocChanged(event, docType)
@@ -309,11 +310,10 @@ func tickerValForBroadcastSpeed(skippedSequencePresent bool) time.Duration {
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
-func (listener *changeListener) notifyKey(ctx context.Context, key string) {
-	mapKey := channels.NewID(key, 0)
+func (listener *changeListener) notifyKey(ctx context.Context, key channels.ID) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
-	listener.keyCounts[mapKey] = listener.counter
+	listener.keyCounts[key] = listener.counter
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
