@@ -13,7 +13,6 @@ require (
 	github.com/couchbase/gocb/v2 v2.11.1
 	github.com/couchbase/gocbcore/v10 v10.8.1
 	github.com/couchbase/gomemcached v0.2.1
-	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
@@ -50,6 +49,7 @@ require (
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.4 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
+	github.com/couchbase/goutils v0.1.2 // indirect
 	github.com/couchbase/tools-common/cloud/v5 v5.0.3 // indirect
 	github.com/couchbase/tools-common/fs v1.0.2 // indirect
 	github.com/couchbase/tools-common/testing v1.0.1 // indirect
