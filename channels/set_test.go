@@ -9,7 +9,6 @@
 package channels
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -413,7 +412,6 @@ func TestSetString(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.output, test.input.String())
-			fmt.Println(base.UD(test.input), base.UD(test.input).Redact())
 			require.Contains(t, test.redactedOutput, base.UD(test.input).Redact())
 		})
 	}
