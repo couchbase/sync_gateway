@@ -53,6 +53,9 @@ type changeListener struct {
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
 var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 
+// principalDocCollectionChannelID is the channel ID for principal documents (users, roles).
+const principalDocCollectionChannelID = 0
+
 type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
 func (listener *changeListener) Init(name string, groupID string, db *DatabaseContext) {
@@ -181,7 +184,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	docType := listener.DocumentType(event.Key)
 	if docType == DocTypeUser || docType == DocTypeRole {
 		// defer to notify after callback completion
-		key := channels.NewID(string(event.Key), 0)
+		key := channels.NewID(string(event.Key), principalDocCollectionChannelID)
 		defer listener.notifyKey(listener.ctx, key)
 	}
 
@@ -424,10 +427,10 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 	}
 	var userKeys []channels.ID
 	if user != nil {
-		usrID := channels.NewID(listener.metaKeys.UserKey(user.Name()), 0)
+		usrID := channels.NewID(listener.metaKeys.UserKey(user.Name()), principalDocCollectionChannelID)
 		userKeys = []channels.ID{usrID}
 		for role := range user.RoleNames() {
-			userKeys = append(userKeys, channels.NewID(listener.metaKeys.RoleKey(role), 0))
+			userKeys = append(userKeys, channels.NewID(listener.metaKeys.RoleKey(role), principalDocCollectionChannelID))
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
@@ -507,9 +510,9 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 		if len(waiter.userKeys) == 1 && len(user.RoleNames()) == 0 {
 			return
 		}
-		waiter.userKeys = []channels.ID{channels.NewID(metaKeys.UserKey(user.Name()), 0)}
+		waiter.userKeys = []channels.ID{channels.NewID(metaKeys.UserKey(user.Name()), principalDocCollectionChannelID)}
 		for role := range user.RoleNames() {
-			waiter.userKeys = append(waiter.userKeys, channels.NewID(metaKeys.RoleKey(role), 0))
+			waiter.userKeys = append(waiter.userKeys, channels.NewID(metaKeys.RoleKey(role), principalDocCollectionChannelID))
 		}
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 
