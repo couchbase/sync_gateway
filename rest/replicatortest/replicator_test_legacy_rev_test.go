@@ -839,6 +839,9 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 			name:                            "active peer has post upgrade version that wins",
 			activePeerHasPostUpgradeVersion: true,
 		},
+		// The below test cases updates the document again on active peer to ensure we can push back to passive with
+		// no conflict after initial conflict resolution. Hence the expected result HLV contains active peer SGW1 as
+		// current version.
 		// +-----------------+-------------+-------------------------------+-------------+--------------------------------+
 		// |                 | SGW1        |                               | SGW2        |                                |
 		// +-----------------+-------------+-------------------------------+-------------+--------------------------------+
@@ -846,7 +849,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 		// +-----------------+-------------+-------------------------------+-------------+--------------------------------+
 		// | Initial State   | 2-abc,1-abc | none                          | 2-def,1-abc | 100@SGW2                       |
 		// +-----------------+-------------+-------------------------------+-------------+--------------------------------+
-		// | Expected Result | 2-def,1-abc | 1100@SGW2;2def@RTE;oldcas@SGW1| 2-def,1-abc | 1100@SGW2;2def@RTE;oldcas@SGW1 |
+		// | Expected Result | 2-def,1-abc | 1100@SGW1;2def@RTE,oldcas@SGW2| 2-def,1-abc | 1100@SGW1;2def@RTE,oldcas@SGW2 |
 		// +-----------------+-------------+-------------------------------+-------------+--------------------------------+
 		{
 			name:                            "passive peer has post upgrade version that wins",
