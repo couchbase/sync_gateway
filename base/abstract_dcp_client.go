@@ -14,7 +14,7 @@ type DCPClient interface {
 	// Start will start the DCP feed. It returns a channel marking the end of the feed.
 	Start(ctx context.Context) (chan error, error)
 	// Close will shut down the DCP feed.
-	Close() error
+	Close()
 	// GetMetadata returns the current DCP metadata.
 	GetMetadata() []DCPMetadata
 	// GetMetadataKeyPrefix returns the key prefix used for storing any persistent data.

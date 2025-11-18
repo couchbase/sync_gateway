@@ -129,12 +129,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.F
 	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
-		// simplify in CBG-2234
-		closeErr := dcpClient.Close()
-		ErrorfCtx(ctx, "Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
-		if closeErr != nil {
-			ErrorfCtx(ctx, "Close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), closeErr)
-		}
+		dcpClient.Close()
 		asyncCloseErr := <-doneChan
 		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), asyncCloseErr)
 		return err
@@ -156,11 +151,8 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.F
 			break
 		case <-args.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpCloseErr := dcpClient.Close()
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
-			dcpCloseErr = <-doneChan
+			dcpClient.Close()
+			dcpCloseErr := <-doneChan
 			if dcpCloseErr != nil {
 				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
 			}

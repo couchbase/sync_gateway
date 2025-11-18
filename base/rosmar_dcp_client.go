@@ -50,12 +50,11 @@ func (dc *RosmarDCPClient) Start(ctx context.Context) (chan error, error) {
 }
 
 // Close the DCP feed. This is a non blocking operation to allow for use in a callback function.
-func (dc *RosmarDCPClient) Close() error {
+func (dc *RosmarDCPClient) Close() {
 	if dc.terminator != nil {
 		close(dc.terminator)
 		dc.terminator = nil
 	}
-	return nil
 }
 
 func (dc *RosmarDCPClient) GetMetadata() []DCPMetadata {

@@ -106,7 +106,6 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 		}
 	}
 	client := &GoCBDCPClient{
-		ctx:                 ctx,
 		workers:             make([]*DCPWorker, numWorkers),
 		numVbuckets:         numVbuckets,
 		callback:            callback,
@@ -251,7 +250,7 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 
 // Start returns an error and a channel to indicate when the GoCBDCPClient is done. If Start returns an error, GoCBDCPClient.Close() needs to be called.
 func (dc *GoCBDCPClient) Start(ctx context.Context) (doneChan chan error, err error) {
-	// FIXME: set context here
+	dc.ctx = ctx
 	err = dc.initAgent(dc.spec)
 	if err != nil {
 		return dc.doneChannel, err
@@ -273,10 +272,9 @@ func (dc *GoCBDCPClient) Start(ctx context.Context) (doneChan chan error, err er
 	return dc.doneChannel, nil
 }
 
-// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *GoCBDCPClient) Close() error {
+// Close is used externally to stop the DCP client.
+func (dc *GoCBDCPClient) Close() {
 	dc.close()
-	return dc.getCloseError()
 }
 
 // GetMetadata returns metadata for all vbuckets

@@ -186,17 +186,13 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment migration DCP feed: %v", migrationLoggingID, err)
-		_ = dcpClient.Close()
+		dcpClient.Close()
 		return err
 	}
 	base.TracefCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
 
 	select {
 	case <-doneChan:
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
-		}
 		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
@@ -222,11 +218,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		}
 		base.InfofCtx(ctx, base.KeyAll, msg)
 	case <-terminator.Done():
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
-			return err
-		}
+		dcpClient.Close()
 		err = <-doneChan
 		if err != nil {
 			return err
