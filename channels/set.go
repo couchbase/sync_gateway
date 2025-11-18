@@ -35,6 +35,8 @@ type ID struct {
 	CollectionID uint32 // collection it belongs to
 }
 
+// String returns the channel name as a string, omitting the collection ID, so beware when using for logging purposes
+// that the collection name is logged from the context on the log line
 func (c ID) String() string {
 	return c.Name
 }
