@@ -3730,7 +3730,9 @@ func TestGetConfigAfterFailToStartOnlineProcess(t *testing.T) {
 		},
 	}
 
-	// simulate regular startup
+	// Directly set the database state to DBStarting to simulate regular startup.
+	// This direct atomic manipulation is required in this test to simulate a state transition.
+	// This is safe in the context of this test.
 	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStarting)
 	rt.WaitForDBState(db.RunStateString[db.DBStarting])
 
