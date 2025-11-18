@@ -174,6 +174,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 
 	a.SetCollectionIDs(currCollectionIDs)
 	dcpOptions := getMigrationDCPClientOptions(scopes, db.Options.GroupID, dcpPrefix)
+	dcpOptions.ID = dcpFeedKey
 	dcpOptions.Callback = callback
 	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
 	if err != nil {
@@ -287,13 +288,13 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-func getMigrationDCPClientOptions(scopes map[string][]string, groupID, prefix string) base.DCPClientOptions {
+func getMigrationDCPClientOptions(scopes base.CollectionNames, groupID, prefix string) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
-		Scopes:            scopes,
+		CollectionNames:   scopes,
 		CheckpointPrefix:  prefix,
 	}
 }

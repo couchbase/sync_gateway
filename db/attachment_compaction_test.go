@@ -24,7 +24,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testRequiresRosmarHierachicalSubdocOps(t *testing.T) {
+	t.Skip("hierachical subdoc operations are not supported by rosmar yet - CBG-4232")
+}
+
 func TestAttachmentMark(t *testing.T) {
+	testRequiresRosmarHierachicalSubdocOps(t)
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 

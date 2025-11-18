@@ -190,7 +190,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		return err
 	}
 	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
-	collectionNames := make(base.DCPCollections)
+	collectionNames := make(base.CollectionNames)
 	for _, dataStoreName := range dataStores {
 		collection, err := bucket.NamedDataStore(dataStoreName)
 		if err != nil {
@@ -268,7 +268,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		ID:                "purgeFeed-" + bucket.GetName(),
 		OneShot:           true,
 		FailOnRollback:    false,
-		Scopes:            collectionNames,
+		CollectionNames:         collectionNames,
 		MetadataStoreType: base.DCPMetadataStoreInMemory,
 		Callback:          purgeCallback,
 	}

@@ -6,6 +6,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+// RosmarDCPClient implements a DCPClient for rosmar buckets.
 type RosmarDCPClient struct {
 	bucket     Bucket
 	opts       DCPClientOptions
@@ -13,6 +14,7 @@ type RosmarDCPClient struct {
 	terminator chan bool
 }
 
+// NewRosmarDCPClient creates a new DCPClient for a rosmar bucket.
 func NewRosmarDCPClient(bucket Bucket, opts DCPClientOptions) (*RosmarDCPClient, error) {
 	return &RosmarDCPClient{
 		bucket: bucket,
@@ -20,6 +22,7 @@ func NewRosmarDCPClient(bucket Bucket, opts DCPClientOptions) (*RosmarDCPClient,
 	}, nil
 }
 
+// Start a DCP feed, returns a channel that will be closed when the feed is done.
 func (dc *RosmarDCPClient) Start(ctx context.Context) (chan error, error) {
 	doneChan := make(chan error)
 	dc.doneChan = make(chan struct{})
@@ -30,22 +33,28 @@ func (dc *RosmarDCPClient) Start(ctx context.Context) (chan error, error) {
 		Dump:             dc.opts.OneShot,
 		DoneChan:         dc.doneChan,
 		Terminator:       dc.terminator,
-		Scopes:           dc.opts.Scopes,
+		Scopes:           dc.opts.CollectionNames,
+		Backfill:         sgbucket.FeedResume,
 	}
 	err := dc.bucket.StartDCPFeed(ctx, feedArgs, dc.opts.Callback, nil)
 	if err != nil {
 		return nil, err
 	}
+	// This extra goroutine can be removed if sgbucket.FeedArguments.DoneChan is changed to chan error
 	go func() {
-		<-feedArgs.DoneChan
+		// DoneChan in rosmar is buggy, so wait for terminator instead of DoneChan
+		<-dc.doneChan
 		close(doneChan)
 	}()
 	return doneChan, nil
 }
 
+// Close the DCP feed. This is a non blocking operation to allow for use in a callback function.
 func (dc *RosmarDCPClient) Close() error {
-	close(dc.terminator)
-	<-dc.doneChan
+	if dc.terminator != nil {
+		close(dc.terminator)
+		dc.terminator = nil
+	}
 	return nil
 }
 
@@ -54,6 +63,7 @@ func (dc *RosmarDCPClient) GetMetadata() []DCPMetadata {
 	return nil
 }
 
+// GetMetadataKeyPrefix returns the document prefix for the checkpoint documents.
 func (dc *RosmarDCPClient) GetMetadataKeyPrefix() string {
 	// this value is probably not correct
 	return dc.opts.CheckpointPrefix

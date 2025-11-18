@@ -47,7 +47,7 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) (*GoCBDCPClient, error) {
+func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType) (*GoCBDCPClient, error) {
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,6 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 	}
 	options := GoCBDCPClientOptions{
 		MetadataStoreType: metadataStoreType,
-		GroupID:           groupID,
 		DbStats:           dbStats,
 		CollectionIDs:     collectionIDs,
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
@@ -119,11 +118,12 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-	dcpClient, err := newGocbDCPClient(ctx, bucket, bucketName, args, callback, dbStats, metadataStoreType, groupID)
+func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType) error {
+	dcpClient, err := newGocbDCPClient(ctx, bucket, args, callback, dbStats, metadataStoreType)
 	if err != nil {
 		return err
 	}
+	bucketName := bucket.GetName()
 	feedName := dcpClient.ID
 
 	doneChan, err := dcpClient.Start(ctx)

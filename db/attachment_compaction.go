@@ -566,7 +566,7 @@ func getCompactionDCPClientOptions(dataStore sgbucket.DataStore, groupID string,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
-		Scopes: map[string][]string{
+		CollectionNames: map[string][]string{
 			dataStore.ScopeName(): {dataStore.CollectionName()},
 		},
 		CheckpointPrefix: prefix,

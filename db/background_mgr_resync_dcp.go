@@ -399,13 +399,13 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionNames base.DCPCollections, groupID string, prefix string) base.DCPClientOptions {
+func getResyncDCPClientOptions(collectionNames base.CollectionNames, groupID string, prefix string) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
-		Scopes:            collectionNames,
+		CollectionNames:   collectionNames,
 		CheckpointPrefix:  prefix,
 	}
 }
