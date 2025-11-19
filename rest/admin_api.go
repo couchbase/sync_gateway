@@ -511,15 +511,17 @@ func (h *handler) handleGetConfig() error {
 				return err
 			}
 
-			replications, err := database.SGReplicateMgr.GetReplications()
-			if err != nil {
-				return err
-			}
+			if database.SGReplicateMgr != nil {
+				replications, err := database.SGReplicateMgr.GetReplications()
+				if err != nil {
+					return err
+				}
 
-			dbConfig.Replications = make(map[string]*db.ReplicationConfig, len(replications))
+				dbConfig.Replications = make(map[string]*db.ReplicationConfig, len(replications))
 
-			for replicationName, replicationConfig := range replications {
-				dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted(h.ctx())
+				for replicationName, replicationConfig := range replications {
+					dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted(h.ctx())
+				}
 			}
 		}
 
