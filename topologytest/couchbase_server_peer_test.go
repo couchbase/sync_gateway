@@ -62,13 +62,15 @@ func (r *CouchbaseServerReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseServerReplication) Start() {
-	r.t.Logf("starting XDCR replication %s", r)
+	ctx := base.TestCtx(r.t)
+	base.InfofCtx(ctx, base.KeySGTest, "starting XDCR replication %s", r)
 	require.NoError(r.t, r.manager.Start(r.ctx))
 }
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseServerReplication) Stop() {
-	r.t.Logf("stopping XDCR replication %s", r)
+	ctx := base.TestCtx(r.t)
+	base.InfofCtx(ctx, base.KeySGTest, "stopping XDCR replication %s", r)
 	require.NoError(r.t, r.manager.Stop(r.ctx))
 }
 
@@ -130,7 +132,7 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 		Cas:         cas,
 		ImplicitHLV: implicitHLV,
 	}
-	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Created document %s with %#v", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -158,7 +160,7 @@ func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.TB(), err)
 	docMeta := getDocVersion(docID, p, cas, lastXattrs)
-	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMeta)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Wrote document %s with %#+v", p, docID, docMeta.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMeta,
 		body:       body,
@@ -178,7 +180,7 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 	cas, err := p.getCollection(dsName).WriteUpdateWithXattrs(p.Context(), docID, metadataXattrNames, 0, nil, nil, callback)
 	require.NoError(p.TB(), err)
 	version := getDocVersion(docID, p, cas, lastXattrs)
-	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, version)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Deleted document %s with %#+v", p, docID, version.HLVString())
 	return version
 }
 

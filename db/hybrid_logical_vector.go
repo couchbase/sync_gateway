@@ -527,6 +527,19 @@ func (hlv *HybridLogicalVector) ToHistoryForHLV() string {
 	return hlv.toHistoryForHLV(HLVVersions.unsorted)
 }
 
+// HLVDebugString represents the HLV as a string with entries sorted for easier comparison in tests
+func (hlv *HybridLogicalVector) HLVDebugString() string {
+	fullHLV := hlv.GetCurrentVersionString()
+	history := hlv.toHistoryForHLV(HLVVersions.sorted)
+	if history == "" {
+		return fullHLV
+	}
+	if hlv.MergeVersions != nil {
+		return fullHLV + "," + history
+	}
+	return fullHLV + ";" + history
+}
+
 // toHistoryForHLV formats HLV property for blip history.
 func (hlv *HybridLogicalVector) toHistoryForHLV(sortFunc func(HLVVersions) iter.Seq2[string, uint64]) string {
 	// take pv and mv from hlv if defined and add to history

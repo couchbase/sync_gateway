@@ -84,7 +84,7 @@ func (p *SyncGatewayPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, doc
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	docMetadata := p.writeDocument(dsName, docID, body)
-	p.TB().Logf("%s: Created document %s with %#+v", p, docID, docMetadata)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Created document %s with %#+v", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -125,7 +125,7 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	docMetadata := p.writeDocument(dsName, docID, body)
-	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Wrote document %s with %s", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -142,7 +142,7 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 	_, doc, err = collection.DeleteDoc(ctx, docID, doc.ExtractDocVersion())
 	require.NoError(p.TB(), err)
 	docMeta := DocMetadataFromDocument(doc)
-	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, docMeta)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Deleted document %s with %s", p, docID, docMeta.HLVString())
 	return docMeta
 }
 
