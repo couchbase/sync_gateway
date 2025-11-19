@@ -80,19 +80,22 @@ type ServerContext struct {
 	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext
 	_databasesLock      sync.RWMutex                      // Lock for _databases and other db-specific maps above
 
-	statsContext                  *statsContext
-	BootstrapContext              *bootstrapContext
-	HTTPClient                    *http.Client
-	cpuPprofFileMutex             sync.Mutex                 // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile                  *os.File                   // An open file descriptor holds the reference during CPU profiling
-	_httpServers                  map[serverType]*serverInfo // A list of HTTP servers running under the ServerContext
-	GoCBAgent                     *gocbcore.Agent            // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient              *http.Client               // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted                    chan struct{}              // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID                  string                     // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate        time.Time                  // The last time fetchConfigsWithTTL() updated dbConfigs
-	allowScopesInPersistentConfig bool                       // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
-	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
+	statsContext      *statsContext
+	BootstrapContext  *bootstrapContext
+	HTTPClient        *http.Client
+	cpuPprofFileMutex sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile      *os.File   // An open file descriptor holds the reference during CPU profiling
+
+	_httpServers     map[serverType]*serverInfo // A list of HTTP servers running under the ServerContext
+	_httpServersLock sync.RWMutex               // Lock for managing access to _httpServers
+
+	GoCBAgent                     *gocbcore.Agent      // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client         // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}        // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string               // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time            // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect // singleton instance for this server's sgcollect_info process
@@ -215,8 +218,8 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	ctx, cancelFn := context.WithTimeout(ctx, timeout)
 	defer cancelFn()
 	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value any) {
-		sc._databasesLock.RLock()
-		defer sc._databasesLock.RUnlock()
+		sc._httpServersLock.RLock()
+		defer sc._httpServersLock.RUnlock()
 		if len(sc._httpServers) == len(allServers) {
 			return false, nil, nil
 		}
@@ -235,15 +238,15 @@ func (sc *ServerContext) getServerAddr(s serverType) (string, error) {
 }
 
 func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
+	sc._httpServersLock.Lock()
+	defer sc._httpServersLock.Unlock()
 	sc._httpServers[t] = s
 }
 
 // getHTTPServer returns information about the given HTTP server.
 func (sc *ServerContext) getHTTPServer(t serverType) (*serverInfo, error) {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
+	sc._httpServersLock.RLock()
+	defer sc._httpServersLock.RUnlock()
 	s, ok := sc._httpServers[t]
 	if !ok {
 		return nil, fmt.Errorf("server type %q not found running in server context", t)
@@ -291,8 +294,8 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc._databases = nil
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
+	sc._httpServersLock.Lock()
+	defer sc._httpServersLock.Unlock()
 	for _, s := range sc._httpServers {
 		if s.server != nil {
 			base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
