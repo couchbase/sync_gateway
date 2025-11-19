@@ -1878,15 +1878,19 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, doc *D
 }
 
 // invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
-func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) {
+func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) error {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := dbCtx.AllPrincipalIDs(ctx)
+	users, roles, err := dbCtx.AllPrincipalIDs(ctx)
+	if err != nil {
+		return err
+	}
 	for _, name := range users {
 		dbCtx.invalUserRolesAndChannels(ctx, name, collectionNames, endSeq)
 	}
 	for _, name := range roles {
 		dbCtx.invalRoleChannels(ctx, name, collectionNames, endSeq)
 	}
+	return nil
 }
 
 // invalUserChannels invalidates a user's computed channels for the specified collections
