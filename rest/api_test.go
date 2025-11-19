@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -3709,4 +3710,40 @@ func TestUnsupportedServerConfigOptions(t *testing.T) {
 			require.Equal(t, serverBase+test.expectedConnStr, spec.Server)
 		})
 	}
+}
+
+func TestGetConfigAfterFailToStartOnlineProcess(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.Ptr(true)
+	resp := rt.CreateDatabase("db", dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// create invalid user to cause StartOnlineProcesses error
+	rt.GetDatabase().Options.ConfigPrincipals.Users = map[string]*auth.PrincipalConfig{
+		"alice": {
+			JWTChannels: base.SetOf("asdf"),
+		},
+	}
+
+	// Directly set the database state to DBStarting to simulate regular startup.
+	// This direct atomic manipulation is required in this test to simulate a state transition.
+	// This is safe in the context of this test.
+	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStarting)
+	rt.WaitForDBState(db.RunStateString[db.DBStarting])
+
+	// Can't trigger error case from REST API - call directly
+	rt.ServerContext().asyncDatabaseOnline(base.NewNonCancelCtx(), rt.GetDatabase(), nil, rt.ServerContext().GetDbVersion("db"))
+
+	// Error should cause db to stay offline.
+	rt.WaitForDBState(db.RunStateString[db.DBOffline])
+	require.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().TotalOnlineFatalErrors.Value())
+
+	// Original bug will trigger panic here on this endpoint
+	resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+	RequireStatus(t, resp, http.StatusOK)
 }
