@@ -12,13 +12,10 @@ package base
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/couchbase/clog"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
-	"github.com/couchbase/goutils/logging"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -36,7 +33,6 @@ func initExternalLoggers() {
 		gocbcore.SetLogger(GoCBCoreLogger{})
 	}
 
-	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
 	// Set the clog level to DEBUG and do filtering for debug inside ClogCallback functions
 	clog.SetLevel(clog.LevelDebug)
@@ -157,98 +153,6 @@ func ClogCallback(level, format string, v ...any) string {
 		logTo(context.TODO(), LevelTrace, KeyDCP, format, v...)
 	}
 	return ""
-}
-
-// **************************************************************
-// Implementation for github.com/couchbase/goutils/logging.Logger
-// **************************************************************
-type CBGoUtilsLogger struct{}
-
-var _ logging.Logger = CBGoUtilsLogger{}
-
-func (CBGoUtilsLogger) SetLevel(l logging.Level) {
-	// no-op
-}
-
-// CBGoUtilsLogger.Level returns a compatible go-couchbase/golog Log Level for
-// the given logging config LogLevel
-func (CBGoUtilsLogger) Level() logging.Level {
-	logger := consoleLogger.Load()
-	if logger == nil || logger.LogLevel == nil {
-		return logging.INFO
-	}
-	switch *logger.LogLevel {
-	case LevelTrace:
-		return logging.TRACE
-	case LevelDebug:
-		return logging.DEBUG
-	case LevelInfo:
-		return logging.INFO
-	case LevelWarn:
-		return logging.WARN
-	case LevelError:
-		return logging.ERROR
-	case LevelNone:
-		return logging.NONE
-	default:
-		return logging.NONE
-	}
-}
-
-func (CBGoUtilsLogger) Fatalf(fmt string, args ...any) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-	FlushLogBuffers()
-	os.Exit(1)
-}
-
-func (CBGoUtilsLogger) Severef(fmt string, args ...any) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Errorf(fmt string, args ...any) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Warnf(fmt string, args ...any) {
-	logTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Infof(fmt string, args ...any) {
-	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Requestf(rlevel logging.Level, fmt string, args ...any) {
-	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Tracef(fmt string, args ...any) {
-	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Debugf(fmt string, args ...any) {
-	logTo(context.TODO(), LevelDebug, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...any) {
-	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
-}
-
-// go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
-
-func (l CBGoUtilsLogger) Loga(level logging.Level, f func() string) { l.warnNotImplemented("Loga", f) }
-func (l CBGoUtilsLogger) Debuga(f func() string)                    { l.warnNotImplemented("Debuga", f) }
-func (l CBGoUtilsLogger) Tracea(f func() string)                    { l.warnNotImplemented("Tracea", f) }
-func (l CBGoUtilsLogger) Requesta(rlevel logging.Level, f func() string) {
-	l.warnNotImplemented("Requesta", f)
-}
-func (l CBGoUtilsLogger) Infoa(f func() string)   { l.warnNotImplemented("Infoa", f) }
-func (l CBGoUtilsLogger) Warna(f func() string)   { l.warnNotImplemented("Warna", f) }
-func (l CBGoUtilsLogger) Errora(f func() string)  { l.warnNotImplemented("Errora", f) }
-func (l CBGoUtilsLogger) Severea(f func() string) { l.warnNotImplemented("Severea", f) }
-func (l CBGoUtilsLogger) Fatala(f func() string)  { l.warnNotImplemented("Fatala", f) }
-
-func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
-	WarnfCtx(context.Background(), fmt.Sprintf("CBGoUtilsLogger: %s not implemented! %s", name, f()))
 }
 
 // **************************************************************************
