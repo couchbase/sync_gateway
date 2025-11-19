@@ -267,33 +267,41 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close(ctx context.Context) {
-
-	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
-	}
+	// stop HTTP servers - prevents any further requests from coming in before we continue with tearing down everything else
+	sc.stopHTTPServers(ctx)
 
 	// stop the config polling
-	err = base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait)
-	if err != nil {
+	if err := base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait); err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
-
-	// close cached bootstrap bucket connections
+	// close cached bootstrap bucket connections for config polling
 	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
 		sc.BootstrapContext.Connection.Close()
 	}
 
+	if agent := sc.GoCBAgent; agent != nil {
+		if err := agent.Close(); err != nil {
+			base.WarnfCtx(ctx, "Error closing agent connection: %v", err)
+		}
+	}
+
+	if err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait); err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
+	}
+
+	// close all databases
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	for _, db := range sc._databases {
 		db.Close(ctx)
 		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc._databases = nil
 	sc.invalidDatabaseConfigTracking.dbNames = nil
+}
 
+func (sc *ServerContext) stopHTTPServers(ctx context.Context) {
 	sc._httpServersLock.Lock()
 	defer sc._httpServersLock.Unlock()
 	for _, s := range sc._httpServers {
@@ -305,12 +313,6 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		}
 	}
 	sc._httpServers = nil
-
-	if agent := sc.GoCBAgent; agent != nil {
-		if err := agent.Close(); err != nil {
-			base.WarnfCtx(ctx, "Error closing agent connection: %v", err)
-		}
-	}
 }
 
 // GetDatabase attempts to return the DatabaseContext of the database. It will load the database if necessary.
