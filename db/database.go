@@ -57,6 +57,7 @@ const (
 	ExistingVersionLegacyRev
 	ExistingVersionWithUpdateToHLV
 	NoHLVUpdateForTest
+	Resync
 )
 
 type DocUpdateType uint32
@@ -1832,10 +1833,13 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, doc *D
 		return nil, base.ErrUpdateCancel
 	}
 
-	// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
-	if db.useMou() {
-		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
+	mouMatch := false
+	updatedDoc, err = db.updateHLV(ctx, doc, Resync, mouMatch)
+	if err != nil {
+		return nil, err
 	}
+	// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
+	doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 
 	_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 	if err != nil {
@@ -1849,6 +1853,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, doc *D
 	if rawGlobalXattr != nil {
 		xattrs[base.GlobalXattrName] = rawGlobalXattr
 	}
+	fmt.Printf("mou=%s\n", rawMouXattr)
 
 	opts := &sgbucket.MutateInOptions{
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),

@@ -3663,54 +3663,93 @@ func Test_resyncDocument(t *testing.T) {
 	db.Options.EnableXattr = true
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	syncFn := `
+	testCases := []struct {
+		name   string
+		useHLV bool
+	}{
+		{
+			name:   "pre-4.0",
+			useHLV: true,
+		},
+		{
+			name:   "has_hlv",
+			useHLV: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			startingSyncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
+			syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
 	}
 `
-	_, err := collection.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
+			_, err := collection.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
 
-	docID := uuid.NewString()
+			docID := uuid.NewString()
 
-	updateBody := make(map[string]any)
-	updateBody["val"] = "value"
-	_, doc, err := collection.Put(ctx, docID, updateBody)
-	require.NoError(t, err)
-	assert.NotNil(t, doc)
+			updateBody := make(map[string]any)
+			updateBody["val"] = "value"
+			if tc.useHLV {
+				_, _, err := collection.Put(ctx, docID, updateBody)
+				require.NoError(t, err)
+			} else {
+				collection.CreateDocNoHLV(t, ctx, docID, updateBody)
+			}
 
-	syncFn = `
+			syncFn = `
 		function sync(doc, oldDoc){
 			channel("channel." + "ABC12332423234");
 		}
 	`
-	_, err = collection.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
+			_, err = collection.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
 
-	preResyncDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
-	require.NoError(t, err)
-	_, err = collection.resyncDocument(ctx, preResyncDoc, false)
-	require.NoError(t, err)
-	err = collection.WaitForPendingChanges(ctx)
-	require.NoError(t, err)
+			preResyncDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			require.NoError(t, err)
+			if !tc.useHLV {
+				require.Nil(t, preResyncDoc.HLV)
+			}
+			_, err = collection.resyncDocument(ctx, preResyncDoc, false)
+			require.NoError(t, err)
+			err = collection.WaitForPendingChanges(ctx)
+			require.NoError(t, err)
 
-	syncData, err := collection.GetDocSyncData(ctx, docID)
-	assert.NoError(t, err)
+			postResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
+			assert.NoError(t, err)
 
-	assert.Len(t, syncData.ChannelSet, 2)
-	assert.Len(t, syncData.Channels, 2)
-	found := false
+			assert.Len(t, postResyncDoc.ChannelSet, 2)
+			assert.Len(t, postResyncDoc.Channels, 2)
+			found := false
 
-	for _, chSet := range syncData.ChannelSet {
-		if chSet.Name == "channel.ABC12332423234" {
-			found = true
-			break
-		}
+			for _, chSet := range postResyncDoc.ChannelSet {
+				if chSet.Name == "channel.ABC12332423234" {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found)
+
+			require.NoError(t, err)
+			require.NotNil(t, postResyncDoc.HLV)
+			require.Equal(t, Version{
+				SourceID: db.EncodedSourceID,
+				Value:    preResyncDoc.Cas,
+			}, Version{
+				SourceID: postResyncDoc.HLV.SourceID,
+				Value:    postResyncDoc.HLV.Version,
+			})
+			require.NotNil(t, postResyncDoc.MetadataOnlyUpdate)
+			require.Equal(t, MetadataOnlyUpdate{
+				HexCAS:           base.CasToString(postResyncDoc.Cas),
+				PreviousHexCAS:   base.CasToString(preResyncDoc.Cas),
+				PreviousRevSeqNo: preResyncDoc.RevSeqNo,
+			}, *postResyncDoc.MetadataOnlyUpdate)
+			assert.Equal(t, startingSyncFnCount+2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+		})
 	}
-
-	assert.True(t, found)
-	assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
-
 }
 
 func Test_getUpdatedDocument(t *testing.T) {
