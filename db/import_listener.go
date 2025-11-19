@@ -86,14 +86,6 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	} else {
 		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
 	}
-	feedArgs := sgbucket.FeedArguments{
-		ID:               base.DCPImportFeedID,
-		Backfill:         sgbucket.FeedResume,
-		Terminator:       il.terminator,
-		DoneChan:         make(chan struct{}),
-		CheckpointPrefix: il.checkpointPrefix,
-		Scopes:           collectionNamesByScope,
-	}
 
 	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
@@ -107,17 +99,16 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
-	if !ok {
-		// walrus is not a couchbasestore
-		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	}
-
-	if !base.IsEnterpriseEdition() {
-		gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
-		if err != nil {
-			return err
+	if !base.IsEnterpriseEdition() || !ok {
+		opts := base.DCPClientOptions{
+			ID:               base.DCPImportFeedID, // FIXME, this should probably be uniquely named
+			Terminator:       il.terminator,
+			CheckpointPrefix: il.checkpointPrefix,
+			CollectionNames:  collectionNamesByScope,
+			DBStats:          importFeedStatsMap.Map,
+			Callback:         il.ProcessFeedEvent,
 		}
-		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS)
+		return base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,

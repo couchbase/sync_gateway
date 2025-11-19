@@ -262,6 +262,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				FailOnRollback:   true,
 				OneShot:          true,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				Callback:         counterCallback,
 			}
 			dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 			require.NoError(t, err)
@@ -281,6 +282,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:          true,
 				CollectionNames:  collectionNames,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				Callback:         counterCallback,
 			}
 
 			dcpClient3, err := NewDCPClient(ctx, bucket, dcpClientOpts)
@@ -609,6 +611,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		MetadataStoreType: DCPMetadataStoreInMemory,
 		InitialMetadata:   metadata,
+		Callback:          callback,
 	}
 
 	dcpClient, err = NewDCPClient(ctx, bucket, dcpClientOpts)

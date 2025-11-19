@@ -263,7 +263,8 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return StartGocbDCPFeed(ctx, b, args, callback, dbStats, DCPMetadataStoreInMemory)
+	panic("here")
+	return errors.New("GocbV2Bucket does not support StartDCPFeed; use NewDCPClient instead")
 }
 
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

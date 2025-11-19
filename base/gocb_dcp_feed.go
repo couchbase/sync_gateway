@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"expvar"
 	"fmt"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -47,8 +46,8 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType) (*GoCBDCPClient, error) {
-	feedName, err := GenerateDcpStreamName(args.ID)
+func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientOptions) (*GoCBDCPClient, error) {
+	feedName, err := GenerateDcpStreamName(opts.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.F
 		}
 
 		// should only be one args.Scope so cheaper to iterate this way around
-		for scopeName, collections := range args.Scopes {
+		for scopeName, collections := range opts.CollectionNames {
 			scopeFound := false
 			for _, manifestScope := range cm.Scopes {
 				if scopeName != manifestScope.Name {
@@ -94,14 +93,20 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.F
 		}
 	}
 	options := GoCBDCPClientOptions{
-		MetadataStoreType: metadataStoreType,
-		DbStats:           dbStats,
+		MetadataStoreType: opts.MetadataStoreType,
+		DbStats:           opts.DBStats,
 		CollectionIDs:     collectionIDs,
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
-		CheckpointPrefix:  args.CheckpointPrefix,
+		CheckpointPrefix:  opts.CheckpointPrefix,
+		OneShot:           opts.OneShot,
+		FailOnRollback:    opts.FailOnRollback,
+		InitialMetadata:   opts.InitialMetadata,
 	}
 
-	if args.Backfill == sgbucket.FeedNoBackfill {
+	if opts.FromLatestSequence {
+		if len(opts.InitialMetadata) > 0 {
+			return nil, fmt.Errorf("DCPClientOptions.InitialMetadata cannot be provided when FromLatestSequence is true")
+		}
 		metadata, err := getHighSeqMetadata(bucket)
 		if err != nil {
 			return nil, err
@@ -112,55 +117,7 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.F
 	return NewGocbDCPClient(
 		ctx,
 		feedName,
-		callback,
+		opts.Callback,
 		options,
 		bucket)
-}
-
-// StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType) error {
-	dcpClient, err := newGocbDCPClient(ctx, bucket, args, callback, dbStats, metadataStoreType)
-	if err != nil {
-		return err
-	}
-	bucketName := bucket.GetName()
-	feedName := dcpClient.ID
-
-	doneChan, err := dcpClient.Start(ctx)
-	if err != nil {
-		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
-		dcpClient.Close()
-		asyncCloseErr := <-doneChan
-		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), asyncCloseErr)
-		return err
-	}
-	InfofCtx(ctx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
-	go func() {
-		select {
-		case dcpCloseError := <-doneChan:
-			// simplify close in CBG-2234
-			// This is a close because DCP client closed on its own, which should never happen since once
-			// DCP feed is started, there is nothing that will close it
-			InfofCtx(ctx, KeyDCP, "Forced closed DCP Feed %q for %q", feedName, MD(bucketName))
-			// wait for channel close
-			<-doneChan
-			if dcpCloseError != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseError)
-			}
-			// FIXME: close dbContext here
-			break
-		case <-args.Terminator:
-			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpClient.Close()
-			dcpCloseErr := <-doneChan
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
-			break
-		}
-		if args.DoneChan != nil {
-			close(args.DoneChan)
-		}
-	}()
-	return err
 }

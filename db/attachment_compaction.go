@@ -131,7 +131,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, MarkPhase)
 	clientOptions.Callback = callback
 
@@ -368,7 +368,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, SweepPhase)
 	clientOptions.Callback = callback
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
@@ -496,7 +496,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, CleanupPhase)
 	clientOptions.Callback = callback
@@ -545,12 +545,11 @@ func getCompactionIDSubDocPath(compactionID string) string {
 }
 
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
-func getCompactionDCPClientOptions(dataStore sgbucket.DataStore, groupID string, prefix string) base.DCPClientOptions {
+func getCompactionDCPClientOptions(dataStore sgbucket.DataStore, prefix string) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionNames: map[string][]string{
 			dataStore.ScopeName(): {dataStore.CollectionName()},
 		},
