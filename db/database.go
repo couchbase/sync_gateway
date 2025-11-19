@@ -57,6 +57,7 @@ const (
 	ExistingVersionLegacyRev
 	ExistingVersionWithUpdateToHLV
 	NoHLVUpdateForTest
+	Resync
 )
 
 type DocUpdateType uint32
@@ -1822,101 +1823,70 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid string, previousDoc *sgbucket.BucketDocument, regenerateSequences bool) (updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
-	if db.UseXattrs() {
-		writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-			// so deleteDoc is always returned as false.
-			if currentValue == nil || len(currentValue) == 0 {
-				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
-			}
-			doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
-			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
-			}
-			if !shouldUpdate {
-				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
-			}
-			base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-			if updatedExpiry != nil {
-				updatedDoc.UpdateExpiry(*updatedExpiry)
-			}
-			doc.SetCrc32cUserXattrHash()
-
-			// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
-			if db.useMou() {
-				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-			}
-			doc, err = db.updateHLV(ctx, doc, Import, false)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
-			}
-
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
-			updatedDoc := sgbucket.UpdatedDoc{
-				Doc: nil, // Resync does not require document body update
-				Xattrs: map[string][]byte{
-					base.SyncXattrName: rawSyncXattr,
-					base.VvXattrName:   rawVvXattr,
-				},
-				Expiry: updatedExpiry,
-			}
-			if db.useMou() {
-				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
-				}
-			}
-			if rawGlobalXattr != nil {
-				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
-			}
-			return updatedDoc, err
+	writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+		// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+		// so deleteDoc is always returned as false.
+		if len(currentValue) == 0 {
+			return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 		}
-		opts := &sgbucket.MutateInOptions{
-			MacroExpansion: macroExpandSpec(base.SyncXattrName),
+		doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
+		if err != nil {
+			return sgbucket.UpdatedDoc{}, err
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
-	} else {
-		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-			// Be careful: this block can be invoked multiple times if there are races!
-			if currentValue == nil {
-				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-			}
-			doc, err := unmarshalDocument(docid, currentValue)
-			if err != nil {
-				return nil, nil, false, err
-			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
-			if err != nil {
-				return nil, nil, false, err
-			}
-			if shouldUpdate {
-				base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-				if updatedExpiry != nil {
-					updatedDoc.UpdateExpiry(*updatedExpiry)
-				}
+		updatedDoc, shouldUpdate, updatedExpiry, _, updatedUnusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, nil)
+		if err != nil {
+			return sgbucket.UpdatedDoc{}, err
+		}
+		if !shouldUpdate {
+			return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
+		}
+		base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+		if updatedExpiry != nil {
+			updatedDoc.UpdateExpiry(*updatedExpiry)
+		}
+		doc.SetCrc32cUserXattrHash()
 
-				updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-				return updatedBytes, updatedExpiry, false, marshalErr
-			} else {
-				return nil, nil, false, base.ErrUpdateCancel
-			}
-		})
+		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
+		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
+		mouMatch := false // after writing this document, mou.cas != doc.cas since otherwise shouldUpdate would be false
+		doc, err = db.updateHLV(ctx, doc, Resync, mouMatch)
+		if err != nil {
+			return sgbucket.UpdatedDoc{}, err
+		}
+
+		_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
+		updatedDoc := sgbucket.UpdatedDoc{
+			Doc: nil, // Resync does not require document body update
+			Xattrs: map[string][]byte{
+				base.SyncXattrName: rawSyncXattr,
+				base.VvXattrName:   rawVvXattr,
+				base.MouXattrName:  rawMouXattr,
+			},
+			Expiry: updatedExpiry,
+		}
+		if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+			updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
+		}
+		if rawGlobalXattr != nil {
+			updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
+		}
+		return updatedDoc, err
 	}
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: macroExpandSpec(base.SyncXattrName),
+	}
+	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docid, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, previousDoc, opts, writeUpdateFunc)
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
 			base.AuditFieldDocVersion: updatedDoc.CVOrRevTreeID(),
 		})
 	}
-	return updatedHighSeq, unusedSequences, err
+	return updatedUnusedSequences, err
 }
 
 // invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:

@@ -124,7 +124,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
-		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 
 		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
@@ -147,9 +146,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
 		collectionCtx := databaseCollection.AddCollectionContext(ctx)
-		_, unusedSequences, err := (&DatabaseCollectionWithUser{
+		doc, err := bucketDocumentFromFeed(event)
+		if err != nil {
+			base.WarnfCtx(collectionCtx, "[%s] Error getting document from DCP event for doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			return false
+		}
+		unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(collectionCtx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(collectionCtx, docID, doc, regenerateSequences)
 
 		databaseCollection.releaseSequences(collectionCtx, unusedSequences)
 
@@ -159,6 +163,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
 			base.WarnfCtx(collectionCtx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			return false
 		}
 		return true
 	}

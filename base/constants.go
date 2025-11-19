@@ -133,6 +133,10 @@ const (
 
 	// VirtualXattrRevSeqNo is used to fetch rev seq no from documents virtual xattr
 	VirtualXattrRevSeqNo = "$document.revid"
+
+	// VirtualExpiry is used to fetch the expiry from  documents
+	VirtualExpiry = "$document.exptime"
+
 	// VirtualDocumentXattr is used to fetch the documents virtual xattr
 	VirtualDocumentXattr = "$document"
 

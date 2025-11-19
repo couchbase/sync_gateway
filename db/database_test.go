@@ -3669,11 +3669,11 @@ func Test_resyncDocument(t *testing.T) {
 	}{
 		{
 			name:   "pre-4.0",
-			useHLV: true,
+			useHLV: false,
 		},
 		{
 			name:   "has_hlv",
-			useHLV: false,
+			useHLV: true,
 		},
 	}
 
@@ -3712,7 +3712,10 @@ func Test_resyncDocument(t *testing.T) {
 			if !tc.useHLV {
 				require.Nil(t, preResyncDoc.HLV)
 			}
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			doc, err := getBucketDocument(ctx, collection.DatabaseCollection, docID)
+			require.NoError(t, err)
+
+			_, err = collection.resyncDocument(ctx, docID, doc, false)
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -3747,6 +3750,7 @@ func Test_resyncDocument(t *testing.T) {
 				PreviousHexCAS:   base.CasToString(preResyncDoc.Cas),
 				PreviousRevSeqNo: preResyncDoc.RevSeqNo,
 			}, *postResyncDoc.MetadataOnlyUpdate)
+			assert.Equal(t, preResyncDoc.Cas, postResyncDoc.HLV.CurrentVersionCAS)
 			assert.Equal(t, startingSyncFnCount+2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 		})
 	}
