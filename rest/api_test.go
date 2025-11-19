@@ -2989,7 +2989,7 @@ func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	resp = rt.CreateDatabase(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.RestTesterServerContext.dbConfigs[dbName].DatabaseConfig.EnableXattrs = base.Ptr(false)
+	rt.RestTesterServerContext._dbConfigs[dbName].DatabaseConfig.EnableXattrs = base.Ptr(false)
 
 	_, err := rt.RestTesterServerContext.ReloadDatabase(t.Context(), dbName, false)
 	assert.Error(t, err, errResp)
@@ -3482,7 +3482,7 @@ func TestAllowConflictsConfig(t *testing.T) {
 	bucketName := rt.GetDatabase().Bucket.GetName()
 
 	// Attempt to set the `AllowConflicts` property to true in the database configuration.
-	rt.RestTesterServerContext.dbConfigs[dbName].DatabaseConfig.DbConfig.AllowConflicts = base.Ptr(true)
+	rt.RestTesterServerContext._dbConfigs[dbName].DatabaseConfig.DbConfig.AllowConflicts = base.Ptr(true)
 
 	// Reload the database configuration and verify that an error is returned.
 	_, err := rt.RestTesterServerContext.ReloadDatabase(ctx, dbName, false)
@@ -3525,7 +3525,7 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Attempting to disable `enable_star_channel`
-	rt.ServerContext().dbConfigs[dbName].DatabaseConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
+	rt.ServerContext()._dbConfigs[dbName].DatabaseConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
 
 	// Reloading the database after updating the config
 	_, err := rt.ServerContext().ReloadDatabase(ctx, dbName, false)

@@ -1657,21 +1657,21 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	// we don't need to do this two-stage lock on initial startup as the REST APIs aren't even online yet.
 	var deletedDatabases []string
 	if !isInitialStartup {
-		sc.lock.RLock()
-		for dbName, _ := range sc.dbRegistry {
+		sc._databasesLock.RLock()
+		for dbName, _ := range sc._dbRegistry {
 			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
 				deletedDatabases = append(deletedDatabases, dbName)
 				delete(fetchedConfigs, dbName)
 			}
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
-			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
+			if dbConfig, ok := sc._dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
 				sc.invalidDatabaseConfigTracking.remove(dbName)
 				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
 				delete(fetchedConfigs, dbName)
 			}
 		}
-		sc.lock.RUnlock()
+		sc._databasesLock.RUnlock()
 
 		// nothing to do, we can bail out without needing the write lock
 		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
@@ -1681,10 +1681,10 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	}
 
 	// we have databases to update/remove
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	for _, dbName := range deletedDatabases {
-		dbc, ok := sc.databases_[dbName]
+		dbc, ok := sc._databases[dbName]
 		if !ok {
 			base.DebugfCtx(ctx, base.KeyConfig, "Database %q already removed from server context after acquiring write lock - do not need to remove not removing database", base.MD(dbName))
 			continue
@@ -1723,8 +1723,8 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._fetchAndLoadDatabase(nonContextStruct, dbName, forceReload)
 }
 
@@ -1809,8 +1809,8 @@ func (sc *ServerContext) findBucketWithCallback(ctx context.Context, callback fu
 
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	// fetch will update the databses
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._fetchDatabase(ctx, dbName)
 }
 
@@ -1880,8 +1880,8 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 }
 
 func (sc *ServerContext) handleInvalidDatabaseConfig(ctx context.Context, bucket string, cnf DatabaseConfig) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	sc._handleInvalidDatabaseConfig(ctx, bucket, cnf, nil)
 }
 
@@ -1895,9 +1895,9 @@ func (sc *ServerContext) _handleInvalidDatabaseConfig(ctx context.Context, bucke
 func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string) (bucketName string, found bool) {
 	// Minimal representation of config struct to be tolerant of invalid database configurations where we still need to find a database name
 	// see if we find the database in-memory first, otherwise fall back to scanning buckets for db configs
-	sc.lock.RLock()
-	dbc, ok := sc.databases_[dbName]
-	sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	dbc, ok := sc._databases[dbName]
+	sc._databasesLock.RUnlock()
 
 	if ok {
 		return dbc.Bucket.GetName(), true
@@ -1948,7 +1948,7 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 		sc.fetchConfigsLastUpdate = time.Now()
 	}
 
-	return sc.dbConfigs, nil
+	return sc._dbConfigs, nil
 }
 
 // GetBucketNames returns a slice of the bucket names associated with the server context
@@ -2064,8 +2064,8 @@ func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[st
 }
 
 func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig) (count int) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._applyConfigs(ctx, dbNameConfigs, false, false)
 }
 
@@ -2104,13 +2104,13 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// skip if we already have this config loaded, and we've got a cas value to compare with
-	_, exists := sc.dbRegistry[cnf.Name]
+	_, exists := sc._dbRegistry[cnf.Name]
 	if exists {
 		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.InfofCtx(ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
-			if sc.dbConfigs[cnf.Name].cfgCas >= cnf.cfgCas {
+			if sc._dbConfigs[cnf.Name].cfgCas >= cnf.cfgCas {
 				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
@@ -2211,8 +2211,8 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 }
 
 func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {
-	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
-	for _, dbContext := range sc.databases_ {
+	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc._databases))
+	for _, dbContext := range sc._databases {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
 			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
@@ -2272,7 +2272,7 @@ func (sc *ServerContext) _findDuplicateCollections(cnf DatabaseConfig) []string 
 	// If scopes aren't defined, check the default collection
 	if cnf.Scopes == nil {
 		defaultFQName := base.FullyQualifiedCollectionName(*cnf.Bucket, base.DefaultScope, base.DefaultCollection)
-		existingDbName, ok := sc.collectionRegistry[defaultFQName]
+		existingDbName, ok := sc._collectionRegistry[defaultFQName]
 		if ok && existingDbName != cnf.Name {
 			duplicatedCollections = append(duplicatedCollections, defaultFQName)
 		}
@@ -2280,7 +2280,7 @@ func (sc *ServerContext) _findDuplicateCollections(cnf DatabaseConfig) []string 
 		for scopeName, scope := range cnf.Scopes {
 			for collectionName, _ := range scope.Collections {
 				fqName := base.FullyQualifiedCollectionName(*cnf.Bucket, scopeName, collectionName)
-				existingDbName, ok := sc.collectionRegistry[fqName]
+				existingDbName, ok := sc._collectionRegistry[fqName]
 				if ok && existingDbName != cnf.Name {
 					duplicatedCollections = append(duplicatedCollections, fqName)
 				}

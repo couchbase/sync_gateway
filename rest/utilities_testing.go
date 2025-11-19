@@ -2412,20 +2412,20 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 }
 
 func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 	return sc._isDatabaseSuspended(dbName)
 }
 
 func (sc *ServerContext) getBucketSpec(dbName string) base.BucketSpec {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	return sc.databases_[dbName].BucketSpec
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
+	return sc._databases[dbName].BucketSpec
 }
 
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 
 	return sc._suspendDatabase(ctx, dbName)
 }
@@ -2755,8 +2755,8 @@ func JsonToMap(t *testing.T, jsonStr string) map[string]any {
 
 // reloadDatabaseWithConfigLoadFromBucket forces reload of db as if it was being picked up from the bucket
 func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
 }
 

@@ -70,14 +70,16 @@ type serverInfo struct {
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	Config                        *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig          *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig              bool
-	dbRegistry                    map[string]struct{}               // registry of dbNames, used to ensure uniqueness even when db isn't active
-	collectionRegistry            map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
-	dbConfigs                     map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
-	databases_                    map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
-	lock                          sync.RWMutex
+	Config               *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig     bool
+
+	_dbRegistry         map[string]struct{}               // _dbRegistry is a map of db names, used to ensure uniqueness even when db isn't active
+	_collectionRegistry map[string]string                 // _collectionRegistry is a map of fully qualified collection name to db name, used for local uniqueness checks
+	_dbConfigs          map[string]*RuntimeDatabaseConfig // _dbConfigs is a map of db name to the RuntimeDatabaseConfig
+	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext
+	_databasesLock      sync.RWMutex                      // Lock for _databases and other db-specific maps above
+
 	statsContext                  *statsContext
 	BootstrapContext              *bootstrapContext
 	HTTPClient                    *http.Client
@@ -93,8 +95,7 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager       // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
-	// handle sgcollect processes for a given Server
-	SGCollect *sgCollect
+	SGCollect                     *sgCollect // singleton instance for this server's sgcollect_info process
 }
 
 type ActiveReplicationsCounter struct {
@@ -162,10 +163,10 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	sc := &ServerContext{
 		Config:              config,
 		persistentConfig:    persistentConfig,
-		dbRegistry:          map[string]struct{}{},
-		collectionRegistry:  map[string]string{},
-		dbConfigs:           map[string]*RuntimeDatabaseConfig{},
-		databases_:          map[string]*db.DatabaseContext{},
+		_dbRegistry:         map[string]struct{}{},
+		_collectionRegistry: map[string]string{},
+		_dbConfigs:          map[string]*RuntimeDatabaseConfig{},
+		_databases:          map[string]*db.DatabaseContext{},
 		DatabaseInitManager: &DatabaseInitManager{},
 		HTTPClient:          http.DefaultClient,
 		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
@@ -214,8 +215,8 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	ctx, cancelFn := context.WithTimeout(ctx, timeout)
 	defer cancelFn()
 	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value any) {
-		sc.lock.RLock()
-		defer sc.lock.RUnlock()
+		sc._databasesLock.RLock()
+		defer sc._databasesLock.RUnlock()
 		if len(sc._httpServers) == len(allServers) {
 			return false, nil, nil
 		}
@@ -234,15 +235,15 @@ func (sc *ServerContext) getServerAddr(s serverType) (string, error) {
 }
 
 func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	sc._httpServers[t] = s
 }
 
 // getHTTPServer returns information about the given HTTP server.
 func (sc *ServerContext) getHTTPServer(t serverType) (*serverInfo, error) {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 	s, ok := sc._httpServers[t]
 	if !ok {
 		return nil, fmt.Errorf("server type %q not found running in server context", t)
@@ -275,21 +276,23 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 
 	// close cached bootstrap bucket connections
 	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
 		sc.BootstrapContext.Connection.Close()
 	}
 
-	for _, db := range sc.databases_ {
+	for _, db := range sc._databases {
 		db.Close(ctx)
 		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
-	sc.databases_ = nil
+	sc._databases = nil
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	for _, s := range sc._httpServers {
 		if s.server != nil {
 			base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
@@ -320,9 +323,9 @@ func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.Data
 // GetActiveDatabase attempts to return the DatabaseContext of a loaded database. If not found, the database name will be
 // validated to make sure it's valid and then an error returned.
 func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, error) {
-	sc.lock.RLock()
-	dbc := sc.databases_[name]
-	sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	dbc := sc._databases[name]
+	sc._databasesLock.RUnlock()
 	if dbc != nil {
 		return dbc, nil
 	} else if db.ValidateDatabaseName(name) != nil {
@@ -352,9 +355,9 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name, false)
 		}
 		if dbConfigFound {
-			sc.lock.RLock()
-			defer sc.lock.RUnlock()
-			dbc := sc.databases_[name]
+			sc._databasesLock.RLock()
+			defer sc._databasesLock.RUnlock()
+			dbc := sc._databases[name]
 			if dbc != nil {
 				return dbc, dbConfigFound, nil
 			}
@@ -393,9 +396,9 @@ func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
 }
 
 func (sc *ServerContext) GetDatabaseConfig(name string) *RuntimeDatabaseConfig {
-	sc.lock.RLock()
-	config, ok := sc.dbConfigs[name]
-	sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	config, ok := sc._dbConfigs[name]
+	sc._databasesLock.RUnlock()
 	if !ok {
 		return nil
 	}
@@ -403,11 +406,11 @@ func (sc *ServerContext) GetDatabaseConfig(name string) *RuntimeDatabaseConfig {
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 
-	names := make([]string, 0, len(sc.databases_))
-	for name := range sc.databases_ {
+	names := make([]string, 0, len(sc._databases))
+	for name := range sc._databases {
 		names = append(names, name)
 	}
 	slices.Sort(names)
@@ -415,11 +418,11 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 }
 
 func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 
-	dbs := make([]DbSummary, 0, len(sc.databases_))
-	for name, dbctx := range sc.databases_ {
+	dbs := make([]DbSummary, 0, len(sc._databases))
+	for name, dbctx := range sc._databases {
 		state := db.RunStateString[atomic.LoadUint32(&dbctx.State)]
 		summary := DbSummary{
 			DBName:        name,
@@ -441,7 +444,7 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
 	for name, invalidConfig := range sc.invalidDatabaseConfigTracking.dbNames {
 		// skip adding any invalid dbs with no error associated with them or that exist in above list
-		if invalidConfig.databaseError == nil || sc.databases_[name] != nil {
+		if invalidConfig.databaseError == nil || sc._databases[name] != nil {
 			continue
 		}
 		summary := DbSummary{
@@ -458,14 +461,14 @@ func (sc *ServerContext) allDatabaseSummaries() []DbSummary {
 	return dbs
 }
 
-// AllDatabases returns a copy of the databases_ map.
+// AllDatabases returns a copy of the _databases map.
 func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 
-	databases := make(map[string]*db.DatabaseContext, len(sc.databases_))
+	databases := make(map[string]*db.DatabaseContext, len(sc._databases))
 
-	maps.Copy(databases, sc.databases_)
+	maps.Copy(databases, sc._databases)
 	return databases
 }
 
@@ -478,16 +481,16 @@ type PostUpgradeDatabaseResult struct {
 
 // PostUpgrade performs post-upgrade processing for each database
 func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpgradeResults PostUpgradeResult, err error) {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 
 	var errs *base.MultiError
 	buckets := make(map[string]base.Bucket)                       // map of bucket name to bucket object
-	dbs := make(map[string]string, len(sc.databases_))            // map of db name to bucket name
-	dbDesignDocs := make(map[string][]string, len(sc.databases_)) // map of db name to removed design docs
+	dbs := make(map[string]string, len(sc._databases))            // map of db name to bucket name
+	dbDesignDocs := make(map[string][]string, len(sc._databases)) // map of db name to removed design docs
 	bucketInUseIndexes := make(map[string]db.CollectionIndexes)   // map of buckets to in use index names
 	bucketRemovedIndexes := make(map[string][]string)             // map of bucket name to removed index names
-	for dbName, database := range sc.databases_ {
+	for dbName, database := range sc._databases {
 		bucketName := database.Bucket.GetName()
 		dbs[dbName] = bucketName
 		buckets[bucketName] = database.Bucket
@@ -530,8 +533,8 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 		}
 		bucketRemovedIndexes[bucketName] = removedIndexes
 	}
-	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
-	for dbName, database := range sc.databases_ {
+	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc._databases))
+	for dbName, database := range sc._databases {
 		postUpgradeResults[dbName] = PostUpgradeDatabaseResult{
 			RemovedDDocs:   dbDesignDocs[dbName],
 			RemovedIndexes: bucketRemovedIndexes[database.Bucket.GetName()],
@@ -544,7 +547,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 // Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool, forceOnline bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(ctx, reloadDbName)
-	config := sc.dbConfigs[reloadDbName]
+	config := sc._dbConfigs[reloadDbName]
 	return sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig, getOrAddDatabaseConfigOptions{
 		useExisting: true,
 		failFast:    failFast,
@@ -555,16 +558,16 @@ func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName strin
 // Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string, forceOnline bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
-	sc.lock.Lock()
+	sc._databasesLock.Lock()
 	dbContext, err := sc._reloadDatabase(ctx, reloadDbName, false, forceOnline)
-	sc.lock.Unlock()
+	sc._databasesLock.Unlock()
 
 	return dbContext, err
 }
 
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, false)
 }
 
@@ -586,8 +589,8 @@ func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config D
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
@@ -676,7 +679,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return
 		}
 		// database exists in global map, management is deferred to REST api
-		_, dbRegistered := sc.databases_[dbName]
+		_, dbRegistered := sc._databases[dbName]
 		if dbRegistered {
 			return
 		}
@@ -691,7 +694,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	previousDatabase := sc.databases_[dbName]
+	previousDatabase := sc._databases[dbName]
 	if previousDatabase != nil {
 		if options.useExisting {
 			return previousDatabase, nil
@@ -1032,7 +1035,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		} else {
 			stateChangeMsg = dbLoadedStateChangeMsg + " in offline state"
 		}
-		// Defer state change event to after the databases are registered. This should not matter because this function holds ServerContext.lock and databases_ can't be read while the lock is present.
+		// Defer state change event to after the databases are registered. This should not matter because this function holds ServerContext._databasesLock and _databases can't be read while the lock is present.
 		defer func() {
 			atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", stateChangeMsg, &sc.Config.API.AdminInterface)
@@ -1042,11 +1045,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// Register it so HTTP handlers can find it:
-	sc.databases_[dbcontext.Name] = dbcontext
-	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
-	sc.dbRegistry[dbName] = struct{}{}
+	sc._databases[dbcontext.Name] = dbcontext
+	sc._dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
+	sc._dbRegistry[dbName] = struct{}{}
 	for _, name := range fqCollections {
-		sc.collectionRegistry[name] = dbName
+		sc._collectionRegistry[name] = dbName
 	}
 
 	if !startOnlineProcesses {
@@ -1131,9 +1134,9 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 }
 
 func (sc *ServerContext) GetDbVersion(dbName string) string {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	currentDbConfig, ok := sc.dbConfigs[dbName]
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
+	currentDbConfig, ok := sc._dbConfigs[dbName]
 	if !ok {
 		return ""
 	}
@@ -1644,8 +1647,8 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 
 // RemoveDatabase is called when an external request is made to delete the database
 func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string, reason string) bool {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 
 	// If async init is running for the database, cancel it for an external remove.  (cannot be
 	// done in _removeDatabase, as this is called during reload)
@@ -1658,19 +1661,19 @@ func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string, reas
 
 // _unloadDatabase unloads and stops the database, but does not remove the in-memory config.
 func (sc *ServerContext) _unloadDatabase(ctx context.Context, dbName string) bool {
-	dbCtx := sc.databases_[dbName]
+	dbCtx := sc._databases[dbName]
 	if dbCtx == nil {
 		return false
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
 	dbCtx.Close(ctx)
-	delete(sc.databases_, dbName)
+	delete(sc._databases, dbName)
 	return true
 }
 
 // _removeDatabase unloads and removes all references to the given database.
 func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) bool {
-	dbCtx := sc.databases_[dbName]
+	dbCtx := sc._databases[dbName]
 	if dbCtx == nil {
 		return false
 	}
@@ -1678,30 +1681,30 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
-	delete(sc.dbConfigs, dbName)
-	delete(sc.dbRegistry, dbName)
-	for fqCollection, registryDbName := range sc.collectionRegistry {
+	delete(sc._dbConfigs, dbName)
+	delete(sc._dbRegistry, dbName)
+	for fqCollection, registryDbName := range sc._collectionRegistry {
 		if dbName == registryDbName {
-			delete(sc.collectionRegistry, fqCollection)
+			delete(sc._collectionRegistry, fqCollection)
 		}
 	}
 	return true
 }
 
 func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
-	if config, loaded := sc.dbConfigs[dbName]; loaded && config.isSuspended {
+	if config, loaded := sc._dbConfigs[dbName]; loaded && config.isSuspended {
 		return true
 	}
 	return false
 }
 
 func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) error {
-	dbCtx := sc.databases_[dbName]
+	dbCtx := sc._databases[dbName]
 	if dbCtx == nil {
 		return base.ErrNotFound
 	}
 
-	config := sc.dbConfigs[dbName]
+	config := sc._dbConfigs[dbName]
 	if config != nil && !base.ValDefault(config.Suspendable, sc.Config.IsServerless()) {
 		return ErrSuspendingDisallowed
 	}
@@ -1718,20 +1721,20 @@ func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) er
 }
 
 func (sc *ServerContext) unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 
 	return sc._unsuspendDatabase(ctx, dbName)
 }
 
 func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
-	dbCtx := sc.databases_[dbName]
+	dbCtx := sc._databases[dbName]
 	if dbCtx != nil {
 		return dbCtx, nil
 	}
 
 	// Check if database is in dbConfigs so no need to search through buckets
-	if dbConfig, ok := sc.dbConfigs[dbName]; ok {
+	if dbConfig, ok := sc._dbConfigs[dbName]; ok {
 		if !dbConfig.isSuspended {
 			base.WarnfCtx(ctx, "attempting to unsuspend database %q that is not suspended", base.MD(dbName))
 		}
@@ -1748,7 +1751,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
-			delete(sc.dbConfigs, dbName)
+			delete(sc._dbConfigs, dbName)
 			return nil, err
 		} else if err != nil {
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
@@ -1858,9 +1861,9 @@ func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {
 
 // Updates stats that are more efficient to calculate at stats collection time
 func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	for _, dbContext := range sc.databases_ {
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
+	for _, dbContext := range sc._databases {
 		dbState := atomic.LoadUint32(&dbContext.State)
 		if dbState == db.DBOnline {
 			dbContext.UpdateCalculatedStats(ctx)
@@ -2334,13 +2337,13 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 // removeBucketAndRecreateDatabase will flush all data from the backing bucket associated with this database. Note, this will take down
 // other databases backed by the same bucket. It will recreate an empty database from the existing configuration.
 func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, dbName string, deleteFunc func(base.BucketSpec) error) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	config, ok := sc.dbConfigs[dbName]
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
+	config, ok := sc._dbConfigs[dbName]
 	if !ok {
 		return fmt.Errorf("no config found for database %q", dbName)
 	}
-	for otherDBName, dbCtx := range sc.databases_ {
+	for otherDBName, dbCtx := range sc._databases {
 		if dbCtx.Bucket.GetName() == *config.Bucket {
 			// If async init is running for the database, cancel it for an external remove.  (cannot be
 			// done in _removeDatabase, as this is called during reload)
@@ -2376,7 +2379,7 @@ func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, db
 			return err
 		}
 		// store cas in db config after update
-		sc.dbConfigs[dbName].cfgCas = cas
+		sc._dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Re-open database and add to Sync Gateway
 		_, err := sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig,
@@ -2393,7 +2396,7 @@ func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, db
 
 func (sc *ServerContext) getBucketCCVSettings() map[string]bool {
 	bucketCCVSettings := make(map[string]bool)
-	for _, _db := range sc.databases_ {
+	for _, _db := range sc._databases {
 		bucketName := _db.BucketSpec.BucketName
 		bucketCCVSettings[bucketName] = _db.CachedCCVEnabled.Load()
 	}
