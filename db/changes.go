@@ -480,7 +480,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelID().Name), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(ctx, paginationOptions)
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyChanges, "Could not retrieve changes for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
+				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
 				change := ChangeEntry{
 					Err: base.ErrChannelFeed,
 				}
@@ -995,8 +995,8 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 							feeds[i] = nil
 						} else {
 							// On feed error, send the error and exit changes processing
-							if current[i].Err == base.ErrChannelFeed {
-								base.InfofCtx(ctx, base.KeyChanges, "Could not read changes feed: %v", current[i].Err)
+							if options.ChangesCtx.Err() != nil {
+								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
 								select {
 								case <-options.ChangesCtx.Done():
 								case output <- current[i]:
