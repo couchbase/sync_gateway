@@ -612,19 +612,20 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return rawDoc, syncData, nil
 }
 
-func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
-	if dataType&base.MemcachedDataTypeXattr == 0 {
-		return unmarshalDocument(docid, data)
+// unmarshalDocumentFromFeed takes a sgbucket.FeedEvent and unmarshals it into a Document struct.
+func unmarshalDocumentFromFeed(ctx context.Context, event sgbucket.FeedEvent, userXattrKey string) (*Document, error) {
+	if event.DataType&base.MemcachedDataTypeXattr == 0 {
+		return unmarshalDocument(string(event.Key), event.Value)
 	}
-	xattrKeys := []string{base.SyncXattrName}
+	xattrKeys := []string{base.SyncXattrName, base.MouXattrName, base.VvXattrName, base.VirtualXattrRevSeqNo}
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
 	}
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
+	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, event.Value)
 	if err != nil {
 		return nil, err
 	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
+	return unmarshalDocumentWithXattrs(ctx, string(event.Key), body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, event.Cas, DocUnmarshalAll)
 }
 
 func (doc *SyncData) HasValidSyncData() bool {

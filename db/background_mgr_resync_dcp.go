@@ -124,7 +124,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
-		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 
 		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
@@ -146,19 +145,25 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
-		collectionCtx := databaseCollection.AddCollectionContext(ctx)
-		_, unusedSequences, err := (&DatabaseCollectionWithUser{
-			DatabaseCollection: databaseCollection,
-		}).resyncDocument(collectionCtx, docID, key, regenerateSequences, []uint64{})
+		ctx := databaseCollection.AddCollectionContext(ctx)
+		doc, err := unmarshalDocumentFromFeed(ctx, event, databaseCollection.userXattrKey())
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Error unmarshalling doc %q from DCP feed: %v", resyncLoggingID, base.UD(docID), err)
+			return false
+		}
 
-		databaseCollection.releaseSequences(collectionCtx, unusedSequences)
+		unusedSequences, err := (&DatabaseCollectionWithUser{
+			DatabaseCollection: databaseCollection,
+		}).resyncDocument(ctx, doc, regenerateSequences)
+
+		databaseCollection.releaseSequences(ctx, unusedSequences)
 
 		if err == nil {
 			r.DocsChanged.Add(1)
 			db.DbStats.Database().ResyncNumChanged.Add(1)
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
-		} else if err != base.ErrUpdateCancel {
-			base.WarnfCtx(collectionCtx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
+		} else if !errors.Is(err, base.ErrUpdateCancel) {
+			base.WarnfCtx(ctx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
 		}
 		return true
 	}
@@ -260,6 +265,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			}
 			db.RequireResync = collectionsRequiringResync
 		}
+		base.WarnfCtx(ctx, "[%s] Resync DCP feed processing completed with error: %v", resyncLoggingID, err)
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
 		err = dcpClient.Close()
@@ -275,7 +281,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 	}
-
+	base.WarnfCtx(ctx, "[%s] Resync DCP process completed successfully.", resyncLoggingID)
 	return nil
 }
 

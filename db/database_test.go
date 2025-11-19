@@ -3657,9 +3657,6 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Walrus doesn't support xattr")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -3690,7 +3687,9 @@ func Test_resyncDocument(t *testing.T) {
 	_, err = collection.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
-	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+	preResyncDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	_, err = collection.resyncDocument(ctx, preResyncDoc, false)
 	require.NoError(t, err)
 	err = collection.WaitForPendingChanges(ctx)
 	require.NoError(t, err)
