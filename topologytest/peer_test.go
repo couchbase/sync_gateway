@@ -127,6 +127,21 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 	}
 }
 
+func (p Peers) PeerList() []string {
+	peerNames := slices.Collect(maps.Keys(p))
+	return peerNames
+}
+
+func IsServerSidePeer(p []Peer) bool {
+	for _, v := range p {
+		if v.Type() == PeerTypeCouchbaseServer || v.Type() == PeerTypeSyncGateway {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // NonImportSortedPeers returns a sorted iterator peers that will not cause import operations. For example:
 //   - cbs1 <-> sg1 <-> cbl1 would return sg1 and cbl1, but not cbs1
 //   - cbs1 <-> cbs2 would return cbs1 and cbs2
@@ -243,6 +258,10 @@ func (to Topology) ActivePeers() iter.Seq2[string, Peer] {
 // SortedPeers returns a sorted list of peers by name, for deterministic output.
 func (to Topology) SortedPeers() iter.Seq2[string, Peer] {
 	return to.peers.SortedPeers()
+}
+
+func (to Topology) PeersInTopology() []string {
+	return to.peers.PeerList()
 }
 
 // CompareRevTreeOnly is true for a given topology when comparing only revtree is correct.

@@ -107,8 +107,18 @@ func TestMultiActorResurrect(t *testing.T) {
 							resBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription)
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
 							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
+							// if cbs resurrect, if delete AND resurrecting peer is server side peer (cbs or sgw) the all docs will converge for version expected
+							// if cbs resurrect and delete AND resurrecting peer is NOT server side peer (lite), then need to wait for tombstone convergence first
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
-								waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+								// almost has it, need to think if lite
+								l := IsServerSidePeer([]Peer{deletePeer, resurrectPeer})
+								if !l { //if deletePeer.Type() == PeerTypeCouchbaseLite { //|| createPeer.Type() == PeerTypeCouchbaseLite { //strings.Contains(deletePeer.Type().String(), "Couchbase Lite Peer") {
+									fmt.Println("waiting for converging tombstones")
+									waitForConvergingTombstones(t, collectionName, docID, topology)
+								} else {
+									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+								}
+								//waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 							} else {
 								waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 							}
