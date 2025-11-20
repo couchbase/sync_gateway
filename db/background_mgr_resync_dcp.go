@@ -131,7 +131,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return true
 		}
 		// Don't want to process raw binary docs
-		// The binary check should suffice but for additional safety also check for empty bodies
+		// The binary check should suffice but for additional safety also check for empty bodies. This will also avoid
+		// processing tombstones.
 		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
 			return true
 		}

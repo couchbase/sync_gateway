@@ -1828,8 +1828,8 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid 
 	var shouldUpdate bool
 	var updatedExpiry *uint32
 	writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-		// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-		// so deleteDoc is always returned as false.
+		// resyncDocument is not called on tombstoned documents, so this value will only be empty if the document was
+		// deleted between DCP event and calling this function. In any case, we do not need to update it.
 		if len(currentValue) == 0 {
 			return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 		}

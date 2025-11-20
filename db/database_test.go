@@ -3735,7 +3735,6 @@ func Test_resyncDocument(t *testing.T) {
 			}
 			assert.True(t, found)
 
-			require.NoError(t, err)
 			require.NotNil(t, postResyncDoc.HLV)
 			require.Equal(t, Version{
 				SourceID: db.EncodedSourceID,
