@@ -933,8 +933,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	require.NoError(t, err)
 }
 
-// RequireBackgroundManagerState waits for a BackgroundManager to reach a given state within 10 seconds or fails test
-// harness.
+// RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
 func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
 	if !base.UnitTestUrlIsWalrus() {
