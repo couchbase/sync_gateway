@@ -938,8 +938,8 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
 	if !base.UnitTestUrlIsWalrus() {
-		// Increase wait time for CI tests against Couchbase Server with GSI disabled (views), some queries take a
-		// longer time to run
+		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
+		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
 		waitTime = 30 * time.Second
 	}
 	ctx := base.TestCtx(t)
