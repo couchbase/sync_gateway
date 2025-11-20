@@ -236,7 +236,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			}
 			err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
 			if err != nil {
-				return fmt.Errorf("Could not invalid principal documents: %w", err)
+				return fmt.Errorf("Could not invalidate principal documents: %w", err)
 			}
 
 		}
