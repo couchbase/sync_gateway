@@ -111,10 +111,10 @@ func (h *handler) handleCreateDB() error {
 			SGVersion:  base.ProductVersion.String(),
 		}
 
-		h.server.lock.Lock()
-		defer h.server.lock.Unlock()
+		h.server._databasesLock.Lock()
+		defer h.server._databasesLock.Unlock()
 
-		if _, exists := h.server.databases_[dbName]; exists {
+		if _, exists := h.server._databases[dbName]; exists {
 			return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
 				"Duplicate database name %q", dbName)
 		}
@@ -154,7 +154,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 		// store the cas in the loaded config after a successful insert
-		h.server.dbConfigs[dbName].cfgCas = cas
+		h.server._dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
 		if err := config.setup(h.ctx(), dbName, BootstrapConfig{}, nil, nil, false); err != nil {
@@ -822,9 +822,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 	auditDbAuditEnabled(h.ctx(), dbName, previousAuditEnabled, updatedAuditEnabled, updatedAuditEvents)
 	// store the cas in the loaded config after a successful update
 	h.setEtag(updatedDbConfig.Version)
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
-	h.server.dbConfigs[dbName].cfgCas = cas
+	h.server._databasesLock.Lock()
+	defer h.server._databasesLock.Unlock()
+	h.server._dbConfigs[dbName].cfgCas = cas
 
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
@@ -1147,8 +1147,8 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 		return err
 	}
 
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
+	h.server._databasesLock.Lock()
+	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
@@ -1216,8 +1216,8 @@ func (h *handler) handlePutCollectionConfigSync() error {
 		return err
 	}
 
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
+	h.server._databasesLock.Lock()
+	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
@@ -1316,8 +1316,8 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 		return err
 	}
 
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
+	h.server._databasesLock.Lock()
+	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
@@ -1386,8 +1386,8 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 		return err
 	}
 
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
+	h.server._databasesLock.Lock()
+	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
@@ -1544,7 +1544,7 @@ func (h *handler) handleGetStatus() error {
 		status.Vendor.Version = base.ProductAPIVersion
 	}
 
-	for _, database := range h.server.databases_ {
+	for _, database := range h.server._databases {
 		lastSeq := uint64(0)
 		runState := db.RunStateString[atomic.LoadUint32(&database.State)]
 
