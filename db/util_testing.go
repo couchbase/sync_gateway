@@ -933,16 +933,24 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	require.NoError(t, err)
 }
 
-// RequireBackgroundManagerState waits for a BackgroundManager to reach a given state within 10 seconds or fails test
-// harness.
-func RequireBackgroundManagerState(t testing.TB, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
+// RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
+func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
+	waitTime := 10 * time.Second
+	if !base.UnitTestUrlIsWalrus() {
+		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
+		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
+		waitTime = 30 * time.Second
+	}
+	ctx := base.TestCtx(t)
+	var status *BackgroundManagerStatus
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		var status BackgroundManagerStatus
+		status = nil
 		rawStatus, err := mgr.GetStatus(ctx)
 		assert.NoError(c, err)
 		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
-		assert.Equal(c, expState, status.State)
-	}, time.Second*10, time.Millisecond*100)
+		assert.Equal(c, expState, status.State, "BackgroundManager did not reach expected state in %d seconds. Current status: %s", int(waitTime.Seconds()), string(rawStatus))
+	}, waitTime, time.Millisecond*100)
+	return *status
 }
 
 // AssertSyncInfoMetaVersion will assert that meta version is equal to current product version

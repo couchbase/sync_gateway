@@ -3590,7 +3590,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
-	collection.invalidateAllPrincipals(ctx, endSeq)
+	require.NoError(t, db.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{sgbucket.DataStoreNameImpl{Scope: collection.ScopeName, Collection: collection.Name}}, endSeq))
 	err = collection.WaitForPendingChanges(ctx)
 	assert.NoError(t, err)
 

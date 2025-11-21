@@ -428,11 +428,6 @@ func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename str
 	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
 }
 
-// invalidateAllPrincipals invalidates computed channels and roles for collection c, for all users and roles
-func (c *DatabaseCollection) invalidateAllPrincipals(ctx context.Context, endSeq uint64) {
-	c.dbCtx.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, endSeq)
-}
-
 func (c *DatabaseCollection) useMou() bool {
 	return c.dbCtx.UseMou()
 }

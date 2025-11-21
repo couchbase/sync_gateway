@@ -385,6 +385,6 @@ func getAttachmentMigrationManagerStatus(rt *rest.RestTester) db.AttachmentMigra
 // waitForAttachmentMigrationState waits for the AttachmentMigrationManager to reach the expected state and then returns
 // its status.
 func waitForAttachmentMigrationState(rt *rest.RestTester, expectedState db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
-	db.RequireBackgroundManagerState(rt.TB(), rt.Context(), rt.GetDatabase().AttachmentMigrationManager, expectedState)
+	db.RequireBackgroundManagerState(rt.TB(), rt.GetDatabase().AttachmentMigrationManager, expectedState)
 	return getAttachmentMigrationManagerStatus(rt)
 }

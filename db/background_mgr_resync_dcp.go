@@ -234,7 +234,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			for _, databaseCollection := range db.CollectionByID {
 				collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
 			}
-			db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
+			err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
+			if err != nil {
+				return fmt.Errorf("Could not invalidate principal documents: %w", err)
+			}
 
 		}
 
