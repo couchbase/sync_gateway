@@ -1853,7 +1853,6 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, doc *D
 	if rawGlobalXattr != nil {
 		xattrs[base.GlobalXattrName] = rawGlobalXattr
 	}
-	fmt.Printf("mou=%s\n", rawMouXattr)
 
 	opts := &sgbucket.MutateInOptions{
 		MacroExpansion: macroExpandSpec(base.SyncXattrName),

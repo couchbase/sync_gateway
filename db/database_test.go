@@ -3666,15 +3666,30 @@ func Test_resyncDocument(t *testing.T) {
 	testCases := []struct {
 		name   string
 		useHLV bool
+		regenerateSequences bool
 	}{
 		{
-			name:   "pre-4.0",
+			name:   "pre-4.0, regenerateSequences=true",
 			useHLV: true,
+			regenerateSequences: true,
 		},
+	{
+			name:   "pre-4.0, regenerateSequences=false",
+			useHLV: true,
+			regnerateSequences: false,
+		}
 		{
-			name:   "has_hlv",
+			name:   "has_hlv, regenerateSequences=false",
 			useHLV: false,
+			regnerateSequences: false,
 		},
+	{
+			name:   "has_hlv, regenerateSequences=true",
+			useHLV: false,
+			regenerateSequences: true,
+
+	},
+
 	}
 
 	for _, tc := range testCases {
@@ -3748,6 +3763,7 @@ func Test_resyncDocument(t *testing.T) {
 				PreviousRevSeqNo: preResyncDoc.RevSeqNo,
 			}, *postResyncDoc.MetadataOnlyUpdate)
 			assert.Equal(t, startingSyncFnCount+2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+			require.Equal(t, postResyncDoc.GetRevTreeID(), preResyncDoc.GetRevTreeID())
 		})
 	}
 }
