@@ -996,7 +996,9 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 						} else {
 							// On feed error, send the error and exit changes processing
 							if current[i].Err == base.ErrChannelFeed {
-								base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
+								if options.ChangesCtx.Err() == nil {
+									base.WarnfCtx(ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
+								}
 								select {
 								case <-options.ChangesCtx.Done():
 								case output <- current[i]:
