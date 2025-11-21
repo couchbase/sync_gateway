@@ -983,7 +983,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-	case Import:
+	case Import, Resync:
 		// Do not update HLV if the current document version (cas) is already included in the existing HLV, as either:
 		//    1. _vv.cvCAS == document.cas (current mutation is already present as cv), or
 		//    2. _mou.cas == document.cas (current mutation is already present as cv, and was imported on a different cluster)

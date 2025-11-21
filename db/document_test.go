@@ -16,6 +16,7 @@ import (
 	"log"
 	"reflect"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -771,4 +772,34 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetBucketDocument(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// use 120 days so expiry is actually a unix time
+	exp := uint32(time.Now().Add(24 * 120 * time.Hour).Unix())
+	body := []byte(`{"value":"test"}`)
+	xattrs := map[string][]byte{
+		base.SyncXattrName: []byte(`{"rev":"1-abc","sequence":1}`),
+	}
+	cas, err := collection.dataStore.WriteWithXattrs(ctx, "doc1", exp, 0, body, xattrs, nil, nil)
+	require.NoError(t, err)
+
+	doc, err := getBucketDocument(ctx, collection.DatabaseCollection, "doc1")
+	require.NoError(t, err)
+
+	expectedDoc := sgbucket.BucketDocument{
+		Body:   body,
+		Xattrs: xattrs,
+		Cas:    cas,
+		Expiry: exp,
+	}
+	if base.UnitTestUrlIsWalrus() {
+		expectedDoc.Expiry = 0 // Walrus doesn't support expiry via virtual xattr yet
+	}
+	require.Equal(t, expectedDoc, *doc)
 }
