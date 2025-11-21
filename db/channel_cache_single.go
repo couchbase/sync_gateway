@@ -410,10 +410,9 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 		return resultFromCache, nil
 	}
 
-	// Check whether the changes process has been terminated while we waited for the view lock, to avoid the view
-	// overhead in that case (and prevent feedback loop on query backlog)
+	// Check whether the changes process has been terminated before running a query
 	if options.ChangesCtx.Err() != nil {
-		return nil, fmt.Errorf("Changes feed cancelled while waiting for view lock")
+		return nil, fmt.Errorf("Changes feed cancelled %w", options.ChangesCtx.Err())
 	}
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
