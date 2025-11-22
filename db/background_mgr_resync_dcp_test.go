@@ -425,7 +425,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	// Resume process
 	err = resyncMgr.Start(ctx, options)
-	require.NoError(t, err)
+	require.NoError(t, err, "Error resuming stopped resync process %#+v", getResyncStats(resyncMgr.Process))
 
 	err = WaitForConditionWithOptions(t, func() bool {
 		var status BackgroundManagerStatus

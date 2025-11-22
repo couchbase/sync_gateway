@@ -223,12 +223,12 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 // avoid read/write races on vbucket data.  Calls to persist must be blocking on the worker goroutine, and vbuckets are
 // only assigned to a single worker
 func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
-
 	meta := WorkerMetadata{}
 	meta.DCPMeta = make(map[uint16]DCPMetadata)
 	for _, vbID := range vbIDs {
 		meta.DCPMeta[vbID] = m.metadata[vbID]
 	}
+	fmt.Printf("HONK m.setMetadataKey(workerID): %s\n", m.getMetadataKey(workerID))
 	err := m.dataStore.Set(m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
 		InfofCtx(ctx, KeyDCP, "Unable to persist DCP metadata: %v", err)
@@ -240,6 +240,7 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 
 func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 	var meta WorkerMetadata
+	fmt.Printf("HONK m.getMetadataKey(workerID): %s\n", m.getMetadataKey(workerID))
 	_, err := m.dataStore.Get(m.getMetadataKey(workerID), &meta)
 	if err != nil {
 		if IsDocNotFoundError(err) {

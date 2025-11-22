@@ -36,14 +36,13 @@ type changeListener struct {
 	dbCtx                    *DatabaseContext
 	bucket                   base.Bucket
 	bucketName               string            // Used for logging
-	tapFeed                  base.TapFeed      // Observes changes to bucket
 	tapNotifier              *sync.Cond        // Posts notifications when documents are updated
 	counter                  uint64            // Event counter; increments on every doc update
 	_terminateCheckCounter   uint64            // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts                map[string]uint64 // Latest count at which each doc key was updated
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
-	doneChan                 chan error         // Channel that's closed when DCP feed has exited
+	doneChan                 <-chan error       // Channel that's closed when DCP feed has exited
 	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
 	sgCfgPrefix              string             // SG config key prefix
 	started                  base.AtomicBool    // whether the feed has been started
@@ -97,14 +96,8 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		DBStats:            dbStats,
 		MetadataStoreType:  base.DCPMetadataStoreInMemory,
 	}
-
-	dcpClient, err := base.NewDCPClient(ctx, bucket, opts)
-	if err != nil {
-		return err
-	}
-
-	base.InfofCtx(ctx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-	listener.doneChan, err = dcpClient.Start(ctx)
+	var err error
+	listener.doneChan, err = base.StartDCPFeed(ctx, bucket, opts)
 	if err != nil {
 		return err
 	}
@@ -191,13 +184,6 @@ func (listener *changeListener) Stop(ctx context.Context) {
 		listener.tapNotifier.Broadcast()
 	}
 
-	if listener.tapFeed != nil {
-		err := listener.tapFeed.Close()
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyChanges, "Error closing listener tap feed: %v", err)
-		}
-	}
-
 	// Wait for mutation feed worker to terminate.
 	waitTime := MutationFeedStopMaxWait
 	select {
@@ -214,10 +200,6 @@ func (listener *changeListener) Stop(ctx context.Context) {
 	case <-time.After(waitTime):
 		base.WarnfCtx(ctx, "Timeout after %v of waiting for broadcast changes goroutine to terminate", waitTime)
 	}
-}
-
-func (listener *changeListener) TapFeed() base.TapFeed {
-	return listener.tapFeed
 }
 
 //////// NOTIFICATIONS:

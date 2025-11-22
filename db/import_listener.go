@@ -76,9 +76,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-		if il.bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !dbContext.OnlyDefaultCollection() {
-			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
-		}
+		collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
 	}
 	sort.Strings(collectionNamesByScope[scopeName])
 	if dbContext.OnlyDefaultCollection() {
@@ -108,7 +106,8 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			DBStats:          importFeedStatsMap.Map,
 			Callback:         il.ProcessFeedEvent,
 		}
-		return base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
+		_, err := base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
+		return err
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,

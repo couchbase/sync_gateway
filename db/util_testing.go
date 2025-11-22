@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -934,6 +935,20 @@ func RequireBackgroundManagerState(t testing.TB, ctx context.Context, mgr *Backg
 		assert.NoError(c, err)
 		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
 		assert.Equal(c, expState, status.State)
+	}, time.Second*10, time.Millisecond*100)
+	if !mgr.isClusterAware() || !slices.Contains([]BackgroundProcessState{
+		BackgroundProcessStateStopped,
+		BackgroundProcessStateCompleted,
+		BackgroundProcessStateError,
+	}, expState) {
+		return
+	}
+	// the lack of the heartbeat document is used to indicate that the cluster-aware background manager has fully stopped
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		docID := mgr.clusterAwareOptions.HeartbeatDocID()
+		exists, err := mgr.clusterAwareOptions.metadataStore.Exists(docID)
+		require.NoError(c, err)
+		assert.False(c, exists, "Expected heartbeat document %s to be removed when background manager is stopped", docID)
 	}, time.Second*10, time.Millisecond*100)
 }
 

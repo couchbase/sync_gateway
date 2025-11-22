@@ -36,13 +36,16 @@ func (dc *RosmarDCPClient) Start(ctx context.Context) (chan error, error) {
 		Scopes:           dc.opts.CollectionNames,
 		Backfill:         sgbucket.FeedResume,
 	}
+	if dc.opts.FromLatestSequence {
+		feedArgs.Backfill = sgbucket.FeedNoBackfill
+	}
 	err := dc.bucket.StartDCPFeed(ctx, feedArgs, dc.opts.Callback, nil)
 	if err != nil {
+		close(doneChan)
 		return nil, err
 	}
 	// This extra goroutine can be removed if sgbucket.FeedArguments.DoneChan is changed to chan error
 	go func() {
-		// DoneChan in rosmar is buggy, so wait for terminator instead of DoneChan
 		<-dc.doneChan
 		close(doneChan)
 	}()

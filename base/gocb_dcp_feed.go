@@ -93,14 +93,15 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientO
 		}
 	}
 	options := GoCBDCPClientOptions{
-		MetadataStoreType: opts.MetadataStoreType,
-		DbStats:           opts.DBStats,
-		CollectionIDs:     collectionIDs,
-		AgentPriority:     gocbcore.DcpAgentPriorityMed,
-		CheckpointPrefix:  opts.CheckpointPrefix,
-		OneShot:           opts.OneShot,
-		FailOnRollback:    opts.FailOnRollback,
-		InitialMetadata:   opts.InitialMetadata,
+		MetadataStoreType:          opts.MetadataStoreType,
+		DbStats:                    opts.DBStats,
+		CollectionIDs:              collectionIDs,
+		AgentPriority:              gocbcore.DcpAgentPriorityMed,
+		CheckpointPrefix:           opts.CheckpointPrefix,
+		OneShot:                    opts.OneShot,
+		FailOnRollback:             opts.FailOnRollback,
+		InitialMetadata:            opts.InitialMetadata,
+		CheckpointPersistFrequency: opts.CheckpointFrequency,
 	}
 
 	if opts.FromLatestSequence {

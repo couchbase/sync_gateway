@@ -106,19 +106,20 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 		}
 	}
 	client := &GoCBDCPClient{
-		workers:             make([]*DCPWorker, numWorkers),
-		numVbuckets:         numVbuckets,
-		callback:            callback,
-		ID:                  ID,
-		spec:                bucket.GetSpec(),
-		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
-		terminator:          make(chan bool),
-		doneChannel:         make(chan error, 1),
-		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    options.CheckpointPrefix,
-		dbStats:             options.DbStats,
-		agentPriority:       options.AgentPriority,
-		collectionIDs:       options.CollectionIDs,
+		workers:                    make([]*DCPWorker, numWorkers),
+		numVbuckets:                numVbuckets,
+		callback:                   callback,
+		ID:                         ID,
+		spec:                       bucket.GetSpec(),
+		supportsCollections:        bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
+		terminator:                 make(chan bool),
+		doneChannel:                make(chan error, 1),
+		failOnRollback:             options.FailOnRollback,
+		checkpointPrefix:           options.CheckpointPrefix,
+		dbStats:                    options.DbStats,
+		agentPriority:              options.AgentPriority,
+		collectionIDs:              options.CollectionIDs,
+		checkpointPersistFrequency: options.CheckpointPersistFrequency,
 	}
 
 	// Initialize active vbuckets
@@ -128,6 +129,7 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 	}
 
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
+	fmt.Printf("HONK checkpointPrefix=%s\n", checkpointPrefix)
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
 		// TODO: Change GetSingleDataStore to a metadata Store?

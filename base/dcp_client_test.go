@@ -460,12 +460,13 @@ func TestResumeStoppedFeed(t *testing.T) {
 	}
 
 	dcpClientOpts := DCPClientOptions{
-		ID:               feedID,
-		Callback:         counterCallback,
-		CollectionNames:  collectionNames,
-		OneShot:          true,
-		FailOnRollback:   false,
-		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		ID:                  feedID,
+		Callback:            counterCallback,
+		CollectionNames:     collectionNames,
+		OneShot:             true,
+		FailOnRollback:      false,
+		CheckpointPrefix:    DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		CheckpointFrequency: Ptr(0 * time.Second), // disable periodic checkpointing for test
 	}
 
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
@@ -497,12 +498,13 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	// Perform second one-shot DCP feed with the same ID, verify it resumes and completes
 	dcpClientOpts = DCPClientOptions{
-		FailOnRollback:   false,
-		OneShot:          true,
-		ID:               feedID,
-		Callback:         secondCallback,
-		CollectionNames:  collectionNames,
-		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		FailOnRollback:      false,
+		OneShot:             true,
+		ID:                  feedID,
+		Callback:            secondCallback,
+		CollectionNames:     collectionNames,
+		CheckpointPrefix:    DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		CheckpointFrequency: Ptr(0 * time.Second), // disable periodic checkpointing for test
 	}
 
 	dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
