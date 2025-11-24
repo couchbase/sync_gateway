@@ -162,7 +162,10 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	if err != nil {
 		return err
 	}
-	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
+	dcpFeedKey, err := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
+	if err != nil {
+		return err
+	}
 	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
@@ -307,12 +310,12 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
-// GenerateAttachmentMigrationDCPStreamName returns the DCP stream name for a resync.
-func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
-	return fmt.Sprintf(
+// GenerateAttachmentMigrationDCPStreamName returns the DCP stream name for attachment migration job.
+func GenerateAttachmentMigrationDCPStreamName(migrationID string) (string, error) {
+	return base.GenerateDcpStreamName(fmt.Sprintf(
 		"sg-%v:att_migration:%v",
 		base.ProductAPIVersion,
-		migrationID)
+		migrationID))
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run

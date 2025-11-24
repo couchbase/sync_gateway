@@ -95,18 +95,21 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
 
-	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
 	if !base.IsEnterpriseEdition() || !ok {
+		feedName, err := base.GenerateDcpStreamName(base.DCPImportFeedID)
+		if err != nil {
+			return err
+		}
 		opts := base.DCPClientOptions{
-			ID:               base.DCPImportFeedID, // FIXME, this should probably be uniquely named
+			ID:               feedName,
 			Terminator:       il.terminator,
 			CheckpointPrefix: il.checkpointPrefix,
 			CollectionNames:  collectionNamesByScope,
 			DBStats:          importFeedStatsMap.Map,
 			Callback:         il.ProcessFeedEvent,
 		}
-		_, err := base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
+		_, err = base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
 		return err
 	}
 

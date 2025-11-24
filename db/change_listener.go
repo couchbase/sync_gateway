@@ -87,8 +87,12 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 	}
 	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
 
+	feedName, err := base.GenerateDcpStreamName(base.DCPCachingFeedID)
+	if err != nil {
+		return err
+	}
 	opts := base.DCPClientOptions{
-		ID:                 base.DCPCachingFeedID,
+		ID:                 feedName,
 		Callback:           listener.ProcessFeedEvent,
 		Terminator:         listener.terminator,
 		FromLatestSequence: true,
@@ -96,7 +100,6 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		DBStats:            dbStats,
 		MetadataStoreType:  base.DCPMetadataStoreInMemory,
 	}
-	var err error
 	listener.doneChan, err = base.StartDCPFeed(ctx, bucket, opts)
 	if err != nil {
 		return err

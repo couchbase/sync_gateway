@@ -265,8 +265,12 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		}
 		return false
 	}
+	feedID, err := base.GenerateDcpStreamName("purgeFeed-" + bucket.GetName())
+	if err != nil {
+		return err
+	}
 	dcpClientOpts := base.DCPClientOptions{
-		ID:                "purgeFeed-" + bucket.GetName(),
+		ID:                feedID,
 		OneShot:           true,
 		FailOnRollback:    false,
 		CollectionNames:   collectionNames,

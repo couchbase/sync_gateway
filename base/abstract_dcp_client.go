@@ -57,6 +57,9 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 			return nil, fmt.Errorf("DCPClientOptions.CheckpointFrequency cannot be provided when MetadataStoreType is InMemory")
 		}
 	}
+	if len(opts.ID) > 200 {
+		return nil, fmt.Errorf("DCPClientOptions.ID length cannot exceed 200 characters, the kv limit")
+	}
 	underlyingBucket := GetBaseBucket(bucket)
 	if _, ok := underlyingBucket.(*rosmar.Bucket); ok {
 		return NewRosmarDCPClient(bucket, opts)

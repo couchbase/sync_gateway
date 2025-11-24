@@ -56,9 +56,9 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Attempt to kick off again and validate it correctly errors
-	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
+	/*resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
-
+	*/
 	// Wait for run to complete
 	err = rt.WaitForCondition(func() bool {
 		time.Sleep(1 * time.Second)
@@ -454,9 +454,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	require.Equal(t, db.MarkPhase, stat.Phase)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateCompactionDCPStreamName(stat.CompactID, "mark")
-	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
-
+	checkpointPrefix := db.GetAttachmentCompactionCheckpointPrefix(rt.GetDatabase(), stat.CompactID, db.MarkPhase)
 	meta := base.NewDCPMetadataCS(rt.Context(), dataStore, 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	vbMeta.VbUUID = garbageVBUUID

@@ -131,9 +131,10 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
-	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, MarkPhase)
-	clientOptions.Callback = callback
+	clientOptions, err := getCompactionDCPClientOptions(db, compactionID, MarkPhase, dataStore, callback)
+	if err != nil {
+		return 0, nil, "", err
+	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for mark phase of attachment compaction", compactionLoggingID)
 
@@ -368,8 +369,10 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
-	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, SweepPhase)
+	clientOptions, err := getCompactionDCPClientOptions(db, compactionID, SweepPhase, dataStore, callback)
+	if err != nil {
+		return 0, err
+	}
 	clientOptions.Callback = callback
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
@@ -496,11 +499,12 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		return true
 	}
 
-	clientOptions := getCompactionDCPClientOptions(dataStore, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
-	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
-	clientOptions.ID = GenerateCompactionDCPStreamName(compactionID, CleanupPhase)
-	clientOptions.Callback = callback
+	clientOptions, err := getCompactionDCPClientOptions(db, compactionID, CleanupPhase, dataStore, callback)
+	if err != nil {
+		return "", err
+	}
 
+	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for cleanup phase of attachment compaction", compactionLoggingID)
 
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
@@ -545,25 +549,34 @@ func getCompactionIDSubDocPath(compactionID string) string {
 }
 
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
-func getCompactionDCPClientOptions(dataStore sgbucket.DataStore, prefix string) base.DCPClientOptions {
+func getCompactionDCPClientOptions(db *Database, compactionID string, compactionAction string, dataStore sgbucket.DataStore, callback sgbucket.FeedEventCallbackFunc) (base.DCPClientOptions, error) {
+	prefix := getAttachmentionCompactionPrefix(compactionID, compactionAction)
+	feedID, err := base.GenerateDcpStreamName(prefix)
+	if err != nil {
+		return base.DCPClientOptions{}, err
+	}
 	return base.DCPClientOptions{
+		ID:                feedID,
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		CollectionNames: map[string][]string{
 			dataStore.ScopeName(): {dataStore.CollectionName()},
 		},
-		CheckpointPrefix: prefix,
-	}
+		CheckpointPrefix: GetAttachmentCompactionCheckpointPrefix(db.DatabaseContext, compactionID, compactionAction),
+		Callback:         callback,
+	}, nil
 }
 
-func GenerateCompactionDCPStreamName(compactionID, compactionAction string) string {
-	return fmt.Sprintf(
-		"sg-%v:att_compaction:%v_%v",
+func getAttachmentionCompactionPrefix(compactionID string, compactionAction string) string {
+	return fmt.Sprintf("sg-%v:att_compaction:%v_%v",
 		base.ProductAPIVersion,
 		compactionID,
 		compactionAction,
 	)
+}
+func GetAttachmentCompactionCheckpointPrefix(db *DatabaseContext, compactionID string, compactionAction string) string {
+	return getAttachmentionCompactionPrefix(compactionID, compactionAction) + db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 }
 
 // getAttachmentCompactionXattr returns the value of the attachment compaction xattr from a DCP stream. The value will be nil if the xattr is not found.

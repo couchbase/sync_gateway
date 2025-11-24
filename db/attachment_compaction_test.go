@@ -283,10 +283,8 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
 	require.NoError(t, err)
-	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
-	clientOptions := getCompactionDCPClientOptions(dataStore, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
-	clientOptions.ID = dcpFeedKey
-	clientOptions.Callback = func(sgbucket.FeedEvent) bool { return true }
+	clientOptions, err := getCompactionDCPClientOptions(testDb, t.Name(), CleanupPhase, dataStore, func(sgbucket.FeedEvent) bool { return true })
+	require.NoError(t, err)
 
 	dcpClient, err := base.NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
