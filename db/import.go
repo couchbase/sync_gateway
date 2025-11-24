@@ -61,7 +61,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 	if xattrs == nil {
 		xattrs = make(map[string][]byte)
 	}
-	xattrs[base.VirtualXattrRevSeqNo] = []byte(fmt.Sprintf("\"%d\"", importOpts.revSeqNo))
+	xattrs[base.VirtualXattrRevSeqNo] = marshalRevSeqNo(importOpts.revSeqNo)
 
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Body:   value,
@@ -115,11 +115,10 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	// put _mou on the xattrs to be able to find it later
 	if existingBucketDoc.Xattrs == nil {
 		existingBucketDoc.Xattrs = make(map[string][]byte)
 	}
-	existingBucketDoc.Xattrs[base.VirtualXattrRevSeqNo] = []byte(fmt.Sprintf("\"%d\"", importOpts.revSeqNo))
+	existingBucketDoc.Xattrs[base.VirtualXattrRevSeqNo] = marshalRevSeqNo(importOpts.revSeqNo)
 
 	return db.importDoc(ctx, docid, existingDoc.Body(ctx), importOpts.expiry, importOpts.isDelete, importOpts.revSeqNo, existingBucketDoc, importOpts.mode)
 }
@@ -212,8 +211,6 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 					return nil, nil, false, nil, err
 				}
 			}
-		} else {
-
 		}
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
