@@ -51,13 +51,12 @@ const (
 )
 
 const (
-	Import DocUpdateType = iota
+	MetadataOnly DocUpdateType = iota
 	NewVersion
 	ExistingVersion
 	ExistingVersionLegacyRev
 	ExistingVersionWithUpdateToHLV
 	NoHLVUpdateForTest
-	Resync
 )
 
 type DocUpdateType uint32
@@ -1850,10 +1849,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid 
 		}
 		doc.SetCrc32cUserXattrHash()
 
-		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
-		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		mouMatch := false // after writing this document, mou.cas != doc.cas since otherwise shouldUpdate would be false
-		doc, err = db.updateHLV(ctx, doc, Resync, mouMatch)
+		doc, err = db.updateHLV(ctx, doc, MetadataOnly)
 		if err != nil {
 			return sgbucket.UpdatedDoc{}, err
 		}

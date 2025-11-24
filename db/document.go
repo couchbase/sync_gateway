@@ -1428,19 +1428,24 @@ func (doc *Document) channelsForRevTreeID(revTreeID string) (base.Set, bool) {
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
-func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
+func computeMetadataOnlyUpdate(ctx context.Context, doc *Document) *MetadataOnlyUpdate {
 	var prevCas string
-	currentCasString := base.CasToString(currentCas)
-	if currentMou != nil && currentCasString == currentMou.HexCAS {
-		prevCas = currentMou.PreviousHexCAS
+	currentCasString := base.CasToString(doc.Cas)
+	if doc.MetadataOnlyUpdate != nil && currentCasString == doc.MetadataOnlyUpdate.HexCAS {
+		prevCas = doc.MetadataOnlyUpdate.PreviousHexCAS
 	} else {
 		prevCas = currentCasString
 	}
 
+	// if this value is zero, then the document was not fetched with $document.revid set
+	if doc.RevSeqNo == 0 {
+		base.AssertfCtx(ctx, "revSeqNo must be non-zero when computing MetadataOnlyUpdate for %d, not writing _mou for this document", base.UD(doc.ID))
+		return nil
+	}
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
 		PreviousHexCAS:   prevCas,
-		PreviousRevSeqNo: revNo,
+		PreviousRevSeqNo: doc.RevSeqNo,
 	}
 	return metadataOnlyUpdate
 }
@@ -1486,6 +1491,10 @@ func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 		return 0, fmt.Errorf("Failed convert rev seq number %s", revSeqNoBytes)
 	}
 	return revSeqNo, nil
+}
+
+func marshalRevSeqNo(revSeqNo uint64) []byte {
+	return []byte(strconv.FormatUint(revSeqNo, 10))
 }
 
 func (doc *Document) ExtractDocVersion() DocVersion {

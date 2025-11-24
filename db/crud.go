@@ -969,10 +969,11 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	return nil
 }
 
-// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
-func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool) (*Document, error) {
+// updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering.
+func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType) (*Document, error) {
 
 	hasHLV := d.HLV != nil
+
 	if d.HLV == nil {
 		d.HLV = &HybridLogicalVector{}
 		base.DebugfCtx(ctx, base.KeyVV, "No existing HLV for doc %s", base.UD(d.ID))
@@ -983,7 +984,9 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	case ExistingVersion:
 		// preserve any other logic on the HLV that has been done by the client, only update to cvCAS will be needed
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
-	case Import, Resync:
+	case MetadataOnly:
+		mouMatch := d.MetadataOnlyUpdate != nil && d.MetadataOnlyUpdate.CAS() == d.Cas
+		d.MetadataOnlyUpdate = computeMetadataOnlyUpdate(ctx, d)
 		// Do not update HLV if the current document version (cas) is already included in the existing HLV, as either:
 		//    1. _vv.cvCAS == document.cas (current mutation is already present as cv), or
 		//    2. _mou.cas == document.cas (current mutation is already present as cv, and was imported on a different cluster)
@@ -1023,6 +1026,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+		d.MetadataOnlyUpdate = nil
 	case ExistingVersionLegacyRev:
 		revTreeEncodedCV, err := LegacyRevToRevTreeEncodedVersion(d.GetRevTreeID())
 		if err != nil {
@@ -1034,6 +1038,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 		}
 		// update the cvCAS on the SGWrite event too
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
+		d.MetadataOnlyUpdate = nil
 	case NoHLVUpdateForTest:
 		// no hlv update event for testing purposes only (used to simulate pre upgraded write)
 		return d, nil
@@ -2242,7 +2247,6 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	// Store the new revision body into the doc:
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
 	doc.SetAttachments(newDoc.Attachments())
-	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
 	if doc.GetRevTreeID() == newRevID {
 		doc.NewestRev = ""
@@ -2539,14 +2543,6 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
-	mouMatch := false
-	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS() == doc.Cas {
-		mouMatch = doc.MetadataOnlyUpdate.CAS() == doc.Cas
-		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): _mou:%+v Metadata-only update match:%t", base.UD(doc.ID), doc.MetadataOnlyUpdate, mouMatch)
-	} else {
-		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
-	}
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2574,8 +2570,13 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	}
 
 	isWinningRev := doc.GetRevTreeID() == newRevID
-	if len(channelSet) > 0 && !isWinningRev {
-		doc.History[newRevID].Channels = channelSet
+	if !isWinningRev {
+		if len(channelSet) > 0 {
+			doc.History[newRevID].Channels = channelSet
+		}
+		if docUpdateEvent == MetadataOnly {
+			docUpdateEvent = NewVersion
+		}
 	}
 
 	if newAttachments != nil {
@@ -2610,7 +2611,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
-	doc, err = col.updateHLV(ctx, doc, docUpdateEvent, mouMatch)
+	doc, err = col.updateHLV(ctx, doc, docUpdateEvent)
 	if err != nil {
 		return
 	}
@@ -2702,7 +2703,13 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if expiry != nil {
 			initialExpiry = *expiry
 		}
-		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+		var xattrKeys []string
+		if isImport {
+			xattrKeys = db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys()
+		} else {
+			xattrKeys = db.syncGlobalSyncMouAndUserXattrKeys()
+		}
+		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, xattrKeys, initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return
@@ -2773,7 +2780,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr, base.VvXattrName: rawVvXattr}
-			if rawMouXattr != nil && db.useMou() {
+			if rawMouXattr != nil {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
 			}
 			if rawGlobalSync != nil {

@@ -801,5 +801,7 @@ func TestGetBucketDocument(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		expectedDoc.Expiry = 0 // Walrus doesn't support expiry via virtual xattr yet
 	}
+	require.Contains(t, doc.Xattrs, base.VirtualXattrRevSeqNo)
+	delete(doc.Xattrs, base.VirtualXattrRevSeqNo) // remove rev seq no for comparison
 	require.Equal(t, expectedDoc, *doc)
 }

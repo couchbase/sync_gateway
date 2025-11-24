@@ -477,14 +477,9 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
-			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+			existingBucketDoc, err := getBucketDocument(ctx, collection.DatabaseCollection, key)
+			require.NoError(t, err)
 
-			body = Body{}
-			err = body.Unmarshal(existingBucketDoc.Body)
-			assert.NoError(t, err, "Error unmarshalling body")
-
-			// Set the expiry value
 			syncMetaExpiryUnix := syncMetaExpiry.Unix()
 			expiry := uint32(syncMetaExpiryUnix)
 

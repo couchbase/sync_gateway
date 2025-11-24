@@ -3714,6 +3714,9 @@ func Test_resyncDocument(t *testing.T) {
 			}
 			doc, err := getBucketDocument(ctx, collection.DatabaseCollection, docID)
 			require.NoError(t, err)
+			revSeqNo, err := unmarshalRevSeqNo(doc.Xattrs[base.VirtualXattrRevSeqNo])
+			require.NoError(t, err)
+			preResyncDoc.RevSeqNo = revSeqNo
 
 			_, err = collection.resyncDocument(ctx, docID, doc, false)
 			require.NoError(t, err)
