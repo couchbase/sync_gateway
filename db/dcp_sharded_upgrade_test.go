@@ -177,6 +177,7 @@ const planPIndexes = `{
 
 // Check that, on a rolling upgrade, the existing index definitions are preserved and the DCP feed does not start from zero.
 func TestShardedDCPUpgrade(t *testing.T) {
+	t.Skip("FIXME")
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}

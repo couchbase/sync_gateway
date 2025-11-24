@@ -47,10 +47,11 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 }
 
 func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientOptions) (*GoCBDCPClient, error) {
-	feedName, err := GenerateDcpStreamName(opts.ID)
+	/*feedName, err := GenerateDcpStreamName(opts.ID)
 	if err != nil {
 		return nil, err
 	}
+	*/
 
 	var collectionIDs []uint32
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -117,7 +118,8 @@ func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientO
 
 	return NewGocbDCPClient(
 		ctx,
-		feedName,
+		//feedName,
+		opts.ID,
 		opts.Callback,
 		options,
 		bucket)

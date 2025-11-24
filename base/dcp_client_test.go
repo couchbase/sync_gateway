@@ -345,7 +345,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 		ID:                feedID,
 		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 		Callback:          counterCallback,
 	}
 
@@ -385,7 +385,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 		ID:                feedID,
 		Callback:          counterCallback,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 	}
 	dcpClient.Close()
 
@@ -582,7 +582,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		OneShot:           true,
 		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 		Callback:          callback,
 	}
 
@@ -611,7 +611,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		ID:                feedID,
 		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 		InitialMetadata:   metadata,
 		Callback:          callback,
 	}
