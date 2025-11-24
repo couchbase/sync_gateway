@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -410,7 +411,9 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 
 		assert.Equal(c, status, resyncStatus.State)
 	}, time.Second*10, time.Millisecond*10)
-	db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
+	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
+	}
 	return resyncStatus
 }
 

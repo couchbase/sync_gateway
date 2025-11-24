@@ -630,6 +630,7 @@ func waitForResyncState(t testing.TB, db *Database, desiredState BackgroundProce
 
 // waitForResyncDocsProcessed waits until the resync manager has processed more than the specified count of documents.
 func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
+	// this intentionally uses a very short poll interval to catch progress as quickly as possible
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Greater(c, stats.DocsProcessed, count)
