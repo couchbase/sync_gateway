@@ -325,10 +325,7 @@ func (c *DatabaseCollection) syncGlobalSyncAndUserXattrKeys() []string {
 
 // syncGlobalSyncMouRevSeqNoAndUserXattrKeys returns the xattr keys for the user, mou, revSeqNo and sync xattrs.
 func (c *DatabaseCollection) syncGlobalSyncMouRevSeqNoAndUserXattrKeys() []string {
-	xattrKeys := []string{base.SyncXattrName, base.VvXattrName}
-	if c.useMou() {
-		xattrKeys = append(xattrKeys, base.MouXattrName, base.GlobalXattrName)
-	}
+	xattrKeys := []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName, base.GlobalXattrName}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
@@ -431,10 +428,6 @@ func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename str
 // invalidateAllPrincipals invalidates computed channels and roles for collection c, for all users and roles
 func (c *DatabaseCollection) invalidateAllPrincipals(ctx context.Context, endSeq uint64) {
 	c.dbCtx.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, endSeq)
-}
-
-func (c *DatabaseCollection) useMou() bool {
-	return c.dbCtx.UseMou()
 }
 
 func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionName {

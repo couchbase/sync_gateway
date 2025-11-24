@@ -573,27 +573,13 @@ func TestMultiXattrRoundtrip(t *testing.T) {
 		xattrKeys[2]: []byte(`{"key3": "value3"}`),
 	}
 	_, err := dataStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"key": "value"}`), inputXattrs, nil, nil)
-	if dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		require.NoError(t, err)
-	} else {
-		require.ErrorContains(t, err, "invalid xattr key combination")
-		inputXattrs = map[string][]byte{
-			xattrKeys[0]: inputXattrs[xattrKeys[0]],
-		}
-		// write a document an xattrs, because subsequent GetXattrs needs a document to produce an error without multi-xattr support
-		_, err := dataStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"key": "value"}`), inputXattrs, nil, nil)
-		require.NoError(t, err)
-	}
+	require.NoError(t, err)
 
 	xattrs, _, err := dataStore.GetXattrs(ctx, docID, xattrKeys)
-	if dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		require.NoError(t, err)
-		for _, key := range xattrKeys {
-			require.Contains(t, xattrs, key)
-			require.JSONEq(t, string(inputXattrs[key]), string(xattrs[key]))
-		}
-	} else {
-		require.ErrorContains(t, err, "not supported")
+	require.NoError(t, err)
+	for _, key := range xattrKeys {
+		require.Contains(t, xattrs, key)
+		require.JSONEq(t, string(inputXattrs[key]), string(xattrs[key]))
 	}
 }
 
@@ -2168,15 +2154,8 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 		"_sync": MustJSONMarshal(t, syncXattrVal),
 		"test":  MustJSONMarshal(t, userXattrVal),
 	}
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, xattrs, nil)
-		require.NoError(t, err)
-	} else {
-		for k, v := range xattrs {
-			cas, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{k: v}, nil)
-			require.NoError(t, err)
-		}
-	}
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, xattrs, nil)
+	require.NoError(t, err)
 	var docValRet map[string]any
 	docRaw, xattrsResult, _, err := dataStore.GetWithXattrs(ctx, docKey, []string{SyncXattrName, "test"})
 	require.NoError(t, JSONUnmarshal(docRaw, &docValRet))
@@ -2549,10 +2528,6 @@ func TestWriteWithXattrsXattrWriteXattrDelete(t *testing.T) {
 	xattrBody := []byte(`{"some": "val"}`)
 
 	cas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{xattr1Name: xattrBody, xattr2Name: xattrBody}, nil, nil)
-	if !collection.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		require.ErrorContains(t, err, "SUBDOC_XATTR_INVALID_KEY_COMBO")
-		return
-	}
 	require.NoError(t, err)
 
 	newXattrBody := []byte(`{"another" : "val"}`)
@@ -2589,9 +2564,6 @@ func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
-	if !bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		t.Skip("this test writes multiple xattrs")
-	}
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 

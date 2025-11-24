@@ -537,320 +537,316 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 			cas:            incorrectCas,
 			writeErrorFunc: RequireDocNotFoundError,
 		},
-	}
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		tests = append(tests, []testCase{
-			// alive document with multiple xattrs
-			/* CBG-3918, should be a cas mismatch error
-			{
-				name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        zeroCas,
-				deleteBody: true,
-				writeErrorFunc: requireCasMismatchError,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+		// alive document with multiple xattrs
+		/* CBG-3918, should be a cas mismatch error
+		{
+			name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			*/
-			{
-				name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     true,
-				writeErrorFunc: requireCasMismatchError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=correct,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        previousCas,
-				deleteBody: true,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+			cas:        zeroCas,
+			deleteBody: true,
+			writeErrorFunc: requireCasMismatchError,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+		},
+		*/
+		{
+			name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			{
-				name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            zeroCas,
-				deleteBody:     false,
-				writeErrorFunc: requireCasMismatchError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     false,
-				writeErrorFunc: requireCasMismatchError,
-			},
-			{
-				name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=correct,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        previousCas,
-				deleteBody: false,
-				finalBody:  []byte(`{"foo": "bar"}`),
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+			cas:            incorrectCas,
+			deleteBody:     true,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body+_xattr1,xattrsToUpdate=_xattr1+_xattr2,cas=correct,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			// alive document with no xattrs
-			/* CBG-3918, should be a cas mismatch error
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        zeroCas,
-				deleteBody: true,
-				writeErrorFunc: requireCasMismatchError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:        previousCas,
+			deleteBody: true,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+		},
+		{
+			name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			*/
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     true,
-				writeErrorFunc: requireCasMismatchError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=correct,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        previousCas,
-				deleteBody: true,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+			cas:            zeroCas,
+			deleteBody:     false,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=0,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            zeroCas,
-				deleteBody:     false,
-				writeErrorFunc: requireCasMismatchError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=incorrect,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     false,
-				writeErrorFunc: requireCasMismatchError,
-			},
-			{
-				name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=correct,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        previousCas,
-				deleteBody: false,
-				finalBody:  []byte(`{"foo": "bar"}`),
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+			cas:            incorrectCas,
+			deleteBody:     false,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body+_xattr1+_xattr2,xattrsToUpdate=_xattr1+_xattr2,cas=correct,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			// tombstone with multiple xattrs
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            zeroCas,
-				deleteBody:     true,
-				writeErrorFunc: RequireDocNotFoundError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     true,
-				writeErrorFunc: RequireDocNotFoundError,
+			cas:        previousCas,
+			deleteBody: false,
+			finalBody:  []byte(`{"foo": "bar"}`),
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
 			},
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,cas=0,deleteBody=false",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:        zeroCas,
-				deleteBody: false,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
+		},
+		// alive document with no xattrs
+		/* CBG-3918, should be a cas mismatch error
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:        zeroCas,
+			deleteBody: true,
+			writeErrorFunc: requireCasMismatchError,
+			},
+		},
+		*/
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            incorrectCas,
+			deleteBody:     true,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=correct,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:        previousCas,
+			deleteBody: true,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+		},
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=0,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            zeroCas,
+			deleteBody:     false,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=incorrect,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            incorrectCas,
+			deleteBody:     false,
+			writeErrorFunc: requireCasMismatchError,
+		},
+		{
+			name: "previousDoc=body,xattrsToUpdate=_xattr1,cas=correct,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+			},
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:        previousCas,
+			deleteBody: false,
+			finalBody:  []byte(`{"foo": "bar"}`),
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+		},
+		// tombstone with multiple xattrs
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1+_xattr2,cas=0,deleteBody=true",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            zeroCas,
+			deleteBody:     true,
+			writeErrorFunc: RequireDocNotFoundError,
+		},
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1+_xattr2,cas=incorrect,deleteBody=true",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            incorrectCas,
+			deleteBody:     true,
+			writeErrorFunc: RequireDocNotFoundError,
+		},
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1,cas=0,deleteBody=false",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:        zeroCas,
+			deleteBody: false,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+		},
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1,cas=incorrect,deleteBody=false",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			cas:            incorrectCas,
+			deleteBody:     false,
+			writeErrorFunc: RequireDocNotFoundError,
+		},
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=false",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			xattrsToDelete: []string{"_xattr2"},
+			cas:            zeroCas,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+		},
+		{
+			name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=true",
+			previousDoc: nil,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			xattrsToDelete: []string{"_xattr2"},
+			cas:            zeroCas,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			deleteBody:     true,
+			writeErrorFunc: RequireDocNotFoundError,
+		},
+		{
+			name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=false",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,cas=incorrect,deleteBody=false",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				cas:            incorrectCas,
-				deleteBody:     false,
-				writeErrorFunc: RequireDocNotFoundError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
 			},
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=false",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				xattrsToDelete: []string{"_xattr2"},
-				cas:            zeroCas,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
+			xattrsToDelete: []string{"_xattr2"},
+			cas:            previousCas,
+			deleteBody:     false,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+			},
+			finalBody: []byte(`{"foo": "bar"}`),
+		},
+		{
+			name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=true",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
 			},
-			{
-				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=true",
-				previousDoc: nil,
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				xattrsToDelete: []string{"_xattr2"},
-				cas:            zeroCas,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				deleteBody:     true,
-				writeErrorFunc: RequireDocNotFoundError,
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
 			},
-			{
-				name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=false",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				xattrsToDelete: []string{"_xattr2"},
-				cas:            previousCas,
-				deleteBody:     false,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				finalBody: []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"_xattr2"},
+			cas:            previousCas,
+			deleteBody:     true,
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
 			},
-			{
-				name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=true",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
-				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-				xattrsToDelete: []string{"_xattr2"},
-				cas:            previousCas,
-				deleteBody:     true,
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-				},
-			},
-		}...)
+		},
 	}
 
 	for _, test := range tests {
@@ -999,75 +995,70 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 			},
 			finalXattrs: map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
 		},
-	}
-
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		tests = append(tests, []testCase{
-			{
-				name: "previousDoc=body+_xattr1,_xattr2,updatedDoc=_xattr1",
-				previousDoc: &sgbucket.BucketDocument{
-					Body: []byte(`{"foo": "bar"}`),
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-						"_xattr2": []byte(`{"e" : "f"}`),
-					},
-				},
-				updatedDoc: sgbucket.UpdatedDoc{
-					Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
-					IsTombstone: true,
-				},
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c" : "d"}`),
+		{
+			name: "previousDoc=body+_xattr1,_xattr2,updatedDoc=_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Body: []byte(`{"foo": "bar"}`),
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 					"_xattr2": []byte(`{"e" : "f"}`),
 				},
 			},
-			{
-				name: "previousDoc=_xattr1,xattr2,updatedDoc=_xattr1",
-				previousDoc: &sgbucket.BucketDocument{
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-						"_xattr2": []byte(`{"e" : "f"}`),
-					},
-				},
-				updatedDoc: sgbucket.UpdatedDoc{
-					Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
-					IsTombstone: true,
-				},
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c" : "d"}`),
+			updatedDoc: sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+				IsTombstone: true,
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c" : "d"}`),
+				"_xattr2": []byte(`{"e" : "f"}`),
+			},
+		},
+		{
+			name: "previousDoc=_xattr1,xattr2,updatedDoc=_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 					"_xattr2": []byte(`{"e" : "f"}`),
 				},
 			},
-			{
-				name: "previousDoc=_xattr1,xattr2,updatedDoc=tombstone+_xattr1",
-				previousDoc: &sgbucket.BucketDocument{
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-						"_xattr2": []byte(`{"e" : "f"}`),
-					},
-				},
-				updatedDoc: sgbucket.UpdatedDoc{
-					IsTombstone: true,
-					Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
-				finalXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c" : "d"}`),
+			updatedDoc: sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)},
+				IsTombstone: true,
+			},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c" : "d"}`),
+				"_xattr2": []byte(`{"e" : "f"}`),
+			},
+		},
+		{
+			name: "previousDoc=_xattr1,xattr2,updatedDoc=tombstone+_xattr1",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 					"_xattr2": []byte(`{"e" : "f"}`),
 				},
 			},
-			{
-				name: "delete xattr on tombstone resurection",
-				previousDoc: &sgbucket.BucketDocument{
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"foo": "bar"}`),
-					},
-				},
-				updatedDoc: sgbucket.UpdatedDoc{
-					Doc:            []byte(`{"foo": "bar"}`),
-					XattrsToDelete: []string{"xattr1"},
-				},
-				errorsIs: sgbucket.ErrDeleteXattrOnTombstone,
+			updatedDoc: sgbucket.UpdatedDoc{
+				IsTombstone: true,
+				Xattrs:      map[string][]byte{"_xattr1": []byte(`{"c" : "d"}`)}},
+			finalXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c" : "d"}`),
+				"_xattr2": []byte(`{"e" : "f"}`),
 			},
-		}...)
+		},
+		{
+			name: "delete xattr on tombstone resurection",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"foo": "bar"}`),
+				},
+			},
+			updatedDoc: sgbucket.UpdatedDoc{
+				Doc:            []byte(`{"foo": "bar"}`),
+				XattrsToDelete: []string{"xattr1"},
+			},
+			errorsIs: sgbucket.ErrDeleteXattrOnTombstone,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1207,39 +1198,35 @@ func TestWriteWithXattrs(t *testing.T) {
 			xattrs:  map[string][]byte{"xattr1": nil},
 			errorIs: sgbucket.ErrNilXattrValue,
 		},
-	}
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		tests = append(tests, []testCase{
-			{
-				name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=0",
-				body:           []byte(`{"foo": "bar"}`),
-				xattrsToDelete: []string{"xattr1", "xattr2"},
-				errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
-			},
-			{
-				name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=incorrect",
-				body:           []byte(`{"foo": "bar"}`),
-				xattrsToDelete: []string{"xattr1", "xattr2"},
-				cas:            uint64(1),
-				errorFunc:      requireDocNotFoundOrCasMismatchError,
-			},
-			{
-				name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=0",
-				body:           []byte(`{"foo": "bar"}`),
-				xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
-				xattrsToDelete: []string{"xattr1", "xattr2"},
-				errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
-			},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=0",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
+		{
+			name:           "body=true,xattrs=nil,xattrsToDelete=xattr1,xattr2,cas=incorrect",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			cas:            uint64(1),
+			errorFunc:      requireDocNotFoundOrCasMismatchError,
+		},
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=0",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			errorIs:        sgbucket.ErrDeleteXattrOnDocumentInsert,
+		},
 
-			{
-				name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=incorrect",
-				body:           []byte(`{"foo": "bar"}`),
-				xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
-				xattrsToDelete: []string{"xattr1", "xattr2"},
-				cas:            uint64(1),
-				errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
-			},
-		}...)
+		{
+			name:           "body=true,xattrs=xattr1,xattrsToDelete=xattr1,xattr2,cas=incorrect",
+			body:           []byte(`{"foo": "bar"}`),
+			xattrs:         map[string][]byte{"xattr1": []byte(`{"a" : "b"}`)},
+			xattrsToDelete: []string{"xattr1", "xattr2"},
+			cas:            uint64(1),
+			errorIs:        sgbucket.ErrUpsertAndDeleteSameXattr,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1413,23 +1400,19 @@ func TestWriteResurrectionWithXattrs(t *testing.T) {
 			updatedBody: []byte(`{"foo": "bar"}`),
 			errorFunc:   requireDocFoundOrCasMismatchError,
 		},
-	}
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		tests = append(tests, []testCase{
-			{
-				name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1+_xattr2,updatedBody=body",
-				previousDoc: &sgbucket.BucketDocument{
-					Xattrs: map[string][]byte{
-						"_xattr1": []byte(`{"a" : "b"}`),
-					},
+		{
+			name: "previousDoc=_xattr1,xattrsToUpdate=_xattr1+_xattr2,updatedBody=body",
+			previousDoc: &sgbucket.BucketDocument{
+				Xattrs: map[string][]byte{
+					"_xattr1": []byte(`{"a" : "b"}`),
 				},
-				updatedXattrs: map[string][]byte{
-					"_xattr1": []byte(`{"c": "d"}`),
-					"_xattr2": []byte(`{"f": "g"}`),
-				},
-				updatedBody: []byte(`{"foo": "bar"}`),
 			},
-		}...)
+			updatedXattrs: map[string][]byte{
+				"_xattr1": []byte(`{"c": "d"}`),
+				"_xattr2": []byte(`{"f": "g"}`),
+			},
+			updatedBody: []byte(`{"foo": "bar"}`),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

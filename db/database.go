@@ -155,7 +155,6 @@ type DatabaseContext struct {
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	RequireAttachmentMigration   base.ScopeAndCollectionNames   // Collections that require the attachment migration background task to run against
 	CORS                         *auth.CORSConfig               // CORS configuration
-	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
@@ -453,9 +452,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	cleanupFunctions = append(cleanupFunctions, func() {
 		dbContext.cancelContextFunc()
 	})
-
-	// Check if server version supports multi-xattr operations, required for mou handling
-	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 
 	// Initialize metadata ID and keys
 	metaKeys := base.NewMetadataKeys(options.MetadataID)
@@ -1851,9 +1847,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			doc.SetCrc32cUserXattrHash()
 
 			// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
-			if db.useMou() {
-				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-			}
+			doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 
 			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
@@ -1861,14 +1855,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawSyncXattr,
 					base.VvXattrName:   rawVvXattr,
+					base.MouXattrName:  rawMouXattr,
 				},
 				Expiry: updatedExpiry,
 			}
-			if db.useMou() {
-				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
-				}
+			if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+				updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 			}
 			if rawGlobalXattr != nil {
 				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
@@ -2012,10 +2004,6 @@ func (context *DatabaseContext) numIndexPartitions() uint32 {
 
 func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
-}
-
-func (context *DatabaseContext) UseMou() bool {
-	return context.EnableMou
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {

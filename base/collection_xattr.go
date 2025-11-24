@@ -191,17 +191,6 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 
 // subdocGetBodyAndXattrs retrieves the document body and xattrs in a single LookupIn subdoc operation.  Does not require both to exist.
 func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattrKeys []string, fetchBody bool) (isTombstone bool, rawBody []byte, xattrs map[string][]byte, cas uint64, err error) {
-	xattrKey2 := ""
-	// Backward compatibility for one system xattr and one user xattr support.
-	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		if len(xattrKeys) > 2 {
-			return false, nil, nil, 0, fmt.Errorf("subdocGetBodyAndXattrs: more than 2 xattrKeys %+v not supported in this version of Couchbase Server", xattrKeys)
-		}
-		if len(xattrKeys) == 2 {
-			xattrKey2 = xattrKeys[1]
-			xattrKeys = []string{xattrKeys[0]}
-		}
-	}
 	xattrs = make(map[string][]byte, len(xattrKeys))
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -283,29 +272,7 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 			shouldRetry = c.isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
-		// If BucketStoreFeatureMultiXattrSubdocOperations is not supported, do a second get for the second xattr.
-		if xattrKey2 != "" {
-			xattrs2, xattr2Cas, xattr2Err := c.GetXattrs(ctx, k, []string{xattrKey2})
-			switch pkgerrors.Cause(xattr2Err) {
-			case gocb.ErrDocumentNotFound:
-				// If key not found it has been deleted in between the first op and this op.
-				return false, err, xattr2Cas
-			case ErrXattrNotFound:
-				// Xattr doesn't exist, can skip
-			case nil:
-				if cas != xattr2Cas {
-					return true, errors.New("cas mismatch between user xattr and document body"), uint64(0)
-				}
-			default:
-				// Unknown error occurred
-				// Shouldn't retry as any recoverable error will have been retried already in GetXattrs
-				return false, xattr2Err, uint64(0)
-			}
-			xattr2, ok := xattrs2[xattrKey2]
-			if ok {
-				xattrs[xattrKey2] = xattr2
-			}
-		}
+
 		return false, nil, cas
 	}
 
@@ -427,9 +394,6 @@ func (c *Collection) UpdateXattrs(ctx context.Context, k string, exp uint32, cas
 }
 
 func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
-	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) && len(xattrs) >= 2 {
-		return 0, fmt.Errorf("UpdateXattrs: more than 1 xattr %v not supported in UpdateXattrs in this version of Couchbase Server", xattrs)
-	}
 	if cas == 0 && len(xattrsToDelete) > 0 {
 		return 0, sgbucket.ErrDeleteXattrOnDocumentInsert
 	}
