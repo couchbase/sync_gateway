@@ -110,13 +110,12 @@ func TestMultiActorResurrect(t *testing.T) {
 							// if cbs resurrect, if delete AND resurrecting peer is server side peer (cbs or sgw) the all docs will converge for version expected
 							// if cbs resurrect and delete AND resurrecting peer is NOT server side peer (lite), then need to wait for tombstone convergence first
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
-								// almost has it, need to think if lite
-								l := IsServerSidePeer([]Peer{deletePeer, resurrectPeer})
-								if !l { //if deletePeer.Type() == PeerTypeCouchbaseLite { //|| createPeer.Type() == PeerTypeCouchbaseLite { //strings.Contains(deletePeer.Type().String(), "Couchbase Lite Peer") {
+								if conflictNotExpectedOnCBL([]Peer{createPeer, deletePeer, resurrectPeer}, []string{deletePeerName, createPeerName}, resurrectPeerName) { //allActorsServerSide([]Peer{createPeer, deletePeer, resurrectPeer}) || conflictNotExpectedOnCBL(deletePeer, []string{deletePeerName, createPeerName}, resurrectPeerName) {
+									// no cbl conflict?
+									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+								} else {
 									fmt.Println("waiting for converging tombstones")
 									waitForConvergingTombstones(t, collectionName, docID, topology)
-								} else {
-									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 								}
 								//waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 							} else {

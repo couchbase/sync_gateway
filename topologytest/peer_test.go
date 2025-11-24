@@ -132,7 +132,7 @@ func (p Peers) PeerList() []string {
 	return peerNames
 }
 
-func IsServerSidePeer(p []Peer) bool {
+func allActorsServerSide(p []Peer) bool {
 	for _, v := range p {
 		if v.Type() == PeerTypeCouchbaseServer || v.Type() == PeerTypeSyncGateway {
 			continue
@@ -140,6 +140,23 @@ func IsServerSidePeer(p []Peer) bool {
 		return false
 	}
 	return true
+}
+
+func deleteHasSGWSource(deletingPeer Peer) bool {
+	if deletingPeer.Type() == PeerTypeCouchbaseServer || deletingPeer.Type() == PeerTypeSyncGateway {
+		return true
+	}
+	return false
+}
+
+func conflictNotExpectedOnCBL(peers []Peer, createDelPeerNames []string, resPeerName string) bool {
+	if createDelPeerNames[1] == "sg1" && resPeerName == "cbs1" {
+		return true
+	}
+	if createDelPeerNames[1] == "cbs1" && resPeerName == "cbs1" {
+		return true
+	}
+	return false
 }
 
 // NonImportSortedPeers returns a sorted iterator peers that will not cause import operations. For example:
