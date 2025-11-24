@@ -968,7 +968,9 @@ func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expStat
 		assert.Equal(c, expState, status.State, "BackgroundManager did not reach expected state in %d seconds. Current status: %s", int(waitTime.Seconds()), string(rawStatus))
 	}, waitTime, time.Millisecond*10)
 
-	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr)
+	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, expState) {
+		WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr)
+	}
 	return *status
 }
 

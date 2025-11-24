@@ -280,8 +280,9 @@ func TestRequireResync(t *testing.T) {
 
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
-
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	db2, err := rt.ServerContext().GetDatabase(rt.Context(), db2Name)
+	require.NoError(t, err)
+	db.RequireBackgroundManagerState(t, db2.ResyncManager, db.BackgroundProcessStateCompleted)
 
 	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)

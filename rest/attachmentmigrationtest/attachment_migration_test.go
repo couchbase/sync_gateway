@@ -121,7 +121,7 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 
 	dbCtx = rt.GetDatabase()
 	scNames = append(scNames, base.ScopeAndCollectionName{Scope: scope, Collection: collection2})
-	assert.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
+	require.ElementsMatch(t, scNames, dbCtx.RequireAttachmentMigration)
 	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
 	// assert that number of docs precessed is greater than the total docs added, this will be because when updating
