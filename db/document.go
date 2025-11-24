@@ -1493,8 +1493,9 @@ func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 	return revSeqNo, nil
 }
 
+// marshalRevSeqNo converts revSeqNo into the format of $document.revid
 func marshalRevSeqNo(revSeqNo uint64) []byte {
-	return []byte(strconv.FormatUint(revSeqNo, 10))
+	return []byte(fmt.Sprintf(`"%d"`, revSeqNo))
 }
 
 func (doc *Document) ExtractDocVersion() DocVersion {
