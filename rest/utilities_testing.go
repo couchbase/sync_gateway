@@ -2318,27 +2318,6 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 	}
 }
 
-func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
-	t.Helper()
-	err, actual := base.RetryLoop(base.TestCtx(t), t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value db.BackgroundProcessState) {
-		actual := getStateFunc(t)
-		return expected != actual, nil, actual
-	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
-	return assert.NoErrorf(t, err, "expected background manager state %v, but got: %v", expected, actual)
-}
-
-func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
-	t.Helper()
-	err, b := base.RetryLoop(base.TestCtx(t), t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value []byte) {
-		b, err := bm.GetHeartbeatDoc(t)
-		return !base.IsDocNotFoundError(err), err, b
-	}, base.CreateMaxDoublingSleeperFunc(30, 100, 1000))
-	if b != nil {
-		return assert.NoErrorf(t, err, "expected heartbeat doc to expire, but found one with contents: %s", b)
-	}
-	return assert.Truef(t, base.IsDocNotFoundError(err), "expected heartbeat doc to expire, but got a different error: %v", err)
-}
-
 type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.

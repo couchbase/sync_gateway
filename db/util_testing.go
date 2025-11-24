@@ -933,6 +933,23 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	require.NoError(t, err)
 }
 
+// WaitForBackgroundManagerHeartbeatDocRemoval waits for removal of heartbeat document or fails the test harness.
+//
+// After a background manager state transition to completed, stopped, error is followed by immediate removal of the
+// heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
+// for a small race if you try to stop and immediately restart a background manager.
+func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundManager) {
+	if !mgr.isClusterAware() {
+		return
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(mgr.clusterAwareOptions.HeartbeatDocID())
+		require.NoError(t, ok)
+		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
 func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
@@ -949,7 +966,9 @@ func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expStat
 		assert.NoError(c, err)
 		assert.NoError(c, base.JSONUnmarshal(rawStatus, &status))
 		assert.Equal(c, expState, status.State, "BackgroundManager did not reach expected state in %d seconds. Current status: %s", int(waitTime.Seconds()), string(rawStatus))
-	}, waitTime, time.Millisecond*100)
+	}, waitTime, time.Millisecond*10)
+
+	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr)
 	return *status
 }
 
