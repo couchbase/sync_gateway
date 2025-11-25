@@ -727,10 +727,6 @@ func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAt
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
-	if !base.TestUseXattrs() {
-		t.Skip("Requires xattrs")
-	}
-
 	attDigest := Sha1DigestKey(attBody)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)

@@ -620,10 +620,7 @@ func TestKeyPath(t *testing.T) {
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
+	dbcOptions.EnableXattr = true
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}

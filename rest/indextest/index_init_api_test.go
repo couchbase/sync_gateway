@@ -35,10 +35,6 @@ func TestChangeIndexPartitions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("To simplify testing to allow for exact string matching on indexes, skip for xattrs")
-	}
-
 	// requires index init for many subtests
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyQuery, base.KeyHTTP)
@@ -372,13 +368,9 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 			NumPartitions:       1,
 		}))
 
-	indexNameSuffix := "_1"
-	if base.TestUseXattrs() {
-		indexNameSuffix = "_x1"
-	}
-	userIdx := "sg_users" + indexNameSuffix
-	roleIdx := "sg_roles" + indexNameSuffix
-	syncDocsIdx := "sg_syncDocs" + indexNameSuffix
+	userIdx := "sg_users_x1"
+	roleIdx := "sg_roles_x1"
+	syncDocsIdx := "sg_syncDocs_x1"
 
 	// prior to database creation, there should be only syncDocs
 	indexes, err := n1qlStore.GetIndexes()

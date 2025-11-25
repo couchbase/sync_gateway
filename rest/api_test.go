@@ -1741,11 +1741,6 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 
 // Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
 func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
-
-	if !base.TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-
 	// This doesn't need to specify XATTR's because that is controlled by the test
 	// env variable: SG_TEST_USE_XATTRS
 	rt := NewRestTester(t, nil)
@@ -2052,15 +2047,12 @@ func TestWebhookProperties(t *testing.T) {
 	wg.Add(1)
 	rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
 
-	if base.TestUseXattrs() {
-		wg.Add(1)
-		body := make(map[string]any)
-		body["foo"] = "bar"
-		added, err := rt.GetSingleDataStore().Add("doc2", 0, body)
-		assert.True(t, added)
-		assert.NoError(t, err)
-	}
-
+	wg.Add(1)
+	body := make(map[string]any)
+	body["foo"] = "bar"
+	added, err := rt.GetSingleDataStore().Add("doc2", 0, body)
+	assert.True(t, added)
+	assert.NoError(t, err)
 	WaitWithTimeout(t, &wg, 30*time.Second)
 }
 
@@ -2449,13 +2441,9 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	var body map[string]any
 	_, err := rt.GetSingleDataStore().Get("fake", &body)
 
-	if base.TestUseXattrs() {
-		assert.Error(t, err)
-		assert.True(t, base.IsDocNotFoundError(err))
-		assert.Nil(t, body)
-	} else {
-		assert.NoError(t, err)
-	}
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, body)
 }
 
 // CBG-1153
@@ -2478,12 +2466,8 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	var doc map[string]any
 	_, err := rt.GetSingleDataStore().Get("doc1", &doc)
 
-	if base.TestUseXattrs() {
-		assert.Error(t, err)
-		assert.True(t, base.IsDocNotFoundError(err))
-	} else {
-		assert.NoError(t, err)
-	}
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
 }
 
 func TestPutEmptyDoc(t *testing.T) {
@@ -2518,20 +2502,12 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	var body map[string]any
 	_, err := rt.GetSingleDataStore().Get(t.Name(), &body)
 
-	if base.TestUseXattrs() {
-		assert.Error(t, err)
-		assert.True(t, base.IsDocNotFoundError(err))
-		assert.Nil(t, body)
-	} else {
-		assert.NoError(t, err)
-	}
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, body)
 }
 
 func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
@@ -2568,10 +2544,6 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 }
 
 func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
@@ -2828,10 +2800,6 @@ func TestDocChannelSetPruning(t *testing.T) {
 }
 
 func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
@@ -3187,11 +3155,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 
-	if base.TestUseXattrs() {
-		assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))
-	} else {
-		assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
-	}
+	assert.Equal(t, 100, int(tombstoneCompactionStatus.DocsPurged))
 }
 
 // TestPing ensures that /_ping is accessible on all APIs for GET and HEAD without authentication.

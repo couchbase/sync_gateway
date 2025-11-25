@@ -360,18 +360,8 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 }
 
-func SkipXattrTestsIfNotEnabled(t *testing.T) {
-
-	if !TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-}
-
 // TestXattrWriteCasSimple.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestXattrWriteCasSimple(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -430,9 +420,6 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 // TestXattrWriteCasUpsert.  Validates basic write of document with xattr,  retrieval of the same doc w/ xattr, update of the doc w/ xattr, retrieval of the doc w/ xattr.
 func TestXattrWriteCasUpsert(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -495,9 +482,6 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 // TestXattrWriteCasWithXattrCasCheck.  Validates cas check when using WriteCasWithXattr
 func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -558,8 +542,6 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 }
 
 func TestMultiXattrRoundtrip(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -599,9 +581,6 @@ func TestMultiXattrRoundtrip(t *testing.T) {
 
 // TestWriteCasXATTRRaw.  Validates basic write of document and xattr as raw bytes.
 func TestXattrWriteCasRaw(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -643,8 +622,6 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
-
-	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -711,8 +688,6 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	t.Skip("Test does not pass with errors: https://gist.github.com/tleyden/d261fe2b92bdaaa6e78f9f1c00fdfd58.  Needs investigation")
-
-	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -781,8 +756,6 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 // TestXattrWriteUpdateXattr.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestXattrWriteUpdateXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -881,8 +854,6 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 }
 
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -953,8 +924,6 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 }
 
 func TestWriteUpdateDeleteXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -990,8 +959,6 @@ func TestWriteUpdateDeleteXattr(t *testing.T) {
 }
 
 func TestWriteUpdateDeleteXattrTombstone(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1018,9 +985,6 @@ func TestWriteUpdateDeleteXattrTombstone(t *testing.T) {
 
 // TestXattrDeleteDocument.  Delete document that has a system xattr.  System XATTR should be retained and retrievable.
 func TestXattrDeleteDocument(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1059,9 +1023,6 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 // TestXattrDeleteDocumentUpdate.  Delete a document that has a system xattr along with an xattr update.
 func TestXattrDeleteDocumentUpdate(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1164,9 +1125,6 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 // Validates tombstone of doc + xattr in a matrix of various possible previous states of the document.
 func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -1273,9 +1231,6 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 // Validates deletion of doc + xattr in a matrix of various possible previous states of the document.
 func TestXattrDeleteDocAndXattr(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -1353,7 +1308,6 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires CBS in order to use deleteWithXattrInternal callback")
 	}
-	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -1395,9 +1349,6 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 // TestXattrRetrieveDocumentAndXattr.
 func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1492,7 +1443,6 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
-	SkipXattrTestsIfNotEnabled(t)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -1612,8 +1562,6 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 }
 
 func TestGetXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ctx := TestCtx(t)
@@ -1698,8 +1646,6 @@ func TestGetXattr(t *testing.T) {
 }
 
 func TestGetXattrAndBody(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ctx := TestCtx(t)
@@ -2101,7 +2047,6 @@ func verifyDocDeletedXattrExists(ctx context.Context, store sgbucket.XattrStore,
 }
 
 func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -2147,7 +2092,6 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 }
 
 func TestUserXattrGetWithXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -2186,7 +2130,6 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 }
 
 func TestUserXattrGetWithXattrNil(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -2219,7 +2162,6 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 }
 
 func TestInsertTombstoneWithXattr(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	ctx := TestCtx(t)
@@ -2584,14 +2526,9 @@ func requireXattrNotFoundError(t *testing.T, err error) {
 }
 
 func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
-	SkipXattrTestsIfNotEnabled(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
-	if !bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		t.Skip("this test writes multiple xattrs")
-	}
 	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 

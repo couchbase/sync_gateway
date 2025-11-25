@@ -66,8 +66,6 @@ func TestGetAlldocChannels(t *testing.T) {
 
 func TestGetDocDryRuns(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SkipImportTestsIfNotEnabled(t)
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 	bucket := rt.Bucket().GetName()

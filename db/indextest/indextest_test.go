@@ -450,10 +450,6 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 }
 
 func TestPartitionedIndexes(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
-	}
-
 	numPartitions := uint32(13)
 	database := setupIndexAndDB(t, testIndexCreationOptions{
 		useLegacySyncDocsIndex: true,

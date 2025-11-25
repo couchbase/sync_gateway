@@ -1624,8 +1624,6 @@ func TestRevCacheCapacityStat(t *testing.T) {
 }
 
 func TestRevCacheOnDemand(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 2,
@@ -1822,8 +1820,6 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 }
 
 func TestRevCacheOnDemandImport(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 2,
@@ -1865,8 +1861,6 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 }
 
 func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 20,
@@ -2062,8 +2056,6 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 }
 
 func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 2,
@@ -2209,8 +2201,6 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 }
 
 func TestRevCacheOnDemandImportNoCache(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

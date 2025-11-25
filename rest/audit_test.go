@@ -1151,10 +1151,8 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 			}),
 		},
 	}
-	if base.TestUseXattrs() {
-		// this is not set automatically for CE
-		dbConfig.AutoImport = base.Ptr(true)
-	}
+	// this is not set automatically for CE
+	dbConfig.AutoImport = base.Ptr(true)
 
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	type testCase struct {
@@ -1182,29 +1180,26 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 			},
 			documentUpdateCount: 1,
 		},
-	}
-	if base.TestUseXattrs() {
-		testCases = append(testCases, []testCase{
-			{
-				name: "import doc",
-				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					importCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
-					_, err := rt.GetSingleDataStore().Add(docID, 0, db.Body{"foo": "bar"})
-					require.NoError(t, err)
-					base.RequireWaitForStat(t, func() int64 {
-						return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
-					}, importCount+1)
-				},
+		{
+			name: "import doc",
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				importCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+				_, err := rt.GetSingleDataStore().Add(docID, 0, db.Body{"foo": "bar"})
+				require.NoError(t, err)
+				base.RequireWaitForStat(t, func() int64 {
+					return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+				}, importCount+1)
 			},
-			{
-				name: "import doc with inline sync meta",
-				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.RawDocWithInlineSyncData(t)))
-					require.NoError(t, err)
-					// this may get picked up by auto import or on demand import
-					_, _ = rt.GetDoc(docID)
-				},
-			}}...)
+		},
+		{
+			name: "import doc with inline sync meta",
+			auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
+				_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.RawDocWithInlineSyncData(t)))
+				require.NoError(t, err)
+				// this may get picked up by auto import or on demand import
+				_, _ = rt.GetDoc(docID)
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		rt.Run(testCase.name, func(t *testing.T) {

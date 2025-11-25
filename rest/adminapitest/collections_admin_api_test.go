@@ -25,7 +25,6 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support persistent config")
 	}
-	base.SkipImportTestsIfNotEnabled(t)
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)

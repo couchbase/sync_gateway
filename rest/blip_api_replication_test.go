@@ -19,10 +19,6 @@ import (
 
 func TestReplicationBroadcastTickerChange(t *testing.T) {
 	base.LongRunningTest(t)
-
-	if !base.TestUseXattrs() {
-		t.Skip("Skipping test that requires xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{

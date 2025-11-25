@@ -216,10 +216,6 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 
 func TestSingleCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
-	}
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -248,8 +244,6 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
-	base.SkipImportTestsIfNotEnabled(t)
-
 	const numCollections = 2
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
@@ -302,8 +296,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Scopes:       scopesConfig,
-			EnableXattrs: base.Ptr(base.TestUseXattrs()),
+			Scopes: scopesConfig,
 		},
 		},
 	}
@@ -644,10 +637,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	// Create a DB configured with one scope
 	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":                      tb.GetName(),
-		"num_index_replicas":          0,
-		"enable_shared_bucket_access": base.TestUseXattrs(),
-		"use_views":                   base.TestsDisableGSI(),
+		"bucket":             tb.GetName(),
+		"num_index_replicas": 0,
+		"use_views":          base.TestsDisableGSI(),
 		"scopes": ScopesConfig{
 			"fooScope": {
 				Collections: CollectionsConfig{
@@ -660,10 +652,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	// Try updating its scopes
 	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":                      tb.GetName(),
-		"num_index_replicas":          0,
-		"enable_shared_bucket_access": base.TestUseXattrs(),
-		"use_views":                   base.TestsDisableGSI(),
+		"bucket":             tb.GetName(),
+		"num_index_replicas": 0,
+		"use_views":          base.TestsDisableGSI(),
 		"scopes": ScopesConfig{
 			"quxScope": {
 				Collections: CollectionsConfig{
@@ -793,9 +784,8 @@ func TestCollectionStats(t *testing.T) {
 		GuestEnabled:     true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				Scopes:       scopesConfig,
-				AutoImport:   base.TestUseXattrs(),
-				EnableXattrs: base.Ptr(base.TestUseXattrs()),
+				Scopes:     scopesConfig,
+				AutoImport: true,
 			},
 		},
 	}
@@ -833,11 +823,7 @@ func TestCollectionStats(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc1", doc1Contents)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Equal(t, int64(1), collection1Stats.NumDocWrites.Value())
-	if base.TestUseXattrs() {
-		assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocWritesBytes.Value()) // xattr writes size should exactly match doc contents
-	} else {
-		assert.Greater(t, collection1Stats.DocWritesBytes.Value(), int64(len(doc1Contents))) // non-xattr writes have sync data size included
-	}
+	assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocWritesBytes.Value()) // xattr writes size should exactly match doc contents
 	assert.Equal(t, int64(1), collection1Stats.SyncFunctionCount.Value())
 	assert.GreaterOrEqual(t, collection1Stats.SyncFunctionTime.Value(), int64(0))
 	assert.Equal(t, int64(0), collection1Stats.NumDocReads.Value())
@@ -882,15 +868,13 @@ func TestCollectionStats(t *testing.T) {
 	assert.Equal(t, int64(1), collection2Stats.NumDocWrites.Value())
 
 	// write a doc to the bucket and have it imported and check stat
-	if base.TestUseXattrs() {
-		dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
-		require.NoError(t, err)
-		ok, err := dbc.GetCollectionDatastore().AddRaw("importeddoc", 0, []byte(`{"imported":true}`))
-		require.NoError(t, err)
-		assert.True(t, ok)
-		base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
-		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
-	}
+	dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
+	require.NoError(t, err)
+	ok, err := dbc.GetCollectionDatastore().AddRaw("importeddoc", 0, []byte(`{"imported":true}`))
+	require.NoError(t, err)
+	assert.True(t, ok)
+	base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
+	assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 }
 
 // TestRuntimeConfigUpdateAfterConfigUpdateConflict:

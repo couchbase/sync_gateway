@@ -686,9 +686,6 @@ func TestImportPartitionsServerless(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test requires cbgt")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("tests import which is not available without xattrs")
-	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16

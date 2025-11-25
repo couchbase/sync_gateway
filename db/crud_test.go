@@ -1522,7 +1522,7 @@ func TestKnownRevsForCheckChangeVersion(t *testing.T) {
 }
 
 func TestPutStampClusterUUID(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")
 	}
 
@@ -1552,10 +1552,6 @@ func TestPutStampClusterUUID(t *testing.T) {
 
 // TestAssignSequenceReleaseLoop repros conditions seen in CBG-3516 (where each sequence between nextSequence and docSequence has an unusedSeq doc)
 func TestAssignSequenceReleaseLoop(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 
 	// import disabled
@@ -1677,9 +1673,6 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 }
 
 func TestDocUpdateCorruptSequence(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})

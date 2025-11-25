@@ -133,16 +133,6 @@ func TestPostUpgrade(t *testing.T) {
 				"`_default`.`_default`.sg_syncDocs_x1",
 				"`_default`.`_default`.sg_tombstones_x1",
 			}
-			if !base.TestUseXattrs() {
-				expectedRemovedIndexes = []string{
-					"`_default`.`_default`.sg_access_1",
-					"`_default`.`_default`.sg_allDocs_1",
-					"`_default`.`_default`.sg_channels_1",
-					"`_default`.`_default`.sg_roleAccess_1",
-					"`_default`.`_default`.sg_syncDocs_1",
-				}
-
-			}
 			require.Equal(t, rest.PostUpgradeResponse{
 				Result: rest.PostUpgradeResult{
 					db2Name: rest.PostUpgradeDatabaseResult{

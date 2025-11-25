@@ -1079,10 +1079,6 @@ func TestFunkyUsernames(t *testing.T) {
 	}
 }
 func TestRemovingUserXattr(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}

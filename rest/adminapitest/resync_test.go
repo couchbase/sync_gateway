@@ -74,10 +74,6 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("Test writes xattrs directly to modify sync metadata")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		AutoImport: base.Ptr(false),
@@ -320,7 +316,6 @@ func TestResyncDoesNotWriteDocBody(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.SkipImportTestsIfNotEnabled(t) // test requires import
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{

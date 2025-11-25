@@ -1440,10 +1440,6 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 func TestRevocationWithUserXattrs(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
