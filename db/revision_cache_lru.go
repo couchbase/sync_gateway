@@ -561,7 +561,10 @@ func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID strin
 		return
 	}
 	// grab the revid key from the value to enable us to remove the reference from the rev lookup map too
-	elem := element.Value.(*revCacheValue)
+	elem, ok := element.Value.(*revCacheValue)
+	if !ok {
+		return
+	}
 
 	legacyKey := IDAndRev{DocID: docID, RevID: elem.revID, CollectionID: collectionID}
 	rc.lruList.Remove(element)
@@ -582,7 +585,10 @@ func (rc *LRURevisionCache) removeFromCacheByRev(ctx context.Context, docID, rev
 		return
 	}
 	// grab the cv key from the value to enable us to remove the reference from the rev lookup map too
-	elem := element.Value.(*revCacheValue)
+	elem, ok := element.Value.(*revCacheValue)
+	if !ok {
+		return
+	}
 
 	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.Value, CollectionID: collectionID}
 	rc.lruList.Remove(element)
@@ -848,6 +854,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	var previousDeltaBytes int64
 	if value.delta != nil {
 		// delta exists, need to pull this to update overall memory size correctly
@@ -858,7 +865,6 @@ func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int6
 	if diffInBytes != 0 {
 		value.itemBytes.Add(diffInBytes)
 	}
-	value.lock.Unlock()
 	return diffInBytes
 }
 
@@ -912,8 +918,14 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction(ctx context.Context) {
 
 // performEviction will evict the oldest items in the cache till we are below the memory threshold
 func (rc *LRURevisionCache) performEviction(ctx context.Context) {
+	numItemsRemoved := rc.evictBasedOffMemoryUsage(ctx)
+	rc.cacheNumItems.Add(-numItemsRemoved)
+}
+
+func (rc *LRURevisionCache) evictBasedOffMemoryUsage(ctx context.Context) int64 {
 	var numItemsRemoved, numBytesRemoved int64
-	rc.lock.Lock() // hold rev cache lock to remove items from cache until we're below memory threshold for the shard
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
 	// check if we are over memory capacity after holding rev cache mutex (protect against another goroutine evicting whilst waiting for mutex above)
 	if currMemoryUsage := rc.currMemoryUsage.Value(); currMemoryUsage > rc.memoryCapacity {
 		// find amount of bytes needed to evict till below threshold
@@ -921,8 +933,21 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 		for bytesNeededToRemove > numBytesRemoved {
 			value := rc._findEvictionValue()
 			if value == nil {
-				// no more values ready for eviction
-				break
+				if rc.lruList.Len() > 0 {
+					// no more values ready for eviction
+					break
+				} else {
+					// list is empty, nothing more to evict but stats are wrong so zero stats and return
+					base.DebugfCtx(ctx, base.KeyCache, "Revision cache memory stats inconsistent for this shard, resetting to zero")
+					correctionVal := rc.currMemoryUsage.Value()
+					// Correct overall memory stat across shards to remove this shards memory usage. We cannot set this
+					// to 0 as other shards usage is included in this
+					rc.cacheMemoryBytesStat.Add(-correctionVal)
+					// Set this shards memory usage to zero. We can set this to 0 given this count is for
+					// this particular shard.
+					rc.currMemoryUsage.Set(0)
+					break
+				}
 			}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: value.collectionID}
@@ -953,8 +978,7 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 		}
 	}
 	rc._decrRevCacheMemoryUsage(ctx, -numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
-	rc.lock.Unlock()                                   // release lock after removing items from cache
-	rc.cacheNumItems.Add(-numItemsRemoved)
+	return numItemsRemoved
 }
 
 // _decrRevCacheMemoryUsage atomically decreases overall memory usage for cache and the actual rev cache objects usage.
@@ -991,7 +1015,13 @@ func (rc *LRURevisionCache) incrRevCacheMemoryUsage(ctx context.Context, bytesCo
 
 func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 	evictionCandidate := rc.lruList.Back()
-	revItem := evictionCandidate.Value.(*revCacheValue)
+	if evictionCandidate == nil {
+		return nil
+	}
+	revItem, ok := evictionCandidate.Value.(*revCacheValue)
+	if !ok {
+		return nil
+	}
 
 	if revItem.canEvict.Load() {
 		rc.lruList.Remove(evictionCandidate)
