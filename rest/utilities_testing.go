@@ -2449,20 +2449,20 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 }
 
 func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
 	return sc._isDatabaseSuspended(dbName)
 }
 
 func (sc *ServerContext) getBucketSpec(dbName string) base.BucketSpec {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	return sc.databases_[dbName].BucketSpec
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
+	return sc._databases[dbName].BucketSpec
 }
 
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 
 	return sc._suspendDatabase(ctx, dbName)
 }
@@ -2659,6 +2659,15 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	return config
 }
 
+// updatePersistedConfig is a helper function to update the persisted db config for a given db in the rest tester, bypassing the REST API and not (yet) reloading the database.
+// this can be used to test upgrades or changes in behaviour on older configurations (i.e. change a config to an older state that may not pass new validation rules)
+func (rt *RestTester) updatePersistedConfig(dbName string, updateFunc func(*DatabaseConfig)) {
+	// it's safe to just hold the read lock to fetch 'dbName' entry, since we're not modifying the map itself (adding or removing a database by name)
+	rt.ServerContext()._databasesLock.RLock()
+	defer rt.ServerContext()._databasesLock.RUnlock()
+	updateFunc(&rt.ServerContext()._dbConfigs[dbName].DatabaseConfig)
+}
+
 func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
 	if dbConfig.Scopes == nil {
 		principal.ExplicitChannels = base.SetOf(channels...)
@@ -2799,8 +2808,8 @@ func JsonToMap(t *testing.T, jsonStr string) map[string]interface{} {
 
 // reloadDatabaseWithConfigLoadFromBucket forces reload of db as if it was being picked up from the bucket
 func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
 	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
 }
 
