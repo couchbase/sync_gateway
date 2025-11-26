@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
@@ -59,20 +58,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
 
-	// Wait for run to complete
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		var response db.AttachmentManagerResponse
-		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateCompleted
-	})
-	require.NoError(t, err)
+	rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	dataStore := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -102,20 +88,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// Wait for run to complete
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		var response db.AttachmentManagerResponse
-		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateCompleted
-	})
-	require.NoError(t, err)
+	rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	// Validate results of GET
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
@@ -135,21 +108,6 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	// Attempt to terminate that run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-
-	// Verify it has been marked as 'stopping' --> its possible we'll get stopped instead based on timing of persisted doc update
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		var response db.AttachmentManagerResponse
-		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateStopping || response.State == db.BackgroundProcessStateStopped
-	})
-	require.NoError(t, err)
 
 	// Wait for run to complete
 	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)

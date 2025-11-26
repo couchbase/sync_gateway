@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -97,6 +98,10 @@ func (rt *RestTester) WaitForAttachmentMigrationStatus(t *testing.T, state db.Ba
 		require.NoError(c, err)
 		assert.Equal(c, state, response.State)
 	}, time.Second*20, time.Millisecond*100)
-
+	// Wait for heartbeat doc removal if the state change will result in its removal. Allows calling start
+	// immediately after db.BackgroundProcessStateStopped without error.
+	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, state) {
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(t, rt.GetDatabase().AttachmentMigrationManager)
+	}
 	return response
 }

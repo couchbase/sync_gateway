@@ -55,7 +55,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, ctx, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
 
 	// assert that the subset (5) of the docs were changed, all created docs were processed (10)
 	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
@@ -118,7 +118,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		}
 	}()
 
-	RequireBackgroundManagerState(t, ctx, attachMigrationMgr, BackgroundProcessStateStopped)
+	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateStopped)
 
 	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 	require.Less(t, stats.DocsProcessed, int64(4000))
@@ -132,7 +132,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	err = attachMigrationMgr.Start(ctx, nil)
 	require.NoError(t, err)
 
-	RequireBackgroundManagerState(t, ctx, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
 
 	stats = getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 	require.GreaterOrEqual(t, stats.DocsProcessed, int64(4000))
@@ -169,7 +169,7 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, ctx, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
 	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
@@ -227,7 +227,7 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, ctx, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
 	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)

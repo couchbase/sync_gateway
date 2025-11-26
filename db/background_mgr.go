@@ -10,10 +10,8 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
-	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -406,25 +404,6 @@ func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.State
-}
-
-// For test use only
-// Returns empty string if background process is not cluster aware
-func (b *BackgroundManager) GetHeartbeatDocID(t testing.TB) string {
-	if b.isClusterAware() {
-		return b.clusterAwareOptions.HeartbeatDocID()
-	}
-	return ""
-}
-
-// For test use only
-// Returns error if background process is not cluster aware
-func (b *BackgroundManager) GetHeartbeatDoc(t testing.TB) ([]byte, error) {
-	if b.isClusterAware() {
-		b, _, err := b.clusterAwareOptions.metadataStore.GetRaw(b.GetHeartbeatDocID(t))
-		return b, err
-	}
-	return nil, fmt.Errorf("background process is not cluster aware")
 }
 
 func (b *BackgroundManager) SetError(err error) {
