@@ -119,23 +119,23 @@ type LRURevisionCache struct {
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
-	err          error
-	history      Revisions
-	channels     base.Set
-	expiry       *time.Time
-	attachments  AttachmentsMeta
-	delta        *RevisionDelta
-	id           string
-	cv           Version
-	hlvHistory   string
-	revID        string
-	bodyBytes    []byte
-	lock         sync.RWMutex
-	deleted      bool
-	removed      bool
-	itemBytes    atomic.Int64
-	collectionID uint32
-	canEvict     atomic.Bool
+	err            error
+	history        Revisions
+	channels       base.Set
+	expiry         *time.Time
+	attachments    AttachmentsMeta
+	delta          *RevisionDelta
+	id             string
+	cv             Version
+	hlvHistory     string
+	revID          string
+	bodyBytes      []byte
+	lock           sync.RWMutex
+	deleted        bool
+	removed        bool
+	itemBytes      atomic.Int64
+	collectionID   uint32
+	valuePopulated atomic.Bool
 	deltaLock    sync.Mutex // synchronizes GetDelta across multiple clients for each fromRevision
 }
 
@@ -181,26 +181,90 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string, colle
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
 func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValue(ctx, docID, revID, collectionID, false)
+	value := rc.getValueForDeltaUpdate(ctx, docID, revID, collectionID, toDelta)
 	if value != nil {
-		outGoingBytes := value.updateDelta(toDelta)
-		if outGoingBytes != 0 {
-			rc.currMemoryUsage.Add(outGoingBytes)
-			rc.cacheMemoryBytesStat.Add(outGoingBytes)
-		}
+		value.updateDelta(toDelta)
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
 	}
 }
 
+func (rc *LRURevisionCache) getValueForDeltaUpdate(ctx context.Context, docID, revID string, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
+	if docID == "" || revID == "" {
+		return
+	}
+	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	if elem := rc.cache[key]; elem != nil {
+		rc.lruList.MoveToFront(elem)
+		value = elem.Value.(*revCacheValue)
+	} else {
+		// elem not found so return early
+		return
+	}
+
+	if !value.valuePopulated.Load() {
+		// item is not eligible for delta update when value has not been populated yet
+		return
+	}
+
+	// alter overall memory here then release lock to call update delta
+	var previousDeltaBytes, diffInBytes int64
+	if value.delta != nil {
+		// delta exists, need to pull this to update overall memory size correctly
+		previousDeltaBytes = value.delta.totalDeltaBytes
+	}
+	diffInBytes = newDelta.totalDeltaBytes - previousDeltaBytes
+	if diffInBytes != 0 {
+		value.itemBytes.Add(diffInBytes)
+	}
+	rc.currMemoryUsage.Add(diffInBytes)
+	rc.cacheMemoryBytesStat.Add(diffInBytes)
+
+	return value
+}
+
+func (rc *LRURevisionCache) getValueForDeltaUpdateCV(ctx context.Context, docID string, cv *Version, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
+	if cv == nil {
+		return
+	}
+	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	if elem := rc.hlvCache[key]; elem != nil {
+		rc.lruList.MoveToFront(elem)
+		value = elem.Value.(*revCacheValue)
+	} else {
+		// elem not found so return early
+		return
+	}
+
+	if !value.valuePopulated.Load() {
+		// item is not eligible for delta update when value has not been populated yet
+		return
+	}
+
+	// alter overall memory here then release lock to call update delta
+	var previousDeltaBytes, diffInBytes int64
+	if value.delta != nil {
+		// delta exists, need to pull this to update overall memory size correctly
+		previousDeltaBytes = value.delta.totalDeltaBytes
+	}
+	diffInBytes = newDelta.totalDeltaBytes - previousDeltaBytes
+	if diffInBytes != 0 {
+		value.itemBytes.Add(diffInBytes)
+	}
+	rc.currMemoryUsage.Add(diffInBytes)
+	rc.cacheMemoryBytesStat.Add(diffInBytes)
+
+	return value
+}
+
 func (rc *LRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValueByCV(ctx, docID, cv, collectionID, false)
+	value := rc.getValueForDeltaUpdateCV(ctx, docID, cv, collectionID, toDelta)
 	if value != nil {
-		outGoingBytes := value.updateDelta(toDelta)
-		if outGoingBytes != 0 {
-			rc.currMemoryUsage.Add(outGoingBytes)
-			rc.cacheMemoryBytesStat.Add(outGoingBytes)
-		}
+		value.updateDelta(toDelta)
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
 	}
@@ -409,7 +473,7 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 		value = elem.Value.(*revCacheValue)
 	} else if create {
 		value = &revCacheValue{id: docID, revID: revID, collectionID: collectionID}
-		value.canEvict.Store(false)
+		value.valuePopulated.Store(false)
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
@@ -437,7 +501,7 @@ func (rc *LRURevisionCache) getValueByCV(ctx context.Context, docID string, cv *
 		value = elem.Value.(*revCacheValue)
 	} else if create {
 		value = &revCacheValue{id: docID, cv: *cv, collectionID: collectionID}
-		value.canEvict.Store(false)
+		value.valuePopulated.Store(false)
 		newElem := rc.lruList.PushFront(value)
 		rc.hlvCache[key] = newElem
 		rc.cacheNumItems.Add(1)
@@ -713,7 +777,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		// we only want to set can evict if we are having to load the doc from the bucket into value,
 		// avoiding setting this value multiple times in the case other goroutines are loading the same value
 		defer func() {
-			value.canEvict.Store(true) // once done loading doc we can set the value to be ready for eviction
+			value.valuePopulated.Store(true) // once done loading doc we can set the value to be ready for eviction
 		}()
 
 		cacheHit = false
@@ -807,7 +871,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		// we only want to set can evict if we are having to load the doc from the bucket into value,
 		// avoiding setting this value multiple times in the case other goroutines are loading the same value
 		defer func() {
-			value.canEvict.Store(true) // once done loading doc we can set the value to be ready for eviction
+			value.valuePopulated.Store(true) // once done loading doc we can set the value to be ready for eviction
 		}()
 
 		cacheHit = false
@@ -849,23 +913,13 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.itemBytes.Store(docRev.MemoryBytes)
 		value.hlvHistory = docRev.HlvHistory
 	}
-	value.canEvict.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
+	value.valuePopulated.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
-func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
+func (value *revCacheValue) updateDelta(toDelta RevisionDelta) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
-	var previousDeltaBytes int64
-	if value.delta != nil {
-		// delta exists, need to pull this to update overall memory size correctly
-		previousDeltaBytes = value.delta.totalDeltaBytes
-	}
-	diffInBytes = toDelta.totalDeltaBytes - previousDeltaBytes
 	value.delta = &toDelta
-	if diffInBytes != 0 {
-		value.itemBytes.Add(diffInBytes)
-	}
-	return diffInBytes
 }
 
 // getItemBytes atomically retrieves the rev cache items overall memory footprint
@@ -1020,7 +1074,7 @@ func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 		return nil
 	}
 
-	if revItem.canEvict.Load() {
+	if revItem.valuePopulated.Load() {
 		rc.lruList.Remove(evictionCandidate)
 		return revItem
 	}
@@ -1029,7 +1083,7 @@ func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 	evictionCandidate = evictionCandidate.Prev()
 	for evictionCandidate != nil {
 		revItem = evictionCandidate.Value.(*revCacheValue)
-		if revItem.canEvict.Load() {
+		if revItem.valuePopulated.Load() {
 			rc.lruList.Remove(evictionCandidate)
 			return revItem
 		}
