@@ -2444,6 +2444,9 @@ func TestEvictionWhenStaleCVRemoved(t *testing.T) {
 	assert.Equal(t, "2-abc", revValueRevEntry.revID)
 }
 
+// TestUpdateDeltaRevCacheMemoryStatPanic:
+//   - Test will interleave underlying rev cache operations for UpdateDelta process and Remove item process to reproduce a race between
+//     threads updating a delta (and that thread updating the cache memory stats) and the underlying value being removed/evicted from the cache
 func TestUpdateDeltaRevCacheMemoryStatPanic(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
@@ -2462,12 +2465,12 @@ func TestUpdateDeltaRevCacheMemoryStatPanic(t *testing.T) {
 
 	revCacheDelta := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
 
-	// UpdateDelta - start
+	// Thread 1: UpdateDelta - start
 	value := cache.getValue(ctx, "doc1", "1-abc", testCollectionID, false)
 	if value != nil {
-		// Remove - start - drop value underneath UpdateDelta
+		// Thread 2: Remove - start - drop value underneath UpdateDelta thread
 		cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
-		// Remove - end
+		// Thread 2: Remove - end
 		outGoingBytes := value.updateDelta(revCacheDelta)
 		if outGoingBytes != 0 {
 			cache.currMemoryUsage.Add(outGoingBytes)
@@ -2476,7 +2479,7 @@ func TestUpdateDeltaRevCacheMemoryStatPanic(t *testing.T) {
 		// check for memory based eviction
 		cache.revCacheMemoryBasedEviction(ctx)
 	}
-	// UpdateDelta - end
+	// Thread 1: UpdateDelta - end
 
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
