@@ -2989,7 +2989,9 @@ func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	resp = rt.CreateDatabase(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.RestTesterServerContext._dbConfigs[dbName].DatabaseConfig.EnableXattrs = base.Ptr(false)
+	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
+		config.EnableXattrs = base.Ptr(false)
+	})
 
 	_, err := rt.RestTesterServerContext.ReloadDatabase(t.Context(), dbName, false)
 	assert.Error(t, err, errResp)
@@ -3481,8 +3483,10 @@ func TestAllowConflictsConfig(t *testing.T) {
 	require.Equal(t, fmt.Sprintf(`[{"db_name":"%s","bucket":"%s","state":"Online"}]`, rt.GetDatabase().Name, rt.GetDatabase().Bucket.GetName()), resp.Body.String())
 	bucketName := rt.GetDatabase().Bucket.GetName()
 
-	// Attempt to set the `AllowConflicts` property to true in the database configuration.
-	rt.RestTesterServerContext._dbConfigs[dbName].DatabaseConfig.DbConfig.AllowConflicts = base.Ptr(true)
+	// Set the `AllowConflicts` property to true in the persisted database configuration and try to load it (this covers cases where the config value was previously set from an older SGW version that allowed this configuration).
+	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
+		config.DbConfig.AllowConflicts = base.Ptr(true)
+	})
 
 	// Reload the database configuration and verify that an error is returned.
 	_, err := rt.RestTesterServerContext.ReloadDatabase(ctx, dbName, false)
@@ -3525,7 +3529,9 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Attempting to disable `enable_star_channel`
-	rt.ServerContext()._dbConfigs[dbName].DatabaseConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
+	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
+		config.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
+	})
 
 	// Reloading the database after updating the config
 	_, err := rt.ServerContext().ReloadDatabase(ctx, dbName, false)

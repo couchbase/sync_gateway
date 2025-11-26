@@ -2615,6 +2615,15 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	return config
 }
 
+// updatePersistedConfig is a helper function to update the persisted db config for a given db in the rest tester, bypassing the REST API and not (yet) reloading the database.
+// this can be used to test upgrades or changes in behaviour on older configurations (i.e. change a config to an older state that may not pass new validation rules)
+func (rt *RestTester) updatePersistedConfig(dbName string, updateFunc func(*DatabaseConfig)) {
+	// it's safe to just hold the read lock to fetch 'dbName' entry, since we're not modifying the map itself (adding or removing a database by name)
+	rt.ServerContext()._databasesLock.RLock()
+	defer rt.ServerContext()._databasesLock.RUnlock()
+	updateFunc(&rt.ServerContext()._dbConfigs[dbName].DatabaseConfig)
+}
+
 func setChannelsAllCollections(dbConfig DbConfig, principal *auth.PrincipalConfig, channels ...string) {
 	if dbConfig.Scopes == nil {
 		principal.ExplicitChannels = base.SetOf(channels...)

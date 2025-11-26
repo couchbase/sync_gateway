@@ -564,10 +564,8 @@ func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName strin
 func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string, forceOnline bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc._databasesLock.Lock()
-	dbContext, err := sc._reloadDatabase(ctx, reloadDbName, false, forceOnline)
-	sc._databasesLock.Unlock()
-
-	return dbContext, err
+	defer sc._databasesLock.Unlock()
+	return sc._reloadDatabase(ctx, reloadDbName, false, forceOnline)
 }
 
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
