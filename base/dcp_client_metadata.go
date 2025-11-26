@@ -228,7 +228,6 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 	for _, vbID := range vbIDs {
 		meta.DCPMeta[vbID] = m.metadata[vbID]
 	}
-	fmt.Printf("HONK m.setMetadataKey(workerID): %s\n", m.getMetadataKey(workerID))
 	err := m.dataStore.Set(m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
 		InfofCtx(ctx, KeyDCP, "Unable to persist DCP metadata: %v", err)
@@ -240,7 +239,6 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 
 func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 	var meta WorkerMetadata
-	fmt.Printf("HONK m.getMetadataKey(workerID): %s\n", m.getMetadataKey(workerID))
 	_, err := m.dataStore.Get(m.getMetadataKey(workerID), &meta)
 	if err != nil {
 		if IsDocNotFoundError(err) {

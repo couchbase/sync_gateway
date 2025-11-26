@@ -51,7 +51,7 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	dcpOptions := DCPClientOptions{
-		ID: t.Name(),
+		ID: t.Name() + UUID(t),
 		CollectionNames: CollectionNames{
 			dataStore.ScopeName(): {dataStore.CollectionName()},
 		},
@@ -112,7 +112,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	}
 
 	dcpOptions := DCPClientOptions{
-		ID: t.Name(),
+		ID: t.Name() + UUID(t),
 		CollectionNames: map[string][]string{
 			dataStore.ScopeName(): {dataStore.CollectionName()},
 		},
@@ -207,8 +207,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				return false
 			}
 
-			feedID := t.Name()
-
 			// Add documents
 			updatedBody := map[string]any{"foo": "bar"}
 			for i := range 10000 {
@@ -225,7 +223,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CollectionNames:  collectionNames,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 				Callback:         counterCallback,
-				ID:               feedID,
+				ID:               t.Name() + UUID(t),
 			}
 
 			dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
@@ -256,7 +254,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			uuidMismatchMetadata[0].SnapEndSeqNo = test.startSeqNo
 
 			dcpClientOpts = DCPClientOptions{
-				ID:               feedID,
+				ID:               t.Name() + UUID(t),
 				CollectionNames:  collectionNames,
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   true,
@@ -276,7 +274,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
 			dcpClientOpts = DCPClientOptions{
-				ID:               feedID,
+				ID:               t.Name() + UUID(t),
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   false,
 				OneShot:          true,
@@ -688,7 +686,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		return true
 	}
 	clientOptions := DCPClientOptions{
-		ID:               t.Name(),
+		ID:               t.Name() + UUID(t),
 		CollectionNames:  collectionNames,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         callback,
@@ -777,7 +775,7 @@ func TestDCPClientAgentConfig(t *testing.T) {
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
 			gocbv2Bucket.Spec.Server += tc.serverSuffix
 			opts := DCPClientOptions{
-				ID: "fakeFeedID",
+				ID: "fakeFeedID" + UUID(t),
 				CollectionNames: CollectionNames{
 					bucket.GetSingleDataStore().ScopeName(): {bucket.GetSingleDataStore().CollectionName()},
 				},
