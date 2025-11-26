@@ -2977,7 +2977,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		assert.Equal(c, 1, len(invalidDatabases))
-		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+		assert.Equal(c, 0, len(rt.ServerContext()._dbConfigs))
 	}, time.Second*10, time.Millisecond*100)
 
 	// remove the invalid config from the bucket
@@ -2990,7 +2990,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		assert.Equal(c, 0, len(invalidDatabases))
-		assert.Equal(c, 0, len(rt.ServerContext().dbConfigs))
+		assert.Equal(c, 0, len(rt.ServerContext()._dbConfigs))
 	}, time.Second*10, time.Millisecond*100)
 
 	// create db again, should succeed
@@ -3063,7 +3063,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
 		assert.Equal(c, 0, len(invalidDatabases))
-		assert.Equal(c, 1, len(rt.ServerContext().dbConfigs))
+		assert.Equal(c, 1, len(rt.ServerContext()._dbConfigs))
 	}, time.Second*10, time.Millisecond*100)
 }
 
