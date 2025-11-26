@@ -138,6 +138,18 @@ type DatabaseContext struct {
 	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
 	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
+
+	SkippedSeqDocID   string // Document ID used to track skipped sequences across a cluster
+	RejectBoolean     atomic.Bool
+	BroadcastSlowMode atomic.Bool // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+}
+
+func (db *DatabaseContext) PushSkipped(ctx context.Context, seq uint64) {
+	db.changeCache.PushSkipped(ctx, seq)
+}
+
+func (db *DatabaseContext) RemoveSkipped(seq uint64) {
+	db.changeCache.RemoveSkipped(seq)
 }
 
 type Scope struct {
@@ -233,21 +245,22 @@ type APIEndpoints struct {
 
 // UnsupportedOptions are not supported for external use
 type UnsupportedOptions struct {
-	UserViews                      *UserViewsOptions        `json:"user_views,omitempty"`                          // Config settings for user views
-	OidcTestProvider               *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`                  // Config settings for OIDC Provider
-	APIEndpoints                   *APIEndpoints            `json:"api_endpoints,omitempty"`                       // Config settings for API endpoints
-	WarningThresholds              *WarningThresholds       `json:"warning_thresholds,omitempty"`                  // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery       bool                     `json:"disable_clean_skipped_query,omitempty"`         // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
-	OidcTlsSkipVerify              bool                     `json:"oidc_tls_skip_verify,omitempty"`                // Config option to enable self-signed certs for OIDC testing.
-	SgrTlsSkipVerify               bool                     `json:"sgr_tls_skip_verify,omitempty"`                 // Config option to enable self-signed certs for SG-Replicate testing.
-	RemoteConfigTlsSkipVerify      bool                     `json:"remote_config_tls_skip_verify,omitempty"`       // Config option to enable self signed certificates for external JavaScript load.
-	GuestReadOnly                  bool                     `json:"guest_read_only,omitempty"`                     // Config option to restrict GUEST document access to read-only
-	ForceAPIForbiddenErrors        bool                     `json:"force_api_forbidden_errors,omitempty"`          // Config option to force the REST API to return forbidden errors
-	ConnectedClient                bool                     `json:"connected_client,omitempty"`                    // Enables BLIP connected-client APIs
-	UseQueryBasedResyncManager     bool                     `json:"use_query_resync_manager,omitempty"`            // Config option to use Query based resync manager to perform Resync op
-	DCPReadBuffer                  int                      `json:"dcp_read_buffer,omitempty"`                     // Enables user to set their own DCP read buffer
-	KVBufferSize                   int                      `json:"kv_buffer,omitempty"`                           // Enables user to set their own KV pool buffer
-	BlipSendDocsWithChannelRemoval bool                     `json:"blip_send_docs_with_channel_removal,omitempty"` // Enables sending docs with channel removals using channel filters
+	UserViews                        *UserViewsOptions        `json:"user_views,omitempty"`                           // Config settings for user views
+	OidcTestProvider                 *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`                   // Config settings for OIDC Provider
+	APIEndpoints                     *APIEndpoints            `json:"api_endpoints,omitempty"`                        // Config settings for API endpoints
+	WarningThresholds                *WarningThresholds       `json:"warning_thresholds,omitempty"`                   // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery         bool                     `json:"disable_clean_skipped_query,omitempty"`          // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
+	OidcTlsSkipVerify                bool                     `json:"oidc_tls_skip_verify,omitempty"`                 // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify                 bool                     `json:"sgr_tls_skip_verify,omitempty"`                  // Config option to enable self-signed certs for SG-Replicate testing.
+	RemoteConfigTlsSkipVerify        bool                     `json:"remote_config_tls_skip_verify,omitempty"`        // Config option to enable self signed certificates for external JavaScript load.
+	GuestReadOnly                    bool                     `json:"guest_read_only,omitempty"`                      // Config option to restrict GUEST document access to read-only
+	ForceAPIForbiddenErrors          bool                     `json:"force_api_forbidden_errors,omitempty"`           // Config option to force the REST API to return forbidden errors
+	ConnectedClient                  bool                     `json:"connected_client,omitempty"`                     // Enables BLIP connected-client APIs
+	UseQueryBasedResyncManager       bool                     `json:"use_query_resync_manager,omitempty"`             // Config option to use Query based resync manager to perform Resync op
+	DCPReadBuffer                    int                      `json:"dcp_read_buffer,omitempty"`                      // Enables user to set their own DCP read buffer
+	KVBufferSize                     int                      `json:"kv_buffer,omitempty"`                            // Enables user to set their own KV pool buffer
+	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
+	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes when skipped sequences are detected
 }
 
 type WarningThresholds struct {
@@ -562,6 +575,90 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
+	}
+
+	if dbContext.Options.UnsupportedOptions != nil && dbContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// create doc for skipped sequence status on nodes
+		// add this behind reject writes flag
+		for i := 0; i < 4; i++ {
+			docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+			added, err := metadataStore.Add(docID, 0, []byte(`{"skipped" : false}`))
+			if err != nil {
+				base.WarnfCtx(ctx, "got error adding skipped sequence status doc %s: %v", docID, err)
+				return nil, err
+			}
+			if added {
+				dbContext.SkippedSeqDocID = docID
+				base.InfofCtx(ctx, base.KeyAll, "Added skipped sequence status doc %s", dbContext.SkippedSeqDocID)
+				// exit loop if we successfully added the doc
+				break
+			} else {
+				base.WarnfCtx(ctx, "Skipped sequence status doc %s already exists, not overwriting", docID)
+			}
+		}
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+			broadcastSlowMode := false
+			for {
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					newBroadcastSlowMode := db.BroadcastSlowMode.Load()
+					if broadcastSlowMode != newBroadcastSlowMode {
+						base.InfofCtx(ctx, base.KeyAll, "setting skipped bucket doc %s to %t", db.SkippedSeqDocID, newBroadcastSlowMode)
+						err := db.MetadataStore.SetRaw(db.SkippedSeqDocID, 0, nil, []byte(fmt.Sprintf(`{"skipped": %t}`, newBroadcastSlowMode)))
+						if err != nil {
+							base.WarnfCtx(ctx, "Error updating skipped sequence status: %v", err)
+						}
+						broadcastSlowMode = newBroadcastSlowMode
+					}
+				}
+			}
+		}(dbContext)
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				oneNodeSkipped := false
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					for i := 0; i < 4; i++ {
+						docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+						var body map[string]interface{}
+						val, _, err := db.MetadataStore.GetRaw(docID)
+						if err == nil {
+							if err := base.JSONUnmarshal(val, &body); err != nil {
+								base.WarnfCtx(ctx, "skipped sequence status unmarshal error %s: %v", docID, err)
+								continue
+							}
+							skipped := body["skipped"].(bool)
+							base.InfofCtx(ctx, base.KeyAll, "retrieved skipped sequence status for %s: %v", docID, body)
+							if skipped {
+								oneNodeSkipped = true
+								// if one node has skipped sequences, all nodes will reject writes and we will have set boolean above to true
+								// so exit loop early
+								break
+							}
+						} else {
+							base.WarnfCtx(ctx, "skipped sequence status doc get error for %s: %v", docID, err)
+						}
+					}
+					if oneNodeSkipped {
+						db.RejectBoolean.Store(true)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is true for at least one node, reject value for this node %t", db.RejectBoolean.Load())
+					} else {
+						db.RejectBoolean.Store(false)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is false for all nodes, reject value for this node %t", db.RejectBoolean.Load())
+					}
+				}
+			}
+		}(dbContext)
 	}
 
 	// Initialize sg-replicate manager

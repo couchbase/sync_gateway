@@ -316,6 +316,10 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	numRemoved := c.RemoveSkippedSequences(ctx, oldSkippedSequences)
 	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
 
+	if c.skippedSeqs.skippedList.Len() == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
+
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.db.Name))
 	return nil
 }
@@ -882,6 +886,9 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.Remove(x)
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(int64(c.skippedSeqs.skippedList.Len()))
 	c.db.DbStats.Cache().DeprecatedSkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len())) //nolint
+	if c.skippedSeqs.skippedList.Len() == 0 {
+		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
 	return err
 }
 
@@ -905,6 +912,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, sequence uint64) {
 	}
 	c.db.DbStats.Cache().NumCurrentSeqsSkipped.Set(int64(c.skippedSeqs.skippedList.Len()))
 	c.db.DbStats.Cache().DeprecatedSkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len())) //nolint
+	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {

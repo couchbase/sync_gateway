@@ -1306,6 +1306,10 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
+	if config.Unsupported.RejectWritesWithSkippedSequences {
+		base.InfofCtx(ctx, base.KeyConfig, "Setting database configuration option 'reject_writes_with_skipped_sequences' to true")
+	}
+
 	if config.Unsupported.DisableCleanSkippedQuery {
 		base.WarnfCtx(ctx, `Deprecation notice: setting databse configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
 	}
