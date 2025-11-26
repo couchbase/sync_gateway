@@ -93,7 +93,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	} else {
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
-			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
+			if err == nil && existingDoc.MetadataOnlyUpdate != nil {
 				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
 			if existingDoc.HLV != nil {
@@ -337,7 +337,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		}
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
-		if metadataOnlyUpdate && db.useMou() {
+		if metadataOnlyUpdate {
 			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.MetadataOnlyUpdate)
 		}
 

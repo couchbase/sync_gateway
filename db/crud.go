@@ -2773,7 +2773,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr, base.VvXattrName: rawVvXattr}
-			if rawMouXattr != nil && db.useMou() {
+			if rawMouXattr != nil {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
 			}
 			if rawGlobalSync != nil {

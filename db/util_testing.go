@@ -237,19 +237,6 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		if !ok {
 			purgeErrors = purgeErrors.Append(fmt.Errorf("Could not find collection ID %d for %#+v doc over DCP", event.CollectionID, event))
 		}
-		// If Couchbase Server < 7.6, we need to delete xattrs one at a time, since it doesn't support subdoc multi-xattr operations.
-		if len(xattrs) >= 1 && !bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-			for _, xattr := range xattrs {
-				err := dataStore.DeleteSubDocPaths(ctx, docID, xattr)
-				if err != nil {
-					purgeErrors = purgeErrors.Append(fmt.Errorf("error purging xattr %s from docID %s: %w", xattr, docID, err))
-					tbp.Logf(ctx, "%s", err)
-					return false
-				}
-			}
-			xattrs = nil // reset xattrs to nil so we don't try to delete the doc with xattrs
-
-		}
 
 		purgeErr := dataStore.DeleteWithXattrs(ctx, docID, xattrs)
 		if base.IsDocNotFoundError(purgeErr) { // doc is a tombstone

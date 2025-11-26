@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/couchbase/clog"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -2585,10 +2584,6 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 	ctx := base.TestCtx(t)
-
-	if !rt.Bucket().IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
-	}
 
 	// Create doc via the SDK
 	mobileKey := t.Name()
