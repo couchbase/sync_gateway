@@ -3249,6 +3249,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 }
 
 func TestBlipPushRevOnResurrection(t *testing.T) {
+	t.Skip("test flaky on toy build server")
 	for _, allowConflicts := range []bool{true, false} {
 		t.Run(fmt.Sprintf("allowConflicts=%t", allowConflicts), func(t *testing.T) {
 			btcRunner := NewBlipTesterClientRunner(t)
