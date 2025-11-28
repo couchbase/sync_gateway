@@ -1036,24 +1036,39 @@ func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
 		concurrentClients int
 	}{
 		{
-			name:              "SmallDoc_FewClients",
+			name:              "100KBDoc_100Clients",
 			docSize:           100 * 1024,
 			concurrentClients: 100,
 		},
 		{
-			name:              "SmallDoc_ManyClients",
+			name:              "100KBDoc_1000Clients",
 			docSize:           100 * 1024,
 			concurrentClients: 1000,
 		},
 		{
-			name:              "LargeDoc_FewClients",
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
 			docSize:           5 * 1024 * 1024,
 			concurrentClients: 100,
 		},
 		{
-			name:              "LargeDoc_ManyClients",
+			name:              "5MBDoc_1000Clients",
 			docSize:           5 * 1024 * 1024,
 			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
 		},
 	}
 
