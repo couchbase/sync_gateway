@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -211,7 +212,8 @@ type DocumentRevision struct {
 	Channels    base.Set
 	Expiry      *time.Time
 	Attachments AttachmentsMeta
-	Delta       *RevisionDelta
+	_Delta      *RevisionDelta
+	DeltaLock   *sync.RWMutex
 	Deleted     bool
 	Removed     bool  // True if the revision is a removal.
 	MemoryBytes int64 // storage of the doc rev bytes measurement, includes size of delta when present too
@@ -390,7 +392,7 @@ type RevisionDelta struct {
 	totalDeltaBytes       int64                   // totalDeltaBytes is the total bytes for channels, revisions and body on the delta itself
 }
 
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision *DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		ToCV:                  toRevision.CV.String(),

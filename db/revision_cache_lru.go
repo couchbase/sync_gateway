@@ -136,6 +136,7 @@ type revCacheValue struct {
 	itemBytes    atomic.Int64
 	collectionID uint32
 	canEvict     atomic.Bool
+	deltaLock    sync.RWMutex
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -769,15 +770,16 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 		Channels:    value.channels,
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		_Delta:      delta,
 		Deleted:     value.deleted,
 		Removed:     value.removed,
 		HlvHistory:  value.hlvHistory,
+		DeltaLock: &value.deltaLock,
 	}
 	// only populate CV if we have a value
 	if !value.cv.IsEmpty() {
 		docRev.CV = &value.cv
 	}
-	docRev.Delta = delta
 
 	return docRev, value.err
 }

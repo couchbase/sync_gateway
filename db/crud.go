@@ -454,7 +454,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	if docID == "" || fromRev == "" || toRev == "" {
 		return nil, nil, nil
 	}
-	var fromRevision DocumentRevision
+	var initialFromRevision DocumentRevision
 	var fromRevVrs Version
 	fromRevIsCV := !base.IsRevTreeID(fromRev)
 	if fromRevIsCV {
@@ -462,12 +462,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		fromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		initialFromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
 	} else {
-		fromRevision, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
+		initialFromRevision, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -476,39 +476,63 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
 	// Delta can't be generated if we don't have the fromRevision body.
-	if fromRevision.Removed {
+	if initialFromRevision.Removed {
 		return nil, nil, ErrMissing
 	}
 
 	// If the fromRevision was a tombstone, then return error to tell delta sync to send full body replication
-	if fromRevision.Deleted {
+	if initialFromRevision.Deleted {
 		return nil, nil, base.ErrDeltaSourceIsTombstone
 	}
 
-	// If both body and delta are not available for fromRevId, the delta can't be generated
-	if fromRevision.BodyBytes == nil && fromRevision.Delta == nil {
-		return nil, nil, err
+	// locking ensures clients requesting deltas sharing the same from revision memoize the work to generate the delta and share the cached result
+	initialFromRevision.DeltaLock.RLock()
+	// If delta is found, check whether it is a delta for the toRevID we want
+	if initialFromRevision._Delta != nil && (initialFromRevision._Delta.ToCV == toRev || initialFromRevision._Delta.ToRevID == toRev) {
+		defer initialFromRevision.DeltaLock.RUnlock()
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, initialFromRevision._Delta.ToChannels, initialFromRevision._Delta.ToDeleted, encodeRevisions(ctx, docID, initialFromRevision._Delta.RevisionHistory))
+		if !isAuthorized {
+			return nil, &redactedBody, nil
+		}
+		db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
+		return initialFromRevision._Delta, nil, nil
 	}
 
-	// If delta is found, check whether it is a delta for the toRevID we want
-	if fromRevision.Delta != nil {
-		if fromRevision.Delta.ToCV == toRev || fromRevision.Delta.ToRevID == toRev {
+	if initialFromRevision.BodyBytes != nil {
+		// upgrade to write lock and generate delta
+		initialFromRevision.DeltaLock.RUnlock()
+		initialFromRevision.DeltaLock.Lock() // 4999
+		defer initialFromRevision.DeltaLock.Unlock()
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevision.CV, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevision.Delta.RevisionHistory))
+		var fromRevisionForDiff DocumentRevision
+
+		// check the revcache again for a delta - it's possible another writer generated it while we were waiting for the write lock
+		if fromRevIsCV {
+			fromRevisionForDiff, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			fromRevisionForDiff, err = db.revisionCache.GetWithRev(ctx, docID, fromRev, RevCacheIncludeDelta)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		if fromRevisionForDiff._Delta != nil && (fromRevisionForDiff._Delta.ToCV == toRev || fromRevisionForDiff._Delta.ToRevID == toRev) {
+			// another writer beat us to generating the delta
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, fromRevisionForDiff._Delta.ToChannels, fromRevisionForDiff._Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff._Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
-
-			// Case 2a. 'some rev' is the rev we're interested in - return the delta
-			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
 			db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
-			return fromRevision.Delta, nil, nil
+			return fromRevisionForDiff._Delta, nil, nil
 		}
-	}
 
-	// Delta is unavailable, but the body is available.
-	if fromRevision.BodyBytes != nil {
+		if fromRevisionForDiff.BodyBytes == nil {
+			return nil, nil, nil
+		}
 
+		// need to generate delta and cache it for others
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
 		var toRevision DocumentRevision
 		if !base.IsRevTreeID(toRev) {
@@ -539,7 +563,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, &toRevision, deleted, nil)
 			if fromRevIsCV {
 				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
 			} else {
@@ -550,7 +574,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// We didn't unmarshal fromBody earlier (in case we could get by with just the delta), so need do it now
 		var fromBodyCopy Body
-		if err := fromBodyCopy.Unmarshal(fromRevision.BodyBytes); err != nil {
+		if err := fromBodyCopy.Unmarshal(fromRevisionForDiff.BodyBytes); err != nil {
 			return nil, nil, err
 		}
 
@@ -562,11 +586,11 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If attachments have changed between these revisions, we'll stamp the metadata into the bodies before diffing
 		// so that the resulting delta also contains attachment metadata changes
-		if fromRevision.Attachments != nil {
+		if fromRevisionForDiff.Attachments != nil {
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
-			DeleteAttachmentVersion(fromRevision.Attachments)
-			fromBodyCopy[BodyAttachments] = map[string]any(fromRevision.Attachments)
+			DeleteAttachmentVersion(fromRevisionForDiff.Attachments)
+			fromBodyCopy[BodyAttachments] = map[string]any(fromRevisionForDiff.Attachments)
 		}
 
 		var toRevAttStorageMeta []AttachmentStorageMeta
@@ -581,7 +605,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, &toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
 		if fromRevIsCV {
@@ -592,6 +616,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return &revCacheDelta, nil, nil
 	}
 
+	// If both body and delta are not available for fromRevId, the delta can't be generated
 	return nil, nil, nil
 }
 

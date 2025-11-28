@@ -980,6 +980,49 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
 }
 
+// TestDeltaSyncConcurrentClientCachePopulation tests delta sync behavior when multiple goroutines request the same delta simultaneously.
+// Ensures that only one delta is computed and others wait for the cached result.
+// More instances of duplicated delta computation will be seen for larger documents since the delta computation takes longer.
+func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync only supported in EE")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	const docSize = 5 * 1024 * 1024 // 5 MB
+	rev1, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", docSize)})
+	require.NoError(t, err, "Error creating doc1")
+	rev2, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "quux": strings.Repeat("b", docSize), BodyRev: rev1})
+	require.NoError(t, err, "Error updating doc1")
+
+	const numPulls = 1000
+	wg := sync.WaitGroup{}
+	wg.Add(numPulls)
+	for i := 0; i < numPulls; i++ {
+		if i >= numPulls-100 {
+			time.Sleep(time.Millisecond * 10)
+		}
+		go func() {
+			defer wg.Done()
+			delta, _, err := collection.GetDelta(ctx, "doc1", rev1, rev2)
+			require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", "doc1", rev1, rev2)
+			require.NotNil(t, delta)
+		}()
+	}
+	wg.Wait()
+
+	// ensure only 1 delta miss and the remaining used cache
+	deltaCacheHits := db.DbStats.DeltaSync().DeltaCacheHit.Value()
+	deltaCacheMisses := db.DbStats.DeltaSync().DeltaCacheMiss.Value()
+	assert.Equal(t, int64(1), deltaCacheMisses, "Unexpected number of delta cache misses")
+	assert.Equal(t, int64(numPulls-1), deltaCacheHits, "Unexpected number of delta cache hits")
+}
+
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	if !base.IsEnterpriseEdition() {

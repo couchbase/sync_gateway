@@ -797,22 +797,22 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	// Retrieve from cache
 	retrievedRev, err := cache.GetWithRev(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
-	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
 	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
-	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
 
 	// Retrieve again, validate delta is correct
 	updatedRev, err := cache.GetWithRev(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
-	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
-	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
+	assert.Equal(t, "rev3", updatedRev._Delta.ToRevID)
+	assert.Equal(t, secondDelta, updatedRev._Delta.DeltaBytes)
 
-	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
 
 }
 
@@ -850,7 +850,7 @@ func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 			assert.NoError(t, err, "Error adding to cache")
 
 			revCacheMem := memoryBytesCounted.Value()
-			revCacheDelta := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
+			revCacheDelta := newRevCacheDelta(firstDelta, "1-abc", &docRev, false, nil)
 			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
 			// assert that rev cache memory increases by expected amount
 			newMem := revCacheMem + revCacheDelta.totalDeltaBytes
@@ -858,14 +858,14 @@ func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 			oldDeltaSize := revCacheDelta.totalDeltaBytes
 
 			newMem = memoryBytesCounted.Value()
-			revCacheDelta = newRevCacheDelta(secondDelta, "1-abc", docRev, false, nil)
+			revCacheDelta = newRevCacheDelta(secondDelta, "1-abc", &docRev, false, nil)
 			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
 
 			// assert the overall memory stat is correctly updated (by the diff between the old delta and the new delta)
 			newMem += revCacheDelta.totalDeltaBytes - oldDeltaSize
 			assert.Equal(t, newMem, memoryBytesCounted.Value())
 
-			revCacheDelta = newRevCacheDelta(thirdDelta, "1-abc", docRev, false, nil)
+			revCacheDelta = newRevCacheDelta(thirdDelta, "1-abc", &docRev, false, nil)
 			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
 
 			// assert that eviction took place and as result stat is now 0 (only item in cache was doc1)
@@ -1266,7 +1266,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 			assert.Equal(t, prevMemStat, cacheStats.RevisionCacheTotalMemory.Value())
 
 			// Test Update Delta, assert stat increases as expected
-			revDelta := newRevCacheDelta([]byte(`"rev":"delta"`), "1-abc", newDocRev, false, nil)
+			revDelta := newRevCacheDelta([]byte(`"rev":"delta"`), "1-abc", &newDocRev, false, nil)
 			expMem = prevMemStat + revDelta.totalDeltaBytes
 			if testCase.UseCVCache {
 				db.revisionCache.UpdateDeltaCV(ctx, "doc3", &revDoc3.CV, collctionID, revDelta)
@@ -2463,7 +2463,7 @@ func TestUpdateDeltaRevCacheMemoryStatPanicSingleEntry(t *testing.T) {
 	docRev, err := cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	require.NoError(t, err, "Error adding to cache")
 
-	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
+	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", &docRev, false, nil)
 
 	// Thread 1: UpdateDelta - start
 	value := cache.getValue(ctx, "doc1", "1-abc", testCollectionID, false)
@@ -2509,7 +2509,7 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 	docRev2, err := cache.GetWithRev(ctx, "doc2", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	require.NoError(t, err, "Error adding to cache")
 
-	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev2, false, nil)
+	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", &docRev2, false, nil)
 
 	// Thread 1: UpdateDelta - start
 	value := cache.getValue(ctx, "doc2", "1-abc", testCollectionID, false)
