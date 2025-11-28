@@ -940,13 +940,10 @@ func (rc *LRURevisionCache) evictBasedOffMemoryUsage(ctx context.Context) int64 
 					// list is empty, nothing more to evict but stats are wrong so zero stats and return
 					base.DebugfCtx(ctx, base.KeyCache, "Revision cache memory stats inconsistent for this shard, resetting to zero")
 					correctionVal := rc.currMemoryUsage.Value()
-					// Correct overall memory stat across shards to remove this shards memory usage. We cannot set this
-					// to 0 as other shards usage is included in this
+					// Correct overall memory stat across shards to remove this shards memory usage, and set this shard to zero
 					rc.cacheMemoryBytesStat.Add(-correctionVal)
-					// Set this shards memory usage to zero. We can set this to 0 given this count is for
-					// this particular shard.
 					rc.currMemoryUsage.Set(0)
-					break
+					return numItemsRemoved
 				}
 			}
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: value.collectionID}
