@@ -1854,6 +1854,10 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if db.useMou() {
 				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 			}
+			doc, err = db.updateHLV(ctx, doc, Import, false)
+			if err != nil {
+				return sgbucket.UpdatedDoc{}, err
+			}
 
 			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
