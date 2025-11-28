@@ -988,37 +988,79 @@ func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
 		t.Skip("Delta sync only supported in EE")
 	}
 
-	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-
-	const docSize = 5 * 1024 * 1024 // 5 MB
-	rev1, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", docSize)})
-	require.NoError(t, err, "Error creating doc1")
-	rev2, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "quux": strings.Repeat("b", docSize), BodyRev: rev1})
-	require.NoError(t, err, "Error updating doc1")
-
-	const numPulls = 1000
-	wg := sync.WaitGroup{}
-	wg.Add(numPulls)
-	for i := 0; i < numPulls; i++ {
-		if i >= numPulls-100 {
-			time.Sleep(time.Millisecond * 10)
-		}
-		go func() {
-			defer wg.Done()
-			delta, _, err := collection.GetDelta(ctx, "doc1", rev1, rev2)
-			require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", "doc1", rev1, rev2)
-			require.NotNil(t, delta)
-		}()
+	tests := []struct {
+		name              string
+		docSize           int
+		concurrentClients int
+	}{
+		{
+			name:              "100KBDoc_100Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "100KBDoc_1000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "5MBDoc_1000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
+		},
 	}
-	wg.Wait()
 
-	// ensure only 1 delta miss and the remaining used cache
-	deltaCacheHits := db.DbStats.DeltaSync().DeltaCacheHit.Value()
-	deltaCacheMisses := db.DbStats.DeltaSync().DeltaCacheMiss.Value()
-	assert.Equal(t, int64(1), deltaCacheMisses, "Unexpected number of delta cache misses")
-	assert.Equal(t, int64(numPulls-1), deltaCacheHits, "Unexpected number of delta cache hits")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+			docID := "doc1_" + test.name
+			rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			require.NoError(t, err)
+			rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+			require.NoError(t, err)
+
+			wg := sync.WaitGroup{}
+			wg.Add(test.concurrentClients)
+			for i := 0; i < test.concurrentClients; i++ {
+				go func() {
+					defer wg.Done()
+					delta, _, err := collection.GetDelta(ctx, docID, rev1, rev2)
+					require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", docID, rev1, rev2)
+					require.NotNil(t, delta)
+				}()
+			}
+			wg.Wait()
+
+			// ensure only 1 delta miss and the remaining used cache
+			deltaCacheHits := db.DbStats.DeltaSync().DeltaCacheHit.Value()
+			deltaCacheMisses := db.DbStats.DeltaSync().DeltaCacheMiss.Value()
+			assert.Equal(t, int64(1), deltaCacheMisses, "Unexpected number of delta cache misses")
+			assert.Equal(t, int64(test.concurrentClients-1), deltaCacheHits, "Unexpected number of delta cache hits")
+		})
+	}
 }
 
 func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
