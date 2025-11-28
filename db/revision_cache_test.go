@@ -797,22 +797,22 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	// Retrieve from cache
 	retrievedRev, err := cache.GetWithRev(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
-	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
 	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
-	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Retrieve again, validate delta is correct
 	updatedRev, err := cache.GetWithRev(base.TestCtx(t), "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error retrieving from cache")
-	assert.Equal(t, "rev3", updatedRev._Delta.ToRevID)
-	assert.Equal(t, secondDelta, updatedRev._Delta.DeltaBytes)
+	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
+	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
 
-	assert.Equal(t, "rev2", retrievedRev._Delta.ToRevID)
-	assert.Equal(t, firstDelta, retrievedRev._Delta.DeltaBytes)
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 }
 

@@ -447,8 +447,8 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, maxHistory, nil)
 }
 
-// GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
-// returns nil.
+// GetDelta attempts to return the delta between fromRevId and toRevId. If the delta can't be generated, returns nil.
+// Delta generation is synchronized per fromRev via a shared revision cache value lock to avoid multiple clients generating the same delta simultaneously.
 func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRev == "" || toRev == "" {
@@ -486,23 +486,23 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	}
 
 	// locking ensures clients requesting deltas sharing the same from revision memoize the work to generate the delta and share the cached result
-	initialFromRevision.DeltaLock.RLock()
+	initialFromRevision.RevCacheValueDeltaLock.RLock()
 	// If delta is found, check whether it is a delta for the toRevID we want
-	if initialFromRevision._Delta != nil && (initialFromRevision._Delta.ToCV == toRev || initialFromRevision._Delta.ToRevID == toRev) {
-		defer initialFromRevision.DeltaLock.RUnlock()
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, initialFromRevision._Delta.ToChannels, initialFromRevision._Delta.ToDeleted, encodeRevisions(ctx, docID, initialFromRevision._Delta.RevisionHistory))
+	if initialFromRevision.Delta != nil && (initialFromRevision.Delta.ToCV == toRev || initialFromRevision.Delta.ToRevID == toRev) {
+		defer initialFromRevision.RevCacheValueDeltaLock.RUnlock()
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, initialFromRevision.Delta.ToChannels, initialFromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, initialFromRevision.Delta.RevisionHistory))
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
 		db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
-		return initialFromRevision._Delta, nil, nil
+		return initialFromRevision.Delta, nil, nil
 	}
 
 	if initialFromRevision.BodyBytes != nil {
 		// upgrade to write lock and generate delta
-		initialFromRevision.DeltaLock.RUnlock()
-		initialFromRevision.DeltaLock.Lock() // 4999
-		defer initialFromRevision.DeltaLock.Unlock()
+		initialFromRevision.RevCacheValueDeltaLock.RUnlock()
+		initialFromRevision.RevCacheValueDeltaLock.Lock()
+		defer initialFromRevision.RevCacheValueDeltaLock.Unlock()
 
 		var fromRevisionForDiff DocumentRevision
 
@@ -518,14 +518,14 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 				return nil, nil, err
 			}
 		}
-		if fromRevisionForDiff._Delta != nil && (fromRevisionForDiff._Delta.ToCV == toRev || fromRevisionForDiff._Delta.ToRevID == toRev) {
+		if fromRevisionForDiff.Delta != nil && (fromRevisionForDiff.Delta.ToCV == toRev || fromRevisionForDiff.Delta.ToRevID == toRev) {
 			// another writer beat us to generating the delta
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, fromRevisionForDiff._Delta.ToChannels, fromRevisionForDiff._Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff._Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, fromRevisionForDiff.Delta.ToChannels, fromRevisionForDiff.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
 			db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
-			return fromRevisionForDiff._Delta, nil, nil
+			return fromRevisionForDiff.Delta, nil, nil
 		}
 
 		if fromRevisionForDiff.BodyBytes == nil {
