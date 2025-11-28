@@ -337,47 +337,11 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 
 // Upsert a revision in the cache.
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
-	var value *revCacheValue
 	// similar to PUT operation we should have the CV defined by this point (updateHLV is called before calling this)
 	key := IDandCV{DocID: docRev.DocID, Source: docRev.CV.SourceID, Version: docRev.CV.Value, CollectionID: collectionID}
 	legacyKey := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
 
-	rc.lock.Lock()
-
-	newItem := true
-	// lookup for element in hlv lookup map, if not found for some reason try rev lookup map
-	var existingElem *list.Element
-	var found bool
-	existingElem, found = rc.hlvCache[key]
-	if !found {
-		existingElem, found = rc.cache[legacyKey]
-	}
-	if found {
-		revItem := existingElem.Value.(*revCacheValue)
-		// decrement item bytes by the removed item
-		rc._decrRevCacheMemoryUsage(ctx, -revItem.getItemBytes())
-		rc.lruList.Remove(existingElem)
-		newItem = false
-	}
-
-	// Add new value and overwrite existing cache key, pushing to front to maintain order
-	// also ensure we add to rev id lookup map too
-	value = &revCacheValue{id: docRev.DocID, cv: *docRev.CV, collectionID: collectionID}
-	elem := rc.lruList.PushFront(value)
-	rc.hlvCache[key] = elem
-	rc.cache[legacyKey] = elem
-
-	// only increment if we are inserting new item to cache
-	if newItem {
-		rc.cacheNumItems.Add(1)
-	}
-
-	// Purge oldest item if over number capacity
-	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
-	if numBytesEvicted > 0 {
-		rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
-	}
-	rc.lock.Unlock() // release lock after eviction finished
+	numItemsRemoved, value := rc.upsertDocToCache(ctx, key, legacyKey, docRev, collectionID)
 	if numItemsRemoved > 0 {
 		rc.cacheNumItems.Add(-numItemsRemoved)
 	}
@@ -391,6 +355,46 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	rc.revCacheMemoryBasedEviction(ctx)
 }
 
+func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey IDandCV, legacyKey IDAndRev, docRev DocumentRevision, collectionID uint32) (int64, *revCacheValue) {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+
+	newItem := true
+	// lookup for element in hlv lookup map, if not found for some reason try rev lookup map
+	var existingElem *list.Element
+	var found bool
+	existingElem, found = rc.hlvCache[cvKey]
+	if !found {
+		existingElem, found = rc.cache[legacyKey]
+	}
+	if found {
+		revItem := existingElem.Value.(*revCacheValue)
+		// decrement item bytes by the removed item
+		rc._decrRevCacheMemoryUsage(ctx, -revItem.getItemBytes())
+		rc.lruList.Remove(existingElem)
+		newItem = false
+	}
+
+	// Add new value and overwrite existing cache key, pushing to front to maintain order
+	// also ensure we add to rev id lookup map too
+	value := &revCacheValue{id: docRev.DocID, cv: *docRev.CV, collectionID: collectionID}
+	elem := rc.lruList.PushFront(value)
+	rc.hlvCache[cvKey] = elem
+	rc.cache[legacyKey] = elem
+
+	// only increment if we are inserting new item to cache
+	if newItem {
+		rc.cacheNumItems.Add(1)
+	}
+
+	// Purge oldest item if over number capacity
+	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
+	if numBytesEvicted > 0 {
+		rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
+	}
+	return numItemsRemoved, value
+}
+
 func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, collectionID uint32, create bool) (value *revCacheValue) {
 	if docID == "" || revID == "" {
 		// TODO: CBG-1948
@@ -398,6 +402,7 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 	}
 	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
+	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -411,14 +416,10 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 		if numBytesEvicted > 0 {
 			rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
 		}
-		rc.lock.Unlock() // release lock as eviction is finished
 		if numItemsRemoved > 0 {
 			rc.cacheNumItems.Add(-numItemsRemoved)
 		}
-		// return early as rev cache mutex has been released at this point
-		return
 	}
-	rc.lock.Unlock()
 	return
 }
 
@@ -429,6 +430,7 @@ func (rc *LRURevisionCache) getValueByCV(ctx context.Context, docID string, cv *
 
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
 	rc.lock.Lock()
+	defer rc.lock.Unlock()
 	if elem := rc.hlvCache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -444,15 +446,11 @@ func (rc *LRURevisionCache) getValueByCV(ctx context.Context, docID string, cv *
 		if numBytesEvicted > 0 {
 			rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
 		}
-		rc.lock.Unlock() // release lock as eviction is finished
 
 		if numItemsRemoved > 0 {
 			rc.cacheNumItems.Add(-numItemsRemoved)
 		}
-		// return early as rev cache mutex has been released at this point
-		return
 	}
-	rc.lock.Unlock()
 	return
 }
 
@@ -706,6 +704,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	value.lock.RUnlock()
 
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
@@ -754,7 +753,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
-	value.lock.Unlock()
 
 	return docRev, cacheHit, err
 }
@@ -799,6 +797,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	value.lock.RUnlock()
 
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
@@ -828,13 +827,13 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
-	value.lock.Unlock()
 	return docRev, cacheHit, err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	if value.bodyBytes == nil {
 		value.revID = docRev.RevID
 		value.id = docRev.DocID
@@ -848,7 +847,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.itemBytes.Store(docRev.MemoryBytes)
 		value.hlvHistory = docRev.HlvHistory
 	}
-	value.lock.Unlock()
 	value.canEvict.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
