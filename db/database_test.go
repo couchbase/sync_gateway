@@ -1026,10 +1026,6 @@ func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
 		b.Skip("Delta sync only supported in EE")
 	}
 
-	db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
-
 	tests := []struct {
 		name              string
 		docSize           int
@@ -1074,6 +1070,10 @@ func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(test.name, func(b *testing.B) {
+			db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
+
 			docID := "doc1_" + test.name
 			rev1, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
 			rev2, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
