@@ -392,7 +392,7 @@ type RevisionDelta struct {
 	totalDeltaBytes       int64                   // totalDeltaBytes is the total bytes for channels, revisions and body on the delta itself
 }
 
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision *DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		ToCV:                  toRevision.CV.String(),
