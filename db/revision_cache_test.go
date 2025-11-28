@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -2442,4 +2443,91 @@ func TestEvictionWhenStaleCVRemoved(t *testing.T) {
 	valRevEntry := cache.cache[IDAndRev{DocID: "doc1", RevID: "2-abc", CollectionID: testCollectionID}]
 	revValueRevEntry := valRevEntry.Value.(*revCacheValue)
 	assert.Equal(t, "2-abc", revValueRevEntry.revID)
+}
+
+// TestUpdateDeltaRevCacheMemoryStatPanic:
+//   - Test will interleave underlying rev cache operations for UpdateDelta process and Remove item process to reproduce a race between
+//     threads updating a delta (and that thread updating the cache memory stats) and the underlying value being removed/evicted from the cache
+func TestUpdateDeltaRevCacheMemoryStatPanicSingleEntry(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 5000,
+		MaxBytes:     500,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	firstDelta := bytes.Repeat([]byte("a"), 1000)
+	ctx := base.TestCtx(t)
+
+	// Trigger load into cache.
+	docRev, err := cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+	require.NoError(t, err, "Error adding to cache")
+
+	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
+
+	// Thread 1: UpdateDelta - start
+	value := cache.getValue(ctx, "doc1", "1-abc", testCollectionID, false)
+	if value != nil {
+		// Thread 2: Remove - start - drop value underneath UpdateDelta thread
+		cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
+		// Thread 2: Remove - end
+		outGoingBytes := value.updateDelta(revCacheDelta2)
+		if outGoingBytes != 0 {
+			cache.currMemoryUsage.Add(outGoingBytes)
+			cache.cacheMemoryBytesStat.Add(outGoingBytes)
+		}
+		// check for memory based eviction
+		cache.revCacheMemoryBasedEviction(ctx)
+	}
+	// Thread 1: UpdateDelta - end
+
+	assert.Equal(t, 0, cache.lruList.Len())
+	assert.Equal(t, int64(0), memoryBytesCounted.Value())
+}
+
+// TestUpdateDeltaRevCacheMemoryStatPanic:
+//   - Test will interleave underlying rev cache operations for UpdateDelta process and Remove item process to reproduce a race between
+//     threads updating a delta (and that thread updating the cache memory stats) and the underlying value being removed/evicted from the cache
+func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 5000,
+		MaxBytes:     500,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	firstDelta := bytes.Repeat([]byte("a"), 1000)
+	ctx := base.TestCtx(t)
+
+	// Trigger load into cache.  Add one revision (doc1) without a delta that's less than 500 bytes, then a
+	// revision (doc2) with a delta update that will exceed memory limit
+	// when added.  Both should be removed and cache memory stats should be zero.
+	_, err := cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+	require.NoError(t, err, "Error adding to cache")
+
+	docRev2, err := cache.GetWithRev(ctx, "doc2", "1-abc", testCollectionID, RevCacheIncludeDelta)
+	require.NoError(t, err, "Error adding to cache")
+
+	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev2, false, nil)
+
+	// Thread 1: UpdateDelta - start
+	value := cache.getValue(ctx, "doc2", "1-abc", testCollectionID, false)
+	if value != nil {
+		// Thread 2: Remove - start - drop value underneath UpdateDelta thread
+		cache.RemoveWithRev(ctx, "doc2", "1-abc", testCollectionID)
+		// Thread 2: Remove - end
+		outGoingBytes := value.updateDelta(revCacheDelta2)
+		if outGoingBytes != 0 {
+			cache.currMemoryUsage.Add(outGoingBytes)
+			cache.cacheMemoryBytesStat.Add(outGoingBytes)
+		}
+		// check for memory based eviction
+		cache.revCacheMemoryBasedEviction(ctx)
+	}
+	// Thread 1: UpdateDelta - end
+
+	assert.Equal(t, 0, cache.lruList.Len())
+	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 }
