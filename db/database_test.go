@@ -1075,10 +1075,8 @@ func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
 	for _, test := range tests {
 		b.Run(test.name, func(b *testing.B) {
 			docID := "doc1_" + test.name
-			rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
-			require.NoError(b, err, "Error creating doc")
-			rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
-			require.NoError(b, err, "Error updating doc")
+			rev1, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			rev2, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
 
 			for b.Loop() {
 				wg := sync.WaitGroup{}
