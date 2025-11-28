@@ -472,6 +472,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	var previousDeltaBytes int64
 	if value.delta != nil {
 		// delta exists, need to pull this to update overall memory size correctly
@@ -482,7 +483,6 @@ func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int6
 	if diffInBytes != 0 {
 		value.itemBytes.Add(diffInBytes)
 	}
-	value.lock.Unlock()
 	return diffInBytes
 }
 
@@ -538,11 +538,25 @@ func (rc *LRURevisionCache) revCacheMemoryBasedEviction(ctx context.Context) {
 func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 	var numItemsRemoved, numBytesRemoved int64
 	rc.lock.Lock() // hold rev cache lock to remove items from cache until we're below memory threshold for the shard
+	defer func() {
+		rc.lock.Unlock() // release lock after removing items from cache
+		rc.cacheNumItems.Add(-numItemsRemoved)
+	}()
+
 	// check if we are over memory capacity after holding rev cache mutex (protect against another goroutine evicting whilst waiting for mutex above)
 	if currMemoryUsage := rc.currMemoryUsage.Value(); currMemoryUsage > rc.memoryCapacity {
 		// find amount of bytes needed to evict till below threshold
 		bytesNeededToRemove := currMemoryUsage - rc.memoryCapacity
 		for bytesNeededToRemove > numBytesRemoved {
+			if rc.lruList.Len() == 0 {
+				// If list is empty, nothing more to evict but currMemoryUsage for the shard is non-zero, so reconcile and return
+				base.DebugfCtx(ctx, base.KeyCache, "Revision cache memory stats inconsistent for this shard, resetting to zero")
+				// Correct overall memory stat across shards to remove this shard's memory usage, then set this shard's usage to zero.
+				correctionVal := rc.currMemoryUsage.Value()
+				rc.cacheMemoryBytesStat.Add(-correctionVal)
+				rc.currMemoryUsage.Set(0)
+				return
+			}
 			value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 			delete(rc.cache, value.key)
 			numItemsRemoved++
@@ -551,8 +565,7 @@ func (rc *LRURevisionCache) performEviction(ctx context.Context) {
 		}
 	}
 	rc._decrRevCacheMemoryUsage(ctx, -numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
-	rc.lock.Unlock()                                   // release lock after removing items from cache
-	rc.cacheNumItems.Add(-numItemsRemoved)
+
 }
 
 // _decrRevCacheMemoryUsage atomically decreases overall memory usage for cache and the actual rev cache objects usage.
