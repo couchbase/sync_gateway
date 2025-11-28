@@ -612,21 +612,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return rawDoc, syncData, nil
 }
 
-func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
-	if dataType&base.MemcachedDataTypeXattr == 0 {
-		return unmarshalDocument(docid, data)
-	}
-	xattrKeys := []string{base.SyncXattrName}
-	if userXattrKey != "" {
-		xattrKeys = append(xattrKeys, userXattrKey)
-	}
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
-	if err != nil {
-		return nil, err
-	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
-}
-
 func (doc *SyncData) HasValidSyncData() bool {
 
 	valid := doc != nil && doc.GetRevTreeID() != "" && (doc.Sequence > 0)
@@ -1443,19 +1428,24 @@ func (doc *Document) channelsForRevTreeID(revTreeID string) (base.Set, bool) {
 }
 
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
-func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
+func computeMetadataOnlyUpdate(ctx context.Context, doc *Document) *MetadataOnlyUpdate {
 	var prevCas string
-	currentCasString := base.CasToString(currentCas)
-	if currentMou != nil && currentCasString == currentMou.HexCAS {
-		prevCas = currentMou.PreviousHexCAS
+	currentCasString := base.CasToString(doc.Cas)
+	if doc.MetadataOnlyUpdate != nil && currentCasString == doc.MetadataOnlyUpdate.HexCAS {
+		prevCas = doc.MetadataOnlyUpdate.PreviousHexCAS
 	} else {
 		prevCas = currentCasString
 	}
 
+	// if this value is zero, then the document was not fetched with $document.revid set
+	if doc.RevSeqNo == 0 {
+		base.AssertfCtx(ctx, "revSeqNo must be non-zero when computing MetadataOnlyUpdate for %d, not writing _mou for this document", base.UD(doc.ID))
+		return nil
+	}
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
 		PreviousHexCAS:   prevCas,
-		PreviousRevSeqNo: revNo,
+		PreviousRevSeqNo: doc.RevSeqNo,
 	}
 	return metadataOnlyUpdate
 }
@@ -1501,6 +1491,11 @@ func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 		return 0, fmt.Errorf("Failed convert rev seq number %s", revSeqNoBytes)
 	}
 	return revSeqNo, nil
+}
+
+// marshalRevSeqNo converts revSeqNo into the format of $document.revid
+func marshalRevSeqNo(revSeqNo uint64) []byte {
+	return []byte(fmt.Sprintf(`"%d"`, revSeqNo))
 }
 
 func (doc *Document) ExtractDocVersion() DocVersion {
@@ -1577,4 +1572,43 @@ func (d DocVersion) CVOrRevTreeID() string {
 		return cv.String()
 	}
 	return d.RevTreeID
+}
+
+// bucketDocumentFromFeed converts a sgbucket.FeedEvent to a sgbucket.BucketDocument
+func bucketDocumentFromFeed(event sgbucket.FeedEvent) (*sgbucket.BucketDocument, error) {
+	body, xattrs, err := sgbucket.DecodeValueWithAllXattrs(event.Value)
+	if err != nil {
+		return nil, err
+	}
+	return &sgbucket.BucketDocument{
+		Body:        body,
+		Xattrs:      xattrs,
+		Cas:         event.Cas,
+		Expiry:      event.Expiry,
+		IsTombstone: event.Opcode == sgbucket.FeedOpDeletion,
+	}, nil
+}
+
+func getBucketDocument(ctx context.Context, collection *DatabaseCollection, docID string) (*sgbucket.BucketDocument, error) {
+	xattrNames := append(collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), base.VirtualExpiry)
+	body, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, xattrNames)
+	if err != nil {
+		return nil, err
+	}
+	var expiry uint32
+	if expiryBytes, ok := xattrs[base.VirtualExpiry]; ok {
+		err := base.JSONUnmarshal(expiryBytes, &expiry)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to unmarshal virtual expiry xattr for key %v, ignoring virtual expiry. Err: %v", base.UD(docID), err)
+		}
+		delete(xattrs, base.VirtualExpiry)
+	}
+
+	return &sgbucket.BucketDocument{
+		Body:        body,
+		Xattrs:      xattrs,
+		Cas:         cas,
+		Expiry:      expiry,
+		IsTombstone: len(body) == 0,
+	}, nil
 }
