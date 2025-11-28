@@ -207,18 +207,18 @@ type DocumentRevision struct {
 	DocID string
 	RevID string
 	// BodyBytes contains the raw document, with no special properties.
-	BodyBytes   []byte
-	History     Revisions
-	Channels    base.Set
-	Expiry      *time.Time
-	Attachments AttachmentsMeta
+	BodyBytes              []byte
+	History                Revisions
+	Channels               base.Set
+	Expiry                 *time.Time
+	Attachments            AttachmentsMeta
 	Delta                  *RevisionDelta
 	RevCacheValueDeltaLock *sync.RWMutex // shared mutex for the revcache value to avoid concurrent delta generation
 	Deleted                bool
-	Removed     bool  // True if the revision is a removal.
-	MemoryBytes int64 // storage of the doc rev bytes measurement, includes size of delta when present too
-	CV          *Version
-	HlvHistory  string
+	Removed                bool  // True if the revision is a removal.
+	MemoryBytes            int64 // storage of the doc rev bytes measurement, includes size of delta when present too
+	CV                     *Version
+	HlvHistory             string
 }
 
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
