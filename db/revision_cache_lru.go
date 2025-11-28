@@ -245,9 +245,26 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 
 // Upsert a revision in the cache.
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
-	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
 
+	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID, CollectionID: collectionID}
+	numItemsRemoved, value := rc.upsertDocToCache(ctx, key)
+	if numItemsRemoved > 0 {
+		rc.cacheNumItems.Add(-numItemsRemoved)
+	}
+
+	docRev.CalculateBytes()
+	// add new item bytes to overall count
+	rc.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
+	value.store(docRev)
+
+	// check we aren't over memory capacity, if so perform eviction
+	rc.revCacheMemoryBasedEviction(ctx)
+}
+
+// upsertDocToCache performs the upsert actions requiring the rc lock
+func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, key IDAndRev) (int64, *revCacheValue) {
 	rc.lock.Lock()
+	defer rc.lock.Unlock()
 	newItem := true
 	// If element exists remove from lrulist
 	if elem := rc.cache[key]; elem != nil {
@@ -271,18 +288,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	if numBytesEvicted > 0 {
 		rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
 	}
-	rc.lock.Unlock() // release lock after eviction finished
-	if numItemsRemoved > 0 {
-		rc.cacheNumItems.Add(-numItemsRemoved)
-	}
-
-	docRev.CalculateBytes()
-	// add new item bytes to overall count
-	rc.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
-	value.store(docRev)
-
-	// check we aren't over memory capacity, if so perform eviction
-	rc.revCacheMemoryBasedEviction(ctx)
+	return numItemsRemoved, value
 }
 
 func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, collectionID uint32, create bool) (value *revCacheValue) {
@@ -292,6 +298,7 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 	}
 	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
+	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -304,14 +311,10 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 		if numBytesEvicted > 0 {
 			rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
 		}
-		rc.lock.Unlock() // release lock as eviction is finished
 		if numItemsRemoved > 0 {
 			rc.cacheNumItems.Add(-numItemsRemoved)
 		}
-		// return early as rev cache mutex has been released at this point
-		return
 	}
-	rc.lock.Unlock()
 	return
 }
 
@@ -379,6 +382,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	value.lock.RUnlock()
 
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
@@ -397,7 +401,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
-	value.lock.Unlock()
 
 	return docRev, cacheHit, err
 }
@@ -436,6 +439,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	value.lock.RUnlock()
 
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
@@ -449,13 +453,13 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
-	value.lock.Unlock()
 	return docRev, cacheHit, err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	if value.bodyBytes == nil {
 		// value already has doc id/rev id in key
 		value.bodyBytes = docRev.BodyBytes
@@ -467,7 +471,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.err = nil
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
-	value.lock.Unlock()
 }
 
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
