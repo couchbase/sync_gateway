@@ -1856,24 +1856,14 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid,
 			if db.useMou() {
 				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 			}
-			// If legacy rev, don't update HLV
-			if _, ok := currentXattrs[base.VvXattrName]; ok {
-				doc, err = db.updateHLV(ctx, doc, Import, false)
-				if err != nil {
-					return sgbucket.UpdatedDoc{}, err
-				}
-			}
 
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, _, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawSyncXattr,
 				},
 				Expiry: updatedExpiry,
-			}
-			if rawVvXattr != nil {
-				updatedDoc.Xattrs[base.VvXattrName] = rawVvXattr
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
