@@ -165,7 +165,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
-	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, dcpOptions.FeedPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
@@ -315,15 +315,15 @@ func getAttachmentMigrationPrefix(migrationID string) string {
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
+		err := PurgeDCPCheckpoints(ctx, database, checkpointPrefix, feedPrefix)
+		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
 		return nil
@@ -333,7 +333,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		err := PurgeDCPCheckpoints(ctx, database, checkpointPrefix, feedPrefix)
 		if err != nil {
 			return err
 		}

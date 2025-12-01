@@ -424,7 +424,6 @@ func (dc *GoCBDCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
-	//SetUpTestLogging(t, LevelDebug, KeyAll)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -628,21 +627,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 
 }
 
-func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
-	collection, err := AsCollection(bucket.GetSingleDataStore())
-	require.NoError(t, err)
-
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-	return collectionIDs
-
-}
-
 func TestDCPFeedEventTypes(t *testing.T) {
-	TestRequiresGocbDCPClient(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -650,14 +635,6 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	collection := bucket.GetSingleDataStore()
 
 	collectionNames := CollectionNames{collection.ScopeName(): []string{collection.CollectionName()}}
-	// start one shot feed
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-	require.NoError(t, err)
 
 	foundEvent := make(chan struct{})
 	docID := t.Name()
@@ -696,7 +673,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         callback,
 	}
-	dcpClient, err := NewDCPClient(ctx, gocbv2Bucket, clientOptions)
+	dcpClient, err := NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start(ctx)
@@ -738,9 +715,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 }
 
 func TestDCPClientAgentConfig(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("exercises gocbcore code")
-	}
+	TestRequiresGocbDCPClient(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)

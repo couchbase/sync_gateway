@@ -24,9 +24,7 @@ import (
 
 // TestResyncRollback ensures that we allow rollback of
 func TestResyncRollback(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
+	base.TestRequiresGocbDCPClient(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) { channel("x") }`, // use custom sync function to increment sync function counter
 	})
@@ -128,7 +126,6 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	if !base.TestsUseNamedCollections() {
 		t.Skip("Test requires named collections, performs default collection handling independently")
 	}

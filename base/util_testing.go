@@ -758,24 +758,10 @@ func TestRequiresCollections(t testing.TB) {
 	}
 }
 
-// TestRequiresOneShotDCPClient will skip the current test until rosmar supports one-shot DCP.
-func TestRequiresOneShotDCPClient(t testing.TB) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("rosmar doesn't have an abstracted one shot DCP client CBG-4246")
-	}
-}
-
-// TestRequiresDCPResync will skip the current test DCP sync is not supported.
-func TestRequiresDCPResync(t testing.TB) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't support DCP resync CBG-2661/CBG-4246")
-	}
-}
-
 // TestRequiresGocbDCPClient will skip the current test if using rosmar.
 func TestRequiresGocbDCPClient(t testing.TB) {
 	if UnitTestUrlIsWalrus() {
-		t.Skip("rosmar doesn't support base.DCPClient")
+		t.Skip("rosmar doesn't support GocbDCPClient")
 	}
 }
 
