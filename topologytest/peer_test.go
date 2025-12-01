@@ -132,30 +132,36 @@ func (p Peers) PeerList() []string {
 	return peerNames
 }
 
-func allActorsServerSide(p []Peer) bool {
-	for _, v := range p {
-		if v.Type() == PeerTypeCouchbaseServer || v.Type() == PeerTypeSyncGateway {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-func deleteHasSGWSource(deletingPeer Peer) bool {
-	if deletingPeer.Type() == PeerTypeCouchbaseServer || deletingPeer.Type() == PeerTypeSyncGateway {
+// peerIsServerSide returns true if the peer is a Couchbase Server or Sync Gateway peer.
+func peerIsServerSide(p Peer) bool {
+	if p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway {
 		return true
 	}
 	return false
 }
 
-func conflictNotExpectedOnCBL(peers []Peer, createDelPeerNames []string, resPeerName string) bool {
-	if createDelPeerNames[1] == "sg1" && resPeerName == "cbs1" {
+// conflictNotExpectedOnCBL will return true if no conflict is expected for delete and resurrect operations for
+// topologies with cbl peer in them and false for expected conflict
+func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer, delPeerName string, resPeerName string) bool {
+	if delPeerName == "cbl1" {
+		// cbl delete will mean cbs resurrect has a conflict
+		return false
+	}
+	if peerIsServerSide(deletePeer) && peerIsServerSide(resurrectPeer) {
+		if strings.Contains(delPeerName, "1") && strings.Contains(resPeerName, "2") {
+			fmt.Println("conflict expected due to different backing bucket")
+			// conflict expected due to different backing bucket (sourceID)
+			return false
+		}
+		if strings.Contains(delPeerName, "2") && strings.Contains(resPeerName, "1") {
+			fmt.Println("conflict expected due to different backing bucket")
+			// conflict expected due to different backing bucket (sourceID)
+			return false
+		}
+		// if both actors are server side and same backing bucket, no conflict expected
 		return true
 	}
-	if createDelPeerNames[1] == "cbs1" && resPeerName == "cbs1" {
-		return true
-	}
+	// conflict expected
 	return false
 }
 

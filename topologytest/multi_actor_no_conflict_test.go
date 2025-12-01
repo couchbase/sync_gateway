@@ -10,6 +10,7 @@ package topologytest
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -110,14 +111,17 @@ func TestMultiActorResurrect(t *testing.T) {
 							// if cbs resurrect, if delete AND resurrecting peer is server side peer (cbs or sgw) the all docs will converge for version expected
 							// if cbs resurrect and delete AND resurrecting peer is NOT server side peer (lite), then need to wait for tombstone convergence first
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
-								if conflictNotExpectedOnCBL([]Peer{createPeer, deletePeer, resurrectPeer}, []string{deletePeerName, createPeerName}, resurrectPeerName) { //allActorsServerSide([]Peer{createPeer, deletePeer, resurrectPeer}) || conflictNotExpectedOnCBL(deletePeer, []string{deletePeerName, createPeerName}, resurrectPeerName) {
-									// no cbl conflict?
-									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+								if strings.Contains(topologySpec.description, "CBL") {
+									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer, deletePeerName, resurrectPeerName) {
+										// if no cbl conflict is expected we can wait on CV and body
+										waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+									} else {
+										// if cbl conflict is expected we need to wait for tombstone convergence
+										waitForConvergingTombstones(t, collectionName, docID, topology)
+									}
 								} else {
-									fmt.Println("waiting for converging tombstones")
-									waitForConvergingTombstones(t, collectionName, docID, topology)
+									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 								}
-								//waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 							} else {
 								waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 							}
