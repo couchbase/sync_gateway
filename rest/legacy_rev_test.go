@@ -1,3 +1,11 @@
+// Copyright 2025-Present Couchbase, Inc.
+//
+// Use of this software is governed by the Business Source License included
+// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+// in that file, in accordance with the Business Source License, use of this
+// software will be governed by the Apache License, Version 2.0, included in
+// the file licenses/APL2.txt.
+
 package rest
 
 import (
@@ -5,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
@@ -15,13 +24,15 @@ func TestResyncLegacyRev(t *testing.T) {
 	defer rt.Close()
 
 	const (
-		alice = "alice"
+		alice       = "alice"
+		channelName = "A"
 	)
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	rt.CreateUser(alice, []string{collection.Name})
+	// default collection will use channel Name and named collection will use collection.Name
+	rt.CreateUser(alice, []string{channelName, collection.Name})
 
 	docID := db.SafeDocumentName(t, t.Name())
-	doc := rt.CreateDocNoHLV(docID, db.Body{"foo": "bar"})
+	doc := rt.CreateDocNoHLV(docID, db.Body{"channels": channelName})
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
@@ -33,7 +44,12 @@ func TestResyncLegacyRev(t *testing.T) {
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, DocVersion{RevTreeID: doc.GetRevTreeID()})
 		require.Equal(t, msg.Properties[db.RevMessageRev], doc.GetRevTreeID())
 	})
-	_, err := collection.UpdateSyncFun(ctx, fmt.Sprintf(`function() {channel("A", "%s")}`, collection.Name))
+	previousChannel := collection.Name
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
+		previousChannel = "A"
+	}
+
+	_, err := collection.UpdateSyncFun(ctx, fmt.Sprintf(`function() {channel("B", "%s")}`, previousChannel))
 	require.NoError(t, err)
 
 	// use ResyncDocument and TakeDbOffline/Online instead of /ks/_config/sync && /db/_resync to work under rosmar which
