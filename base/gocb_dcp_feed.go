@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"expvar"
 	"fmt"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -47,23 +46,16 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 	return metadata, nil
 }
 
-// StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-
-	feedName, err := GenerateDcpStreamName(args.ID)
-	if err != nil {
-		return err
-	}
-
+func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientOptions) (*GoCBDCPClient, error) {
 	var collectionIDs []uint32
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		cm, err := bucket.GetCollectionManifest()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		// should only be one args.Scope so cheaper to iterate this way around
-		for scopeName, collections := range args.Scopes {
+		for scopeName, collections := range opts.CollectionNames {
 			scopeFound := false
 			for _, manifestScope := range cm.Scopes {
 				if scopeName != manifestScope.Name {
@@ -84,87 +76,47 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 				if len(collectionsFound) != len(collections) {
 					for _, collectionName := range collections {
 						if _, ok := collectionsFound[collectionName]; !ok {
-							return RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
+							return nil, RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
 						}
 					}
 				}
 				break
 			}
 			if !scopeFound {
-				return RedactErrorf("scope %s not found", MD(scopeName))
+				return nil, RedactErrorf("scope %s not found", MD(scopeName))
 			}
 		}
 	}
-	options := DCPClientOptions{
-		MetadataStoreType: metadataStoreType,
-		GroupID:           groupID,
-		DbStats:           dbStats,
+	options := GoCBDCPClientOptions{
+		MetadataStoreType: opts.MetadataStoreType,
+		DbStats:           opts.DBStats,
 		CollectionIDs:     collectionIDs,
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
-		CheckpointPrefix:  args.CheckpointPrefix,
+		CheckpointPrefix:  opts.CheckpointPrefix,
+		OneShot:           opts.OneShot,
+		FailOnRollback:    opts.FailOnRollback,
+		InitialMetadata:   opts.InitialMetadata,
 	}
 
-	if args.Backfill == sgbucket.FeedNoBackfill {
+	if opts.FromLatestSequence {
+		if len(opts.InitialMetadata) > 0 {
+			return nil, fmt.Errorf("DCPClientOptions.InitialMetadata cannot be provided when FromLatestSequence is true")
+		}
 		metadata, err := getHighSeqMetadata(bucket)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		options.InitialMetadata = metadata
 	}
 
-	dcpClient, err := NewDCPClient(
+	feedName, err := generateDcpStreamName(opts.FeedPrefix)
+	if err != nil {
+		return nil, err
+	}
+	return NewGocbDCPClient(
 		ctx,
 		feedName,
-		callback,
+		opts.Callback,
 		options,
 		bucket)
-	if err != nil {
-		return err
-	}
-
-	doneChan, err := dcpClient.Start()
-	if err != nil {
-		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
-		// simplify in CBG-2234
-		closeErr := dcpClient.Close()
-		ErrorfCtx(ctx, "Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
-		if closeErr != nil {
-			ErrorfCtx(ctx, "Close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), closeErr)
-		}
-		asyncCloseErr := <-doneChan
-		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), asyncCloseErr)
-		return err
-	}
-	InfofCtx(ctx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
-	go func() {
-		select {
-		case dcpCloseError := <-doneChan:
-			// simplify close in CBG-2234
-			// This is a close because DCP client closed on its own, which should never happen since once
-			// DCP feed is started, there is nothing that will close it
-			InfofCtx(ctx, KeyDCP, "Forced closed DCP Feed %q for %q", feedName, MD(bucketName))
-			// wait for channel close
-			<-doneChan
-			if dcpCloseError != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseError)
-			}
-			// FIXME: close dbContext here
-			break
-		case <-args.Terminator:
-			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpCloseErr := dcpClient.Close()
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
-			dcpCloseErr = <-doneChan
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
-			break
-		}
-		if args.DoneChan != nil {
-			close(args.DoneChan)
-		}
-	}()
-	return err
 }

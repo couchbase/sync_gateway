@@ -36,6 +36,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1022,4 +1023,10 @@ func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID stri
 // underGoTest returns true if the tests are being run via 'go test'
 func underGoTest() bool {
 	return testing.Testing()
+}
+
+func UUID(t testing.TB) string {
+	id, err := uuid.NewRandom()
+	require.NoError(t, err)
+	return id.String()
 }

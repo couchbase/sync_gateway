@@ -169,10 +169,6 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-
 	docsToCreate := 1000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
@@ -203,10 +199,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 
 	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
@@ -284,10 +276,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-
 	docsToCreate := 1000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
@@ -325,10 +313,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-
 	docsToCreate := 5000
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
@@ -372,11 +356,6 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 // TestResyncManagerDCPResumeStoppedProcessChangeCollections starts a resync with a single collection, stops it, and re-runs with an additional collection.
 // Expects the resync process to reset with a new ID, and new checkpoints, and reprocess the full set of documents across both collections.
 func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-
-	base.SetUpTestLogging(t, base.LevelDebug)
 	base.TestRequiresCollections(t)
 
 	docsPerCollection := 5000
@@ -511,13 +490,6 @@ function sync(doc, oldDoc){
 
 // TestResyncMou ensures that resync updates create mou, and preserve pcas in mou in the case where resync is reprocessing an import
 func TestResyncMou(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("_mou is written to xattrs only")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)

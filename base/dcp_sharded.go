@@ -64,14 +64,18 @@ type CbgtContext struct {
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
 func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+	fmt.Printf("cfg=%+v\n", cfg)
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
 	minVersion, err := getMinNodeVersion(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
+		if scope != DefaultScope {
+			return nil, fmt.Errorf("cannot start DCP feed on non-default scope with legacy nodes present in the cluster")
+		}
 		// DefaultScope is allowed by older versions of CBGT as long as no collections are specified.
-		if len(collections) > 0 {
+		if len(collections) != 1 || collections[0] != DefaultCollection {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}

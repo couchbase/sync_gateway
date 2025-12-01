@@ -31,7 +31,7 @@ type dcpDataGen struct {
 	seqAlloc          *sequenceAllocator
 	delays            []time.Duration
 	dbCtx             *db.DatabaseContext
-	client            *base.DCPClient
+	client            *base.GoCBDCPClient
 	numChannelsPerDoc int
 	numTotalChannels  int
 	simRapidUpdate    bool
@@ -327,10 +327,9 @@ func (dcp *dcpDataGen) mutateWithDedupe(seqs []uint64, chanCount int, casValue u
 	return encodedVal, chanCount, nil
 }
 
-func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucket, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, numWorkers, numVBuckets int) (*base.DCPClient, error) {
-	options := base.DCPClientOptions{
+func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucket, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, numWorkers, numVBuckets int) (*base.GoCBDCPClient, error) {
+	options := base.GoCBDCPClientOptions{
 		MetadataStoreType: base.DCPMetadataStoreInMemory,
-		GroupID:           "",
 		DbStats:           dbStats,
 		CollectionIDs:     []uint32{0},
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
