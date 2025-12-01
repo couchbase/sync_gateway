@@ -109,7 +109,7 @@ func TestMultiActorResurrect(t *testing.T) {
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
 							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are
 							// lost on a resurrection so the resurrecting version may conflict with a version on cbl
-							// peer then cbl will resolve in favour if its own tombstone.
+							// peer then cbl will resolve in favor if its own tombstone.
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
 								if strings.Contains(topologySpec.description, "CBL") {
 									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer, deletePeerName, resurrectPeerName) {
