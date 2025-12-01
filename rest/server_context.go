@@ -273,6 +273,10 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		}
 	}
 
+	if err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait); err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
+	}
+
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 	for _, db := range sc.databases_ {
