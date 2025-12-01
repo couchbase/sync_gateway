@@ -275,7 +275,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, int64(docsToCreate), cs.ResyncNumProcessed.Value())
+		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
 		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)

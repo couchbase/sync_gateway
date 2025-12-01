@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/pkg/errors"
@@ -642,6 +643,18 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
+			// check storage backend once to avoid making a REST API call each time a bucket is created
+			b, err := AsGocbV2Bucket(bucket)
+			if err != nil {
+				tbp.Fatalf(ctx, "Couldn't assert bucket as GocbV2Bucket: %v", err)
+			}
+			storageBackend, err := b.getStorageBackend(ctx)
+			if err != nil {
+				tbp.Fatalf(ctx, "Couldn't get storage backend for bucket %s: %v", bucket.GetName(), err)
+			}
+			if storageBackend != tbp.cluster.storageBackend {
+				tbp.Fatalf(ctx, "Bucket %s has storage backend %s, expected %s", bucket.GetName(), storageBackend, storageBackend)
+			}
 
 			tbp.createCollections(ctx, bucket)
 
@@ -749,6 +762,15 @@ func (tbp *TestBucketPool) testScopeName() string {
 	} else {
 		return fmt.Sprintf("%s%d", tbpScopePrefix, 0)
 	}
+}
+
+// supportsViews returns true if the bucket type supports views, not if SG_TEST_USE_GSI is set. Magma buckets do not
+// support views.
+func (tbp *TestBucketPool) supportsViews() bool {
+	if !tbp.integrationMode {
+		return true
+	}
+	return tbp.cluster.storageBackend != gocb.StorageBackendMagma
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
