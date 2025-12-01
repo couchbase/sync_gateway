@@ -24,7 +24,6 @@ func TestResyncLegacyRev(t *testing.T) {
 	doc := rt.CreateDocNoHLV(docID, db.Body{"foo": "bar"})
 
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires hlv
 	btcRunner.Run(func(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: alice})
 		defer btc.Close()
@@ -50,9 +49,7 @@ func TestResyncLegacyRev(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	t.Logf("=== After resync ===")
 	btcRunner = NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true // r
 	btcRunner.Run(func(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: alice})
 		defer btc.Close()
@@ -60,6 +57,7 @@ func TestResyncLegacyRev(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, DocVersion{RevTreeID: doc.GetRevTreeID()})
+		// make sure second rev message after resync is still legacy rev format
 		require.Equal(t, msg.Properties[db.RevMessageRev], doc.GetRevTreeID())
 	})
 }

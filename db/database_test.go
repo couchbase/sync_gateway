@@ -3668,12 +3668,12 @@ func Test_resyncDocument(t *testing.T) {
 		useHLV bool
 	}{
 		{
-			name:   "pre-4.0",
-			useHLV: true,
+			name:   "pre 4.0",
+			useHLV: false,
 		},
 		{
-			name:   "has_hlv",
-			useHLV: false,
+			name:   "has hlv",
+			useHLV: true,
 		},
 	}
 
