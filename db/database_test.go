@@ -980,6 +980,217 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
 }
 
+// TestDeltaSyncConcurrentClientCachePopulation tests delta sync behavior when multiple goroutines request the same delta simultaneously.
+// Ensures that only one delta is computed and others wait for the cached result.
+// More instances of duplicated delta computation will be seen for larger documents since the delta computation takes longer.
+func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name              string
+		docSize           int
+		concurrentClients int
+	}{
+		{
+			name:              "100KBDoc_100Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "100KBDoc_1000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "5MBDoc_1000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+			docID := "doc1_" + test.name
+			rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			require.NoError(t, err)
+			rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+			require.NoError(t, err)
+
+			wg := sync.WaitGroup{}
+			wg.Add(test.concurrentClients)
+			for i := 0; i < test.concurrentClients; i++ {
+				go func() {
+					defer wg.Done()
+					delta, _, err := collection.GetDelta(ctx, docID, rev1, rev2)
+					require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", docID, rev1, rev2)
+					require.NotNil(t, delta)
+				}()
+			}
+			wg.Wait()
+
+			// ensure only 1 delta miss and the remaining used cache
+			deltaCacheHits := db.DbStats.DeltaSync().DeltaCacheHit.Value()
+			deltaCacheMisses := db.DbStats.DeltaSync().DeltaCacheMiss.Value()
+			assert.Equal(t, int64(1), deltaCacheMisses, "Unexpected number of delta cache misses")
+			assert.Equal(t, int64(test.concurrentClients-1), deltaCacheHits, "Unexpected number of delta cache hits")
+		})
+	}
+}
+
+func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
+	if !base.IsEnterpriseEdition() {
+		b.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name              string
+		docSize           int
+		concurrentClients int
+	}{
+		{
+			name:              "100KBDoc_1Client",
+			docSize:           100 * 1024,
+			concurrentClients: 1,
+		},
+		{
+			name:              "100KBDoc_100Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "100KBDoc_1000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_1Client",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "5MBDoc_1000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
+
+			docID := "doc1_" + test.name
+			rev1, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			rev2, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+
+			for b.Loop() {
+				wg := sync.WaitGroup{}
+				wg.Add(test.concurrentClients)
+				for i := 0; i < test.concurrentClients; i++ {
+					go func() {
+						defer wg.Done()
+						_, _, _ = collection.GetDelta(ctx, docID, rev1, rev2)
+					}()
+				}
+				wg.Wait()
+			}
+		})
+	}
+}
+
+func BenchmarkDeltaSyncSingleClientCachePopulation(b *testing.B) {
+	if !base.IsEnterpriseEdition() {
+		b.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name    string
+		docSize int
+	}{
+		{
+			name:    "100KBDoc",
+			docSize: 100 * 1024,
+		},
+		//{
+		//	name:    "5MBDoc",
+		//	docSize: 5 * 1024 * 1024,
+		//},
+	}
+
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
+
+			// run benchmark over 1000 non-cached deltas since repeated invocations of b.Loop would hit the cache
+			const numDocs = 1000
+			benchDocs := make([]struct{ docID, rev1, rev2 string }, 0, numDocs)
+			for i := range numDocs {
+				docID := fmt.Sprintf("%s_doc_%d", test.name, i)
+				rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+				require.NoError(b, err)
+				rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+				require.NoError(b, err)
+				benchDocs = append(benchDocs, struct{ docID, rev1, rev2 string }{docID: docID, rev1: rev1, rev2: rev2})
+			}
+
+			for b.Loop() {
+				for _, doc := range benchDocs {
+					_, _, _ = collection.GetDelta(ctx, doc.docID, doc.rev1, doc.rev2)
+				}
+			}
+		})
+	}
+}
+
 // Test delta sync behavior when the fromRevision is a channel removal.
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
