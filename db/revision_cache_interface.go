@@ -213,7 +213,7 @@ type DocumentRevision struct {
 	Expiry                 *time.Time
 	Attachments            AttachmentsMeta
 	Delta                  *RevisionDelta
-	RevCacheValueDeltaLock *sync.RWMutex // shared mutex for the revcache value to avoid concurrent delta generation
+	RevCacheValueDeltaLock *sync.Mutex // shared mutex for the revcache value to avoid concurrent delta generation
 	Deleted                bool
 	Removed                bool  // True if the revision is a removal.
 	MemoryBytes            int64 // storage of the doc rev bytes measurement, includes size of delta when present too

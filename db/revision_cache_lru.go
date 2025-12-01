@@ -136,7 +136,7 @@ type revCacheValue struct {
 	itemBytes    atomic.Int64
 	collectionID uint32
 	canEvict     atomic.Bool
-	deltaLock    sync.RWMutex // synchronizes GetDelta across multiple clients for each fromRevision
+	deltaLock    sync.Mutex // synchronizes GetDelta across multiple clients for each fromRevision
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
