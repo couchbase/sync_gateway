@@ -293,9 +293,9 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
-	assert.NotNil(t, sc.databases_["db"])
-	assert.NotNil(t, sc.dbRegistry["db"])
-	assert.NotNil(t, sc.dbConfigs["db"])
+	assert.NotNil(t, sc._databases["db"])
+	assert.NotNil(t, sc._dbRegistry["db"])
+	assert.NotNil(t, sc._dbConfigs["db"])
 
 	// Unsuspend db that is not suspended should just return db context
 	dbCtx, err := sc.unsuspendDatabase(rt.Context(), "db")
@@ -312,37 +312,37 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Make sure database is suspended
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
-	assert.Nil(t, sc.databases_["db"])
-	assert.NotNil(t, sc.dbRegistry["db"])
-	assert.NotNil(t, sc.dbConfigs["db"])
+	assert.Nil(t, sc._databases["db"])
+	assert.NotNil(t, sc._dbRegistry["db"])
+	assert.NotNil(t, sc._dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
 	cas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		config := sc.dbConfigs["db"].ToDatabaseConfig()
+		config := sc._dbConfigs["db"].ToDatabaseConfig()
 		config.cfgCas = bucketDbConfig.cfgCas
 		return config, nil
 	})
 	require.NoError(t, err)
-	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
+	assert.NotEqual(t, cas, sc._dbConfigs["db"].cfgCas)
 
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "db")
 	require.NoError(t, err)
 	assert.NotNil(t, dbCtx)
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
-	assert.NotNil(t, sc.databases_["db"])
-	assert.NotNil(t, sc.dbRegistry["db"])
-	require.NotNil(t, sc.dbConfigs["db"])
+	assert.NotNil(t, sc._databases["db"])
+	assert.NotNil(t, sc._dbRegistry["db"])
+	require.NotNil(t, sc._dbConfigs["db"])
 
 	// Make sure updated config is being used
-	assert.Equal(t, cas, sc.dbConfigs["db"].cfgCas)
+	assert.Equal(t, cas, sc._dbConfigs["db"].cfgCas)
 
 	// Attempt unsuspend of invalid db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "invalid")
 	require.Error(t, err)
 	assert.Nil(t, dbCtx)
-	assert.Nil(t, sc.databases_["invalid"])
-	assert.Nil(t, sc.dbConfigs["invalid"])
+	assert.Nil(t, sc._databases["invalid"])
+	assert.Nil(t, sc._dbConfigs["invalid"])
 }
 
 // Confirms that when the database config is not in sc.dbConfigs, the fetch callback is check if the config is in a bucket
@@ -374,15 +374,15 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	// Suspend the database and remove it from dbConfigs, forcing unsuspendDatabase to fetch config from the bucket
 	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
-	delete(sc.dbConfigs, "db")
-	delete(sc.dbRegistry, "db")
-	assert.Nil(t, sc.databases_["db"])
+	delete(sc._dbConfigs, "db")
+	delete(sc._dbRegistry, "db")
+	assert.Nil(t, sc._databases["db"])
 
 	// Unsuspend db and confirm unsuspending worked
 	dbCtx, err := sc.GetDatabase(rt.Context(), "db")
 	assert.NoError(t, err)
 	assert.NotNil(t, dbCtx)
-	assert.NotNil(t, sc.databases_["db"])
+	assert.NotNil(t, sc._databases["db"])
 
 	// Attempt to get invalid database
 	_, err = sc.GetDatabase(rt.Context(), "invalid")
@@ -500,15 +500,15 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		config := sc.dbConfigs["db"].ToDatabaseConfig()
+		config := sc._dbConfigs["db"].ToDatabaseConfig()
 		config.cfgCas = bucketDbConfig.cfgCas
 		return config, nil
 	})
 	require.NoError(t, err)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
-	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
+	assert.NotEqual(t, sc._dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
-	assert.Nil(t, sc.databases_["db"])
+	assert.Nil(t, sc._databases["db"])
 	// Trigger update frequency (would usually happen every ConfigUpdateFrequency seconds)
 	count, err := sc.fetchAndLoadConfigs(rt.Context(), false)
 	require.NoError(t, err)
@@ -516,7 +516,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 	// Make sure database is still suspended
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
-	assert.Nil(t, sc.databases_["db"])
+	assert.Nil(t, sc._databases["db"])
 }
 
 // Tests scenarios a database is and is not allowed to suspend
@@ -625,7 +625,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 	// Confirm db is suspended
 	require.True(t, sc.isDatabaseSuspended(t, "db"))
-	require.Nil(t, sc.databases_["db"])
+	require.Nil(t, sc._databases["db"])
 
 	// Attempt to unsuspend using unauthenticated public API request
 	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
@@ -633,7 +633,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 	// Confirm db is unsuspended
 	require.False(t, sc.isDatabaseSuspended(t, "db"))
-	require.NotNil(t, sc.databases_["db"])
+	require.NotNil(t, sc._databases["db"])
 }
 
 // Makes sure admin API calls do not unsuspend DB if they fail authentication
@@ -661,18 +661,18 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 
 	// Confirm db is suspended
 	require.True(t, sc.isDatabaseSuspended(t, "db"))
-	require.Nil(t, sc.databases_["db"])
+	require.Nil(t, sc._databases["db"])
 
 	// Confirm unauthenticated admin request does not trigger unsuspend
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc", "")
 	AssertStatus(t, resp, http.StatusUnauthorized)
-	require.Nil(t, sc.databases_["db"]) // Confirm suspended
+	require.Nil(t, sc._databases["db"]) // Confirm suspended
 	require.True(t, sc.isDatabaseSuspended(t, "db"))
 
 	// Confirm authenticated admin request triggers unsuspend
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/db/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
 	AssertStatus(t, resp, http.StatusNotFound)
-	require.NotNil(t, sc.databases_["db"]) // Confirm unsuspended
+	require.NotNil(t, sc._databases["db"]) // Confirm unsuspended
 	require.False(t, sc.isDatabaseSuspended(t, "db"))
 
 	// Attempt to get DB that does not exist
