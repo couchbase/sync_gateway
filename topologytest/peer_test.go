@@ -129,10 +129,7 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 
 // peerIsServerSide returns true if the peer is a Couchbase Server or Sync Gateway peer.
 func peerIsServerSide(p Peer) bool {
-	if p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway {
-		return true
-	}
-	return false
+	return p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway
 }
 
 // conflictNotExpectedOnCBL will return true if no conflict is expected for delete and resurrect operations for
