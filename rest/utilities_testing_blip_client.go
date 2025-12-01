@@ -349,9 +349,7 @@ func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridL
 }
 
 func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.HybridLogicalVector, incomingBody []byte, incomingIsDelete bool, latestLocalRev *clientDocRev) (body []byte, hlv db.HybridLogicalVector, isTombstone bool) {
-	fmt.Println("incoming hlv in resolver", incomingHLV)
 	latestLocalHLV := latestLocalRev.HLV
-	fmt.Println("local hlv in resolver", latestLocalHLV)
 	updatedHLV := latestLocalRev.HLV.Copy()
 	localDeleted := latestLocalRev.isDelete
 	if localDeleted && !incomingIsDelete {

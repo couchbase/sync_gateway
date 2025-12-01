@@ -107,9 +107,9 @@ func TestMultiActorResurrect(t *testing.T) {
 
 							resBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription)
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
-							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
-							// if cbs resurrect, if delete AND resurrecting peer is server side peer (cbs or sgw) the all docs will converge for version expected
-							// if cbs resurrect and delete AND resurrecting peer is NOT server side peer (lite), then need to wait for tombstone convergence first
+							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are
+							// lost on a resurrection so the resurrecting version may conflict with a version on cbl
+							// peer then cbl will resolve in favour if its own tombstone.
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
 								if strings.Contains(topologySpec.description, "CBL") {
 									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer, deletePeerName, resurrectPeerName) {

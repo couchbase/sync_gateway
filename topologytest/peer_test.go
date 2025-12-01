@@ -127,11 +127,6 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 	}
 }
 
-func (p Peers) PeerList() []string {
-	peerNames := slices.Collect(maps.Keys(p))
-	return peerNames
-}
-
 // peerIsServerSide returns true if the peer is a Couchbase Server or Sync Gateway peer.
 func peerIsServerSide(p Peer) bool {
 	if p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway {
@@ -149,12 +144,10 @@ func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer, delPeerName s
 	}
 	if peerIsServerSide(deletePeer) && peerIsServerSide(resurrectPeer) {
 		if strings.Contains(delPeerName, "1") && strings.Contains(resPeerName, "2") {
-			fmt.Println("conflict expected due to different backing bucket")
 			// conflict expected due to different backing bucket (sourceID)
 			return false
 		}
 		if strings.Contains(delPeerName, "2") && strings.Contains(resPeerName, "1") {
-			fmt.Println("conflict expected due to different backing bucket")
 			// conflict expected due to different backing bucket (sourceID)
 			return false
 		}
@@ -281,10 +274,6 @@ func (to Topology) ActivePeers() iter.Seq2[string, Peer] {
 // SortedPeers returns a sorted list of peers by name, for deterministic output.
 func (to Topology) SortedPeers() iter.Seq2[string, Peer] {
 	return to.peers.SortedPeers()
-}
-
-func (to Topology) PeersInTopology() []string {
-	return to.peers.PeerList()
 }
 
 // CompareRevTreeOnly is true for a given topology when comparing only revtree is correct.
