@@ -391,6 +391,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, base.ErrDeltaSourceIsTombstone
 	}
 
+	// If both body and delta are not available for fromRevId, the delta can't be generated
+	// Note: In 4.x this is achieved by a returned `err` value on the revisionCache Get call above
+	if initialFromRevision.BodyBytes == nil && initialFromRevision.Delta == nil {
+		return nil, nil, err
+	}
+
 	// If delta is found, check whether it is a delta for the toRevID we want.
 	if initialFromRevision.Delta != nil && initialFromRevision.Delta.ToRevID == toRevID {
 		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, initialFromRevision.Delta.ToChannels, initialFromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, initialFromRevision.Delta.RevisionHistory))
