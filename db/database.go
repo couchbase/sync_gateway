@@ -1822,7 +1822,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+// ResyncDocument will re-run the sync function on the document and write an updated version to the bucket. If
+// the sync function doesn't change any channels or access grants, no write will be performed.
+func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
@@ -1854,9 +1856,12 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if db.useMou() {
 				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 			}
-			doc, err = db.updateHLV(ctx, doc, Import, false)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
+			// If legacy rev, don't update HLV
+			if _, ok := currentXattrs[base.VvXattrName]; ok {
+				doc, err = db.updateHLV(ctx, doc, Import, false)
+				if err != nil {
+					return sgbucket.UpdatedDoc{}, err
+				}
 			}
 
 			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
@@ -1864,9 +1869,11 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawSyncXattr,
-					base.VvXattrName:   rawVvXattr,
 				},
 				Expiry: updatedExpiry,
+			}
+			if rawVvXattr != nil {
+				updatedDoc.Xattrs[base.VvXattrName] = rawVvXattr
 			}
 			if db.useMou() {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr

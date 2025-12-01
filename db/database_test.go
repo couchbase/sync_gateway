@@ -3712,7 +3712,7 @@ func Test_resyncDocument(t *testing.T) {
 			if !tc.useHLV {
 				require.Nil(t, preResyncDoc.HLV)
 			}
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			_, _, err = collection.ResyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -3733,14 +3733,18 @@ func Test_resyncDocument(t *testing.T) {
 			assert.True(t, found)
 
 			require.NoError(t, err)
-			require.NotNil(t, postResyncDoc.HLV)
-			require.Equal(t, Version{
-				SourceID: db.EncodedSourceID,
-				Value:    preResyncDoc.Cas,
-			}, Version{
-				SourceID: postResyncDoc.HLV.SourceID,
-				Value:    postResyncDoc.HLV.Version,
-			})
+			if tc.useHLV {
+				require.NotNil(t, postResyncDoc.HLV)
+				require.Equal(t, Version{
+					SourceID: db.EncodedSourceID,
+					Value:    preResyncDoc.Cas,
+				}, Version{
+					SourceID: postResyncDoc.HLV.SourceID,
+					Value:    postResyncDoc.HLV.Version,
+				})
+			} else {
+				require.Nil(t, postResyncDoc.HLV)
+			}
 			require.NotNil(t, postResyncDoc.MetadataOnlyUpdate)
 			require.Equal(t, MetadataOnlyUpdate{
 				HexCAS:           base.CasToString(postResyncDoc.Cas),
