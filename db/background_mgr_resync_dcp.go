@@ -149,7 +149,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		collectionCtx := databaseCollection.AddCollectionContext(ctx)
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(collectionCtx, docID, key, regenerateSequences, []uint64{})
+		}).ResyncDocument(collectionCtx, docID, key, regenerateSequences, []uint64{})
 
 		databaseCollection.releaseSequences(collectionCtx, unusedSequences)
 

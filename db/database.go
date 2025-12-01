@@ -1825,7 +1825,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+// ResyncDocument will re-run the sync function on the document and write an updated version to the bucket. If
+// the sync function doesn't change any channels or access grants, no write will be performed.
+func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
@@ -1858,12 +1860,11 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 			}
 
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
+			_, rawSyncXattr, _, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 			updatedDoc := sgbucket.UpdatedDoc{
 				Doc: nil, // Resync does not require document body update
 				Xattrs: map[string][]byte{
 					base.SyncXattrName: rawSyncXattr,
-					base.VvXattrName:   rawVvXattr,
 				},
 				Expiry: updatedExpiry,
 			}
