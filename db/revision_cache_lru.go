@@ -110,6 +110,7 @@ type revCacheValue struct {
 	deleted     bool
 	removed     bool
 	itemBytes   atomic.Int64
+	deltaLock   sync.Mutex // synchronizes GetDelta across multiple clients for each fromRevision
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -410,17 +411,18 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRevision, error) {
 
 	docRev := DocumentRevision{
-		DocID:       value.key.DocID,
-		RevID:       value.key.RevID,
-		BodyBytes:   value.bodyBytes,
-		History:     value.history,
-		Channels:    value.channels,
-		Expiry:      value.expiry,
-		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
-		Deleted:     value.deleted,
-		Removed:     value.removed,
+		DocID:                  value.key.DocID,
+		RevID:                  value.key.RevID,
+		BodyBytes:              value.bodyBytes,
+		History:                value.history,
+		Channels:               value.channels,
+		Expiry:                 value.expiry,
+		Attachments:            value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Deleted:                value.deleted,
+		Removed:                value.removed,
+		RevCacheValueDeltaLock: &value.deltaLock,
+		Delta:                  delta,
 	}
-	docRev.Delta = delta
 
 	return docRev, value.err
 }
