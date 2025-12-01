@@ -1976,7 +1976,7 @@ func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, vers
 			return
 		}
 		var lookupVersion DocVersion
-		if btcc.UseHLV() {
+		if btcc.UseHLV() && !version.CV.IsEmpty() {
 			lookupVersion = DocVersion{CV: version.CV}
 		} else {
 			lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
