@@ -728,16 +728,19 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 			}
 
 			if !previewOnly {
-				removeDDocErr := viewStore.DeleteDDoc(ddocName)
-				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
-					base.WarnfCtx(ctx, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
-				}
-				// Only include in list of removedDesignDocs if it was actually removed
+				removeDDocErr, _ := base.RetryLoop(ctx, "DeleteDDocLoop", func() (shouldRetry bool, err error, value any) {
+					err = viewStore.DeleteDDoc(ddocName)
+					return isRetriableDesignDocError(err), err, nil
+				}, getDesignDocRetrySleeperFunc())
 				if removeDDocErr == nil {
 					removedDesignDocs = append(removedDesignDocs, ddocName)
 				}
 			} else {
-				_, existsDDocErr := viewStore.GetDDoc(ddocName)
+				existsDDocErr, _ := base.RetryLoop(ctx, "GetDDocRetryLoop", func() (shouldRetry bool, err error, value any) {
+					_, err = viewStore.GetDDoc(ddocName)
+					return isRetriableDesignDocError(err), err, nil
+				}, getDesignDocRetrySleeperFunc())
+
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
 					base.WarnfCtx(ctx, "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
@@ -793,4 +796,20 @@ func getViewStoreForDefaultCollection(dbContext *DatabaseContext) (sgbucket.View
 		return nil, fmt.Errorf("%T is not a ViewStore", dbCollection.dataStore)
 	}
 	return vs, nil
+}
+
+// getDesignDocRetrySleeperFunc returns a function for retrying design doc operations.
+func getDesignDocRetrySleeperFunc() base.RetrySleeper {
+	maxAttempts := 10
+	sleepAmount := 1 * time.Second
+	return base.CreateSleeperFunc(maxAttempts, int(sleepAmount.Milliseconds()))
+}
+
+// isRetriableDesignDocError returns true if the error is retriable for design doc operations.
+func isRetriableDesignDocError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
+	return !IsMissingDDocError(err)
 }
