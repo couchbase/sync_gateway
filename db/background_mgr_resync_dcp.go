@@ -187,7 +187,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
-		_ = dcpClient.Close()
 		return err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
@@ -195,12 +194,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	select {
-	case <-doneChan:
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
-		err = dcpClient.Close()
+	case err := <-doneChan:
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+			base.InfofCtx(ctx, base.KeyAll, "[%s] Resync terminated unexpectedly . %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 			return err
+		} else {
+			base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 		}
 
 		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
@@ -265,17 +264,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
-
-		err = <-doneChan
-		if err != nil {
-			return err
-		}
-
+		dcpClient.Close()
+		<-doneChan // ignore close error as background manager was terminated
 		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 	}
 

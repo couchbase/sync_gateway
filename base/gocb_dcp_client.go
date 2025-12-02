@@ -250,7 +250,7 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 	return nil
 }
 
-// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
+// Start returns an error and a channel to indicate when the DCPClient is done.
 func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
@@ -259,7 +259,9 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	if dc.oneShot {
 		err = dc.configureOneShot()
 		if err != nil {
-			return dc.doneChannel, err
+			dc.Close()
+			<-dc.doneChannel
+			return nil, err
 		}
 	}
 	dc.startWorkers(dc.ctx)
@@ -267,16 +269,17 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
-			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			dc.Close()
+			<-dc.doneChannel
+			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
 	return dc.doneChannel, nil
 }
 
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *GoCBDCPClient) Close() error {
+func (dc *GoCBDCPClient) Close() {
 	dc.close()
-	return dc.getCloseError()
 }
 
 // GetMetadata returns metadata for all vbuckets

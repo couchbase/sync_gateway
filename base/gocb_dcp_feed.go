@@ -124,39 +124,21 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
-		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
-		// simplify in CBG-2234
-		closeErr := dcpClient.Close()
-		ErrorfCtx(ctx, "Finished called async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
-		if closeErr != nil {
-			ErrorfCtx(ctx, "Close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), closeErr)
-		}
-		asyncCloseErr := <-doneChan
-		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), asyncCloseErr)
 		return err
 	}
 	InfofCtx(ctx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
 	go func() {
 		select {
 		case dcpCloseError := <-doneChan:
-			// simplify close in CBG-2234
 			// This is a close because DCP client closed on its own, which should never happen since once
 			// DCP feed is started, there is nothing that will close it
-			InfofCtx(ctx, KeyDCP, "Forced closed DCP Feed %q for %q", feedName, MD(bucketName))
-			// wait for channel close
-			<-doneChan
-			if dcpCloseError != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseError)
-			}
+			InfofCtx(ctx, KeyDCP, "DCP Feed %q closed unexpectedly with %s", dcpCloseError)
 			// FIXME: close dbContext here
 			break
 		case <-args.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			dcpCloseErr := dcpClient.Close()
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
-			dcpCloseErr = <-doneChan
+			dcpClient.Close()
+			dcpCloseErr := <-doneChan
 			if dcpCloseErr != nil {
 				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
 			}
