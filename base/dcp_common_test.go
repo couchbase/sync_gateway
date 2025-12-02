@@ -33,7 +33,7 @@ func TestDCPNameLength(t *testing.T) {
 
 	for _, feedID := range feedIDs {
 		t.Run(feedID, func(t *testing.T) {
-			dcpStreamName, err := GenerateDcpStreamName(feedID)
+			dcpStreamName, err := generateDcpStreamName(feedID)
 			require.NoError(t, err)
 			t.Logf("generated name of length %d: %s", len(dcpStreamName), dcpStreamName)
 
@@ -43,7 +43,7 @@ func TestDCPNameLength(t *testing.T) {
 		})
 
 		t.Run("cbgt"+feedID, func(t *testing.T) {
-			dcpStreamName, err := GenerateDcpStreamName(feedID)
+			dcpStreamName, err := generateDcpStreamName(feedID)
 			require.NoError(t, err)
 
 			// Format string copied from cbgt's 'NewDCPFeed'

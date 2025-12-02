@@ -223,7 +223,6 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 // avoid read/write races on vbucket data.  Calls to persist must be blocking on the worker goroutine, and vbuckets are
 // only assigned to a single worker
 func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
-
 	meta := WorkerMetadata{}
 	meta.DCPMeta = make(map[uint16]DCPMetadata)
 	for _, vbID := range vbIDs {

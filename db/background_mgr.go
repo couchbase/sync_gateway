@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -199,7 +200,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 			if err == nil && status.ShouldStop {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
 			}
-			return processAlreadyRunningErr
+			return fmt.Errorf("cas mismatch on heartbeat document: %w", processAlreadyRunningErr)
 		}
 
 		// Now we know that we're the only running process we should instantiate these values

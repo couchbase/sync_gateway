@@ -36,7 +36,6 @@ type changeListener struct {
 	dbCtx                    *DatabaseContext
 	bucket                   base.Bucket
 	bucketName               string                 // Used for logging
-	tapFeed                  base.TapFeed           // Observes changes to bucket
 	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
 	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
 	counter                  uint64                 // Event counter; increments on every doc update
@@ -44,6 +43,7 @@ type changeListener struct {
 	keyCounts                map[channels.ID]uint64 // Latest count at which each doc key was updated
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
+	doneChan                 <-chan error       // Channel that's closed when DCP feed has exited
 	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
 	sgCfgPrefix              string             // SG config key prefix
 	started                  base.AtomicBool    // whether the feed has been started
@@ -81,58 +81,32 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
-	listener.FeedArgs = sgbucket.FeedArguments{
-		ID:         base.DCPCachingFeedID,
-		Backfill:   sgbucket.FeedNoBackfill,
-		Terminator: listener.terminator,
-		DoneChan:   make(chan struct{}),
-	}
-	if len(scopes) > 0 {
-		// build the set of collections to be requested
 
-		// Add the metadata collection first
-		metadataStoreFoundInScopes := false
-		scopeArgs := make(map[string][]string)
-		for scopeName, scope := range scopes {
-			collections := make([]string, 0)
-			for collectionName, _ := range scope.Collections {
-				collections = append(collections, collectionName)
-				if scopeName == metadataStore.ScopeName() && collectionName == metadataStore.CollectionName() {
-					metadataStoreFoundInScopes = true
-				}
-			}
-			scopeArgs[scopeName] = collections
+	collectionNames := base.CollectionNames{}
+	collectionNames.Add(metadataStore)
+	for scopeName, collections := range scopes {
+		for collectionName := range collections.Collections {
+			collectionNames.Add(sgbucket.DataStoreNameImpl{Scope: scopeName, Collection: collectionName})
 		}
-
-		// If the metadataStore's collection isn't already present in the list of scopes, add it to the DCP scopes
-		if !metadataStoreFoundInScopes {
-			_, ok := scopeArgs[metadataStore.ScopeName()]
-			if !ok {
-				scopeArgs[metadataStore.ScopeName()] = []string{metadataStore.CollectionName()}
-			} else {
-				scopeArgs[metadataStore.ScopeName()] = append(scopeArgs[metadataStore.ScopeName()], metadataStore.CollectionName())
-			}
-		}
-		listener.FeedArgs.Scopes = scopeArgs
-
 	}
 	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
 
-	return listener.StartMutationFeed(ctx, bucket, dbStats)
-}
-
-func (listener *changeListener) StartMutationFeed(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map) (err error) {
-
-	defer func() {
-		if err == nil {
-			listener.started.Set(true)
-		}
-	}()
-
-	// DCP Feed
-	//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-	base.InfofCtx(ctx, base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
-	return bucket.StartDCPFeed(ctx, listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+	opts := base.DCPClientOptions{
+		FeedPrefix:         base.DCPCachingFeedID,
+		Callback:           listener.ProcessFeedEvent,
+		Terminator:         listener.terminator,
+		FromLatestSequence: true,
+		CollectionNames:    collectionNames,
+		DBStats:            dbStats,
+		MetadataStoreType:  base.DCPMetadataStoreInMemory,
+	}
+	var err error
+	listener.doneChan, err = base.StartDCPFeed(ctx, bucket, opts)
+	if err != nil {
+		return err
+	}
+	listener.started.Set(true)
+	return nil
 }
 
 // DocumentType returns the type of document received over mutation feed based on its key prefix.
@@ -215,17 +189,10 @@ func (listener *changeListener) Stop(ctx context.Context) {
 		listener.tapNotifier.Broadcast()
 	}
 
-	if listener.tapFeed != nil {
-		err := listener.tapFeed.Close()
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyChanges, "Error closing listener tap feed: %v", err)
-		}
-	}
-
 	// Wait for mutation feed worker to terminate.
 	waitTime := MutationFeedStopMaxWait
 	select {
-	case <-listener.FeedArgs.DoneChan:
+	case <-listener.doneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
 		base.WarnfCtx(ctx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
@@ -238,10 +205,6 @@ func (listener *changeListener) Stop(ctx context.Context) {
 	case <-time.After(waitTime):
 		base.WarnfCtx(ctx, "Timeout after %v of waiting for broadcast changes goroutine to terminate", waitTime)
 	}
-}
-
-func (listener *changeListener) TapFeed() base.TapFeed {
-	return listener.tapFeed
 }
 
 //////// NOTIFICATIONS:
