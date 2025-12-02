@@ -16,7 +16,7 @@ import (
 // to the DCPClient's workers to be processed, but performs the following additional functionality:
 //   - key-based filtering for document-based events (Deletion, Expiration, Mutation)
 //   - stream End handling, including restart on error
-func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
+func (dc *GoCBDCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 
 	e := snapshotEvent{
 		streamEventCommon: streamEventCommon{
@@ -30,7 +30,7 @@ func (dc *DCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarker) {
 	dc.workerForVbno(snapshotMarker.VbID).Send(dc.ctx, e)
 }
 
-func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
+func (dc *GoCBDCPClient) Mutation(mutation gocbcore.DcpMutation) {
 
 	if dc.filteredKey(mutation.Key) {
 		return
@@ -56,7 +56,7 @@ func (dc *DCPClient) Mutation(mutation gocbcore.DcpMutation) {
 	dc.workerForVbno(mutation.VbID).Send(dc.ctx, e)
 }
 
-func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
+func (dc *GoCBDCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 
 	if dc.filteredKey(deletion.Key) {
 		return
@@ -80,7 +80,7 @@ func (dc *DCPClient) Deletion(deletion gocbcore.DcpDeletion) {
 
 }
 
-func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
+func (dc *GoCBDCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 
 	e := endStreamEvent{
 		streamEventCommon: streamEventCommon{
@@ -92,41 +92,41 @@ func (dc *DCPClient) End(end gocbcore.DcpStreamEnd, err error) {
 
 }
 
-func (dc *DCPClient) Expiration(expiration gocbcore.DcpExpiration) {
+func (dc *GoCBDCPClient) Expiration(expiration gocbcore.DcpExpiration) {
 	// SG doesn't opt in to expirations, so they'll come through as deletion events
 	// (cf.https://github.com/couchbase/kv_engine/blob/master/docs/dcp/documentation/expiry-opcode-output.md)
 	WarnfCtx(dc.ctx, "Unexpected DCP expiration event (vb:%d) for key %v", expiration.VbID, UD(string(expiration.Key)))
 }
 
-func (dc *DCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
+func (dc *GoCBDCPClient) CreateCollection(creation gocbcore.DcpCollectionCreation) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) DeleteCollection(deletion gocbcore.DcpCollectionDeletion) {
+func (dc *GoCBDCPClient) DeleteCollection(deletion gocbcore.DcpCollectionDeletion) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) FlushCollection(flush gocbcore.DcpCollectionFlush) {
+func (dc *GoCBDCPClient) FlushCollection(flush gocbcore.DcpCollectionFlush) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) CreateScope(creation gocbcore.DcpScopeCreation) {
+func (dc *GoCBDCPClient) CreateScope(creation gocbcore.DcpScopeCreation) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) DeleteScope(deletion gocbcore.DcpScopeDeletion) {
+func (dc *GoCBDCPClient) DeleteScope(deletion gocbcore.DcpScopeDeletion) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) ModifyCollection(modification gocbcore.DcpCollectionModification) {
+func (dc *GoCBDCPClient) ModifyCollection(modification gocbcore.DcpCollectionModification) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
+func (dc *GoCBDCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
 	// Not used by SG at this time
 }
 
-func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
+func (dc *GoCBDCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
 	dc.workerForVbno(seqNoAdvanced.VbID).Send(dc.ctx, seqnoAdvancedEvent{
 		streamEventCommon: streamEventCommon{
 			vbID:     seqNoAdvanced.VbID,
@@ -136,6 +136,6 @@ func (dc *DCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
 	})
 }
 
-func (dc *DCPClient) filteredKey(key []byte) bool {
+func (dc *GoCBDCPClient) filteredKey(key []byte) bool {
 	return false
 }
