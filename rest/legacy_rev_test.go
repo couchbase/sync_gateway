@@ -55,8 +55,7 @@ func TestResyncLegacyRev(t *testing.T) {
 	// use ResyncDocument and TakeDbOffline/Online instead of /ks/_config/sync && /db/_resync to work under rosmar which
 	// doesn't yet support DCP resync or updating config on an existing bucket.
 	regenerateSequences := false
-	var unusedSequences []uint64
-	_, _, err = collection.ResyncDocument(ctx, docID, docID, regenerateSequences, unusedSequences)
+	_, err = collection.ResyncDocument(ctx, docID, nil, regenerateSequences)
 	require.NoError(t, err)
 
 	rt.TakeDbOffline()

@@ -3918,12 +3918,13 @@ func Test_resyncDocument(t *testing.T) {
 			_, err = collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			preResyncDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			preResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
 			require.NoError(t, err)
 			if !tc.useHLV {
 				require.Nil(t, preResyncDoc.HLV)
 			}
-			_, _, err = collection.ResyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+
+			_, err = collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false)
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -3943,7 +3944,6 @@ func Test_resyncDocument(t *testing.T) {
 			}
 			assert.True(t, found)
 
-			require.NoError(t, err)
 			if tc.useHLV {
 				require.NotNil(t, postResyncDoc.HLV)
 				require.Equal(t, Version{
@@ -3953,6 +3953,7 @@ func Test_resyncDocument(t *testing.T) {
 					SourceID: postResyncDoc.HLV.SourceID,
 					Value:    postResyncDoc.HLV.Version,
 				})
+				assert.Equal(t, preResyncDoc.Cas, postResyncDoc.HLV.CurrentVersionCAS)
 			} else {
 				require.Nil(t, postResyncDoc.HLV)
 			}
