@@ -75,6 +75,5 @@ func (dc *RosmarDCPClient) GetMetadata() []DCPMetadata {
 
 // GetMetadataKeyPrefix returns the document prefix for the checkpoint documents.
 func (dc *RosmarDCPClient) GetMetadataKeyPrefix() string {
-	// this value is probably not correct
 	return dc.opts.CheckpointPrefix
 }

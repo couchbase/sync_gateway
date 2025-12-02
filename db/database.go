@@ -2577,13 +2577,11 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
 		checkpoint := checkpointPrefix + ":" + feedPrefix
-		fmt.Printf("Deleting DCP checkpoint %q\n", checkpoint)
 		err := database.MetadataStore.Delete(checkpoint)
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
 		if base.IsDocNotFoundError(err) {
-			fmt.Printf("No DCP checkpoint found %q\n", checkpoint)
 			return nil
 		}
 		return nil

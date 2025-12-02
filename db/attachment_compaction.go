@@ -368,13 +368,8 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 	clientOptions := getCompactionDCPClientOptions(db, compactionID, SweepPhase, dataStore, callback, base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs))
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return 0, err
-	}
-
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, clientOptions.FeedPrefix)
-	dcpClient, err := base.NewDCPClient(ctx, bucket, clientOptions)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, err
@@ -534,7 +529,7 @@ func getCompactionIDSubDocPath(compactionID string) string {
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
 func getCompactionDCPClientOptions(db *Database, compactionID string, compactionAction string, dataStore sgbucket.DataStore, callback sgbucket.FeedEventCallbackFunc, initialMetadata []base.DCPMetadata) base.DCPClientOptions {
 	return base.DCPClientOptions{
-		FeedPrefix:        getAttachmentionCompactionPrefix(compactionID, compactionAction),
+		FeedPrefix:        getAttachmentCompactionPrefix(compactionID, compactionAction),
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
@@ -547,7 +542,7 @@ func getCompactionDCPClientOptions(db *Database, compactionID string, compaction
 	}
 }
 
-func getAttachmentionCompactionPrefix(compactionID string, compactionAction string) string {
+func getAttachmentCompactionPrefix(compactionID string, compactionAction string) string {
 	return fmt.Sprintf("sg-%v:att_compaction:%v_%v",
 		base.ProductAPIVersion,
 		compactionID,
@@ -555,7 +550,7 @@ func getAttachmentionCompactionPrefix(compactionID string, compactionAction stri
 	)
 }
 func GetAttachmentCompactionCheckpointPrefix(db *DatabaseContext, compactionID string, compactionAction string) string {
-	return getAttachmentionCompactionPrefix(compactionID, compactionAction) + db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
+	return getAttachmentCompactionPrefix(compactionID, compactionAction) + db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 }
 
 // getAttachmentCompactionXattr returns the value of the attachment compaction xattr from a DCP stream. The value will be nil if the xattr is not found.

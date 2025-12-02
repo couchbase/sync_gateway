@@ -281,11 +281,9 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
-	require.NoError(t, err)
 	clientOptions := getCompactionDCPClientOptions(testDb, t.Name(), CleanupPhase, dataStore, func(sgbucket.FeedEvent) bool { return true }, nil)
 
-	dcpClient, err := base.NewDCPClient(ctx, bucket, clientOptions)
+	dcpClient, err := base.NewDCPClient(ctx, testDb.Bucket, clientOptions)
 	require.NoError(t, err)
 
 	// alter dcp metadata to feed into the compaction manager
