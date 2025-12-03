@@ -431,7 +431,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 // forceRollbackvBucket forces the rollback of vBucket IDs that are even
 // Test helper function. This should not be used elsewhere.
-func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
+func (dc *GoCBDCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 	metadata := make([]DCPMetadata, dc.numVbuckets)
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		// rollback roughly half the vBuckets
@@ -458,7 +458,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	dataStore := bucket.GetSingleDataStore()
 
-	var dcpClient *DCPClient
+	var dcpClient *GoCBDCPClient
 
 	// create callback
 	mutationCount := uint64(0)
