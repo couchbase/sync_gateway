@@ -2526,18 +2526,18 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 	// Thread 1: UpdateDelta - start
 	go func() {
 		for i := 0; i < 1000; i++ {
-			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta2)
+			cache.UpdateDelta(ctx, "doc2", "1-abc", testCollectionID, revCacheDelta2)
 		}
 		wg.Done()
 	}()
 	// Thread 1: UpdateDelta - end
 	go func() {
 		for i := 0; i < 1000; i++ {
-			cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
+			cache.RemoveWithRev(ctx, "doc2", "1-abc", testCollectionID)
 			if i == 999 {
 				break
 			}
-			_, err = cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+			_, err = cache.GetWithRev(ctx, "doc2", "1-abc", testCollectionID, RevCacheIncludeDelta)
 			require.NoError(t, err, "Error adding to cache")
 		}
 		wg.Done()
