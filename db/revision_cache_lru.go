@@ -133,10 +133,10 @@ type revCacheValue struct {
 	lock           sync.RWMutex
 	deleted        bool
 	removed        bool
-	itemBytes      atomic.Int64
+	itemBytes      atomic.Int64 // atomic count of number of bytes used by this item in the cache, this does not include delta bytes
 	collectionID   uint32
-	valuePopulated atomic.Bool
-	deltaLock    sync.Mutex // synchronizes GetDelta across multiple clients for each fromRevision
+	valuePopulated atomic.Bool // atonic boolean to indicate that this value has been loaded/stored
+	deltaLock      sync.Mutex  // synchronizes GetDelta across multiple clients for each fromRevision
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -181,17 +181,20 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string, colle
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
 func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValueForDeltaUpdate(ctx, docID, revID, collectionID, toDelta)
+	value := rc.updateDeltaForValue(ctx, docID, revID, collectionID, toDelta)
 	if value != nil {
-		value.updateDelta(toDelta)
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
 	}
 }
 
-func (rc *LRURevisionCache) getValueForDeltaUpdate(ctx context.Context, docID, revID string, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
+// updateDeltaForValue will update the delta for a given revision cache value if present in the cache. We need to hold onto the
+// rev cache lock until this process finishes so no other thead can remove/evict this value while updating it and the underlying memory stats.
+// We will use the valuePopulated populated boolean to check if we can change the delta on the value, we cannot use value
+// lock here given we already hold the rev cache lock in this process.
+func (rc *LRURevisionCache) updateDeltaForValue(ctx context.Context, docID, revID string, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
 	if docID == "" || revID == "" {
-		return
+		return nil
 	}
 	key := IDAndRev{DocID: docID, RevID: revID, CollectionID: collectionID}
 	rc.lock.Lock()
@@ -201,12 +204,15 @@ func (rc *LRURevisionCache) getValueForDeltaUpdate(ctx context.Context, docID, r
 		value = elem.Value.(*revCacheValue)
 	} else {
 		// elem not found so return early
-		return
+		return nil
 	}
 
+	// Check if the value has finished being loaded into yet. If it is still being loaded then this item is not
+	// eligible for delta update as the value will be being written to in the loading process and its not safe to
+	// read/write to it on this thread.
 	if !value.valuePopulated.Load() {
 		// item is not eligible for delta update when value has not been populated yet
-		return
+		return nil
 	}
 
 	// alter overall memory here then release lock to call update delta
@@ -216,18 +222,21 @@ func (rc *LRURevisionCache) getValueForDeltaUpdate(ctx context.Context, docID, r
 		previousDeltaBytes = value.delta.totalDeltaBytes
 	}
 	diffInBytes = newDelta.totalDeltaBytes - previousDeltaBytes
-	if diffInBytes != 0 {
-		value.itemBytes.Add(diffInBytes)
-	}
 	rc.currMemoryUsage.Add(diffInBytes)
 	rc.cacheMemoryBytesStat.Add(diffInBytes)
+	// update delta
+	value.delta = &newDelta
 
 	return value
 }
 
-func (rc *LRURevisionCache) getValueForDeltaUpdateCV(ctx context.Context, docID string, cv *Version, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
+// updateDeltaForValueCV will update the delta for a given revision cache value if present in the cache. We need to hold onto the
+// rev cache lock until this process finishes so no other thead can remove/evict this value while updating it and the underlying memory stats.
+// We will use the valuePopulated populated boolean to check if we can change the delta on the value, we cannot use value
+// lock here given we already hold the rev cache lock in this process.
+func (rc *LRURevisionCache) updateDeltaForValueCV(ctx context.Context, docID string, cv *Version, collectionID uint32, newDelta RevisionDelta) (value *revCacheValue) {
 	if cv == nil {
-		return
+		return nil
 	}
 	key := IDandCV{DocID: docID, Source: cv.SourceID, Version: cv.Value, CollectionID: collectionID}
 	rc.lock.Lock()
@@ -237,12 +246,15 @@ func (rc *LRURevisionCache) getValueForDeltaUpdateCV(ctx context.Context, docID 
 		value = elem.Value.(*revCacheValue)
 	} else {
 		// elem not found so return early
-		return
+		return nil
 	}
 
+	// Check if the value has finished being loaded into yet. If it is still being loaded then this item is not
+	// eligible for delta update as the value will be being written to in the loading thread and its not safe to
+	// read/write to it on this thread.
 	if !value.valuePopulated.Load() {
 		// item is not eligible for delta update when value has not been populated yet
-		return
+		return nil
 	}
 
 	// alter overall memory here then release lock to call update delta
@@ -252,19 +264,17 @@ func (rc *LRURevisionCache) getValueForDeltaUpdateCV(ctx context.Context, docID 
 		previousDeltaBytes = value.delta.totalDeltaBytes
 	}
 	diffInBytes = newDelta.totalDeltaBytes - previousDeltaBytes
-	if diffInBytes != 0 {
-		value.itemBytes.Add(diffInBytes)
-	}
 	rc.currMemoryUsage.Add(diffInBytes)
 	rc.cacheMemoryBytesStat.Add(diffInBytes)
+	// update delta
+	value.delta = &newDelta
 
 	return value
 }
 
 func (rc *LRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValueForDeltaUpdateCV(ctx, docID, cv, collectionID, toDelta)
+	value := rc.updateDeltaForValueCV(ctx, docID, cv, collectionID, toDelta)
 	if value != nil {
-		value.updateDelta(toDelta)
 		// check for memory based eviction
 		rc.revCacheMemoryBasedEviction(ctx)
 	}
@@ -435,7 +445,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey IDandCV,
 	if found {
 		revItem := existingElem.Value.(*revCacheValue)
 		// decrement item bytes by the removed item
-		rc._decrRevCacheMemoryUsage(ctx, -revItem.getItemBytes())
+		rc._decrRevCacheMemoryUsage(ctx, -revItem._getItemAndDeltaBytes())
 		rc.lruList.Remove(existingElem)
 		newItem = false
 	}
@@ -542,7 +552,7 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(ctx context.Context, docID, revI
 		}
 		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
-		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
+		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue)._getItemAndDeltaBytes())
 		rc.cacheNumItems.Add(-1)
 		rc.lruList.Remove(revElem)
 	} else {
@@ -584,7 +594,7 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(ctx context.Context, docID, revI
 		}
 		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
 		rc.cache[legacyKey] = cvElem
-		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
+		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue)._getItemAndDeltaBytes())
 		rc.cacheNumItems.Add(-1)
 		rc.lruList.Remove(revElem)
 	} else {
@@ -634,7 +644,7 @@ func (rc *LRURevisionCache) removeFromCacheByCV(ctx context.Context, docID strin
 	delete(rc.hlvCache, key)
 	// remove from rev lookup map too
 	delete(rc.cache, legacyKey)
-	rc._decrRevCacheMemoryUsage(ctx, -elem.getItemBytes())
+	rc._decrRevCacheMemoryUsage(ctx, -elem._getItemAndDeltaBytes())
 	rc.cacheNumItems.Add(-1)
 }
 
@@ -656,7 +666,7 @@ func (rc *LRURevisionCache) removeFromCacheByRev(ctx context.Context, docID, rev
 	hlvKey := IDandCV{DocID: docID, Source: elem.cv.SourceID, Version: elem.cv.Value, CollectionID: collectionID}
 	rc.lruList.Remove(element)
 	// decrement the overall memory bytes count
-	rc._decrRevCacheMemoryUsage(ctx, -elem.getItemBytes())
+	rc._decrRevCacheMemoryUsage(ctx, -elem._getItemAndDeltaBytes())
 	delete(rc.cache, key)
 	// remove from CV lookup map too
 	delete(rc.hlvCache, hlvKey)
@@ -739,7 +749,7 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 			}
 		}
 		numItemsEvicted++
-		numBytesEvicted += value.getItemBytes()
+		numBytesEvicted += value._getItemAndDeltaBytes()
 	}
 	return numItemsEvicted, numBytesEvicted
 }
@@ -916,15 +926,20 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.valuePopulated.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
-func (value *revCacheValue) updateDelta(toDelta RevisionDelta) {
-	value.lock.Lock()
-	defer value.lock.Unlock()
-	value.delta = &toDelta
-}
-
 // getItemBytes atomically retrieves the rev cache items overall memory footprint
 func (value *revCacheValue) getItemBytes() int64 {
 	return value.itemBytes.Load()
+}
+
+// _getItemAndDeltaBytes will retrieve the total bytes used by the rev cache value including delta if present. The rev
+// cache lock should be acquired to use this function.
+func (value *revCacheValue) _getItemAndDeltaBytes() int64 {
+	var totalBytes int64
+	totalBytes += value.getItemBytes()
+	if value.delta != nil {
+		totalBytes += value.delta.totalDeltaBytes
+	}
+	return totalBytes
 }
 
 // CalculateBytes will calculate the bytes from revisions in the document, body and channels on the document
@@ -1024,7 +1039,7 @@ func (rc *LRURevisionCache) evictBasedOffMemoryUsage(ctx context.Context) int64 
 				}
 			}
 			numItemsRemoved++
-			valueBytes := value.getItemBytes()
+			valueBytes := value._getItemAndDeltaBytes()
 			numBytesRemoved += valueBytes
 		}
 	}
@@ -1049,7 +1064,8 @@ func (rc *LRURevisionCache) _decrRevCacheMemoryUsage(ctx context.Context, bytesC
 }
 
 // incrRevCacheMemoryUsage atomically increases overall memory usage for cache and the actual rev cache objects usage.
-// You do not need to hold rev cache lock when using this function
+// You do not need to hold rev cache lock when using this function. NOTE: caller should only pass in the value bytes
+// excluding any delta size as UpdateDelta functions will update memory stats for us.
 func (rc *LRURevisionCache) incrRevCacheMemoryUsage(ctx context.Context, bytesCount int64) {
 	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
 	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the

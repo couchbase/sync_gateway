@@ -2466,20 +2466,30 @@ func TestUpdateDeltaRevCacheMemoryStatPanicSingleEntry(t *testing.T) {
 	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
 
 	// Thread 1: UpdateDelta - start
-	value := cache.getValue(ctx, "doc1", "1-abc", testCollectionID, false)
-	if value != nil {
-		// Thread 2: Remove - start - drop value underneath UpdateDelta thread
-		cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
-		// Thread 2: Remove - end
-		outGoingBytes := value.updateDelta(revCacheDelta2)
-		if outGoingBytes != 0 {
-			cache.currMemoryUsage.Add(outGoingBytes)
-			cache.cacheMemoryBytesStat.Add(outGoingBytes)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta2)
 		}
-		// check for memory based eviction
-		cache.revCacheMemoryBasedEviction(ctx)
-	}
+		wg.Done()
+	}()
 	// Thread 1: UpdateDelta - end
+	// Thread 2: Remove - start
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
+			if i == 999 {
+				break
+			}
+			_, err = cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+			require.NoError(t, err, "Error adding to cache")
+		}
+		wg.Done()
+	}()
+	// Thread 2: Remove - end
+
+	wg.Wait()
 
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
@@ -2511,21 +2521,74 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 
 	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev2, false, nil)
 
+	var wg sync.WaitGroup
+	wg.Add(2)
 	// Thread 1: UpdateDelta - start
-	value := cache.getValue(ctx, "doc2", "1-abc", testCollectionID, false)
-	if value != nil {
-		// Thread 2: Remove - start - drop value underneath UpdateDelta thread
-		cache.RemoveWithRev(ctx, "doc2", "1-abc", testCollectionID)
-		// Thread 2: Remove - end
-		outGoingBytes := value.updateDelta(revCacheDelta2)
-		if outGoingBytes != 0 {
-			cache.currMemoryUsage.Add(outGoingBytes)
-			cache.cacheMemoryBytesStat.Add(outGoingBytes)
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta2)
 		}
-		// check for memory based eviction
-		cache.revCacheMemoryBasedEviction(ctx)
-	}
+		wg.Done()
+	}()
 	// Thread 1: UpdateDelta - end
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
+			if i == 999 {
+				break
+			}
+			_, err = cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+			require.NoError(t, err, "Error adding to cache")
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	assert.Equal(t, 0, cache.lruList.Len())
+	assert.Equal(t, int64(0), memoryBytesCounted.Value())
+}
+
+func TestInconsistentMemoryForUpdateDelta(t *testing.T) {
+
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
+	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 5000,
+		MaxBytes:     0,
+	}
+	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
+
+	firstDelta := bytes.Repeat([]byte("a"), 1000)
+	ctx := base.TestCtx(t)
+
+	// Trigger load into cache
+	docRev, err := cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+	require.NoError(t, err, "Error adding to cache")
+
+	revCacheDelta := newRevCacheDelta(firstDelta, "1-abc", docRev, false, nil)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.UpdateDelta(ctx, "doc1", "1-abc", testCollectionID, revCacheDelta)
+		}
+		wg.Done()
+	}()
+	go func() {
+		for i := 0; i < 1000; i++ {
+			cache.RemoveWithRev(ctx, "doc1", "1-abc", testCollectionID)
+			if i == 999 {
+				break
+			}
+			_, err = cache.GetWithRev(ctx, "doc1", "1-abc", testCollectionID, RevCacheIncludeDelta)
+			require.NoError(t, err, "Error adding to cache")
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
 
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
