@@ -1048,7 +1048,8 @@ func (rc *LRURevisionCache) evictBasedOffMemoryUsage(ctx context.Context) int64 
 }
 
 // _decrRevCacheMemoryUsage atomically decreases overall memory usage for cache and the actual rev cache objects usage.
-// You should be holding rev cache lock in using this function to avoid eviction processes over evicting items
+// You should be holding rev cache lock in using this function to avoid eviction processes over evicting items. NOTE:
+// This function should be called with bytes count of the rev cache value and its associated delta (if it exists).
 func (rc *LRURevisionCache) _decrRevCacheMemoryUsage(ctx context.Context, bytesCount int64) {
 	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
 	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
