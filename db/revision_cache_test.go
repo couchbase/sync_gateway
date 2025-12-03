@@ -2444,7 +2444,7 @@ func TestEvictionWhenStaleCVRemoved(t *testing.T) {
 	assert.Equal(t, "2-abc", revValueRevEntry.revID)
 }
 
-// TestUpdateDeltaRevCacheMemoryStatPanic:
+// TestUpdateDeltaRevCacheMemoryStatPanicSingleEntry:
 //   - Test will interleave underlying rev cache operations for UpdateDelta process and Remove item process to reproduce a race between
 //     threads updating a delta (and that thread updating the cache memory stats) and the underlying value being removed/evicted from the cache
 func TestUpdateDeltaRevCacheMemoryStatPanicSingleEntry(t *testing.T) {
@@ -2521,36 +2521,16 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 
 	revCacheDelta2 := newRevCacheDelta(firstDelta, "1-abc", docRev2, false, nil)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	// Thread 1: UpdateDelta - start
-	go func() {
-		for i := 0; i < 1000; i++ {
-			cache.UpdateDelta(ctx, "doc2", "1-abc", testCollectionID, revCacheDelta2)
-		}
-		wg.Done()
-	}()
-	// Thread 1: UpdateDelta - end
-	go func() {
-		for i := 0; i < 1000; i++ {
-			cache.RemoveWithRev(ctx, "doc2", "1-abc", testCollectionID)
-			if i == 999 {
-				break
-			}
-			_, err = cache.GetWithRev(ctx, "doc2", "1-abc", testCollectionID, RevCacheIncludeDelta)
-			require.NoError(t, err, "Error adding to cache")
-		}
-		wg.Done()
-	}()
-
-	wg.Wait()
+	cache.UpdateDelta(ctx, "doc2", "1-abc", testCollectionID, revCacheDelta2)
 
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 }
 
+// TestInconsistentMemoryForUpdateDelta:
+// Concurrently call UpdateDelta and Remove on the same document/revision many times and ensure memory
+// stats are 0 and the end
 func TestInconsistentMemoryForUpdateDelta(t *testing.T) {
-
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 	cacheOptions := &RevisionCacheOptions{
