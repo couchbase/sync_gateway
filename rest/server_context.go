@@ -77,6 +77,7 @@ type ServerContext struct {
 	cpuPprofFileMutex             sync.Mutex                 // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
 	cpuPprofFile                  *os.File                   // An open file descriptor holds the reference during CPU profiling
 	_httpServers                  map[serverType]*serverInfo // A list of HTTP servers running under the ServerContext
+	_httpServersLock              sync.RWMutex               // Lock for managing access to _httpServers
 	GoCBAgent                     *gocbcore.Agent            // GoCB Agent to use when obtaining management endpoints
 	NoX509HTTPClient              *http.Client               // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted                    chan struct{}              // A channel that is closed via PostStartup once the ServerContext has fully started
@@ -204,8 +205,8 @@ func (sc *ServerContext) WaitForRESTAPIs(ctx context.Context) error {
 	ctx, cancelFn := context.WithTimeout(ctx, timeout)
 	defer cancelFn()
 	err, _ := base.RetryLoop(ctx, "Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
-		sc.lock.RLock()
-		defer sc.lock.RUnlock()
+		sc._httpServersLock.RLock()
+		defer sc._httpServersLock.RUnlock()
 		if len(sc._httpServers) == len(allServers) {
 			return false, nil, nil
 		}
@@ -224,15 +225,15 @@ func (sc *ServerContext) getServerAddr(s serverType) (string, error) {
 }
 
 func (sc *ServerContext) addHTTPServer(t serverType, s *serverInfo) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc._httpServersLock.Lock()
+	defer sc._httpServersLock.Unlock()
 	sc._httpServers[t] = s
 }
 
 // getHTTPServer returns information about the given HTTP server.
 func (sc *ServerContext) getHTTPServer(t serverType) (*serverInfo, error) {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
+	sc._httpServersLock.RLock()
+	defer sc._httpServersLock.RUnlock()
 	s, ok := sc._httpServers[t]
 	if !ok {
 		return nil, fmt.Errorf("server type %q not found running in server context", t)
@@ -253,33 +254,42 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close(ctx context.Context) {
-
-	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
-	}
+	// stop HTTP servers - prevents any further requests from coming in before we continue with tearing down everything else
+	sc.stopHTTPServers(ctx)
 
 	// stop the config polling
-	err = base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait)
-	if err != nil {
+	if err := base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait); err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
-
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	// close cached bootstrap bucket connections
 	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
 		sc.BootstrapContext.Connection.Close()
 	}
 
+	if agent := sc.GoCBAgent; agent != nil {
+		if err := agent.Close(); err != nil {
+			base.WarnfCtx(ctx, "Error closing agent connection: %v", err)
+		}
+	}
+
+	if err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait); err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
+	}
+
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
 		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
 	sc.databases_ = nil
 	sc.invalidDatabaseConfigTracking.dbNames = nil
+}
 
+func (sc *ServerContext) stopHTTPServers(ctx context.Context) {
+	sc._httpServersLock.Lock()
+	defer sc._httpServersLock.Unlock()
 	for _, s := range sc._httpServers {
 		if s.server != nil {
 			base.InfofCtx(ctx, base.KeyHTTP, "Closing HTTP Server: %v", s.addr)
@@ -289,12 +299,6 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		}
 	}
 	sc._httpServers = nil
-
-	if agent := sc.GoCBAgent; agent != nil {
-		if err := agent.Close(); err != nil {
-			base.WarnfCtx(ctx, "Error closing agent connection: %v", err)
-		}
-	}
 }
 
 // GetDatabase attempts to return the DatabaseContext of the database. It will load the database if necessary.

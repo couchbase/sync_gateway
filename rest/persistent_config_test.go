@@ -822,7 +822,6 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 //  3. InsertConfig for a different db, with collection conflict with the new, failed update (should fail with conflict, but succeed after GetDatabaseConfigs runs)
 //  4. InsertConfig for a different db, with collection conflict with the previous version (should fail with conflict, and continue to fail after GetDatabaseConfigs runs)
 //  5. DeleteConfig for the same db name (triggers rollback, then successfully deletes)
-
 func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
