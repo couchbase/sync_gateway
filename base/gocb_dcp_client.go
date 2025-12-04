@@ -250,7 +250,7 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 	return nil
 }
 
-// Start returns an error and a channel to indicate when the DCPClient is done.
+// Start returns an error if the initial connection fails and channel to indicate when the DCPClient is completed. The channel will return an error if there was an abnormal close.
 func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
@@ -277,7 +277,7 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	return dc.doneChannel, nil
 }
 
-// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
+// Close is used externally to stop the DCP client. This triggers a shutdown, but does not wait for completion.
 func (dc *GoCBDCPClient) Close() {
 	dc.close()
 }
