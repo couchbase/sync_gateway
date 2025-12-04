@@ -132,7 +132,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 		case dcpCloseError := <-doneChan:
 			// This is a close because DCP client closed on its own, which should never happen since once
 			// DCP feed is started, there is nothing that will close it
-			InfofCtx(ctx, KeyDCP, "DCP Feed %q closed unexpectedly with %s", dcpCloseError)
+			InfofCtx(ctx, KeyDCP, "DCP Feed %q closed unexpectedly with %v", dcpCloseError)
 			// FIXME: close dbContext here
 			break
 		case <-args.Terminator:
