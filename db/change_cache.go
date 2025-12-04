@@ -787,7 +787,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 
-	var changedChannels []channels.ID
+	changedChannels := make([]channels.ID, 0, len(change.Channels))
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(ctx, change)
@@ -876,7 +876,7 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 // Returns the channels that changed. This may return the same channel more than once, channels should be deduplicated
 // before notifying the changes.
 func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
-	var changedChannels []channels.ID
+	changedChannels := make([]channels.ID, 0, 5)
 	var isNext bool
 
 	for len(c.pendingLogs) > 0 {
