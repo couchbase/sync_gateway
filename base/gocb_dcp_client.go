@@ -74,7 +74,6 @@ type DCPClientOptions struct {
 	InitialMetadata            []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration            // Overrides metadata persistence frequency - intended for test use
 	MetadataStoreType          DCPMetadataStoreType      // define storage type for DCPMetadata
-	GroupID                    string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
@@ -664,13 +663,15 @@ func getLatestVbUUID(failoverLog []gocbcore.FailoverEntry) (vbUUID gocbcore.VbUU
 	return entry.VbUUID
 }
 
-func (dc *GoCBDCPClient) GetMetadataKeyPrefix() string {
-	return dc.metadata.GetKeyPrefix()
-}
-
 // StartWorkersForTest will iterate through dcp workers to start them, to be used for caching testing purposes only.
 func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 	dc.startWorkers(dc.ctx)
+}
+
+// PurgeCheckpoints will wipe the checkpoints associated with this DCP client. This has undefined behavior if this is
+// done while the DCPClient is running.
+func (dc *GoCBDCPClient) PurgeCheckpoints(ctx context.Context) {
+	dc.metadata.Purge(ctx, len(dc.workers))
 }
 
 // NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.

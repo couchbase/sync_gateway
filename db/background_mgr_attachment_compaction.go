@@ -112,7 +112,6 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
 	dataStore := database.Bucket.DefaultDataStore()
 	collectionID := base.DefaultCollectionID
-	var metadataKeyPrefix string
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
@@ -133,9 +132,10 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("mark")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			_, a.VBUUIDs, metadataKeyPrefix, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+			var purgeCheckpointsFn base.DCPPurgeCheckpointFunc
+			_, a.VBUUIDs, purgeCheckpointsFn, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
 			if err != nil {
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, metadataKeyPrefix)
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, purgeCheckpointsFn, err, MarkPhase)
 			}
 			return shouldRetry, err, nil
 		}
@@ -161,9 +161,9 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			purgeCheckpointsFn, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
 			if err != nil {
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, purgeCheckpointsFn, err, CleanupPhase)
 			}
 			return shouldRetry, err, nil
 		}
@@ -182,16 +182,15 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
-func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase, keyPrefix string) (bool, error) {
+// handleAttachmentCompactionRollbackError checks if the error is a rollback error. If there is any rollback error, reset the checkpoints. If it occurs in the mark phase, restart the the entire process.
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, purgeCheckpoints base.DCPPurgeCheckpointFunc, err error, phase string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.CompactID)
-		err = PurgeDCPCheckpoints(ctx, database.DatabaseContext, keyPrefix, a.CompactID)
-		if err != nil {
-			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
-			return false, err
+		if purgeCheckpoints != nil {
+			purgeCheckpoints(ctx)
 		}
 		if phase == MarkPhase {
 			// initialise new compaction run as we want to start the phase mark again in event of rollback

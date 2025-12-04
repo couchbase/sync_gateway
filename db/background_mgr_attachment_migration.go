@@ -170,20 +170,18 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
 	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
 
-	// check for mismatch in collection id's between current collections on the db and prev run
-	checkpointPrefix := fmt.Sprintf("%s:%v", dcpPrefix, dcpFeedKey)
-	err = a.resetDCPMetadataIfNeeded(ctx, db, checkpointPrefix, currCollectionIDs)
-	if err != nil {
-		return err
-	}
-
-	a.SetCollectionIDs(currCollectionIDs)
-	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
+	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, dcpPrefix)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
 	}
+	// check for mismatch in collection id's between current collections on the db and prev run
+	err = a.resetDCPMetadataIfNeeded(ctx, dcpClient, currCollectionIDs)
+	if err != nil {
+		return err
+	}
+	a.SetCollectionIDs(currCollectionIDs)
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for attachment migration", migrationLoggingID, dcpFeedKey)
 
 	doneChan, err := dcpClient.Start()
@@ -283,12 +281,12 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-func getMigrationDCPClientOptions(collectionIDs []uint32, groupID, prefix string) *base.DCPClientOptions {
+// getMigrationDCPClientOptions returns DCP client options for attachment migration
+func getMigrationDCPClientOptions(collectionIDs []uint32, prefix string) *base.DCPClientOptions {
 	clientOptions := &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
 		CheckpointPrefix:  prefix,
 	}
@@ -321,17 +319,14 @@ func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, dcpClient *base.GoCBDCPClient, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
-			return err
-		}
+		dcpClient.PurgeCheckpoints(ctx)
 		return nil
 	}
 	slices.Sort(collectionIDs)
@@ -339,10 +334,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
-			return err
-		}
+		dcpClient.PurgeCheckpoints(ctx)
 	}
 	return nil
 }
