@@ -1838,7 +1838,6 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 		if err != nil {
 			return sgbucket.UpdatedDoc{}, err
 		}
-		fmt.Printf("%+v\n", doc)
 		updatedDoc, shouldUpdate, updatedExpiry, _, updatedUnusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, nil)
 		if err != nil {
 			return sgbucket.UpdatedDoc{}, err
@@ -1854,7 +1853,6 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		fmt.Printf("updatedDoc= %+v\n", updatedDoc)
 		_, rawSyncXattr, _, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
 		updatedDoc := sgbucket.UpdatedDoc{
 			Doc: nil, // Resync does not require document body update
