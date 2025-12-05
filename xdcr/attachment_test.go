@@ -77,12 +77,8 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rest.RequireStatus(t, attAResp, http.StatusOK)
 
 	// wait for doc to replicate to rtB
-	var rtBVersion rest.DocVersion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		rtBVersion, _ = rtB.GetDoc(docID)
-		assert.Equal(c, rtAVersion.CV.String(), rtBVersion.CV.String())
-		assert.Equal(c, rtAVersion.RevTreeID, rtBVersion.RevTreeID)
-	}, time.Second*5, time.Millisecond*100)
+	rtB.WaitForVersion(docID, rtAVersion)
+	rtBVersion, _ := rtB.GetDoc(docID)
 
 	// wait for XDCR stats to ensure attachment data also made it over
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
