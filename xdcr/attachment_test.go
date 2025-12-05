@@ -97,7 +97,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rest.RequireStatus(t, attBResp, http.StatusOK)
 
 	// update doc on A, removing attachment
-	rtAVersion = rtA.UpdateDoc(docID, rtAVersion, `{"key":"value2"}`)
+	_ = rtA.UpdateDoc(docID, rtAVersion, `{"key":"value2"}`)
 
 	// update doc on B, changing body but keeping attachment stub (twice to ensure MWW resolves this as the winner as well as LWW)
 	rtBVersion = rtB.UpdateDoc(docID, rtBVersion, `{"key":"value3","_attachments":{"`+attachmentID+`":{"stub":true}}}`)
