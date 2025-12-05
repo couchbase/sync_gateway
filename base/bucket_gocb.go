@@ -217,7 +217,6 @@ func (b *GocbV2Bucket) getStorageBackend(ctx context.Context) (gocb.StorageBacke
 		return gocb.StorageBackendCouchstore, nil
 	case string(gocb.StorageBackendMagma):
 		return gocb.StorageBackendMagma, nil
-		// valid storage backends
 	default:
 		return "", fmt.Errorf("unknown storage backend type: %s", bucketResponse.StorageBackend)
 	}
