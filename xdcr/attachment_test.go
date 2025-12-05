@@ -77,12 +77,8 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rest.RequireStatus(t, attAResp, http.StatusOK)
 
 	// wait for doc to replicate to rtB
-	var rtBVersion rest.DocVersion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		rtBVersion, _ = rtB.GetDoc(docID)
-		assert.Equal(c, rtAVersion.CV.String(), rtBVersion.CV.String())
-		assert.Equal(c, rtAVersion.RevTreeID, rtBVersion.RevTreeID)
-	}, time.Second*5, time.Millisecond*100)
+	rtB.WaitForVersion(docID, rtAVersion)
+	rtBVersion, _ := rtB.GetDoc(docID)
 
 	// wait for XDCR stats to ensure attachment data also made it over
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -101,7 +97,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	rest.RequireStatus(t, attBResp, http.StatusOK)
 
 	// update doc on A, removing attachment
-	rtAVersion = rtA.UpdateDoc(docID, rtAVersion, `{"key":"value2"}`)
+	_ = rtA.UpdateDoc(docID, rtAVersion, `{"key":"value2"}`)
 
 	// update doc on B, changing body but keeping attachment stub (twice to ensure MWW resolves this as the winner as well as LWW)
 	rtBVersion = rtB.UpdateDoc(docID, rtBVersion, `{"key":"value3","_attachments":{"`+attachmentID+`":{"stub":true}}}`)
