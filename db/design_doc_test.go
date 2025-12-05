@@ -19,8 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestRemoveObsoleteDesignDocs tests that removeObsoleteDesignDocs removes the correct design docs, so runs
+// in SG_TEST_USE_GSI=true mode.
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
-
+	base.TestRequiresViews(t)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -89,7 +91,10 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	)
 }
 
+// TestRemoveDesignDocsUseViewsTrueAndFalse tests that removeObsoleteDesignDocs removes the correct design docs, so runs
+// in SG_TEST_USE_GSI=true mode.
 func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
+	base.TestRequiresViews(t)
 	setDesignDocPreviousVersionsForTest(t, "2.0")
 
 	ctx := base.TestCtx(t)
@@ -152,8 +157,10 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	require.Equal(t, useViewsTrueRemoval, removedDDocs)
 }
 
-// Test remove obsolete design docs returns the same in both preview and non-preview
+// Test remove obsolete design docs returns the same in both preview and non-preview. This tests removal of design
+// docs, so runs in SG_TEST_USE_GSI=true mode.
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
+	base.TestRequiresViews(t)
 	setDesignDocPreviousVersionsForTest(t, "test")
 
 	ctx := base.TestCtx(t)

@@ -1023,3 +1023,10 @@ func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID stri
 func underGoTest() bool {
 	return testing.Testing()
 }
+
+// TestRequiresViews skips a test if the backing bucket doesn't support views.
+func TestRequiresViews(t testing.TB) {
+	if !GTestBucketPool.supportsViews() {
+		t.Skip("Skipping test - views not supported with this bucket configuration")
+	}
+}

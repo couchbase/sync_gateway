@@ -22,6 +22,9 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
+	if !base.TestsDisableGSI() {
+		t.Skip("views tests are not applicable under GSI")
+	}
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
@@ -566,6 +569,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
+	base.TestRequiresViews(t)
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel)}`,
 	}

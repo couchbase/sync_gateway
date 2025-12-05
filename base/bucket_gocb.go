@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/couchbase/gocb/v2"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -193,4 +194,30 @@ func GoCBBucketMgmtEndpoint(bucket CouchbaseBucketStore) (url string, err error)
 	}
 	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
 	return bucketEp, nil
+}
+
+// getStorageBackend returns the storage backend type for the bucket.
+func (b *GocbV2Bucket) getStorageBackend(ctx context.Context) (gocb.StorageBackend, error) {
+	var bucketResponse struct {
+		StorageBackend string `json:"storageBackend,omitempty"`
+	}
+
+	uri := fmt.Sprintf("/pools/default/buckets/%s", b.GetSpec().BucketName)
+	respBytes, _, err := b.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return "", err
+	}
+
+	if err := JSONUnmarshal(respBytes, &bucketResponse); err != nil {
+		return "", err
+	}
+
+	switch bucketResponse.StorageBackend {
+	case string(gocb.StorageBackendCouchstore):
+		return gocb.StorageBackendCouchstore, nil
+	case string(gocb.StorageBackendMagma):
+		return gocb.StorageBackendMagma, nil
+	default:
+		return "", fmt.Errorf("unknown storage backend type: %s", bucketResponse.StorageBackend)
+	}
 }
