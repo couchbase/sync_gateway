@@ -653,7 +653,7 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 				tbp.Fatalf(ctx, "Couldn't get storage backend for bucket %s: %v", bucket.GetName(), err)
 			}
 			if storageBackend != tbp.cluster.storageBackend {
-				tbp.Fatalf(ctx, "Bucket %s has storage backend %s, expected %s", bucket.GetName(), storageBackend, storageBackend)
+				tbp.Fatalf(ctx, "Bucket %s has storage backend %s, expected %s", bucket.GetName(), storageBackend, tbp.cluster.storageBackend)
 			}
 
 			tbp.createCollections(ctx, bucket)
