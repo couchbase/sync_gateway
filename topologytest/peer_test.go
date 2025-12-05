@@ -440,9 +440,10 @@ func getPeerBuckets(t *testing.T, peerOptions map[string]PeerOptions) map[PeerBu
 func createPeers(t *testing.T, peersOptions map[string]PeerOptions) Peers {
 	buckets := getPeerBuckets(t, peersOptions)
 	peers := make(Peers, len(peersOptions))
+	ctx := base.TestCtx(t)
 	for id, peerOptions := range peersOptions {
 		peer := NewPeer(t, id, buckets, peerOptions)
-		t.Logf("TopologyTest: created peer %s", peer)
+		base.InfofCtx(ctx, base.KeySGTest, "TopologyTest: created peer %s", peer)
 		t.Cleanup(func() {
 			peer.Close()
 		})
