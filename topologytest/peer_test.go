@@ -134,17 +134,13 @@ func peerIsServerSide(p Peer) bool {
 
 // conflictNotExpectedOnCBL will return true if no conflict is expected for delete and resurrect operations for
 // topologies with cbl peer in them and false for expected conflict
-func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer, delPeerName string, resPeerName string) bool {
-	if delPeerName == "cbl1" {
+func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer) bool {
+	if deletePeer.Type() == PeerTypeCouchbaseLite {
 		// cbl delete will mean cbs resurrect has a conflict
 		return false
 	}
 	if peerIsServerSide(deletePeer) && peerIsServerSide(resurrectPeer) {
-		if strings.Contains(delPeerName, "1") && strings.Contains(resPeerName, "2") {
-			// conflict expected due to different backing bucket (sourceID)
-			return false
-		}
-		if strings.Contains(delPeerName, "2") && strings.Contains(resPeerName, "1") {
+		if deletePeer.SourceID() != resurrectPeer.SourceID() {
 			// conflict expected due to different backing bucket (sourceID)
 			return false
 		}

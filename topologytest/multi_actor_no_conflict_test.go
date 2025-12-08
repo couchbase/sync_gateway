@@ -112,7 +112,7 @@ func TestMultiActorResurrect(t *testing.T) {
 							// peer then cbl will resolve in favor if its own tombstone.
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
 								if strings.Contains(topologySpec.description, "CBL") {
-									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer, deletePeerName, resurrectPeerName) {
+									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer) {
 										// if no cbl conflict is expected we can wait on CV and body
 										waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 									} else {

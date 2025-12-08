@@ -342,16 +342,17 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridLogicalVector, incomingBody []byte, incomingIsDelete bool, localDoc *clientDocRev) (body []byte, hlv db.HybridLogicalVector, isTombstone bool) {
 	switch btcc.parent.ConflictResolver {
 	case ConflictResolverLastWriteWins:
-		return btcc._resolveConflictLWW(incomingHLV, incomingBody, incomingIsDelete, localDoc)
+		return btcc._resolveConflictLWW(incomingHLV, incomingBody, localDoc)
 	}
 	btcc.TB().Fatalf("Unknown conflict resolver %q - cannot resolve detected conflict", btcc.parent.ConflictResolver)
 	return nil, db.HybridLogicalVector{}, isTombstone
 }
 
-func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.HybridLogicalVector, incomingBody []byte, incomingIsDelete bool, latestLocalRev *clientDocRev) (body []byte, hlv db.HybridLogicalVector, isTombstone bool) {
+func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.HybridLogicalVector, incomingBody []byte, latestLocalRev *clientDocRev) (body []byte, hlv db.HybridLogicalVector, isTombstone bool) {
 	latestLocalHLV := latestLocalRev.HLV
 	updatedHLV := latestLocalRev.HLV.Copy()
 	localDeleted := latestLocalRev.isDelete
+	incomingIsDelete := incomingBody == nil || bytes.Equal(incomingBody, []byte(`{}`))
 	if localDeleted && !incomingIsDelete {
 		// resolve in favour of local document
 		incomingHLV.UpdateWithIncomingHLV(updatedHLV)
