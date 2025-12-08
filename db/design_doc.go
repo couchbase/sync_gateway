@@ -732,7 +732,9 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 					err = viewStore.DeleteDDoc(ddocName)
 					return isRetriableDesignDocError(err), err, nil
 				}, getDesignDocRetrySleeperFunc())
-				if removeDDocErr == nil {
+				if removeDDocErr != nil {
+					base.WarnfCtx(ctx, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+				} else {
 					removedDesignDocs = append(removedDesignDocs, ddocName)
 				}
 			} else {
@@ -810,6 +812,7 @@ func isRetriableDesignDocError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
+	// Retry for all errors except missing
+	// (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
 	return !IsMissingDDocError(err)
 }
