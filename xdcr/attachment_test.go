@@ -129,10 +129,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	}, time.Second*5, time.Millisecond*100)
 
 	// wait for doc (resolved conflict) to replicate back to rtA
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		currentRtAVersion, _ := rtA.GetDoc(docID)
-		assert.Equal(c, rtBVersion.CV.String(), currentRtAVersion.CV.String())
-	}, time.Second*10, time.Millisecond*100)
+	rtA.WaitForVersion(docID, rtBVersion)
 
 	// check attachment metadata exists
 	docA := rtA.GetDocument(docID)
