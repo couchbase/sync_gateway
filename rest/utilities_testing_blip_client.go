@@ -2192,7 +2192,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
 	newClientSeq := btcc._nextSequence()
-	isTombstone := false
+	isDelete := opts.isDelete
 
 	newBody := opts.body
 	newVersion := opts.incomingVersion
@@ -2200,10 +2200,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
 	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
 	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
-		newBody, updatedHLV, isTombstone = btcc._resolveConflict(opts.incomingHLV, opts.body, opts.isDelete, doc._latestRev(btcc.TB()))
-		if isTombstone {
-			opts.isDelete = true
-		}
+		newBody, updatedHLV, isDelete = btcc._resolveConflict(opts.incomingHLV, opts.body, opts.isDelete, doc._latestRev(btcc.TB()))
 		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%#v, existingHLV:%#v, updatedHLV:%#v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {
 		base.DebugfCtx(ctx, base.KeySGTest, "No conflict")
@@ -2216,7 +2213,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
 		clientSeq:   newClientSeq,
-		isDelete:    opts.isDelete,
+		isDelete:    isDelete,
 		pullMessage: opts.msg,
 		body:        newBody,
 		HLV:         updatedHLV,
