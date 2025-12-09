@@ -30,6 +30,8 @@ type tbpCluster struct {
 	version      string
 	// cluster can be used to perform cluster-level operations (but not bucket-level operations)
 	cluster *gocb.Cluster
+
+	storageBackend gocb.StorageBackend
 }
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
@@ -47,6 +49,12 @@ func newTestCluster(ctx context.Context, server string, tbp *TestBucketPool) *tb
 	tbpCluster.majorVersion, tbpCluster.minorVersion, err = getClusterVersion(tbpCluster.cluster)
 	if err != nil {
 		tbp.Fatalf(ctx, "Couldn't get cluster version: %v", err)
+	}
+	// for GSI, use default storage backend: magma for 8.0+ or couchstore for <8.0
+	// views aren't supported with magma
+	tbpCluster.storageBackend = gocb.StorageBackendCouchstore
+	if !TestsDisableGSI() && tbpCluster.isEnterprise() && tbpCluster.majorVersion >= 8 {
+		tbpCluster.storageBackend = gocb.StorageBackendMagma
 	}
 	return tbpCluster
 }
@@ -98,10 +106,11 @@ func getGocbClusterForTest(ctx context.Context, server string) (*gocb.Cluster, s
 // isServerEnterprise returns true if the connected returns true if the connected couchbase server
 // instance is Enterprise edition And false for Community edition
 func (c *tbpCluster) isServerEnterprise() (bool, error) {
-	if strings.Contains(c.version, "enterprise") {
-		return true, nil
-	}
-	return false, nil
+	return c.isEnterprise(), nil
+}
+
+func (c *tbpCluster) isEnterprise() bool {
+	return strings.Contains(c.version, "enterprise")
 }
 
 func (c *tbpCluster) getBucketNames() ([]string, error) {
@@ -123,11 +132,12 @@ func (c *tbpCluster) insertBucket(ctx context.Context, name string, quotaMB int)
 
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
-			Name:         name,
-			RAMQuotaMB:   uint64(quotaMB),
-			BucketType:   gocb.CouchbaseBucketType,
-			FlushEnabled: true,
-			NumReplicas:  tbpNumReplicas(ctx),
+			Name:           name,
+			RAMQuotaMB:     uint64(quotaMB),
+			BucketType:     gocb.CouchbaseBucketType,
+			FlushEnabled:   true,
+			NumReplicas:    tbpNumReplicas(ctx),
+			StorageBackend: c.storageBackend,
 		},
 	}
 
