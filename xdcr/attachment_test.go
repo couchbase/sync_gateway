@@ -144,6 +144,4 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	attBResp = rtB.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")
 	rest.AssertStatus(t, attBResp, http.StatusOK)
 
-	require.NoError(t, xdcrAtoB.Stop(ctx))
-	require.NoError(t, xdcrBtoA.Stop(ctx))
 }
