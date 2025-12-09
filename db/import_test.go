@@ -1490,6 +1490,8 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 
 }
 
+// getBucketDocument reads the current version of a document and turns it into a sgbucket.BucketDocument. This is
+// intended for test use only, since this gets expiry as a separate option.
 func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID string) *sgbucket.BucketDocument {
 	ctx := base.TestCtx(t)
 	xattrNames := append(collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), base.VirtualExpiry)

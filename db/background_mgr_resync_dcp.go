@@ -152,11 +152,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			base.WarnfCtx(collectionCtx, "[%s] Error getting document from DCP event for doc %q: %v", resyncLoggingID, base.UD(docID), err)
 			return false
 		}
-		unusedSequences, err := (&DatabaseCollectionWithUser{
+		err = (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
 		}).ResyncDocument(collectionCtx, docID, doc, regenerateSequences)
-
-		databaseCollection.releaseSequences(collectionCtx, unusedSequences)
 
 		if err == nil {
 			r.DocsChanged.Add(1)
