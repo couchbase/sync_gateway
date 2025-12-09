@@ -237,6 +237,11 @@ func (rt *RestTester) WaitForVersionRevIDOnly(docID string, version DocVersion) 
 	rt.WaitForVersion(docID, version)
 }
 
+func (rt *RestTester) WaitForVersionHLVOnly(docID string, version DocVersion) {
+	version.RevTreeID = ""
+	rt.WaitForVersion(docID, version)
+}
+
 // WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
 func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()

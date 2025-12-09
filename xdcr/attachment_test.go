@@ -129,7 +129,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	}, time.Second*5, time.Millisecond*100)
 
 	// wait for doc (resolved conflict) to replicate back to rtA
-	rtA.WaitForVersion(docID, rtBVersion)
+	rtA.WaitForVersionHLVOnly(docID, rtBVersion)
 
 	// check attachment metadata exists
 	docA := rtA.GetDocument(docID)
