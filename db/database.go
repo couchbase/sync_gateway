@@ -165,6 +165,51 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+
+	ActiveClients *ActiveClients // Manages BLIP clients currently connected to this database
+}
+
+type ActiveClients struct {
+	_clients map[string]*Client
+	_lock    sync.RWMutex
+}
+
+func (ac *ActiveClients) Get(deviceUUID string) (*Client, bool) {
+	ac._lock.RLock()
+	defer ac._lock.RUnlock()
+	client, ok := ac._clients[deviceUUID]
+	return client, ok
+}
+
+func (ac *ActiveClients) Set(deviceUUID string, c *Client) {
+	ac._lock.Lock()
+	defer ac._lock.Unlock()
+	ac._clients[deviceUUID] = c
+}
+
+func (ac *ActiveClients) Remove(deviceUUID string) {
+	ac._lock.Lock()
+	defer ac._lock.Unlock()
+	delete(ac._clients, deviceUUID)
+}
+
+func (ac *ActiveClients) All() map[string]*Client {
+	ac._lock.RLock()
+	defer ac._lock.RUnlock()
+	return maps.Clone(ac._clients)
+}
+
+type ClientStats struct {
+	DocsPerSecond float64 `json:"docs_per_second"`
+}
+type Client struct {
+	CorrelationID       string      `json:"correlation_id,omitempty"`
+	Subprotocol         string      `json:"subprotocol,omitempty"`
+	UserAgent           string      `json:"user_agent,omitempty"`
+	User                string      `json:"user,omitempty"`
+	ConnectedAt         time.Time   `json:"connected_at"`
+	ConnectionRTTMillis float64     `json:"connection_rtt_ms"`
+	Stats               ClientStats `json:"stats"`
 }
 
 type Scope struct {
@@ -436,6 +481,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UserFunctionTimeout:  defaultUserFunctionTimeout,
 		CachedCCVStartingCas: &base.VBucketCAS{},
 		SameSiteCookieMode:   http.SameSiteDefaultMode,
+		ActiveClients:        &ActiveClients{_clients: make(map[string]*Client)},
 	}
 	dbContext.numVBuckets, err = bucket.GetMaxVbno()
 	if err != nil {

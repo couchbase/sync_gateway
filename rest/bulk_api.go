@@ -14,8 +14,10 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -353,35 +355,57 @@ func (h *handler) handleRepair() error {
 	*/
 }
 
-// handleReeeCheckpoints returns all stored replication checkpoints for the REEE hackathon
-func (h *handler) handleReeeCheckpoints() error {
-	h.writeRawJSONStatus(http.StatusOK, []byte(`{"checkpoints": [
-  {
-    "id": "cp-ffbZ6dsFeQ3L6ki58TN4SBVQ53k=",
-    "updated_at": "2025-11-20T09:47:05.300Z",
-    "seq": 656,
-    "user": "dana",
-    "sdk": {
-      "platform": "iOS",
-      "version": "iOS 16.4.1"
-    },
-    "hardware": "Apple iPhone12,1"
-  }
-]}`))
+// handleReeeKnownClients returns all known clients for the REEE hackathon
+func (h *handler) handleReeeKnownClients() error {
+	type SDKInfo struct {
+		Platform string `json:"platform"`
+		Version  string `json:"version"`
+	}
+	type clientEntry struct {
+		UpdatedAt time.Time `json:"updated_at"`
+		User      string    `json:"user"`
+		SDK       SDKInfo   `json:"sdk"`
+		Hardware  string    `json:"hardware"`
+		NodeID    string    `json:"node_id,omitempty"`
+	}
+
+	type reeeCheckpointsResponse struct {
+		Clients map[string]clientEntry `json:"clients"`
+	}
+
+	nodeID := os.Getenv("CAPELLA_NODE_ID")
+	if nodeID == "" {
+		if hostname, err := os.Hostname(); err != nil {
+			nodeID = "unknown"
+		} else {
+			nodeID = hostname
+		}
+	}
+
+	var resp = reeeCheckpointsResponse{Clients: make(map[string]clientEntry)}
+	resp.Clients["1234-abcd-5678-efgh"] = clientEntry{
+		UpdatedAt: time.Now().Add(-1 * time.Duration(rand.Intn(int(time.Hour)))),
+		User:      "dana",
+		SDK: SDKInfo{
+			Platform: "iOS",
+			Version:  "iOS 16.4.1",
+		},
+		Hardware: "Apple iPhone12,1",
+		NodeID:   nodeID,
+	}
+
+	h.writeJSONStatus(http.StatusOK, resp)
 	return nil
 }
 
-// handleReeeReplications returns all active replications for the REEE hackathon
-func (h *handler) handleReeeReplications() error {
-	h.writeRawJSONStatus(http.StatusOK, []byte(`{"replications": {
-  "cp-ffbZ6dsFeQ3L6ki58TN4SBVQ53k=": {
-    "connected_at": "2025-11-20T09:46:42.123Z",
-    "rtt_ms": 54,
-    "stats": {
-      "docs_per_second": 12
-    }
-  }
-]}`))
+// handleReeeActiveClients returns all active replications for the REEE hackathon
+func (h *handler) handleReeeActiveClients() error {
+	resp := struct {
+		Clients map[string]*db.Client `json:"clients"`
+	}{
+		Clients: h.db.ActiveClients.All(),
+	}
+	h.writeJSONStatus(http.StatusOK, resp)
 	return nil
 }
 
