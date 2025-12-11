@@ -294,11 +294,9 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 			tbp.Logf(ctx, "purgeDCPFeed finished with error: %v", err)
 		}
 	case <-timeout:
+		dcpClient.Close()
+		<-doneChan
 		return fmt.Errorf("timeout waiting for purge DCP feed to complete")
-	}
-	closeErr := dcpClient.Close()
-	if closeErr != nil {
-		tbp.Logf(ctx, "error closing purge DCP feed: %v", closeErr)
 	}
 
 	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs purged: %d", purgedDocCount.Load())
