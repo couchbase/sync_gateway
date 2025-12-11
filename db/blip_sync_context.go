@@ -573,7 +573,10 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq, "")
+	properties, err := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq, "")
+	if err != nil {
+		return err
+	}
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -599,7 +602,10 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
 	} else {
-		noRevRq.SetSequence(seq)
+		err := noRevRq.SetSequence(seq)
+		if err != nil {
+			return err
+		}
 	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
@@ -708,7 +714,10 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
-	properties := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
+	properties, err := blipRevMessageProperties(history, rev.Deleted, seq, replacedRevID)
+	if err != nil {
+		return err
+	}
 	if base.LogDebugEnabled(ctx, base.KeySync) {
 		replacedRevMsg := ""
 		if replacedRevID != "" {
