@@ -323,12 +323,20 @@ func (c *DatabaseCollection) syncGlobalSyncAndUserXattrKeys() []string {
 	return xattrKeys
 }
 
+// syncGlobalSyncMouAndUserXattrKeys returns the xattr keys for the user, mou and sync xattrs.
+func (c *DatabaseCollection) syncGlobalSyncMouAndUserXattrKeys() []string {
+	xattrKeys := []string{base.SyncXattrName, base.VvXattrName,
+		base.MouXattrName, base.GlobalXattrName}
+	userXattrKey := c.userXattrKey()
+	if userXattrKey != "" {
+		xattrKeys = append(xattrKeys, userXattrKey)
+	}
+	return xattrKeys
+}
+
 // syncGlobalSyncMouRevSeqNoAndUserXattrKeys returns the xattr keys for the user, mou, revSeqNo and sync xattrs.
 func (c *DatabaseCollection) syncGlobalSyncMouRevSeqNoAndUserXattrKeys() []string {
-	xattrKeys := []string{base.SyncXattrName, base.VvXattrName}
-	if c.useMou() {
-		xattrKeys = append(xattrKeys, base.MouXattrName, base.GlobalXattrName)
-	}
+	xattrKeys := []string{base.SyncXattrName, base.VvXattrName, base.VirtualXattrRevSeqNo, base.MouXattrName, base.GlobalXattrName}
 	userXattrKey := c.userXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
