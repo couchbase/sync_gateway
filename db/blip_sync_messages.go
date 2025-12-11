@@ -507,8 +507,13 @@ func (nrm *noRevMessage) SetSeq(seq SequenceID) {
 	nrm.Properties[NorevMessageSeq] = seq.String()
 }
 
-func (nrm *noRevMessage) SetSequence(sequence SequenceID) {
-	nrm.Properties[NorevMessageSequence] = sequence.String()
+func (nrm *noRevMessage) SetSequence(sequence SequenceID) error {
+	s, err := base.JSONMarshal(sequence)
+	if err != nil {
+		return err
+	}
+	nrm.Properties[NorevMessageSequence] = string(s)
+	return nil
 }
 
 func (nrm *noRevMessage) SetReason(reason string) {

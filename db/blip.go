@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -84,11 +85,13 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
-func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID, replacedRevID string) blip.Properties {
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID, replacedRevID string) (blip.Properties, error) {
 	properties := make(blip.Properties)
 
-	// TODO: Assert? db.SequenceID.MarshalJSON can never error
-	seqJSON, _ := base.JSONMarshal(seq)
+	seqJSON, err := base.JSONMarshal(seq)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal sequence %v: %v", seq, err)
+	}
 	properties[RevMessageSequence] = string(seqJSON)
 
 	if len(revisionHistory) > 0 {
@@ -103,7 +106,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 		properties[RevMessageReplacedRev] = replacedRevID
 	}
 
-	return properties
+	return properties, nil
 }
 
 // Returns true if this attachment is worth trying to compress.
