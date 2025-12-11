@@ -2258,7 +2258,7 @@ func TestBlipNorev(t *testing.T) {
 		norevMsg := db.NewNoRevMessage()
 		norevMsg.SetId("docid")
 		norevMsg.SetRev("1-a")
-		norevMsg.SetSequence(db.SequenceID{Seq: 50})
+		require.NoError(t, norevMsg.SetSequence(db.SequenceID{Seq: 50}))
 		norevMsg.SetError("404")
 		norevMsg.SetReason("couldn't send xyz")
 		btc.addCollectionProperty(norevMsg.Message)
@@ -2285,7 +2285,7 @@ func TestNoRevSetSeq(t *testing.T) {
 	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSeq])
 	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSequence])
 
-	norevMsg.SetSequence(db.SequenceID{Seq: 50})
+	require.NoError(t, norevMsg.SetSequence(db.SequenceID{Seq: 50}))
 	assert.Equal(t, "50", norevMsg.Properties[db.NorevMessageSequence])
 
 	norevMsg.SetSeq(db.SequenceID{Seq: 60})
