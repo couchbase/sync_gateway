@@ -158,7 +158,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 	// Robust Edge Exploration & Experience
 	dbr.Handle("/_reee/checkpoints", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleReeeCheckpoints)).Methods("GET")
-	dbr.Handle("/_reee/replications", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleReeeCheckpoints)).Methods("GET")
+	dbr.Handle("/_reee/replications", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleReeeReplications)).Methods("GET")
 
 	// Database handlers (multi collection):
 	dbr.Handle("/_resync",
