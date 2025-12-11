@@ -156,6 +156,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	keyspace.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 
+	// Robust Edge Exploration & Experience
+	dbr.Handle("/_reee/checkpoints", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleReeeCheckpoints)).Methods("GET")
+
 	// Database handlers (multi collection):
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")

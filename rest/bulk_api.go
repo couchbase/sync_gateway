@@ -353,6 +353,38 @@ func (h *handler) handleRepair() error {
 	*/
 }
 
+// handleReeeCheckpoints returns all stored replication checkpoints for the REEE hackathon
+func (h *handler) handleReeeCheckpoints() error {
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"checkpoints": [
+  {
+    "id": "cp-ffbZ6dsFeQ3L6ki58TN4SBVQ53k=",
+    "updated_at": "2025-11-20T09:47:05.300Z",
+    "seq": 656,
+    "user": "dana",
+    "sdk": {
+      "platform": "iOS",
+      "version": "iOS 16.4.1"
+    },
+    "hardware": "Apple iPhone12,1"
+  }
+]}`))
+	return nil
+}
+
+// handleReeeReplications returns all active replications for the REEE hackathon
+func (h *handler) handleReeeReplications() error {
+	h.writeRawJSONStatus(http.StatusOK, []byte(`{"replications": {
+  "cp-ffbZ6dsFeQ3L6ki58TN4SBVQ53k=": {
+    "connected_at": "2025-11-20T09:46:42.123Z",
+    "rtt_ms": 54,
+    "stats": {
+      "docs_per_second": 12
+    }
+  }
+]}`))
+	return nil
+}
+
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
