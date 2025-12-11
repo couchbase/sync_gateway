@@ -298,7 +298,7 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 	commitTruncated := StringPrefix(GitCommit, 7)
 
 	return fmt.Sprintf(
-		"%v-v-%v-commit-%v-uuid-%v",
+		"sg:%v-v-%v-commit-%v-uuid-%v",
 		feedID,
 		ProductAPIVersion,
 		commitTruncated,
