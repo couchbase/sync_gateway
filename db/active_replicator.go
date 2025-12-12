@@ -242,7 +242,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		}
 	}
 
-	bsc, err = NewBlipSyncContext(ctx, blipContext, arc.config.ActiveDB, arc.replicationStats, cancelFunc)
+	bsc, err = NewBlipSyncContext(ctx, blipContext, arc.config.ActiveDB, arc.replicationStats, cancelFunc, ISGRUserAgent)
 	if err != nil {
 		return nil, nil, err
 	}

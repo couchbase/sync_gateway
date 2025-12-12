@@ -1469,6 +1469,26 @@ func (h *handler) providedAuthCredentials() bool {
 	return cookie != nil
 }
 
+func (h *handler) effectiveUserName() string {
+	if h.authorizedAdminUser != "" {
+		return h.authorizedAdminUser + " as ADMIN"
+	}
+
+	if h.privs == adminPrivs || h.privs == metricsPrivs {
+		return "ADMIN"
+	}
+
+	if h.user == nil {
+		return ""
+	}
+
+	if name := h.user.Name(); name != "" {
+		return name
+	}
+
+	return base.GuestUsername
+}
+
 // taggedEffectiveUserName returns the tagged effective name of the user for the request.
 // e.g: '<ud>alice</ud>' or 'GUEST'
 func (h *handler) taggedEffectiveUserName() string {

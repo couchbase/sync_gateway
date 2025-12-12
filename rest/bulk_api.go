@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"html"
 	"math"
-	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -357,20 +356,13 @@ func (h *handler) handleRepair() error {
 
 // handleReeeKnownClients returns all known clients for the REEE hackathon
 func (h *handler) handleReeeKnownClients() error {
-	type SDKInfo struct {
-		Platform string `json:"platform"`
-		Version  string `json:"version"`
-	}
-	type clientEntry struct {
-		UpdatedAt time.Time `json:"updated_at"`
-		User      string    `json:"user"`
-		SDK       SDKInfo   `json:"sdk"`
-		Hardware  string    `json:"hardware"`
-		NodeID    string    `json:"node_id,omitempty"`
+	metadataN1qlStore, ok := base.AsN1QLStore(h.db.MetadataStore)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "metadata store is not N1QL")
 	}
 
 	type reeeCheckpointsResponse struct {
-		Clients map[string]clientEntry `json:"clients"`
+		Clients map[string]db.KnownClient `json:"clients"`
 	}
 
 	nodeID := os.Getenv("CAPELLA_NODE_ID")
@@ -382,16 +374,35 @@ func (h *handler) handleReeeKnownClients() error {
 		}
 	}
 
-	var resp = reeeCheckpointsResponse{Clients: make(map[string]clientEntry)}
-	resp.Clients["1234-abcd-5678-efgh"] = clientEntry{
-		UpdatedAt: time.Now().Add(-1 * time.Duration(rand.Intn(int(time.Hour)))),
-		User:      "dana",
-		SDK: SDKInfo{
-			Platform: "iOS",
-			Version:  "iOS 16.4.1",
-		},
-		Hardware: "Apple iPhone12,1",
-		NodeID:   nodeID,
+	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%%'`, base.KeyspaceQueryToken), nil, base.RequestPlus, false)
+	if err != nil {
+		return err
+	}
+
+	var row struct {
+		ID     string                  `json:"id"`
+		Client db.KnownClientPersisted `json:"client"`
+	}
+	for results.Next(h.ctx(), &row) {
+		// extract sdk and hardware info from User Agent
+		matches := db.UserAgentRegexp.FindStringSubmatch(row.Client.UserAgent)
+		fmt.Printf("UA Matches: %#v\n", matches)
+
+		id := strings.TrimPrefix(row.ID, "_sync:client:")
+
+		resp.Clients[id] = db.KnownClient{
+			UpdatedAt: row.Client.UpdatedAt,
+			User:      row.Client.User,
+			NodeID:    row.Client.NodeID,
+			ClientParsedUserAgent: db.ClientParsedUserAgent{
+				SDK: db.ClientSDKInfo{
+					Platform: matches[3],
+					Version:  matches[2],
+				},
+				Hardware: "todo",
+			},
+		}
 	}
 
 	h.writeJSONStatus(http.StatusOK, resp)
@@ -401,7 +412,7 @@ func (h *handler) handleReeeKnownClients() error {
 // handleReeeActiveClients returns all active replications for the REEE hackathon
 func (h *handler) handleReeeActiveClients() error {
 	resp := struct {
-		Clients map[string]*db.Client `json:"clients"`
+		Clients map[string]*db.ActiveClient `json:"clients"`
 	}{
 		Clients: h.db.ActiveClients.All(),
 	}

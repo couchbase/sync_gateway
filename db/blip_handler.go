@@ -212,8 +212,43 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 // Received a "getCheckpoint" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 
-	client := rq.Properties[BlipClient]
+	client := rq.Properties[GetCheckpointClient]
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("Client:%s", client))
+	bh.checkpointID = client
+
+	// since GetCheckpoint is the first opportunity to get Device UUID from CBL,
+	// we have to hang the Active/KnownClient logic here instead of at the more appropriate handleBlipSync time
+	deviceUUID := rq.Properties[GetCheckpointUUID]
+	bh.deviceUUID = deviceUUID
+	clientUUID := bh.BlipSyncContext.ClientUUID()
+
+	// extract sdk and hardware info from User Agent
+	matches := UserAgentRegexp.FindStringSubmatch(bh.userAgent)
+	fmt.Printf("UA Matches: %#v\n", matches)
+
+	c := &ActiveClient{
+		CorrelationID:       bh.blipContext.ID,
+		Subprotocol:         bh.activeCBMobileSubprotocol.SubprotocolString(),
+		User:                bh.userName,
+		ConnectedAt:         bh.connectedAt,
+		ConnectionRTTMillis: float64(bh.rtt.Microseconds() / 1000),
+		Stats: ClientStats{
+			DocsPerSecond: 123.0,
+		},
+		ClientParsedUserAgent: ClientParsedUserAgent{
+			SDK: ClientSDKInfo{
+				Platform: matches[3],
+				Version:  matches[2],
+			},
+			Hardware: "todo",
+		},
+		RawUA: bh.userAgent,
+	}
+	bh.db.ActiveClients.Set(clientUUID, c)
+	err := bh.db.UpsertKnownClient(clientUUID, c)
+	if err != nil {
+		panic(err)
+	}
 
 	response := rq.Response()
 	if response == nil {

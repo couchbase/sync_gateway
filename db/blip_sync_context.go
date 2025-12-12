@@ -35,7 +35,7 @@ const (
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 // NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
-func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
+func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc, userAgent string) (*BlipSyncContext, error) {
 	if ctxCancelFunc == nil {
 		return nil, errors.New("cancelCtxFunc is required")
 	}
@@ -75,6 +75,9 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 			bsc.readOnly = true
 		}
 	}
+
+	bsc.connectedAt = time.Now()
+	bsc.userAgent = userAgent
 
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
@@ -142,6 +145,12 @@ type BlipSyncContext struct {
 	stats blipSyncStats // internal structure to store stats
 
 	ctxCancelFunc context.CancelFunc // function to cancel a blip replication
+
+	connectedAt  time.Time
+	rtt          time.Duration
+	userAgent    string // user agent reported by client on _blipsync
+	deviceUUID   string // device UUID reported by client (CBL 4.1+)
+	checkpointID string // checkpoint ID reported by client
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -929,4 +938,15 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 	}
 
 	return deltaSrcRev, changeIsLegacyRev, knownRevs, nil
+}
+
+// ClientUUID returns a UUID for the client - device ID if available, or else a checkpoint ID as a fallback (for older clients).
+func (bsc *BlipSyncContext) ClientUUID() string {
+	if bsc.deviceUUID != "" {
+		return bsc.deviceUUID
+	}
+	if bsc.checkpointID != "" {
+		return bsc.checkpointID
+	}
+	return "unknown"
 }

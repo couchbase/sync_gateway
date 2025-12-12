@@ -51,7 +51,7 @@ func TestBlipCorrelationID(t *testing.T) {
 			base.AssertLogContains(t, "c:"+testID, func() {
 				bc.Logger(blip.LogGeneral, "Sample log message")
 			})
-			bsc, err := NewBlipSyncContext(ctx, bc, db, nil, cancelFunc)
+			bsc, err := NewBlipSyncContext(ctx, bc, db, nil, cancelFunc, base.NewSGProcessUserAgent(t.Name()))
 			require.NoError(t, err)
 			defer bsc.Close()
 

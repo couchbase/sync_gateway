@@ -65,17 +65,17 @@ func (h *handler) handleBLIPSync() error {
 		return err
 	}
 
+	blipContext.WebsocketPingInterval = time.Second * 55
+
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))
 	h.response.Header().Set(db.BLIPCorrelationIDResponseHeader, blipContext.ID)
 	// Create a new BlipSyncContext attached to the given blipContext.
-	bsc, err := db.NewBlipSyncContext(ctx, blipContext, h.db, db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc)
+	bsc, err := db.NewBlipSyncContext(ctx, blipContext, h.db, db.BlipSyncStatsForCBL(h.db.DbStats), cancelCtxFunc, h.rq.UserAgent())
 	if err != nil {
 		return err
 	}
 	defer bsc.Close()
-
-	deviceUUID := "1234-abcd-5678-efgh"
 
 	auditFields := base.AuditFields{base.AuditFieldReplicationID: base.FormatBlipContextID(blipContext.ID)}
 	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
@@ -106,24 +106,17 @@ func (h *handler) handleBLIPSync() error {
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "Couldn't set active CB Mobile Subprotocol: %v", err)
 		}
-
-		h.db.ActiveClients.Set(deviceUUID, &db.Client{
-			CorrelationID:       blipContext.ID,
-			Subprotocol:         subprotocol,
-			UserAgent:           h.rq.UserAgent(),
-			User:                h.formattedEffectiveUserName(),
-			ConnectedAt:         time.Now(),
-			ConnectionRTTMillis: 45.67,
-			Stats: db.ClientStats{
-				DocsPerSecond: 123.4,
-			},
-		})
 	}
 
 	server.ServeHTTP(h.response, h.rq)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 
-	h.db.ActiveClients.Remove(deviceUUID)
+	clientUUID := bsc.ClientUUID()
+	h.db.ActiveClients.Remove(clientUUID)
+	err = h.db.UpsertKnownClient(clientUUID, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	return nil
 }

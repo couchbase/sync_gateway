@@ -10,9 +10,11 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -170,18 +172,18 @@ type DatabaseContext struct {
 }
 
 type ActiveClients struct {
-	_clients map[string]*Client
+	_clients map[string]*ActiveClient
 	_lock    sync.RWMutex
 }
 
-func (ac *ActiveClients) Get(deviceUUID string) (*Client, bool) {
+func (ac *ActiveClients) Get(deviceUUID string) (*ActiveClient, bool) {
 	ac._lock.RLock()
 	defer ac._lock.RUnlock()
 	client, ok := ac._clients[deviceUUID]
 	return client, ok
 }
 
-func (ac *ActiveClients) Set(deviceUUID string, c *Client) {
+func (ac *ActiveClients) Set(deviceUUID string, c *ActiveClient) {
 	ac._lock.Lock()
 	defer ac._lock.Unlock()
 	ac._clients[deviceUUID] = c
@@ -193,7 +195,7 @@ func (ac *ActiveClients) Remove(deviceUUID string) {
 	delete(ac._clients, deviceUUID)
 }
 
-func (ac *ActiveClients) All() map[string]*Client {
+func (ac *ActiveClients) All() map[string]*ActiveClient {
 	ac._lock.RLock()
 	defer ac._lock.RUnlock()
 	return maps.Clone(ac._clients)
@@ -202,14 +204,39 @@ func (ac *ActiveClients) All() map[string]*Client {
 type ClientStats struct {
 	DocsPerSecond float64 `json:"docs_per_second"`
 }
-type Client struct {
-	CorrelationID       string      `json:"correlation_id,omitempty"`
-	Subprotocol         string      `json:"subprotocol,omitempty"`
-	UserAgent           string      `json:"user_agent,omitempty"`
-	User                string      `json:"user,omitempty"`
-	ConnectedAt         time.Time   `json:"connected_at"`
-	ConnectionRTTMillis float64     `json:"connection_rtt_ms"`
-	Stats               ClientStats `json:"stats"`
+type ActiveClient struct {
+	CorrelationID       string      `json:"correlation_id,omitempty,omitempty"`
+	Subprotocol         string      `json:"subprotocol,omitempty,omitempty"`
+	ConnectedAt         time.Time   `json:"connected_at,omitempty"`
+	ConnectionRTTMillis float64     `json:"connection_rtt_ms,omitempty"`
+	Stats               ClientStats `json:"stats,omitempty"`
+	User                string      `json:"user,omitempty,omitempty"`
+	ClientParsedUserAgent
+	RawUA string `json:"-"` // transport for storage
+}
+
+type KnownClient struct {
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	User      string    `json:"user,omitempty"`
+	NodeID    string    `json:"node_id,omitempty"`
+	ClientParsedUserAgent
+}
+
+type KnownClientPersisted struct {
+	UpdatedAt time.Time `json:"updated_at,omitempty"`           // aka "last seen"
+	User      string    `json:"user,omitempty,omitempty"`       // last user
+	NodeID    string    `json:"node_id,omitempty"`              // aka "last seen on this node"
+	UserAgent string    `json:"user_agent,omitempty,omitempty"` // raw ua string
+}
+
+type ClientParsedUserAgent struct {
+	SDK      ClientSDKInfo `json:"sdk,omitempty"`
+	Hardware string        `json:"hardware,omitempty"`
+}
+
+type ClientSDKInfo struct {
+	Platform string `json:"platform,omitempty"`
+	Version  string `json:"version,omitempty"`
 }
 
 type Scope struct {
@@ -481,7 +508,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UserFunctionTimeout:  defaultUserFunctionTimeout,
 		CachedCCVStartingCas: &base.VBucketCAS{},
 		SameSiteCookieMode:   http.SameSiteDefaultMode,
-		ActiveClients:        &ActiveClients{_clients: make(map[string]*Client)},
+		ActiveClients:        &ActiveClients{_clients: make(map[string]*ActiveClient)},
 	}
 	dbContext.numVBuckets, err = bucket.GetMaxVbno()
 	if err != nil {
@@ -2611,6 +2638,47 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 		}
 	}
 	return names
+}
+
+var UserAgentRegexp = regexp.MustCompile(`^([^\/]+)\/([^ ]+) \(([^;]+);`)
+
+func (db *Database) UpsertKnownClient(deviceUUID string, c *ActiveClient) error {
+	key := fmt.Sprintf("_sync:client:%s", deviceUUID)
+	exp := base.SecondsToCbsExpiry(2592000)
+	nodeID := os.Getenv("CAPELLA_NODE_ID")
+	if nodeID == "" {
+		if hostname, err := os.Hostname(); err != nil {
+			nodeID = "unknown"
+		} else {
+			nodeID = hostname
+		}
+	}
+
+	_, err := db.MetadataStore.Update(key, exp, func(b []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		var kc *KnownClientPersisted
+		if b == nil {
+			kc = &KnownClientPersisted{
+				UpdatedAt: time.Now(),
+				User:      c.User,
+				NodeID:    nodeID,
+				UserAgent: c.RawUA,
+			}
+		} else {
+			if err := json.Unmarshal(b, &kc); err != nil {
+				return nil, nil, false, err
+			}
+			if c == nil {
+				// update timestamp only
+				kc.UpdatedAt = time.Now()
+			}
+		}
+		kcBytes, err := json.Marshal(kc)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		return kcBytes, base.Ptr(exp), false, nil
+	})
+	return err
 }
 
 // GetCollectionIDs will return all collection IDs for all collections configured on the database

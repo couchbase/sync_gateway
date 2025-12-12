@@ -59,6 +59,7 @@ const (
 	// getCheckpoint message properties
 	GetCheckpointResponseRev = "rev"
 	GetCheckpointClient      = "client"
+	GetCheckpointUUID        = "uuid"
 
 	// subChanges message properties
 	SubChangesActiveOnly          = "activeOnly"
