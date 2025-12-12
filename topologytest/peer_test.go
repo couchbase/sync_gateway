@@ -127,30 +127,6 @@ func (p Peers) SortedPeers() iter.Seq2[string, Peer] {
 	}
 }
 
-// peerIsServerSide returns true if the peer is a Couchbase Server or Sync Gateway peer.
-func peerIsServerSide(p Peer) bool {
-	return p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway
-}
-
-// conflictNotExpectedOnCBL will return true if no conflict is expected for delete and resurrect operations for
-// topologies with cbl peer in them and false for expected conflict
-func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer) bool {
-	if deletePeer.Type() == PeerTypeCouchbaseLite {
-		// cbl delete will mean cbs resurrect has a conflict
-		return false
-	}
-	if peerIsServerSide(deletePeer) && peerIsServerSide(resurrectPeer) {
-		if deletePeer.SourceID() != resurrectPeer.SourceID() {
-			// conflict expected due to different backing bucket (sourceID)
-			return false
-		}
-		// if both actors are server side and same backing bucket, no conflict expected
-		return true
-	}
-	// conflict expected
-	return false
-}
-
 // NonImportSortedPeers returns a sorted iterator peers that will not cause import operations. For example:
 //   - cbs1 <-> sg1 <-> cbl1 would return sg1 and cbl1, but not cbs1
 //   - cbs1 <-> cbs2 would return cbs1 and cbs2

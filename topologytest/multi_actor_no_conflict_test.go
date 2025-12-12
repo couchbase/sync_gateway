@@ -10,7 +10,6 @@ package topologytest
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -107,21 +106,9 @@ func TestMultiActorResurrect(t *testing.T) {
 
 							resBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription)
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
-							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are
-							// lost on a resurrection so the resurrecting version may conflict with a version on cbl
-							// peer then cbl will resolve in favor if its own tombstone.
+							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
-								if strings.Contains(topologySpec.description, "CBL") {
-									if conflictNotExpectedOnCBL(deletePeer, resurrectPeer) {
-										// if no cbl conflict is expected we can wait on CV and body
-										waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
-									} else {
-										// if cbl conflict is expected we need to wait for tombstone convergence
-										waitForConvergingTombstones(t, collectionName, docID, topology)
-									}
-								} else {
-									waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
-								}
+								waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
 							} else {
 								waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 							}
