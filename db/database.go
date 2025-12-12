@@ -2655,8 +2655,11 @@ func (db *Database) UpsertKnownClient(deviceUUID string, c *ActiveClient) error 
 	}
 
 	_, err := db.MetadataStore.Update(key, exp, func(b []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		if b == nil && c == nil {
+			return nil, nil, false, nil
+		}
 		var kc *KnownClientPersisted
-		if b == nil {
+		if b == nil && c != nil {
 			kc = &KnownClientPersisted{
 				UpdatedAt: time.Now(),
 				User:      c.User,

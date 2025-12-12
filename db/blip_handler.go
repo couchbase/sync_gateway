@@ -226,6 +226,16 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	matches := UserAgentRegexp.FindStringSubmatch(bh.userAgent)
 	fmt.Printf("UA Matches: %#v\n", matches)
 
+	platform := "unknown"
+	if len(matches) >= 4 {
+		platform = matches[3]
+	}
+	version := "unknown"
+	if len(matches) >= 3 {
+		version = matches[2]
+	}
+	hardware := "unknown"
+
 	c := &ActiveClient{
 		CorrelationID:       bh.blipContext.ID,
 		Subprotocol:         bh.activeCBMobileSubprotocol.SubprotocolString(),
@@ -237,10 +247,10 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		},
 		ClientParsedUserAgent: ClientParsedUserAgent{
 			SDK: ClientSDKInfo{
-				Platform: matches[3],
-				Version:  matches[2],
+				Platform: platform,
+				Version:  version,
 			},
-			Hardware: "todo",
+			Hardware: hardware,
 		},
 		RawUA: bh.userAgent,
 	}
