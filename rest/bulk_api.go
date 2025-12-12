@@ -375,7 +375,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 
 	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
-	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%%'`, base.KeyspaceQueryToken), nil, base.RequestPlus, false)
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
 	if err != nil {
 		return err
 	}
@@ -389,7 +389,7 @@ func (h *handler) handleReeeKnownClients() error {
 		matches := db.UserAgentRegexp.FindStringSubmatch(row.Client.UserAgent)
 		fmt.Printf("UA Matches: %#v\n", matches)
 
-		id := strings.TrimPrefix(row.ID, "_sync:client:")
+		id := strings.TrimPrefix(row.ID, fmt.Sprintf("_sync:client:%s:", h.db.Name))
 
 		resp.Clients[id] = db.KnownClient{
 			UpdatedAt: row.Client.UpdatedAt,

@@ -2640,10 +2640,11 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 	return names
 }
 
+// TODO: Fix regex to pull hardware, etc.
 var UserAgentRegexp = regexp.MustCompile(`^([^\/]+)\/([^ ]+) \(([^;]+);`)
 
 func (db *Database) UpsertKnownClient(deviceUUID string, c *ActiveClient) error {
-	key := fmt.Sprintf("_sync:client:%s", deviceUUID)
+	key := fmt.Sprintf("_sync:client:%s:%s", db.Name, deviceUUID)
 	exp := base.SecondsToCbsExpiry(2592000)
 	nodeID := os.Getenv("CAPELLA_NODE_ID")
 	if nodeID == "" {
