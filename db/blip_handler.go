@@ -223,18 +223,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	clientUUID := bh.BlipSyncContext.ClientUUID()
 
 	// extract sdk and hardware info from User Agent
-	matches := UserAgentRegexp.FindStringSubmatch(bh.userAgent)
-	fmt.Printf("UA Matches: %#v\n", matches)
-
-	platform := "unknown"
-	if len(matches) >= 4 {
-		platform = matches[3]
-	}
-	version := "unknown"
-	if len(matches) >= 3 {
-		version = matches[2]
-	}
-	hardware := "unknown"
+	product, version, lang, os, hw := ParseClientUA(bh.userAgent)
 
 	c := &ActiveClient{
 		CorrelationID:       bh.blipContext.ID,
@@ -247,10 +236,12 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		},
 		ClientParsedUserAgent: ClientParsedUserAgent{
 			SDK: ClientSDKInfo{
-				Platform: platform,
+				Platform: product,
+				Lang:     lang,
 				Version:  version,
 			},
-			Hardware: hardware,
+			Hardware: hw,
+			OS:       os,
 		},
 		RawUA: bh.userAgent,
 	}

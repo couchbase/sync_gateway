@@ -375,7 +375,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 
 	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
-	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client USE INDEX (sg_syncClient) WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
 	if err != nil {
 		return err
 	}
@@ -386,8 +386,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 	for results.Next(h.ctx(), &row) {
 		// extract sdk and hardware info from User Agent
-		matches := db.UserAgentRegexp.FindStringSubmatch(row.Client.UserAgent)
-		fmt.Printf("UA Matches: %#v\n", matches)
+		product, version, lang, os, hw := db.ParseClientUA(row.Client.UserAgent)
 
 		id := strings.TrimPrefix(row.ID, fmt.Sprintf("_sync:client:%s:", h.db.Name))
 
@@ -397,10 +396,12 @@ func (h *handler) handleReeeKnownClients() error {
 			NodeID:    row.Client.NodeID,
 			ClientParsedUserAgent: db.ClientParsedUserAgent{
 				SDK: db.ClientSDKInfo{
-					Platform: matches[3],
-					Version:  matches[2],
+					Platform: product,
+					Lang:     lang,
+					Version:  version,
 				},
-				Hardware: "todo",
+				Hardware: hw,
+				OS:       os,
 			},
 		}
 	}

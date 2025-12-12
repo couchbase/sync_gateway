@@ -232,10 +232,12 @@ type KnownClientPersisted struct {
 type ClientParsedUserAgent struct {
 	SDK      ClientSDKInfo `json:"sdk,omitempty"`
 	Hardware string        `json:"hardware,omitempty"`
+	OS       string        `json:"os,omitempty"`
 }
 
 type ClientSDKInfo struct {
 	Platform string `json:"platform,omitempty"`
+	Lang     string `json:"lang,omitempty"`
 	Version  string `json:"version,omitempty"`
 }
 
@@ -2641,7 +2643,26 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 }
 
 // TODO: Fix regex to pull hardware, etc.
-var UserAgentRegexp = regexp.MustCompile(`^([^\/]+)\/([^ ]+) \(([^;]+);`)
+// Sample UA: `CouchbaseLite/4.0.0b1-1 (Java; Android 14; sdk_gphone64_arm64) EE/release, Commit/880fab7bfe@9766a76c09ea Core/4.0.0 (38)`
+var UserAgentRegexp = regexp.MustCompile(
+	`^([^/]+)/([^\s]+)\s+\(([^;]+);\s*([^;]+);\s*([^)]+)\)`,
+)
+
+func ParseClientUA(ua string) (product, version, lang, os, hw string) {
+	m := UserAgentRegexp.FindStringSubmatch(ua)
+	if m == nil || len(m) < 6 {
+		return // all empty
+	}
+
+	// m[0] = full match
+	product = m[1]
+	version = m[2]
+	lang = m[3]
+	os = m[4]
+	hw = m[5]
+
+	return
+}
 
 func (db *Database) UpsertKnownClient(deviceUUID string, c *ActiveClient) error {
 	key := fmt.Sprintf("_sync:client:%s:%s", db.Name, deviceUUID)
