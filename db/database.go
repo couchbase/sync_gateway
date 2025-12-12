@@ -2670,8 +2670,13 @@ func (db *Database) UpsertKnownClient(deviceUUID string, c *ActiveClient) error 
 			if err := json.Unmarshal(b, &kc); err != nil {
 				return nil, nil, false, err
 			}
-			if c == nil {
-				// update timestamp only
+			if c != nil {
+				kc.UpdatedAt = c.ConnectedAt
+				kc.User = c.User
+				kc.NodeID = nodeID
+				kc.UserAgent = c.RawUA
+			} else {
+				// nil c - an existing client is disconnecting and needs a fresh timestamp
 				kc.UpdatedAt = time.Now()
 			}
 		}
