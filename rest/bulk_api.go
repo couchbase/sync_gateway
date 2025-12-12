@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -361,6 +362,12 @@ func (h *handler) handleReeeKnownClients() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "metadata store is not N1QL")
 	}
 
+	sync.OnceFunc(func() {
+		if err := metadataN1qlStore.CreatePrimaryIndex(h.ctx(), "primary", nil); err != nil {
+			base.ErrorfCtx(h.ctx(), "Error creating primary index on metadata store: %v", err)
+		}
+	})
+
 	type reeeCheckpointsResponse struct {
 		Clients map[string]db.KnownClient `json:"clients"`
 	}
@@ -375,10 +382,11 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 
 	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
-	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client USE INDEX (sg_syncClient) WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
 	if err != nil {
 		return err
 	}
+	defer results.Close()
 
 	var row struct {
 		ID     string                  `json:"id"`
@@ -412,10 +420,11 @@ func (h *handler) handleReeeKnownClients() error {
 
 // handleReeeActiveClients returns all active replications for the REEE hackathon
 func (h *handler) handleReeeActiveClients() error {
+	c := h.db.ActiveClients.All()
 	resp := struct {
 		Clients map[string]*db.ActiveClient `json:"clients"`
 	}{
-		Clients: h.db.ActiveClients.All(),
+		Clients: c,
 	}
 	h.writeJSONStatus(http.StatusOK, resp)
 	return nil

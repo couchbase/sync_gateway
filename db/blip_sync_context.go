@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -77,6 +78,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 	}
 
 	bsc.connectedAt = time.Now()
+	bsc.rtt = time.Millisecond * time.Duration(rand.Intn(100))
 	bsc.userAgent = userAgent
 
 	// Register default handlers
