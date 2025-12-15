@@ -232,7 +232,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		ConnectedAt:       bh.connectedAt,
 		ConnectionRTTNano: (*AtomicPointerToDurationJSON)(bh.rtt),
 		Stats: ClientStats{
-			DocsPerSecond: 0,
+			DocsPerSecond: 123,
 		},
 		ClientParsedUserAgent: ClientParsedUserAgent{
 			SDK: ClientSDKInfo{
