@@ -461,6 +461,11 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 		return err
 	}
 
+	// HACK: Capella requires a primary index to run arbitrary queries unlike on-prem. Do this for the known clients query.
+	if err := n1QLStore.CreatePrimaryIndex(ctx, "primary", nil); err != nil {
+		base.WarnfCtx(ctx, "Error creating primary index on default collection: %v", err)
+	}
+
 	base.InfofCtx(ctx, base.KeyAll, "Indexes ready")
 	return nil
 }

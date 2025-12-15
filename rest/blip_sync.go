@@ -65,7 +65,7 @@ func (h *handler) handleBLIPSync() error {
 		return err
 	}
 
-	blipContext.WebsocketPingInterval = time.Second * 55
+	blipContext.WebsocketPingInterval = time.Second * 1
 
 	// Overwrite the existing logging context with the blip context ID
 	h.rqCtx = base.CorrelationIDLogCtx(h.ctx(), base.FormatBlipContextID(blipContext.ID))

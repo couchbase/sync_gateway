@@ -223,25 +223,25 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	clientUUID := bh.BlipSyncContext.ClientUUID()
 
 	// extract sdk and hardware info from User Agent
-	product, version, lang, os, hw := ParseClientUA(bh.userAgent)
+	product, version, platform, os, hw := ParseClientUA(bh.userAgent)
 
 	c := &ActiveClient{
-		CorrelationID:       bh.blipContext.ID,
-		Subprotocol:         bh.activeCBMobileSubprotocol.SubprotocolString(),
-		User:                bh.userName,
-		ConnectedAt:         bh.connectedAt,
-		ConnectionRTTMillis: float64(bh.rtt.Microseconds() / 1000),
+		CorrelationID:     bh.blipContext.ID,
+		Subprotocol:       bh.activeCBMobileSubprotocol.SubprotocolString(),
+		User:              bh.userName,
+		ConnectedAt:       bh.connectedAt,
+		ConnectionRTTNano: (*AtomicPointerToDurationJSON)(bh.rtt),
 		Stats: ClientStats{
-			DocsPerSecond: 123.0,
+			DocsPerSecond: 0,
 		},
 		ClientParsedUserAgent: ClientParsedUserAgent{
 			SDK: ClientSDKInfo{
-				Platform: product,
-				Lang:     lang,
+				Product:  product,
 				Version:  version,
+				Platform: platform,
 			},
-			Hardware: hw,
 			OS:       os,
+			Hardware: hw,
 		},
 		RawUA: bh.userAgent,
 	}

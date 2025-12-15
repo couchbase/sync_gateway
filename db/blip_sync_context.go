@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -60,6 +59,9 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 		inFlightRevsThrottle:    make(chan struct{}, maxInFlightRevs),
 		collections:             &blipCollections{},
 		ctxCancelFunc:           ctxCancelFunc,
+		rtt:                     bc.RTTLatency,
+		connectedAt:             time.Now(),
+		userAgent:               userAgent,
 	}
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
@@ -76,10 +78,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 			bsc.readOnly = true
 		}
 	}
-
-	bsc.connectedAt = time.Now()
-	bsc.rtt = time.Millisecond * time.Duration(rand.Intn(100))
-	bsc.userAgent = userAgent
 
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
@@ -149,7 +147,7 @@ type BlipSyncContext struct {
 	ctxCancelFunc context.CancelFunc // function to cancel a blip replication
 
 	connectedAt  time.Time
-	rtt          time.Duration
+	rtt          *atomic.Pointer[time.Duration]
 	userAgent    string // user agent reported by client on _blipsync
 	deviceUUID   string // device UUID reported by client (CBL 4.1+)
 	checkpointID string // checkpoint ID reported by client

@@ -205,14 +205,33 @@ type ClientStats struct {
 	DocsPerSecond float64 `json:"docs_per_second"`
 }
 type ActiveClient struct {
-	CorrelationID       string      `json:"correlation_id,omitempty,omitempty"`
-	Subprotocol         string      `json:"subprotocol,omitempty,omitempty"`
-	ConnectedAt         time.Time   `json:"connected_at,omitempty"`
-	ConnectionRTTMillis float64     `json:"connection_rtt_ms,omitempty"`
-	Stats               ClientStats `json:"stats,omitempty"`
-	User                string      `json:"user,omitempty,omitempty"`
+	CorrelationID     string                       `json:"correlation_id,omitempty,omitempty"`
+	Subprotocol       string                       `json:"subprotocol,omitempty,omitempty"`
+	ConnectedAt       time.Time                    `json:"connected_at,omitempty"`
+	ConnectionRTTNano *AtomicPointerToDurationJSON `json:"connection_rtt_nano,omitempty"`
+	Stats             ClientStats                  `json:"stats,omitempty"`
+	User              string                       `json:"user,omitempty,omitempty"`
 	ClientParsedUserAgent
 	RawUA string `json:"-"` // transport for storage
+}
+
+type AtomicPointerToDurationJSON atomic.Pointer[time.Duration]
+
+func (ap *AtomicPointerToDurationJSON) MarshalJSON() ([]byte, error) {
+	durationPtr := (*atomic.Pointer[time.Duration])(ap).Load()
+	if durationPtr == nil {
+		return json.Marshal(nil)
+	}
+	return json.Marshal(*durationPtr)
+}
+
+func (ap *AtomicPointerToDurationJSON) UnmarshalJSON(data []byte) error {
+	var durationVal *time.Duration
+	if err := json.Unmarshal(data, &durationVal); err != nil {
+		return pkgerrors.Wrap(err, "unmarshalling AtomicPointerToDurationJSON")
+	}
+	(*atomic.Pointer[time.Duration])(ap).Store(durationVal)
+	return nil
 }
 
 type KnownClient struct {
@@ -231,14 +250,14 @@ type KnownClientPersisted struct {
 
 type ClientParsedUserAgent struct {
 	SDK      ClientSDKInfo `json:"sdk,omitempty"`
-	Hardware string        `json:"hardware,omitempty"`
 	OS       string        `json:"os,omitempty"`
+	Hardware string        `json:"hardware,omitempty"`
 }
 
 type ClientSDKInfo struct {
-	Platform string `json:"platform,omitempty"`
-	Lang     string `json:"lang,omitempty"`
+	Product  string `json:"product,omitempty"`
 	Version  string `json:"version,omitempty"`
+	Platform string `json:"platform,omitempty"`
 }
 
 type Scope struct {
@@ -2643,23 +2662,27 @@ func (db *Database) DataStoreNames() base.ScopeAndCollectionNames {
 }
 
 // TODO: Fix regex to pull hardware, etc.
-// Sample UA: `CouchbaseLite/4.0.0b1-1 (Java; Android 14; sdk_gphone64_arm64) EE/release, Commit/880fab7bfe@9766a76c09ea Core/4.0.0 (38)`
+// Examples:
+// CouchbaseLite/4.0.0b1-1 (Java; Android 14; sdk_gphone64_arm64) EE/release, Commit/880fab7bfe@9766a76c09ea Core/4.0.0 (38)
+// CouchbaseLite/3.1.8-1 (Java; Android 13; FP4) EE/release, Commit/f3f14ae2c8@3411891c9669 Core/3.1.8 (2)
+// CouchbaseLite/%s (%@; %@) Build/%d %@ LiteCore/%.*s
+// CouchbaseLite/{version} (.NET; {osDescription}{hardware}) Build/{build} LiteCore/{Native.c4_getVersion()} Commit/{commit}
 var UserAgentRegexp = regexp.MustCompile(
-	`^([^/]+)/([^\s]+)\s+\(([^;]+);\s*([^;]+);\s*([^)]+)\)`,
+	`^([^/]+)/([^\s]+)\s+\(([^;]+);\s?([^;)]+)(?:;\s([^)]+))?\)`,
 )
 
-func ParseClientUA(ua string) (product, version, lang, os, hw string) {
+func ParseClientUA(ua string) (product, version, platform, os, hw string) {
 	m := UserAgentRegexp.FindStringSubmatch(ua)
-	if m == nil || len(m) < 6 {
+	if m == nil || len(m) < 5 {
 		return // all empty
 	}
 
 	// m[0] = full match
-	product = m[1]
-	version = m[2]
-	lang = m[3]
-	os = m[4]
-	hw = m[5]
+	product = m[1]  // "CouchbaseLite"
+	version = m[2]  // "4.0.0b1-1"
+	platform = m[3] // "Java"
+	os = m[4]       // "iOS 14.4.1"
+	hw = m[5]       // optional hardware info: "iPhone"
 
 	return
 }

@@ -4812,3 +4812,85 @@ func TestRevTreeConflictCheck(t *testing.T) {
 	}
 
 }
+
+func TestParseClientUA(t *testing.T) {
+	tests := []struct {
+		name         string
+		ua           string
+		wantProduct  string
+		wantVersion  string
+		wantPlatform string
+	}{
+		{
+			name:         "Android UA",
+			ua:           "CouchbaseLite/4.0.0b1-1 (Java; Android 14; sdk_gphone64_arm64) EE/release, Commit/880fab7bfe@9766a76c09ea Core/4.0.0 (38)",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "4.0.0b1-1",
+			wantPlatform: "Java",
+		},
+		{
+			name:         "Android UA 2",
+			ua:           "CouchbaseLite/3.1.8-1 (Java; Android 13; FP4) EE/release, Commit/f3f14ae2c8@3411891c9669 Core/3.1.8 (2)",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "3.1.8-1",
+			wantPlatform: "Java",
+		},
+		{
+			name:        "iOS format UA",
+			ua:          "CouchbaseLite/ver (%@; %@) Build/%d %@ LiteCore/%.*s",
+			wantProduct: "CouchbaseLite",
+			wantVersion: "ver",
+		},
+		{
+			name:         "iOS real format UA",
+			ua:           "CouchbaseLite/2.8.4 (ObjC; iOS 14.4.1; iPhone) Build/18 Commit/5ea5cd71+CHANGES LiteCore/2.8.4 (18)",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "2.8.4",
+			wantPlatform: "ObjC",
+		},
+		{
+			name:         "iOS real format UA 2",
+			ua:           "CouchbaseLite/2.0.0 (Swift; iOS 11.0; iPhone) Build/0 Commit/4373a8c8",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "2.0.0",
+			wantPlatform: "Swift",
+		},
+		{
+			name:         "linux",
+			ua:           "CouchbaseLite/3.1.1-5 (Java 11.0.19; Linux) CE/release Build/5 Commit/8fb2eeca24@f547bc48fa4a Core/3.1.1 (10)",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "3.1.1-5",
+			wantPlatform: "Java 11.0.19",
+		},
+		{
+			name:         "DotNet format UA",
+			ua:           "CouchbaseLite/{version} (.NET; {osDescription}{hardware}) Build/{build} LiteCore/{Native.c4_getVersion()} Commit/{commit}",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "{version}",
+			wantPlatform: ".NET",
+		},
+		{
+			name:         ".NET real UA",
+			ua:           "CouchbaseLite/2.0.0 (.NET; Android 7.1.1 [API 25]; Google Android SDK built for x86) Build/636 LiteCore/732 Commit/f139283",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "2.0.0",
+			wantPlatform: ".NET",
+		},
+		{
+			name:         "net real ua 2",
+			ua:           "CouchbaseLite/3.2.0 (.NET; Android 14 [API 34]; Google sdk_gphone64_x86_64) Build/105 LiteCore/3.2.0 (159) Commit/ba1d8f7f",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "3.2.0",
+			wantPlatform: ".NET",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fmt.Println(tt.ua)
+			gotProduct, gotVersion, gotPlatform := ParseClientUA(tt.ua)
+			assert.Equal(t, tt.wantProduct, gotProduct)
+			assert.Equal(t, tt.wantVersion, gotVersion)
+			assert.Equal(t, tt.wantPlatform, gotPlatform)
+		})
+	}
+}

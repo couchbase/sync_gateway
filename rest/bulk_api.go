@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -362,12 +361,6 @@ func (h *handler) handleReeeKnownClients() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "metadata store is not N1QL")
 	}
 
-	sync.OnceFunc(func() {
-		if err := metadataN1qlStore.CreatePrimaryIndex(h.ctx(), "primary", nil); err != nil {
-			base.ErrorfCtx(h.ctx(), "Error creating primary index on metadata store: %v", err)
-		}
-	})
-
 	type reeeCheckpointsResponse struct {
 		Clients map[string]db.KnownClient `json:"clients"`
 	}
@@ -382,7 +375,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 
 	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
-	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, false)
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
@@ -394,7 +387,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 	for results.Next(h.ctx(), &row) {
 		// extract sdk and hardware info from User Agent
-		product, version, lang, os, hw := db.ParseClientUA(row.Client.UserAgent)
+		product, version, platform, os, hw := db.ParseClientUA(row.Client.UserAgent)
 
 		id := strings.TrimPrefix(row.ID, fmt.Sprintf("_sync:client:%s:", h.db.Name))
 
@@ -404,12 +397,12 @@ func (h *handler) handleReeeKnownClients() error {
 			NodeID:    row.Client.NodeID,
 			ClientParsedUserAgent: db.ClientParsedUserAgent{
 				SDK: db.ClientSDKInfo{
-					Platform: product,
-					Lang:     lang,
+					Product:  product,
 					Version:  version,
+					Platform: platform,
 				},
-				Hardware: hw,
 				OS:       os,
+				Hardware: hw,
 			},
 		}
 	}
