@@ -9,7 +9,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/couchbase/cbgt v1.4.10
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20250325132327-d73efab2df06
+	github.com/couchbase/go-blip v0.0.0-20251215114013-1fb7c1aab470
 	github.com/couchbase/gocb/v2 v2.11.1
 	github.com/couchbase/gocbcore/v10 v10.8.1
 	github.com/couchbase/gomemcached v0.2.1
