@@ -12,6 +12,7 @@ package rest
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -31,6 +32,11 @@ type SyncFnDryRun struct {
 type ImportFilterDryRun struct {
 	ShouldImport bool   `json:"shouldImport"`
 	Error        string `json:"error"`
+}
+
+type SyncFnDryRunPayload struct {
+	Function string  `json:"sync_function"`
+	Doc      db.Body `json:"doc,omitempty"`
 }
 
 func populateDocChannelInfo(doc db.Document) map[string][]auth.GrantHistorySequencePair {
@@ -69,15 +75,20 @@ func (h *handler) handleGetDocChannels() error {
 // If docid is specified and the document does not exist in the bucket, it will return error
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.getQuery("doc_id")
+	contentType, _, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 
-	body, err := h.readDocument()
-	if err != nil {
-		if docid == "" {
-			return fmt.Errorf("no doc id provided for dry run and error reading body: %s", err)
-		}
+	if contentType != "application/json" && contentType != "" {
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid Content type %s", contentType)
 	}
 
-	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), body, docid)
+	var syncDryRunPayload SyncFnDryRunPayload
+	err := h.readJSONInto(&syncDryRunPayload)
+	if err != nil && docid == "" {
+		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
+	}
+
+	base.DebugfCtx(h.ctx(), base.KeyDiagnostic, "SYNCDRYRUN:90 payload: %+#v", syncDryRunPayload)
+	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
 	if err != nil {
 		return err
 	}

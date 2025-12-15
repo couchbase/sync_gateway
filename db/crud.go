@@ -1695,18 +1695,21 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 }
 
 // SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID string) (*channels.ChannelMapperOutput, error, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID, syncFn string) (*channels.ChannelMapperOutput, error, error) {
 	doc := &Document{
 		ID:    docID,
 		_body: body,
 	}
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1703 doc.body: %+#v", body)
 	oldDoc := doc
 	if docID != "" {
 		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
 			oldDoc = docInBucket
+			base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1708 oldDoc: %+#v", oldDoc)
 			if doc._body == nil {
 				body = oldDoc.Body(ctx)
 				doc._body = body
+				base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1712 body: %+#v", body)
 				// If no body is given, use doc in bucket as doc with no old doc
 				oldDoc._body = nil
 			}
@@ -1765,17 +1768,38 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 
 	newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 	newDoc.RevID = newRev
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1771 newdoc: %+#v", newDoc)
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1772 olddoc: %+#v", oldDoc)
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
 		return nil, err, nil
 	}
 
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1779 newdoc: %+#v", newDoc)
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1780 olddoc: %+#v", oldDoc)
+	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1781 mutablebody: %+#v", mutableBody)
+
 	syncOptions, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
 	if err != nil {
 		return nil, err, nil
 	}
-	output, err := db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
+	base.InfofCtx(ctx, base.KeyHTTP, "old doc: %s, new doc: %s", string(oldDoc._rawBody), mutableBody)
+	var output *channels.ChannelMapperOutput
+	if syncFn == "" {
+		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
+	} else {
+		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create sync runner: %v", err), nil
+		}
+		jsOutput, err := syncRunner.Call(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
+		if err != nil {
+			return nil, err, nil
+		}
+		output = jsOutput.(*channels.ChannelMapperOutput)
+	}
 
 	return output, nil, err
 }

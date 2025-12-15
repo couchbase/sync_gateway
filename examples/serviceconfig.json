@@ -1,5 +1,14 @@
 {
   "bootstrap": {
     "server": "rosmar:/?mode=memory"
+  },
+  "logging": {
+    "console": {
+      "log_level": "debug",
+      "log_keys": ["*"]
+    }
+  },
+  "unsupported": {
+    "diagnostic_interface": "127.0.0.1:4987"
   }
 }
