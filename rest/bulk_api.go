@@ -375,7 +375,7 @@ func (h *handler) handleReeeKnownClients() error {
 	}
 
 	var resp = reeeCheckpointsResponse{Clients: make(map[string]db.KnownClient)}
-	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%%'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, true)
+	results, err := metadataN1qlStore.Query(h.ctx(), fmt.Sprintf(`SELECT meta().id, * FROM %s as client WHERE meta().id LIKE '_sync:client:%s:%% AND client.updated_at IS NOT NULL'`, base.KeyspaceQueryToken, h.db.Name), nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
