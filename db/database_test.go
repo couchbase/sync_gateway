@@ -4836,10 +4836,11 @@ func TestParseClientUA(t *testing.T) {
 			wantPlatform: "Java",
 		},
 		{
-			name:        "iOS format UA",
-			ua:          "CouchbaseLite/ver (%@; %@) Build/%d %@ LiteCore/%.*s",
-			wantProduct: "CouchbaseLite",
-			wantVersion: "ver",
+			name:         "iOS format UA",
+			ua:           "CouchbaseLite/ver (%@; %@) Build/%d %@ LiteCore/%.*s",
+			wantProduct:  "CouchbaseLite",
+			wantVersion:  "ver",
+			wantPlatform: "%@",
 		},
 		{
 			name:         "iOS real format UA",
@@ -4887,7 +4888,7 @@ func TestParseClientUA(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fmt.Println(tt.ua)
-			gotProduct, gotVersion, gotPlatform := ParseClientUA(tt.ua)
+			gotProduct, gotVersion, gotPlatform, _, _ := ParseClientUA(tt.ua)
 			assert.Equal(t, tt.wantProduct, gotProduct)
 			assert.Equal(t, tt.wantVersion, gotVersion)
 			assert.Equal(t, tt.wantPlatform, gotPlatform)
