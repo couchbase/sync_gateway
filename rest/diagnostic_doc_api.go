@@ -87,7 +87,6 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
 	}
 
-	base.DebugfCtx(h.ctx(), base.KeyDiagnostic, "SYNCDRYRUN:90 payload: %+#v", syncDryRunPayload)
 	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
 	if err != nil {
 		return err

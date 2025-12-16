@@ -1700,16 +1700,13 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 		ID:    docID,
 		_body: body,
 	}
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1703 doc.body: %+#v", body)
 	oldDoc := doc
 	if docID != "" {
 		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
 			oldDoc = docInBucket
-			base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1708 oldDoc: %+#v", oldDoc)
-			if doc._body == nil {
+			if doc._body == nil || len(doc._body) == 0 {
 				body = oldDoc.Body(ctx)
 				doc._body = body
-				base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1712 body: %+#v", body)
 				// If no body is given, use doc in bucket as doc with no old doc
 				oldDoc._body = nil
 			}
@@ -1768,17 +1765,11 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 
 	newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 	newDoc.RevID = newRev
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1771 newdoc: %+#v", newDoc)
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1772 olddoc: %+#v", oldDoc)
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
 		return nil, err, nil
 	}
-
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1779 newdoc: %+#v", newDoc)
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1780 olddoc: %+#v", oldDoc)
-	base.DebugfCtx(ctx, base.KeyDiagnostic, "SYNCDRYRUN:1781 mutablebody: %+#v", mutableBody)
 
 	syncOptions, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
 	if err != nil {

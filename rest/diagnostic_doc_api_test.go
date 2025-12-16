@@ -1136,7 +1136,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			name:            "test_case_9",
 			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
 			syncFunction:    `""`,
-			document:        "",
+			document:        `""`,
 			docID:           "doc",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1221,10 +1221,6 @@ func TestSyncFuncDryRun(t *testing.T) {
 			if test.existingDoc {
 				ver := rt.PutDoc(test.existingDocID, test.existingDocBody)
 				rt.WaitForVersion(test.existingDocID, ver)
-				res := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s", test.existingDocID), "")
-				RequireStatus(t, res, http.StatusOK)
-				doc := res.Body.String()
-				base.InfofCtx(t.Context(), base.KeyDiagnostic, "document: %s", doc)
 			}
 			if test.docID != "" {
 				url += "?doc_id=" + test.docID
