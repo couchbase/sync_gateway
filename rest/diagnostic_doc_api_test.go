@@ -1216,6 +1216,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
 				`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s}`,
 				bucket, base.TestUseXattrs(), test.dbSyncFunction))
+			RequireStatus(t, resp, http.StatusCreated)
 
 			url := "/{{.keyspace}}/_sync"
 			if test.existingDoc {
