@@ -1694,7 +1694,9 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-// SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions
+// SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions.
+// If a docID is a non empty string, the document will be fetched from the bucket, otherwise the body will be used. If both are specified, this function returns an error.
+// The first error return value represents an error that occurs before the sync function is run. The second error return value represents an exception from the sync function.
 func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID, syncFn string) (*channels.ChannelMapperOutput, error, error) {
 	doc := &Document{
 		ID:    docID,
@@ -1704,7 +1706,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	if docID != "" {
 		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
 			oldDoc = docInBucket
-			if doc._body == nil || len(doc._body) == 0 {
+			if len(doc._body) == 0 {
 				body = oldDoc.Body(ctx)
 				doc._body = body
 				// If no body is given, use doc in bucket as doc with no old doc
@@ -1775,7 +1777,6 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	if err != nil {
 		return nil, err, nil
 	}
-	base.InfofCtx(ctx, base.KeyHTTP, "old doc: %s, new doc: %s", string(oldDoc._rawBody), mutableBody)
 	var output *channels.ChannelMapperOutput
 	if syncFn == "" {
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)

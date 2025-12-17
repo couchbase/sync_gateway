@@ -78,11 +78,13 @@ func (h *handler) handleSyncFnDryRun() error {
 	contentType, _, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 
 	if contentType != "application/json" && contentType != "" {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid Content type %s", contentType)
+		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid Content-Type header: %s. Needs to be empty or application/json", contentType)
 	}
 
 	var syncDryRunPayload SyncFnDryRunPayload
 	err := h.readJSONInto(&syncDryRunPayload)
+	// Only require a valid JSON payload if docid is not provided.
+	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
 	if err != nil && docid == "" {
 		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
 	}

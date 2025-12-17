@@ -1018,7 +1018,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 	}{
 		{
 			name:           "test_case_1",
-			dbSyncFunction: `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
+			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
 			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
 			existingDoc:    false,
@@ -1032,7 +1032,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:           "test_case_2",
-			dbSyncFunction: `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
+			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
 			document:       `{"role": ["role:role1"], "accessUser": "user"}`,
 			existingDoc:    false,
@@ -1045,7 +1045,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:           "test_case_3",
-			dbSyncFunction: `""`,
+			dbSyncFunction: "",
 			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
 			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
 			existingDoc:    false,
@@ -1059,7 +1059,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:           "test_case_4",
-			dbSyncFunction: `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
+			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   `""`,
 			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
 			existingDoc:    false,
@@ -1073,7 +1073,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_5",
-			dbSyncFunction:  `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
+			dbSyncFunction:  "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:    `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
 			document:        `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
 			existingDoc:     true,
@@ -1089,7 +1089,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:           "test_case_6",
-			dbSyncFunction: `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction: "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:   `""`,
 			document:       `{"user":{"num":23}}`,
 			existingDoc:    false,
@@ -1103,7 +1103,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_7",
-			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    `""`,
 			document:        `{"user":{"num":150}, "channel":"abc"}`,
 			docID:           "doc",
@@ -1117,7 +1117,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_8",
-			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    `""`,
 			document:        `{"user":{"num":120, "name":["user2"]}, "channel":"channel2"}`,
 			docID:           "doc",
@@ -1134,7 +1134,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_9",
-			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    `""`,
 			document:        `""`,
 			docID:           "doc",
@@ -1151,7 +1151,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_10",
-			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    `""`,
 			document:        `""`,
 			docID:           "doc404",
@@ -1163,7 +1163,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_11",
-			dbSyncFunction:  `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`,
+			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    `""`,
 			document:        `""`,
 			docID:           "",
@@ -1175,7 +1175,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_12",
-			dbSyncFunction:  `"function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }"`,
+			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    `""`,
 			document:        `{"channel":"channel2"}`,
 			docID:           "",
@@ -1191,7 +1191,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "test_case_13",
-			dbSyncFunction:  `"function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }"`,
+			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    `""`,
 			document:        `{"channel":"chanNew"}`,
 			docID:           "doc22",
@@ -1209,14 +1209,13 @@ func TestSyncFuncDryRun(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: true,
+				SyncFn:           test.dbSyncFunction,
+			})
 			defer rt.Close()
 
-			bucket := rt.Bucket().GetName()
-			resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-				`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s}`,
-				bucket, base.TestUseXattrs(), test.dbSyncFunction))
-			RequireStatus(t, resp, http.StatusCreated)
+			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 			url := "/{{.keyspace}}/_sync"
 			if test.existingDoc {
@@ -1227,7 +1226,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				url += "?doc_id=" + test.docID
 			}
 			body := fmt.Sprintf(`{"sync_function": %s, "doc": %s}`, test.syncFunction, test.document)
-			resp = rt.SendDiagnosticRequest("POST", url, body)
+			resp := rt.SendDiagnosticRequest("POST", url, body)
 			RequireStatus(t, resp, test.expectedStatus)
 
 			var output SyncFnDryRun
