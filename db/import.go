@@ -545,20 +545,44 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, d
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }
-func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, docid string) (bool, error) {
 
-	importFilter := db.importFilter()
-	if docid != "" {
-		docInBucket, err := db.GetDocument(ctx, docid, DocUnmarshalAll)
-		if err == nil {
-			if doc == nil {
-				doc = docInBucket.Body(ctx)
+// ImportFilterDryRun Runs a document through the import filter and returns a boolean and error
+func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string) (bool, error) {
+
+	var shouldImport bool
+	if importFn == "" {
+		importFilter := db.importFilter()
+		ouput, err := importFilter.EvaluateFunction(ctx, doc, true)
+		if err != nil {
+			if errors.Is(errors.New("Import filter function returned non-boolean value."), err) {
+				err = fmt.Errorf("%s: %s ", base.ErrImportDryRun, err)
 			}
-		} else {
+			return false, err
+		}
+		shouldImport = ouput
+	} else {
+		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+		importRunner, err := newImportFilterRunner(ctx, importFn, jsTimeout)
+		if err != nil {
+			return false, errors.New("Import filter function error: " + err.Error())
+		}
+		importOuput, err := importRunner.Call(ctx, doc)
+		switch result := importOuput.(type) {
+		case bool:
+			shouldImport = result
+			break
+		case string:
+			boolResult, err := strconv.ParseBool(result)
+			if err != nil {
+				return false, err
+			}
+			shouldImport = boolResult
+			break
+		default:
+			err = fmt.Errorf("%s Import filter function returned non-boolean result %v Type: %T", base.ErrImportDryRun, result, result)
 			return false, err
 		}
 	}
-	shouldImport, err := importFilter.EvaluateFunction(ctx, doc, true)
 
-	return shouldImport, err
+	return shouldImport, nil
 }
