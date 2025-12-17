@@ -1397,6 +1397,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			conflictStatus := doc.IsInConflict(ctx, db, opts.NewDocHLV, opts, revTreeConflictChecked, revTreeConflictCheckStatus)
 			switch conflictStatus {
 			case HLVNoConflictRevAlreadyPresent:
+				fmt.Println("no new versiu")
 				base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add.  existing: %#v  new:%#v", base.UD(opts.NewDoc.ID), doc.HLV, opts.NewDocHLV)
 				return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 			case HLVNoConflict:
@@ -1417,6 +1418,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 					}
 				}
 			case HLVConflict:
+				fmt.Println("conflict detected between the two HLV's")
 				// if we have been supplied a rev tree from cbl, perform conflict check on rev tree history
 				if len(opts.RevTreeHistory) > 0 && !opts.ISGRWrite {
 					if revTreeConflictChecked && revTreeConflictCheckStatus {

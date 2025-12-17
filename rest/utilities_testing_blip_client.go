@@ -358,13 +358,19 @@ func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.Hybr
 	updatedHLV := latestLocalRev.HLV.Copy()
 	localDeleted := latestLocalRev.isDelete
 	incomingIsDelete := incomingBody == nil || bytes.Equal(incomingBody, []byte(`{}`))
+	if incomingIsDelete {
+		fmt.Println("incoming doc is delete", incomingIsDelete)
+	}
+	fmt.Println("local HLV:", latestLocalHLV, "incoming HLV:", incomingHLV)
 	if localDeleted && !incomingIsDelete {
 		// resolve in favour of local document
+		fmt.Println("resolved for local doc, tombstone")
 		incomingHLV.UpdateWithIncomingHLV(updatedHLV)
 		return latestLocalRev.body, *updatedHLV, true
 	}
 	if incomingIsDelete && !localDeleted {
 		// resolve in favour of remote document
+		fmt.Println("resolved for incmoming doc, tombstone")
 		updatedHLV.UpdateWithIncomingHLV(incomingHLV)
 		return incomingBody, *updatedHLV, true
 	}
@@ -2208,6 +2214,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
 	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
 		newBody, updatedHLV, isDelete = btcc._resolveConflict(opts.incomingHLV, opts.body, opts.isDelete, doc._latestRev(btcc.TB()))
+		fmt.Println("updated HLV after conflict resolution:", updatedHLV, "isdelete", isDelete)
 		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%#v, existingHLV:%#v, updatedHLV:%#v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {
 		base.DebugfCtx(ctx, base.KeySGTest, "No conflict")

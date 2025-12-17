@@ -1358,6 +1358,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			ConflictResolver:               bh.conflictResolver.hlvConflictResolver,
 			ISGRWrite:                      bh.clientType == BLIPClientTypeSGR2,
 		}
+		fmt.Println("new doc deleted:", newDoc.Deleted, " for docID:", newDoc.ID)
 		_, _, _, err = bh.collection.PutExistingCurrentVersion(bh.loggingCtx, opts)
 	} else {
 		docUpdateEvent := ExistingVersionWithUpdateToHLV
