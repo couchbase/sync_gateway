@@ -245,6 +245,30 @@ func (to Topology) SortedPeers() iter.Seq2[string, Peer] {
 	return to.peers.SortedPeers()
 }
 
+// peerIsServerSide returns true if the peer is a Couchbase Server or Sync Gateway peer.
+func peerIsServerSide(p Peer) bool {
+	return p.Type() == PeerTypeCouchbaseServer || p.Type() == PeerTypeSyncGateway
+}
+
+// conflictNotExpectedOnCBL will return true if no conflict is expected for delete and resurrect operations for
+// topologies with cbl peer in them and false for expected conflict
+func conflictNotExpectedOnCBL(deletePeer Peer, resurrectPeer Peer) bool {
+	if deletePeer.Type() == PeerTypeCouchbaseLite {
+		// cbl delete will mean cbs resurrect has a conflict
+		return false
+	}
+	if peerIsServerSide(deletePeer) && peerIsServerSide(resurrectPeer) {
+		if deletePeer.SourceID() != resurrectPeer.SourceID() {
+			// conflict expected due to different backing bucket (sourceID)
+			return false
+		}
+		// if both actors are server side and same backing bucket, no conflict expected
+		return true
+	}
+	// conflict expected
+	return false
+}
+
 // CompareRevTreeOnly is true for a given topology when comparing only revtree is correct.
 func (to Topology) CompareRevTreeOnly() bool {
 	for _, peer := range to.peers.ActivePeers() {
