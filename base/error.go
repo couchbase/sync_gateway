@@ -84,6 +84,7 @@ var (
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
 
+	// ErrSyncFnDryRun is returned when the Sync Function Dry Run returns an error while computing the access
 	ErrSyncFnDryRun = &sgError{"Error returned from Sync Function:"}
 )
 
