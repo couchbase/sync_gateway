@@ -1171,7 +1171,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocID:   "doc",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput:  SyncFnDryRun{},
-			expectedStatus:  http.StatusUnprocessableEntity,
+			expectedStatus:  http.StatusBadRequest,
 		},
 		{
 			name:            "test_case_12",

@@ -7,16 +7,39 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
-get:
+post:
   summary: Run a doc body through the sync function and return sync data.
   description: |-
-    Run a document body through the sync function and return document sync data.
+    Runs a document body through the sync function and returns document sync
+    data. If no custom sync function is provided in the request body, the
+    default or user-defined sync function for the collection is used.
+    | Document | DocID | Behaviour                                                                                                                                                                            |
+    | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+    | Yes      | No    | The document passed will be considered as newDoc and oldDoc will be empty                                                                                                            |
+    | Yes      | Yes   | The document passed in the body will be newDoc and DocID will be read from the bucket/collection and will be passed as the oldDoc. If DocID doesn't exist, then oldDoc will be empty |
+    | No       | No    | Will throw an error                                                                                                                                                                  |
+    | No       | Yes   | The docID will be passed in as the newDoc and oldDoc will be empty. If the document is not found, an error will be returned                                                          |
+
     * Sync Gateway Application Read Only
   requestBody:
     content:
       application/json:
         schema:
-          $ref: ../../components/schemas.yaml#/Document
+          type: object
+          properties:
+            sync_function:
+              description: |-
+                A JavaScript function that defines custom access, channel, and
+                validation logic for documents. This function will be evaluated
+                by the Sync Gateway to determine document routing, access
+                grants, and validation outcomes during synchronization.
+              type: string
+              example: |-
+                function (doc, oldDoc) {
+                  channel(doc.channels);
+                }
+            doc:
+              $ref: ../../components/schemas.yaml#/Document
   responses:
     '200':
       description: Document Processed by sync function successfully

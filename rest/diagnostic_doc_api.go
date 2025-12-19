@@ -87,7 +87,7 @@ func (h *handler) handleSyncFnDryRun() error {
 	// Only require a valid JSON payload if docid is not provided.
 	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
 	if err != nil && docid == "" {
-		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
+		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
 	oldDoc := &db.Document{ID: docid}
