@@ -3918,12 +3918,13 @@ func Test_resyncDocument(t *testing.T) {
 			_, err = collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			preResyncDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			preResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
 			require.NoError(t, err)
 			if !tc.useHLV {
 				require.Nil(t, preResyncDoc.HLV)
 			}
-			_, _, err = collection.ResyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+
+			err = collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false)
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -3943,7 +3944,6 @@ func Test_resyncDocument(t *testing.T) {
 			}
 			assert.True(t, found)
 
-			require.NoError(t, err)
 			if tc.useHLV {
 				require.NotNil(t, postResyncDoc.HLV)
 				require.Equal(t, Version{
@@ -3953,6 +3953,7 @@ func Test_resyncDocument(t *testing.T) {
 					SourceID: postResyncDoc.HLV.SourceID,
 					Value:    postResyncDoc.HLV.Version,
 				})
+				assert.Equal(t, preResyncDoc.Cas, postResyncDoc.HLV.CurrentVersionCAS)
 			} else {
 				require.Nil(t, postResyncDoc.HLV)
 			}
@@ -3985,8 +3986,8 @@ func Test_getUpdatedDocument(t *testing.T) {
 		require.NoError(t, err)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
-		assert.Equal(t, base.ErrUpdateCancel, err)
+		_, _, err = collection.getResyncedDocument(ctx, doc, false)
+		require.ErrorIs(t, err, base.ErrUpdateCancel)
 	})
 
 	t.Run("Sync Document", func(t *testing.T) {
@@ -4016,16 +4017,13 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})
+		updatedDoc, _, err := collection.getResyncedDocument(ctx, doc, false)
 		require.NoError(t, err)
-		assert.True(t, shouldUpdate)
-		assert.Equal(t, doc.Sequence, highSeq)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, shouldUpdate, _, _, _, err = collection.getResyncedDocument(ctx, updatedDoc, false, []uint64{})
-		require.NoError(t, err)
-		assert.False(t, shouldUpdate)
+		_, _, err = collection.getResyncedDocument(ctx, updatedDoc, false)
+		require.ErrorIs(t, err, base.ErrUpdateCancel)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))
 	})
 

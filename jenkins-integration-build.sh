@@ -55,8 +55,6 @@ SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
 echo "Downloading tool dependencies..."
-go install github.com/axw/gocov/gocov@latest
-go install github.com/AlekSi/gocov-xml@latest
 go install gotest.tools/gotestsum@latest
 
 if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
@@ -152,13 +150,6 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("integration-EE-", .)' integration.xml > "${INT_LOG_FILE_NAME}.xml"
 else
     cp integration.xml "${INT_LOG_FILE_NAME}.xml"
-fi
-
-# Get coverage
-~/go/bin/gocov convert "coverage_int.out" | ~/go/bin/gocov-xml > coverage_int.xml
-if [ "${RUN_WALRUS:-}" == "true" ]; then
-    ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
-    ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
 
 if [ "${TEST_FAILED:-}" = true ]; then
