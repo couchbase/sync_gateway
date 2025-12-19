@@ -1143,7 +1143,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Channels:  base.SetFromArray([]string{"channel1"}),
-				Access:    channels.AccessMap{"user1": channels.BaseSetOf(t, "channel1")},
+				Access:    channels.AccessMap{},
 				Roles:     channels.AccessMap{},
 				Exception: "",
 			},

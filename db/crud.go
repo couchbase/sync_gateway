@@ -1697,28 +1697,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 // SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions.
 // If a docID is a non empty string, the document will be fetched from the bucket, otherwise the body will be used. If both are specified, this function returns an error.
 // The first error return value represents an error that occurs before the sync function is run. The second error return value represents an exception from the sync function.
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Body, docID, syncFn string) (*channels.ChannelMapperOutput, error, error) {
-	doc := &Document{
-		ID:    docID,
-		_body: body,
-	}
-	oldDoc := doc
-	if docID != "" {
-		if docInBucket, err := db.GetDocument(ctx, docID, DocUnmarshalAll); err == nil {
-			oldDoc = docInBucket
-			if len(doc._body) == 0 {
-				body = oldDoc.Body(ctx)
-				doc._body = body
-				// If no body is given, use doc in bucket as doc with no old doc
-				oldDoc._body = nil
-			}
-			doc._body[BodyRev] = oldDoc.SyncData.GetRevTreeID()
-		} else {
-			return nil, err, nil
-		}
-	} else {
-		oldDoc._body = nil
-	}
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *Document, body Body, docID, syncFn string) (*channels.ChannelMapperOutput, error) {
 
 	delete(body, BodyId)
 
@@ -1726,7 +1705,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(ctx, matchRev)
 	if generation < 0 {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID"), nil
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
 
@@ -1742,12 +1721,12 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 
 	err := validateAPIDocUpdate(body)
 	if err != nil {
-		return nil, err, nil
+		return nil, err
 	}
 	bodyWithoutInternalProps, wasStripped := StripInternalProperties(body)
 	canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 	if err != nil {
-		return nil, err, nil
+		return nil, err
 	}
 
 	// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
@@ -1770,30 +1749,33 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, body Bod
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
-		return nil, err, nil
+		return nil, err
 	}
 
 	syncOptions, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
 	if err != nil {
-		return nil, err, nil
+		return nil, err
 	}
 	var output *channels.ChannelMapperOutput
 	if syncFn == "" {
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
+		if err != nil {
+			err = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
+		}
 	} else {
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create sync runner: %v", err), nil
+			return nil, fmt.Errorf("failed to create sync runner: %v", err)
 		}
 		jsOutput, err := syncRunner.Call(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
-			return nil, err, nil
+			err = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
 		}
 		output = jsOutput.(*channels.ChannelMapperOutput)
 	}
 
-	return output, nil, err
+	return output, err
 }
 
 // revTreeConflictCheck checks for conflicts in the rev tree history and returns the parent revid, currentRevIndex

@@ -83,6 +83,8 @@ var (
 
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
+
+	ErrSyncFnDryRun = &sgError{"Error returned from Sync Function:"}
 )
 
 func (e *sgError) Error() string {

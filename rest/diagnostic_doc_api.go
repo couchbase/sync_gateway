@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -89,16 +90,33 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
 	}
 
-	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
-	if err != nil {
-		return err
-	}
-	if syncFnErr != nil {
-		resp := SyncFnDryRun{
-			Exception: syncFnErr.Error(),
+	oldDoc := &db.Document{ID: docid}
+	oldDoc.UpdateBody(syncDryRunPayload.Doc)
+	if docid != "" {
+		if docInbucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll); err == nil {
+			oldDoc = docInbucket
+			if len(syncDryRunPayload.Doc) == 0 {
+				syncDryRunPayload.Doc = oldDoc.Body(h.ctx())
+				oldDoc.UpdateBody(nil)
+			}
+		} else {
+			return base.HTTPErrorf(http.StatusNotFound, "Error reading document: %v", err)
 		}
-		h.writeJSON(resp)
-		return nil
+	} else {
+		oldDoc.UpdateBody(nil)
+	}
+
+	output, err := h.collection.SyncFnDryrun(h.ctx(), oldDoc, syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
+	if err != nil {
+		if strings.Contains(err.Error(), base.ErrSyncFnDryRun.Error()) {
+			errMsg := strings.ReplaceAll(err.Error(), base.ErrSyncFnDryRun.Error(), "")
+			resp := SyncFnDryRun{
+				Exception: errMsg,
+			}
+			h.writeJSON(resp)
+			return nil
+		}
+		return err
 	}
 	errorMsg := ""
 	if output.Rejection != nil {
