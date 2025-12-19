@@ -1757,10 +1757,11 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *
 		return nil, err
 	}
 	var output *channels.ChannelMapperOutput
+	var syncErr error
 	if syncFn == "" {
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
-			err = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
+			syncErr = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
 		}
 	} else {
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
@@ -1770,12 +1771,12 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *
 		}
 		jsOutput, err := syncRunner.Call(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
-			err = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
+			syncErr = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
 		}
 		output = jsOutput.(*channels.ChannelMapperOutput)
 	}
 
-	return output, err
+	return output, syncErr
 }
 
 // revTreeConflictCheck checks for conflicts in the rev tree history and returns the parent revid, currentRevIndex
