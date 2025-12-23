@@ -12,7 +12,6 @@ package rest
 
 import (
 	"errors"
-	"mime"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -40,7 +39,7 @@ type SyncFnDryRunPayload struct {
 }
 
 type ImportFilterDryRunPayload struct {
-	Function string  `json:"sync_function"`
+	Function string  `json:"import_filter"`
 	Doc      db.Body `json:"doc,omitempty"`
 }
 
@@ -182,23 +181,19 @@ func (h *handler) handleSyncFnDryRun() error {
 // HTTP handler for running a document through the import filter and returning the results
 func (h *handler) handleImportFilterDryRun() error {
 	docid := h.getQuery("doc_id")
-	contentType, _, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
-
-	if contentType != "application/json" && contentType != "" {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid Content-Type header: %s. Needs to be empty or application/json", contentType)
-	}
 
 	var importFilterPayload ImportFilterDryRunPayload
 	err := h.readJSONInto(&importFilterPayload)
 	// Only require a valid JSON payload if docid is not provided.
 	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
 	if err != nil && docid == "" {
-		return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error reading sync function payload: %v", err)
+		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
-	//if docid != "" && body != nil {
-	//	return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
-	//}
+	// Cannot pass both doc_id and body in the request body
+	if len(importFilterPayload.Doc) > 0 && docid != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
+	}
 
 	var doc db.Body
 	if docid != "" {
@@ -207,11 +202,20 @@ func (h *handler) handleImportFilterDryRun() error {
 			return err
 		}
 		doc = docInBucket.Body(h.ctx())
+	} else {
+		doc = importFilterPayload.Doc
 	}
 	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), doc, importFilterPayload.Function)
 	errorMsg := ""
 	if err != nil {
+		var importFilterDryRunErr *base.ImportFilterDryRunError
+		if !errors.As(err, &importFilterDryRunErr) {
+			return err
+		}
 		errorMsg = err.Error()
+		if importFilterDryRunErr.Unwrap() != nil {
+			errorMsg = importFilterDryRunErr.Err.Error()
+		}
 	}
 	resp := ImportFilterDryRun{
 		shouldImport,
