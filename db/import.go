@@ -552,11 +552,11 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 	var shouldImport bool
 	if importFn == "" {
 		importFilter := db.importFilter()
-		ouput, err := importFilter.EvaluateFunction(ctx, doc, true)
+		output, err := importFilter.EvaluateFunction(ctx, doc, true)
 		if err != nil {
 			return false, &base.ImportFilterDryRunError{Err: err}
 		}
-		shouldImport = ouput
+		shouldImport = output
 	} else {
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 		importRunner, err := newImportFilterRunner(ctx, importFn, jsTimeout)
