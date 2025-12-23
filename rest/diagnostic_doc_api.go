@@ -106,13 +106,6 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	output, err := h.collection.SyncFnDryrun(h.ctx(), oldDoc, syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
 	if err != nil {
-		if strings.Contains(err.Error(), base.ErrSyncFnDryRun.Error()) {
-			errMsg := strings.ReplaceAll(err.Error(), base.ErrSyncFnDryRun.Error(), "")
-			resp := SyncFnDryRun{
-				Exception: errMsg,
-			}
-			h.writeJSON(resp)
-			return nil
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
