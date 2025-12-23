@@ -1234,7 +1234,6 @@ func TestSyncFuncDryRun(t *testing.T) {
 			if test.docID != "" {
 				url += "?doc_id=" + test.docID
 			}
-			//body := fmt.Sprintf(`{"sync_function": %s, "doc": %s}`, test.syncFunction, test.document)
 			bodyMap := make(map[string]interface{})
 			if test.syncFunction != "" {
 				bodyMap["sync_function"] = test.syncFunction
@@ -1243,9 +1242,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				bodyMap["doc"] = test.document
 			}
 			bodyBytes, _ := json.Marshal(bodyMap)
-			body := string(bodyBytes)
-			resp := rt.SendDiagnosticRequest("POST", url, body)
-			//resp := rt.SendDiagnosticRequest("POST", url, body)
+			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
 			var output SyncFnDryRun
