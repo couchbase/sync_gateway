@@ -106,7 +106,6 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	output, err := h.collection.SyncFnDryrun(h.ctx(), oldDoc, syncDryRunPayload.Doc, docid, syncDryRunPayload.Function)
 	if err != nil {
-	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
 			return err

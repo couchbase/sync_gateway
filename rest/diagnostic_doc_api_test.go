@@ -1017,7 +1017,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		expectedStatus  int
 	}{
 		{
-			name:           "test_case_1",
+			name:           "custom_sync_func-db_sync_func-doc_body-no_doc_id-no_existing_doc",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
@@ -1031,7 +1031,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "test_case_2",
+			name:           "custom_sync_func-db_sync_func-doc_body-no_doc_id-no_existing_doc-role",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			document:       map[string]any{"role": []string{"role:role1"}, "accessUser": "user"},
@@ -1044,7 +1044,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "test_case_3",
+			name:           "custom_sync_func-no_db_sync_func-doc_body-no_existing_doc-no_doc_id",
 			dbSyncFunction: "",
 			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
@@ -1058,7 +1058,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "test_case_4",
+			name:           "no_custom_sync_func-db_sync_func-doc_body-no_existing_doc-no_doc_id",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:   "",
 			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
@@ -1072,7 +1072,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_5",
+			name:            "custom_sync_func-db_sync_func-doc_body-existing_doc-no_doc_id",
 			dbSyncFunction:  "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			syncFunction:    "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			document:        map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
@@ -1088,7 +1088,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "test_case_6",
+			name:           "no_custom_sync_func-db_sync_func-doc_body-no_existing_doc-no_doc_id-sync_func_exception",
 			dbSyncFunction: "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:   "",
 			document:       map[string]any{"user": map[string]any{"num": 23}},
@@ -1102,7 +1102,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_7",
+			name:            "no_custom_sync_func-db_sync_func-doc_body-no_existing_doc-doc_id-sync_func_exception_typeError",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
 			document:        map[string]any{"user": map[string]any{"num": 150}, "channel": "abc"},
@@ -1116,7 +1116,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_8",
+			name:            "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
 			document:        map[string]any{"user": map[string]any{"num": 120, "name": []string{"user2"}}, "channel": "channel2"},
@@ -1133,10 +1133,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_9",
+			name:            "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
-			document:        map[string]any{},
 			docID:           "doc",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1150,10 +1149,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_10",
+			name:            "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-invalid_doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
-			document:        map[string]any{},
 			docID:           "doc404",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1162,7 +1160,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus:  http.StatusNotFound,
 		},
 		{
-			name:            "test_case_11",
+			name:            "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-no_doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
 			docID:           "",
@@ -1173,7 +1171,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus:  http.StatusBadRequest,
 		},
 		{
-			name:            "test_case_12",
+			name:            "no_custom_sync_func-db_sync_func-doc_body-existing_doc-no_doc_id-new_doc_channel",
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    "",
 			document:        map[string]any{"channel": "channel2"},
@@ -1189,7 +1187,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "test_case_13",
+			name:            "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id-old_doc_channel",
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    "",
 			document:        map[string]any{"channel": "chanNew"},
@@ -1205,7 +1203,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "db_sync_func_valid_old_doc_invalid_doc_body",
+			name:            "no_custom_sync_func-db_sync_func-invalid_doc_body-existing_doc-doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    "",
 			document:        `{"channel": "chanNew", "oldchannel":}`,
