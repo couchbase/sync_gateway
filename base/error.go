@@ -83,7 +83,6 @@ var (
 
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
-
 )
 
 func (e *sgError) Error() string {
