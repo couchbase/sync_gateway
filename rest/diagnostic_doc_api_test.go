@@ -1008,7 +1008,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		name            string
 		dbSyncFunction  string
 		syncFunction    string
-		document        string
+		document        any
 		docID           string
 		existingDoc     bool
 		existingDocID   string
@@ -1019,8 +1019,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:           "test_case_1",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
-			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
-			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
+			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
+			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
 			existingDoc:    false,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
@@ -1033,8 +1033,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:           "test_case_2",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
-			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
-			document:       `{"role": ["role:role1"], "accessUser": "user"}`,
+			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
+			document:       map[string]any{"role": []string{"role:role1"}, "accessUser": "user"},
 			existingDoc:    false,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{}),
@@ -1046,8 +1046,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:           "test_case_3",
 			dbSyncFunction: "",
-			syncFunction:   `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
-			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
+			syncFunction:   "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
+			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
 			existingDoc:    false,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
@@ -1060,8 +1060,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:           "test_case_4",
 			dbSyncFunction: "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
-			syncFunction:   `""`,
-			document:       `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
+			syncFunction:   "",
+			document:       map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
 			existingDoc:    false,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
@@ -1074,8 +1074,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_5",
 			dbSyncFunction:  "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
-			syncFunction:    `"function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}"`,
-			document:        `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
+			syncFunction:    "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
+			document:        map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
 			existingDoc:     true,
 			existingDocID:   "doc1",
 			existingDocBody: `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
@@ -1090,8 +1090,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:           "test_case_6",
 			dbSyncFunction: "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:   `""`,
-			document:       `{"user":{"num":23}}`,
+			syncFunction:   "",
+			document:       map[string]any{"user": map[string]any{"num": 23}},
 			existingDoc:    false,
 			expectedOutput: SyncFnDryRun{
 				Channels:  base.SetFromArray([]string{}),
@@ -1104,8 +1104,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_7",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:    `""`,
-			document:        `{"user":{"num":150}, "channel":"abc"}`,
+			syncFunction:    "",
+			document:        map[string]any{"user": map[string]any{"num": 150}, "channel": "abc"},
 			docID:           "doc",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1118,8 +1118,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_8",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:    `""`,
-			document:        `{"user":{"num":120, "name":["user2"]}, "channel":"channel2"}`,
+			syncFunction:    "",
+			document:        map[string]any{"user": map[string]any{"num": 120, "name": []string{"user2"}}, "channel": "channel2"},
 			docID:           "doc",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1135,8 +1135,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_9",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:    `""`,
-			document:        `""`,
+			syncFunction:    "",
+			document:        map[string]any{},
 			docID:           "doc",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1152,8 +1152,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_10",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:    `""`,
-			document:        `""`,
+			syncFunction:    "",
+			document:        map[string]any{},
 			docID:           "doc404",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1164,8 +1164,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_11",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
-			syncFunction:    `""`,
-			document:        `""`,
+			syncFunction:    "",
 			docID:           "",
 			existingDoc:     true,
 			existingDocID:   "doc",
@@ -1176,8 +1175,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_12",
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
-			syncFunction:    `""`,
-			document:        `{"channel":"channel2"}`,
+			syncFunction:    "",
+			document:        map[string]any{"channel": "channel2"},
 			docID:           "",
 			existingDoc:     true,
 			existingDocID:   "doc22",
@@ -1192,8 +1191,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		{
 			name:            "test_case_13",
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
-			syncFunction:    `""`,
-			document:        `{"channel":"chanNew"}`,
+			syncFunction:    "",
+			document:        map[string]any{"channel": "chanNew"},
 			docID:           "doc22",
 			existingDoc:     true,
 			existingDocID:   "doc22",
@@ -1204,6 +1203,18 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Roles:    channels.AccessMap{},
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name:            "db_sync_func_valid_old_doc_invalid_doc_body",
+			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
+			syncFunction:    "",
+			document:        `{"channel": "chanNew", "oldchannel":}`,
+			docID:           "doc22",
+			existingDoc:     true,
+			existingDocID:   "doc22",
+			existingDocBody: `{"chan1":"channel1", "channel":"chanOld"}`,
+			expectedOutput:  SyncFnDryRun{},
+			expectedStatus:  http.StatusBadRequest,
 		},
 	}
 
@@ -1225,8 +1236,18 @@ func TestSyncFuncDryRun(t *testing.T) {
 			if test.docID != "" {
 				url += "?doc_id=" + test.docID
 			}
-			body := fmt.Sprintf(`{"sync_function": %s, "doc": %s}`, test.syncFunction, test.document)
+			//body := fmt.Sprintf(`{"sync_function": %s, "doc": %s}`, test.syncFunction, test.document)
+			bodyMap := make(map[string]interface{})
+			if test.syncFunction != "" {
+				bodyMap["sync_function"] = test.syncFunction
+			}
+			if test.document != nil {
+				bodyMap["doc"] = test.document
+			}
+			bodyBytes, _ := json.Marshal(bodyMap)
+			body := string(bodyBytes)
 			resp := rt.SendDiagnosticRequest("POST", url, body)
+			//resp := rt.SendDiagnosticRequest("POST", url, body)
 			RequireStatus(t, resp, test.expectedStatus)
 
 			var output SyncFnDryRun

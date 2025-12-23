@@ -1694,10 +1694,10 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 
 }
 
-// SyncFnDryrun Runs a document through the sync function and returns expiry, channels doc was placed in, access map for users, roles, handler errors and sync fn exceptions.
-// If a docID is a non empty string, the document will be fetched from the bucket, otherwise the body will be used. If both are specified, this function returns an error.
-// The first error return value represents an error that occurs before the sync function is run. The second error return value represents an exception from the sync function.
 func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *Document, body Body, docID, syncFn string) (*channels.ChannelMapperOutput, error) {
+// SyncFnDryrun Runs the given document body through a sync function and returns expiry, channels doc was placed in,
+// access map for users, roles, handler errors and sync fn exceptions.
+// If syncFn is provided, it will be used instead of the one configured on the database.
 
 	delete(body, BodyId)
 
@@ -1761,7 +1761,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *
 	if syncFn == "" {
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
-			syncErr = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
+			return nil, &base.SyncFnDryRunError{Err: err}
 		}
 	} else {
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
@@ -1771,7 +1771,8 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, oldDoc *
 		}
 		jsOutput, err := syncRunner.Call(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
-			syncErr = fmt.Errorf("%s%s", base.ErrSyncFnDryRun, err)
+
+			return nil, fmt.Errorf("failed to create sync runner: %v", err)
 		}
 		output = jsOutput.(*channels.ChannelMapperOutput)
 	}

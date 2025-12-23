@@ -7,6 +7,7 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/doc_id
 post:
   summary: Run a doc body through the sync function and return sync data.
   description: |-

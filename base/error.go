@@ -84,8 +84,6 @@ var (
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
 
-	// ErrSyncFnDryRun is returned when the Sync Function Dry Run returns an error while computing the access
-	ErrSyncFnDryRun = &sgError{"Error returned from Sync Function:"}
 )
 
 func (e *sgError) Error() string {
@@ -363,4 +361,29 @@ func (me *MultiError) ErrorOrNil() error {
 		return nil
 	}
 	return me
+}
+
+const syncFnDryRunErrorPrefix = "Error returned from Sync Function"
+
+// SyncFnDryRunError is returned when the sync function dry run returns an error.
+// It wraps the original error for errors.Is and the type supports errors.As
+type SyncFnDryRunError struct {
+	Err error
+}
+
+func (e *SyncFnDryRunError) Error() string {
+	if e == nil {
+		return syncFnDryRunErrorPrefix
+	}
+	if e.Err == nil {
+		return syncFnDryRunErrorPrefix
+	}
+	return syncFnDryRunErrorPrefix + ": " + e.Err.Error()
+}
+
+func (e *SyncFnDryRunError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }

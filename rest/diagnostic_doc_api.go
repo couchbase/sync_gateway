@@ -11,10 +11,9 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"errors"
 	"fmt"
-	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -76,18 +75,17 @@ func (h *handler) handleGetDocChannels() error {
 // If docid is specified and the document does not exist in the bucket, it will return error
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.getQuery("doc_id")
-	contentType, _, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
-
-	if contentType != "application/json" && contentType != "" {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid Content-Type header: %s. Needs to be empty or application/json", contentType)
-	}
 
 	var syncDryRunPayload SyncFnDryRunPayload
 	err := h.readJSONInto(&syncDryRunPayload)
 	// Only require a valid JSON payload if docid is not provided.
 	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
-	if err != nil && docid == "" {
+	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
+	}
+
+	if syncDryRunPayload.Doc == nil && docid == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "no docid or document provided")
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -115,8 +113,21 @@ func (h *handler) handleSyncFnDryRun() error {
 			}
 			h.writeJSON(resp)
 			return nil
+	if err != nil {
+		var syncFnDryRunErr *base.SyncFnDryRunError
+		if !errors.As(err, &syncFnDryRunErr) {
+			return err
 		}
-		return err
+
+		errMsg := syncFnDryRunErr.Error()
+		if syncFnDryRunErr.Unwrap() != nil {
+			errMsg = syncFnDryRunErr.Err.Error()
+		}
+		resp := SyncFnDryRun{
+			Exception: errMsg,
+		}
+		h.writeJSON(resp)
+		return nil
 	}
 	errorMsg := ""
 	if output.Rejection != nil {
