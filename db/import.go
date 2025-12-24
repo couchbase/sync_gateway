@@ -552,6 +552,9 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 	var shouldImport bool
 	if importFn == "" {
 		importFilter := db.importFilter()
+		if importFilter == nil {
+			return false, base.HTTPErrorf(http.StatusBadRequest, "No import filter specified")
+		}
 		output, err := importFilter.EvaluateFunction(ctx, doc, true)
 		if err != nil {
 			return false, &base.ImportFilterDryRunError{Err: err}

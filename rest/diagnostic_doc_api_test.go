@@ -1411,6 +1411,24 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
+		{
+			name:            "no_db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
+			existingDoc:     true,
+			existingDocID:   "no_db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
+			existingDocBody: `{"user":{"num":125}}`,
+			expectedOutput: ImportFilterDryRun{
+				Error: "Bad Request",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:     "no_db_import_filter-no_custom_import_filter-doc_body-no_existing_doc-no_docid",
+			document: map[string]interface{}{"user": map[string]interface{}{"num": 23}},
+			expectedOutput: ImportFilterDryRun{
+				Error: "Bad Request",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, test := range tests {
