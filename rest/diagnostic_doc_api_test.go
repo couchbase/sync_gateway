@@ -1049,6 +1049,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1062,6 +1066,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{"user": channels.BaseSetOf(t, "role1")},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1076,6 +1084,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1090,6 +1102,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1106,6 +1122,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1120,6 +1140,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:    channels.AccessMap{},
 				Roles:     channels.AccessMap{},
 				Exception: "403 user num too low",
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1134,6 +1158,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1151,6 +1179,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:    channels.AccessMap{"user1": channels.BaseSetOf(t, "channel2")},
 				Roles:     channels.AccessMap{},
 				Exception: "",
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1167,6 +1199,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:    channels.AccessMap{},
 				Roles:     channels.AccessMap{},
 				Exception: "",
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1205,6 +1241,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"channel2"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1221,6 +1261,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"chanOld"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1244,6 +1288,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{defaultChannelName}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1257,13 +1305,48 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{defaultChannelName}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:            "logging",
+			docID:           "logging",
+			existingDoc:     true,
+			existingDocID:   "logging",
+			existingDocBody: `{"channel": "chanLog", "logerror": true, "loginfo": true}`,
+			syncFunction: `function(doc) {
+				channel(doc.channel);
+				if (doc.logerror) {
+					console.error("This is a console.error log from logerror");
+				} else {
+					console.log("This is a console.log log from logerror");
+				}
+				if (doc.loginfo) {
+					console.log("This is a console.log log from loginfo");
+				} else {
+					console.error("This is a console.error log from logerror");
+				}
+				console.log("one more info for good measure...");
+			}`,
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"chanLog"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: SyncFnDryRunLogging{
+					Errors: []string{"This is a console.error log from logerror"},
+					Info:   []string{"This is a console.log log from loginfo", "one more info for good measure..."},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Sync = &test.dbSyncFunction
 			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/sync", test.dbSyncFunction), http.StatusOK)

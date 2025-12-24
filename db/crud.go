@@ -1697,7 +1697,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 // SyncFnDryrun Runs the given document body through a sync function and returns expiry, channels doc was placed in,
 // access map for users, roles, handler errors and sync fn exceptions.
 // If syncFn is provided, it will be used instead of the one configured on the database.
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, syncFn string) (*channels.ChannelMapperOutput, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, syncFn string, errorLogFunc, infoLogFunc func(string)) (*channels.ChannelMapperOutput, error) {
 
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
@@ -1722,7 +1722,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 			syncFn = channels.GetDefaultSyncFunction(scopeAndCollectionName.Scope, scopeAndCollectionName.Collection)
 		}
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
-		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)
+		syncRunner, err := channels.NewSyncRunnerWithLogging(ctx, syncFn, jsTimeout, errorLogFunc, infoLogFunc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create sync runner: %v", err)
 		}
