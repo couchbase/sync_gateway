@@ -1004,6 +1004,28 @@ func TestSyncFuncDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	rt.CreateDatabase("db", dbConfig)
+
+	// When the tests run with named scopes and collections, then the default
+	// sync function is:
+	// function(doc){channel("<collection_name>");}
+	// when the tests run in default scope and collection then the default
+	// sync function is:
+	// function(doc){channel(doc.channels);}
+	var defaultChannelName string
+	dbc, _ := rt.GetSingleTestDatabaseCollection()
+	if dbc.IsDefaultCollection() {
+		defaultChannelName = "chanNew"
+	} else {
+		defaultChannelName = dbc.Name
+	}
+
 	tests := []struct {
 		name            string
 		dbSyncFunction  string
@@ -1077,7 +1099,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			syncFunction:    "function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel); role(doc.accessUser, doc.role); expiry(doc.expiry);}",
 			document:        map[string]any{"accessChannel": []string{"dynamicChan5412"}, "accessUser": "user", "channel": []string{"dynamicChan222"}, "expiry": 10},
 			existingDoc:     true,
-			existingDocID:   "doc1",
+			existingDocID:   "custom_sync_func-db_sync_func-doc_body-existing_doc-no_doc_id",
 			existingDocBody: `{"accessChannel": ["dynamicChan5412"],"accessUser": "user","channel": ["dynamicChan222"],"expiry":10}`,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
@@ -1106,9 +1128,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
 			document:        map[string]any{"user": map[string]any{"num": 150}, "channel": "abc"},
-			docID:           "doc",
+			docID:           "no_custom_sync_func-db_sync_func-doc_body-no_existing_doc-doc_id-sync_func_exception_typeError",
 			existingDoc:     true,
-			existingDocID:   "doc",
+			existingDocID:   "no_custom_sync_func-db_sync_func-doc_body-no_existing_doc-doc_id-sync_func_exception_typeError",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
@@ -1120,9 +1142,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
 			document:        map[string]any{"user": map[string]any{"num": 120, "name": []string{"user2"}}, "channel": "channel2"},
-			docID:           "doc",
+			docID:           "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id",
 			existingDoc:     true,
-			existingDocID:   "doc",
+			existingDocID:   "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Channels:  base.SetFromArray([]string{"channel2"}),
@@ -1136,9 +1158,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			name:            "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-doc_id",
 			dbSyncFunction:  "function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}",
 			syncFunction:    "",
-			docID:           "doc",
+			docID:           "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-doc_id",
 			existingDoc:     true,
-			existingDocID:   "doc",
+			existingDocID:   "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-doc_id",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Channels:  base.SetFromArray([]string{"channel1"}),
@@ -1154,7 +1176,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			syncFunction:    "",
 			docID:           "doc404",
 			existingDoc:     true,
-			existingDocID:   "doc",
+			existingDocID:   "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-invalid_doc_id",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput:  SyncFnDryRun{},
 			expectedStatus:  http.StatusNotFound,
@@ -1165,7 +1187,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			syncFunction:    "",
 			docID:           "",
 			existingDoc:     true,
-			existingDocID:   "doc",
+			existingDocID:   "no_custom_sync_func-db_sync_func-no_doc_body-existing_doc-no_doc_id",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput:  SyncFnDryRun{},
 			expectedStatus:  http.StatusBadRequest,
@@ -1177,7 +1199,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			document:        map[string]any{"channel": "channel2"},
 			docID:           "",
 			existingDoc:     true,
-			existingDocID:   "doc22",
+			existingDocID:   "no_custom_sync_func-db_sync_func-doc_body-existing_doc-no_doc_id-new_doc_channel",
 			existingDocBody: `{"chan1":"channel1", "channel":"chanOld"}`,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"channel2"}),
@@ -1191,9 +1213,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    "",
 			document:        map[string]any{"channel": "chanNew"},
-			docID:           "doc22",
+			docID:           "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id-old_doc_channel",
 			existingDoc:     true,
-			existingDocID:   "doc22",
+			existingDocID:   "no_custom_sync_func-db_sync_func-doc_body-existing_doc-doc_id-old_doc_channel",
 			existingDocBody: `{"chan1":"channel1", "channel":"chanOld"}`,
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"chanOld"}),
@@ -1207,23 +1229,19 @@ func TestSyncFuncDryRun(t *testing.T) {
 			dbSyncFunction:  "function(doc,oldDoc){if(oldDoc){ channel(oldDoc.channel)} else {channel(doc.channel)} }",
 			syncFunction:    "",
 			document:        `{"channel": "chanNew", "oldchannel":}`,
-			docID:           "doc22",
+			docID:           "no_custom_sync_func-db_sync_func-invalid_doc_body-existing_doc-doc_id",
 			existingDoc:     true,
-			existingDocID:   "doc22",
+			existingDocID:   "no_custom_sync_func-db_sync_func-invalid_doc_body-existing_doc-doc_id",
 			existingDocBody: `{"chan1":"channel1", "channel":"chanOld"}`,
 			expectedOutput:  SyncFnDryRun{},
 			expectedStatus:  http.StatusBadRequest,
 		},
-		// Since the tests run in named Scopes and Collections therefore the
-		// default sync function is:
-		// function(doc){channel("<collection_name>");}
-		// therefore the channels returned will be named collections
 		{
 			name:        "no_custom_sync_func-default_db_sync_func-doc_body-no_existing_doc-no_doc_id",
 			document:    map[string]any{"channels": "chanNew"},
 			existingDoc: false,
 			expectedOutput: SyncFnDryRun{
-				Channels: base.SetFromArray([]string{"sg_test_0"}),
+				Channels: base.SetFromArray([]string{defaultChannelName}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
 			},
@@ -1231,12 +1249,12 @@ func TestSyncFuncDryRun(t *testing.T) {
 		},
 		{
 			name:            "no_custom_sync_func-default_db_sync_func-no_doc_body-existing_doc-doc_id",
-			docID:           "doc22",
+			docID:           "no_custom_sync_func-default_db_sync_func-no_doc_body-existing_doc-doc_id",
 			existingDoc:     true,
-			existingDocID:   "doc22",
+			existingDocID:   "no_custom_sync_func-default_db_sync_func-no_doc_body-existing_doc-doc_id",
 			existingDocBody: `{"channels": "chanNew"}`,
 			expectedOutput: SyncFnDryRun{
-				Channels: base.SetFromArray([]string{"sg_test_0"}),
+				Channels: base.SetFromArray([]string{defaultChannelName}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
 			},
@@ -1246,13 +1264,9 @@ func TestSyncFuncDryRun(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				PersistentConfig: true,
-				SyncFn:           test.dbSyncFunction,
-			})
-			defer rt.Close()
-
-			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Sync = &test.dbSyncFunction
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/sync", test.dbSyncFunction), http.StatusOK)
 
 			url := "/{{.keyspace}}/_sync"
 			if test.existingDoc {
