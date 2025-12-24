@@ -78,8 +78,6 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	var syncDryRunPayload SyncFnDryRunPayload
 	err := h.readJSONInto(&syncDryRunPayload)
-	// Only require a valid JSON payload if docid is not provided.
-	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
@@ -154,9 +152,6 @@ func (h *handler) handleSyncFnDryRun() error {
 		}
 
 		errMsg := syncFnDryRunErr.Error()
-		if syncFnDryRunErr.Unwrap() != nil {
-			errMsg = syncFnDryRunErr.Err.Error()
-		}
 		resp := SyncFnDryRun{
 			Exception: errMsg,
 		}

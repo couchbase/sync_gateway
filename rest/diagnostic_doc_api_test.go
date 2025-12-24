@@ -1111,7 +1111,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocID:   "doc",
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
-				Exception: "TypeError: Cannot access member '0' of undefined",
+				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
