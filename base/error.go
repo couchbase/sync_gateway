@@ -83,8 +83,6 @@ var (
 
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
-
-	ErrImportDryRun = &sgError{"Error occured during import dry run: "}
 )
 
 func (e *sgError) Error() string {
