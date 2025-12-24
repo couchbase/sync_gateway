@@ -361,3 +361,28 @@ func (me *MultiError) ErrorOrNil() error {
 	}
 	return me
 }
+
+const syncFnDryRunErrorPrefix = "Error returned from Sync Function"
+
+// SyncFnDryRunError is returned when the sync function dry run returns an error.
+// It wraps the original error for errors.Is and the type supports errors.As
+type SyncFnDryRunError struct {
+	Err error
+}
+
+func (e *SyncFnDryRunError) Error() string {
+	if e == nil {
+		return syncFnDryRunErrorPrefix
+	}
+	if e.Err == nil {
+		return syncFnDryRunErrorPrefix
+	}
+	return syncFnDryRunErrorPrefix + ": " + e.Err.Error()
+}
+
+func (e *SyncFnDryRunError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
