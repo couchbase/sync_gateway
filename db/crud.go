@@ -1711,12 +1711,15 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 	}
 	var output *channels.ChannelMapperOutput
 	var syncErr error
-	if syncFn == "" {
+	if syncFn == "" && db.ChannelMapper != nil {
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
 		if err != nil {
 			return nil, &base.SyncFnDryRunError{Err: err}
 		}
 	} else {
+		if syncFn == "" {
+			syncFn = channels.DocChannelsSyncFunction
+		}
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)
 		if err != nil {

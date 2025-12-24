@@ -1214,6 +1214,30 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedOutput:  SyncFnDryRun{},
 			expectedStatus:  http.StatusBadRequest,
 		},
+		{
+			name:        "no_custom_sync_func-default_db_sync_func-doc_body-no_existing_doc-no_doc_id",
+			document:    map[string]any{"channels": "chanNew"},
+			existingDoc: false,
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"chanNew"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:            "no_custom_sync_func-default_db_sync_func-no_doc_body-existing_doc-doc_id",
+			docID:           "doc22",
+			existingDoc:     true,
+			existingDocID:   "doc22",
+			existingDocBody: `{"channels": "chanNew"}`,
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"chanNew"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+			},
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range tests {
