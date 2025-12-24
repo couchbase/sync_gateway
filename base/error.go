@@ -404,7 +404,7 @@ func (e *ImportFilterDryRunError) Error() string {
 	if e.Err == nil {
 		return importFilterErrorPrefix
 	}
-	return importFilterErrorPrefix+ ": " + e.Err.Error()
+	return importFilterErrorPrefix + ": " + e.Err.Error()
 }
 
 func (e *ImportFilterDryRunError) Unwrap() error {
