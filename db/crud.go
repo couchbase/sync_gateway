@@ -1718,7 +1718,8 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 		}
 	} else {
 		if syncFn == "" {
-			syncFn = channels.DocChannelsSyncFunction
+			scopeAndCollectionName := db.ScopeAndCollectionName()
+			syncFn = channels.GetDefaultSyncFunction(scopeAndCollectionName.Scope, scopeAndCollectionName.Collection)
 		}
 		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)

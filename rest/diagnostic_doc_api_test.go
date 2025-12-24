@@ -1214,12 +1214,16 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedOutput:  SyncFnDryRun{},
 			expectedStatus:  http.StatusBadRequest,
 		},
+		// Since the tests run in named Scopes and Collections therefore the
+		// default sync function is:
+		// function(doc){channel("<collection_name>");}
+		// therefore the channels returned will be named collections
 		{
 			name:        "no_custom_sync_func-default_db_sync_func-doc_body-no_existing_doc-no_doc_id",
 			document:    map[string]any{"channels": "chanNew"},
 			existingDoc: false,
 			expectedOutput: SyncFnDryRun{
-				Channels: base.SetFromArray([]string{"chanNew"}),
+				Channels: base.SetFromArray([]string{"sg_test_0"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
 			},
@@ -1232,7 +1236,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocID:   "doc22",
 			existingDocBody: `{"channels": "chanNew"}`,
 			expectedOutput: SyncFnDryRun{
-				Channels: base.SetFromArray([]string{"chanNew"}),
+				Channels: base.SetFromArray([]string{"sg_test_0"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
 			},
