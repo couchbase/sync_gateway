@@ -597,7 +597,10 @@ func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, 
 		revTreeProperty = append(revTreeProperty, revDelta.ToRevID)
 		revTreeProperty = append(revTreeProperty, revDelta.RevisionHistory...)
 	}
-	properties := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "", revTreeProperty)
+	properties, err := blipRevMessageProperties(history, revDelta.ToDeleted, seq, "", revTreeProperty)
+	if err != nil {
+		return err
+	}
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	if bsc.useHLV() {
@@ -629,7 +632,10 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	if bsc.activeCBMobileSubprotocol <= CBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
 		noRevRq.SetSeq(seq)
 	} else {
-		noRevRq.SetSequence(seq)
+		err := noRevRq.SetSequence(seq)
+		if err != nil {
+			return err
+		}
 	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
@@ -785,7 +791,10 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		revTreeHistoryProperty = append(revTreeHistoryProperty, toHistory(docRev.History, knownRevs, maxHistory)...)
 	}
 
-	properties := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID, revTreeHistoryProperty)
+	properties, err := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID, revTreeHistoryProperty)
+	if err != nil {
+		return err
+	}
 	if base.LogDebugEnabled(ctx, base.KeySync) {
 		replacedRevMsg := ""
 		if replacedRevID != "" {

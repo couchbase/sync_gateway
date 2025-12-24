@@ -11,7 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"fmt"
+	"errors"
 	"mime"
 	"net/http"
 
@@ -81,20 +81,84 @@ func (h *handler) handleGetDocChannels() error {
 func (h *handler) handleSyncFnDryRun() error {
 	docid := h.getQuery("doc_id")
 
-	body, err := h.readDocument()
+	var syncDryRunPayload SyncFnDryRunPayload
+	err := h.readJSONInto(&syncDryRunPayload)
 	if err != nil {
-		if docid == "" {
-			return fmt.Errorf("no doc id provided for dry run and error reading body: %s", err)
-		}
+		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
-	output, err, syncFnErr := h.collection.SyncFnDryrun(h.ctx(), body, docid)
-	if err != nil {
-		return err
+	if syncDryRunPayload.Doc == nil && docid == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "no docid or document provided")
 	}
-	if syncFnErr != nil {
+
+	oldDoc := &db.Document{ID: docid}
+	oldDoc.UpdateBody(syncDryRunPayload.Doc)
+	if docid != "" {
+		if docInbucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll); err == nil {
+			oldDoc = docInbucket
+			if len(syncDryRunPayload.Doc) == 0 {
+				syncDryRunPayload.Doc = oldDoc.Body(h.ctx())
+				oldDoc.UpdateBody(nil)
+			}
+		} else {
+			return base.HTTPErrorf(http.StatusNotFound, "Error reading document: %v", err)
+		}
+	} else {
+		oldDoc.UpdateBody(nil)
+	}
+
+	delete(syncDryRunPayload.Doc, db.BodyId)
+
+	// Get the revision ID to match, and the new generation number:
+	matchRev, _ := syncDryRunPayload.Doc[db.BodyRev].(string)
+	generation, _ := db.ParseRevID(h.ctx(), matchRev)
+	if generation < 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	}
+	generation++
+
+	// Create newDoc which will be used to pass around Body
+	newDoc := &db.Document{
+		ID: docid,
+	}
+	// Pull attachments
+	newDoc.SetAttachments(db.GetBodyAttachments(syncDryRunPayload.Doc))
+	delete(syncDryRunPayload.Doc, db.BodyAttachments)
+	delete(syncDryRunPayload.Doc, db.BodyRevisions)
+
+	if _, ok := syncDryRunPayload.Doc[base.SyncPropertyName]; ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "document-top level property '_sync' is a reserved internal property")
+	}
+
+	db.StripInternalProperties(syncDryRunPayload.Doc)
+
+	// We needed to keep _deleted around in the body until we generate rev ID, but now it can be removed
+	_, isDeleted := syncDryRunPayload.Doc[db.BodyDeleted]
+	if isDeleted {
+		delete(syncDryRunPayload.Doc, db.BodyDeleted)
+	}
+
+	//update the newDoc body to be without any special properties
+	newDoc.UpdateBody(syncDryRunPayload.Doc)
+
+	rawDocBytes, err := newDoc.BodyBytes(h.ctx())
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Error marshalling document: %v", err)
+	}
+
+	newRev := db.CreateRevIDWithBytes(generation, matchRev, rawDocBytes)
+	newDoc.RevID = newRev
+
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function)
+	if err != nil {
+		var syncFnDryRunErr *base.SyncFnDryRunError
+		if !errors.As(err, &syncFnDryRunErr) {
+			return err
+		}
+
+		errMsg := syncFnDryRunErr.Error()
 		resp := SyncFnDryRun{
-			Exception: syncFnErr.Error(),
+			Exception: errMsg,
 		}
 		h.writeJSON(resp)
 		return nil

@@ -477,14 +477,9 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
-			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+			existingBucketDoc := getBucketDocument(t, collection.DatabaseCollection, key)
+			require.NoError(t, err)
 
-			body = Body{}
-			err = body.Unmarshal(existingBucketDoc.Body)
-			assert.NoError(t, err, "Error unmarshalling body")
-
-			// Set the expiry value
 			syncMetaExpiryUnix := syncMetaExpiry.Unix()
 			expiry := uint32(syncMetaExpiryUnix)
 
@@ -1493,4 +1488,27 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 
 	base.RequireWaitForStat(t, db.DbStats.Database().Crc32MatchCount.Value, 1)
 
+}
+
+// getBucketDocument reads the current version of a document and turns it into a sgbucket.BucketDocument. This is
+// intended for test use only, since this gets expiry as a separate option.
+func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID string) *sgbucket.BucketDocument {
+	ctx := base.TestCtx(t)
+	xattrNames := append(collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), base.VirtualExpiry)
+	body, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, xattrNames)
+	require.NoError(t, err)
+	var expiry uint32
+	if expiryBytes, ok := xattrs[base.VirtualExpiry]; ok {
+		err := base.JSONUnmarshal(expiryBytes, &expiry)
+		require.NoError(t, err)
+		delete(xattrs, base.VirtualExpiry)
+	}
+
+	return &sgbucket.BucketDocument{
+		Body:        body,
+		Xattrs:      xattrs,
+		Cas:         cas,
+		Expiry:      expiry,
+		IsTombstone: len(body) == 0,
+	}
 }
