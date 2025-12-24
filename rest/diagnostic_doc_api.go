@@ -30,7 +30,7 @@ type SyncFnDryRun struct {
 	Channels  base.Set            `json:"channels"`
 	Access    channels.AccessMap  `json:"access"`
 	Roles     channels.AccessMap  `json:"roles"`
-	Exception string              `json:"exception"`
+	Exception string              `json:"exception,omitempty"`
 	Expiry    *uint32             `json:"expiry,omitempty"`
 	Logging   SyncFnDryRunLogging `json:"logging"`
 }
@@ -89,7 +89,7 @@ func (h *handler) handleSyncFnDryRun() error {
 	}
 
 	if syncDryRunPayload.Doc == nil && docid == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "no docid or document provided")
+		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
 	}
 
 	oldDoc := &db.Document{ID: docid}
