@@ -1239,7 +1239,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			document:       map[string]any{"accessUser": "user"},
 			existingDoc:    false,
 			expectedOutput: ImportFilterDryRun{
-				Error: "TypeError: Cannot access member 'num' of undefined",
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1249,7 +1249,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			document:     map[string]any{"accessUser": "user"},
 			existingDoc:  false,
 			expectedOutput: ImportFilterDryRun{
-				Error: "TypeError: Cannot access member 'num' of undefined",
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1260,7 +1260,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			document:       map[string]any{"accessUser": "user"},
 			existingDoc:    false,
 			expectedOutput: ImportFilterDryRun{
-				Error: "TypeError: Cannot access member 'num' of undefined",
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},

@@ -184,10 +184,8 @@ func (h *handler) handleImportFilterDryRun() error {
 
 	var importFilterPayload ImportFilterDryRunPayload
 	err := h.readJSONInto(&importFilterPayload)
-	// Only require a valid JSON payload if docid is not provided.
-	// If docid is provided, the sync function will use the document from the bucket, and the payload is optional.
-	if err != nil && docid == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Error reading import filter payload: %v", err)
 	}
 
 	// Cannot pass both doc_id and body in the request body
@@ -213,9 +211,6 @@ func (h *handler) handleImportFilterDryRun() error {
 			return err
 		}
 		errorMsg = err.Error()
-		if importFilterDryRunErr.Unwrap() != nil {
-			errorMsg = importFilterDryRunErr.Err.Error()
-		}
 	}
 	resp := ImportFilterDryRun{
 		shouldImport,
