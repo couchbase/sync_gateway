@@ -1188,6 +1188,13 @@ func TestImportFilterDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
 	tests := []struct {
 		name            string
 		dbImportFilter  string
@@ -1293,9 +1300,9 @@ func TestImportFilterDryRun(t *testing.T) {
 		{
 			name:            "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
 			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc2",
+			docID:           "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1305,9 +1312,9 @@ func TestImportFilterDryRun(t *testing.T) {
 		{
 			name:            "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc2",
+			docID:           "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1318,9 +1325,9 @@ func TestImportFilterDryRun(t *testing.T) {
 			name:            "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc2",
+			docID:           "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1332,7 +1339,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			docID:           "doc404",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-invalid_docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "not_found",
@@ -1344,7 +1351,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			docID:           "doc404",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "not_found",
@@ -1357,7 +1364,7 @@ func TestImportFilterDryRun(t *testing.T) {
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			docID:           "doc404",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "not_found",
@@ -1368,9 +1375,9 @@ func TestImportFilterDryRun(t *testing.T) {
 			name:            "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
 			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "doc2",
+			docID:           "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "Bad Request",
@@ -1381,9 +1388,9 @@ func TestImportFilterDryRun(t *testing.T) {
 			name:            "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "doc2",
+			docID:           "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "Bad Request",
@@ -1395,9 +1402,9 @@ func TestImportFilterDryRun(t *testing.T) {
 			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
 			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "doc2",
+			docID:           "db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
 			existingDoc:     true,
-			existingDocID:   "doc2",
+			existingDocID:   "db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				Error: "Bad Request",
@@ -1408,13 +1415,7 @@ func TestImportFilterDryRun(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				PersistentConfig: true,
-				ImportFilter:     test.dbImportFilter,
-			})
-			defer rt.Close()
-
-			RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/import_filter", test.dbImportFilter), http.StatusOK)
 
 			url := "/{{.keyspace}}/_import_filter"
 			if test.existingDoc {
