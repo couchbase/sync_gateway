@@ -386,3 +386,28 @@ func (e *SyncFnDryRunError) Unwrap() error {
 	}
 	return e.Err
 }
+
+const importFilterErrorPrefix = "Error returned from Import Filter"
+
+// ImportFilterError is returned when the import filter dry run returns an error.
+// It wraps the original error for errors.Is and the type supports errors.As
+type ImportFilterDryRunError struct {
+	Err error
+}
+
+func (e *ImportFilterDryRunError) Error() string {
+	if e == nil {
+		return importFilterErrorPrefix
+	}
+	if e.Err == nil {
+		return importFilterErrorPrefix
+	}
+	return importFilterErrorPrefix + ": " + e.Err.Error()
+}
+
+func (e *ImportFilterDryRunError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}

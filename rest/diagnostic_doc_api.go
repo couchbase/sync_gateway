@@ -12,7 +12,6 @@ package rest
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -36,6 +35,11 @@ type ImportFilterDryRun struct {
 
 type SyncFnDryRunPayload struct {
 	Function string  `json:"sync_function"`
+	Doc      db.Body `json:"doc,omitempty"`
+}
+
+type ImportFilterDryRunPayload struct {
+	Function string  `json:"import_filter"`
 	Doc      db.Body `json:"doc,omitempty"`
 }
 
@@ -178,19 +182,34 @@ func (h *handler) handleSyncFnDryRun() error {
 func (h *handler) handleImportFilterDryRun() error {
 	docid := h.getQuery("doc_id")
 
-	body, err := h.readDocument()
+	var importFilterPayload ImportFilterDryRunPayload
+	err := h.readJSONInto(&importFilterPayload)
 	if err != nil {
-		if docid == "" {
-			return fmt.Errorf("Error reading body: %s, no doc id provided for dry run", err)
-		}
+		return base.HTTPErrorf(http.StatusBadRequest, "Error reading import filter payload: %v", err)
 	}
 
-	if docid != "" && body != nil {
+	// Cannot pass both doc_id and body in the request body
+	if len(importFilterPayload.Doc) > 0 && docid != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
 	}
-	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), body, docid)
+
+	var doc db.Body
+	if docid != "" {
+		docInBucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+		if err != nil {
+			return err
+		}
+		doc = docInBucket.Body(h.ctx())
+	} else {
+		doc = importFilterPayload.Doc
+	}
+	shouldImport, err := h.collection.ImportFilterDryRun(h.ctx(), doc, importFilterPayload.Function)
 	errorMsg := ""
 	if err != nil {
+		var importFilterDryRunErr *base.ImportFilterDryRunError
+		if !errors.As(err, &importFilterDryRunErr) {
+			return err
+		}
 		errorMsg = err.Error()
 	}
 	resp := ImportFilterDryRun{
