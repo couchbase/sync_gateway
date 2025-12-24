@@ -116,12 +116,10 @@ type SyncRunner struct {
 	expiry            *uint32             // document expiry (in seconds) specified via expiry() callback
 }
 
-func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration) (*SyncRunner, error) {
+func NewSyncRunnerWithLogging(ctx context.Context, funcSource string, timeout time.Duration, errorLogFunc, infoLogFunc func(string)) (*SyncRunner, error) {
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
-	err := runner.InitWithLogging(funcSource, timeout,
-		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Sync %s", base.UD(s)) },
-		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Sync %s", base.UD(s)) })
+	err := runner.InitWithLogging(funcSource, timeout, errorLogFunc, infoLogFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +208,12 @@ func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration
 		return output, err
 	}
 	return runner, nil
+}
+
+func NewSyncRunner(ctx context.Context, funcSource string, timeout time.Duration) (*SyncRunner, error) {
+	errorLogFunc := func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Sync %s", base.UD(s)) }
+	infoLogFunc := func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Sync %s", base.UD(s)) }
+	return NewSyncRunnerWithLogging(ctx, funcSource, timeout, errorLogFunc, infoLogFunc)
 }
 
 func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {

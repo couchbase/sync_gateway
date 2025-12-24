@@ -21,12 +21,18 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+type SyncFnDryRunLogging struct {
+	Errors []string `json:"errors"`
+	Info   []string `json:"info"`
+}
+
 type SyncFnDryRun struct {
-	Channels  base.Set           `json:"channels"`
-	Access    channels.AccessMap `json:"access"`
-	Roles     channels.AccessMap `json:"roles"`
-	Exception string             `json:"exception"`
-	Expiry    *uint32            `json:"expiry,omitempty"`
+	Channels  base.Set            `json:"channels"`
+	Access    channels.AccessMap  `json:"access"`
+	Roles     channels.AccessMap  `json:"roles"`
+	Exception string              `json:"exception,omitempty"`
+	Expiry    *uint32             `json:"expiry,omitempty"`
+	Logging   SyncFnDryRunLogging `json:"logging"`
 }
 
 type ImportFilterDryRun struct {
@@ -83,7 +89,7 @@ func (h *handler) handleSyncFnDryRun() error {
 	}
 
 	if syncDryRunPayload.Doc == nil && docid == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "no docid or document provided")
+		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -144,7 +150,16 @@ func (h *handler) handleSyncFnDryRun() error {
 	newRev := db.CreateRevIDWithBytes(generation, matchRev, rawDocBytes)
 	newDoc.RevID = newRev
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function)
+	logErrors := make([]string, 0)
+	logInfo := make([]string, 0)
+	errorLogFn := func(s string) {
+		logErrors = append(logErrors, s)
+	}
+	infoLogFn := func(s string) {
+		logInfo = append(logInfo, s)
+	}
+
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
@@ -154,6 +169,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		errMsg := syncFnDryRunErr.Error()
 		resp := SyncFnDryRun{
 			Exception: errMsg,
+			Logging:   SyncFnDryRunLogging{Errors: logErrors, Info: logInfo},
 		}
 		h.writeJSON(resp)
 		return nil
@@ -169,6 +185,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		output.Roles,
 		errorMsg,
 		output.Expiry,
+		SyncFnDryRunLogging{Errors: logErrors, Info: logInfo},
 	}
 	h.writeJSON(resp)
 	return nil
