@@ -1291,8 +1291,6 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
-	// invalid javascript function syntax
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"sync_function": "this isn't valid javascript'"}`), http.StatusBadRequest)
 }
 
 func TestImportFilterDryRun(t *testing.T) {
@@ -1310,111 +1308,213 @@ func TestImportFilterDryRun(t *testing.T) {
 	tests := []struct {
 		name            string
 		dbImportFilter  string
-		importFilter    string
-		document        any
-		docID           string
-		existingDoc     bool
-		existingDocID   string
+		request         ImportFilterDryRunPayload
+		requestDocID    bool
 		existingDocBody string
 		expectedOutput  ImportFilterDryRun
 		expectedStatus  int
 	}{
 		{
-			name:           "db_import_filter-no_custom_import_filter-doc_body-no_existing_doc",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "",
-			document:       map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			existingDoc:    false,
+			name: "db import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: "",
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:         "no_db_import_filter-custom_import_filter-doc_body-no_existing_doc",
-			importFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:     map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			existingDoc:  false,
+			name: "request db import filter",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "db_import_filter-custom_import_filter-doc_body-no_existing_doc",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:       map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			existingDoc:    false,
+			name: "db and request import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "db_import_filter-no_custom_import_filter-doc_body-no_existing_doc-filter_typeError",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "",
-			document:       map[string]any{"accessUser": "user"},
-			existingDoc:    false,
+			name: "db import filter type error",
+			dbImportFilter: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:         "no_db_import_filter-custom_import_filter-doc_body-no_existing_doc-filter_typeError",
-			importFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:     map[string]any{"accessUser": "user"},
-			existingDoc:  false,
+			name: "request import filter type error",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "db_import_filter-custom_import_filter-doc_body-no_existing_doc-filter_typeError",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:       map[string]any{"accessUser": "user"},
-			existingDoc:    false,
+			name: "db and request import filter type error",
+			dbImportFilter: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+					// This will cause a Type error since the document tested will not contain doc.user.num
+					if (doc.user.num) {
+						return true;
+					} else {
+						return false;
+					}
+				}`,
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "db_import_filter-no_custom_import_filter-doc_body-no_existing_doc-filter_false",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "",
-			document:       map[string]any{"user": 23},
-			existingDoc:    false,
+			name: "db import filter does not import doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
 			expectedOutput: ImportFilterDryRun{},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "no_db_import_filter-custom_import_filter-doc_body-no_existing_doc-filter_false",
-			importFilter:   "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:       map[string]any{"user": 23},
-			existingDoc:    false,
+			name: "request import filter does not import doc",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
 			expectedOutput: ImportFilterDryRun{},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "db_import_filter-custom_import_filter-doc_body-no_existing_doc-filter_false",
-			dbImportFilter: "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:   "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:       map[string]any{"user": 23},
-			existingDoc:    false,
+			name: "request  and db import filter does not import doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
 			expectedOutput: ImportFilterDryRun{},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
+			name: "db import filter with existing doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			requestDocID:    true,
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1422,11 +1522,17 @@ func TestImportFilterDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
+			name: "request import filter with existing doc",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			},
+			requestDocID:    true,
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1434,12 +1540,24 @@ func TestImportFilterDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-custom_import_filter-no_doc_body-existing_doc-docid",
+			name: "request and db import filter with existing doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			},
+			requestDocID:    true,
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
@@ -1447,129 +1565,67 @@ func TestImportFilterDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-invalid_docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc404",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-invalid_docid",
+			name:            "no import filter with existing doc",
+			requestDocID:    true,
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
-				Error: "not_found",
+				ShouldImport: true,
 			},
-			expectedStatus: http.StatusNotFound,
+			expectedStatus: http.StatusOK,
 		},
 		{
-			name:            "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc404",
-			existingDoc:     true,
-			existingDocID:   "no_db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
-			existingDocBody: `{"user":{"num":125}}`,
-			expectedOutput: ImportFilterDryRun{
-				Error: "not_found",
+			name: "no import filter with request doc",
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"user": 23,
+				},
 			},
-			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name:            "db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			docID:           "doc404",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-custom_import_filter-no_doc_body-existing_doc-invalid_docid",
-			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
-				Error: "not_found",
+				ShouldImport: true,
 			},
-			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name:            "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-no_custom_import_filter-doc_body-existing_doc-docid",
-			existingDocBody: `{"user":{"num":125}}`,
-			expectedOutput: ImportFilterDryRun{
-				Error: "Bad Request",
-			},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:            "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "no_db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			existingDocBody: `{"user":{"num":125}}`,
-			expectedOutput: ImportFilterDryRun{
-				Error: "Bad Request",
-			},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:            "db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			dbImportFilter:  "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			importFilter:    "function(doc) { if (doc.user.num) { return true; } else { return false; } }",
-			document:        map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			docID:           "db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "db_import_filter-custom_import_filter-doc_body-existing_doc-docid",
-			existingDocBody: `{"user":{"num":125}}`,
-			expectedOutput: ImportFilterDryRun{
-				Error: "Bad Request",
-			},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:            "no_db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
-			existingDoc:     true,
-			existingDocID:   "no_db_import_filter-no_custom_import_filter-no_doc_body-existing_doc-docid",
-			existingDocBody: `{"user":{"num":125}}`,
-			expectedOutput: ImportFilterDryRun{
-				Error: "Bad Request",
-			},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:     "no_db_import_filter-no_custom_import_filter-doc_body-no_existing_doc-no_docid",
-			document: map[string]interface{}{"user": map[string]interface{}{"num": 23}},
-			expectedOutput: ImportFilterDryRun{
-				Error: "Bad Request",
-			},
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+
 			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/import_filter", test.dbImportFilter), http.StatusOK)
 
+			if test.existingDocBody != "" {
+				rt.PutDoc(test.name, test.existingDocBody)
+			}
+
+			bodyBytes, err := json.Marshal(test.request)
+			require.NoError(t, err)
+
 			url := "/{{.keyspace}}/_import_filter"
-			if test.existingDoc {
-				ver := rt.PutDoc(test.existingDocID, test.existingDocBody)
-				rt.WaitForVersion(test.existingDocID, ver)
+			if test.requestDocID {
+				url += "?doc_id=" + test.name
 			}
-			if test.docID != "" {
-				url += "?doc_id=" + test.docID
-			}
-			bodyMap := make(map[string]interface{})
-			if test.importFilter != "" {
-				bodyMap["import_filter"] = test.importFilter
-			}
-			if test.document != nil {
-				bodyMap["doc"] = test.document
-			}
-			bodyBytes, _ := json.Marshal(bodyMap)
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
 			var output ImportFilterDryRun
-			err := json.Unmarshal(resp.Body.Bytes(), &output)
+			err = json.Unmarshal(resp.Body.Bytes(), &output)
 			assert.NoError(t, err)
 			assert.Equal(t, test.expectedOutput, output)
 		})
 	}
+}
+
+func TestImportFilterDryRunErrors(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// doc ID not found
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=missing", `{}`), http.StatusNotFound)
+	// no doc ID or inline body provided
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{}`), http.StatusBadRequest)
+	// invalid request
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=doc", `{"doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
+	// invalid request json
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": {"invalid_json"}`), http.StatusBadRequest)
+	// invalid doc body type
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 }

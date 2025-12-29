@@ -550,37 +550,37 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, d
 func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string) (bool, error) {
 
 	var shouldImport bool
+
+	// fetch configured import filter if one is not specified
 	if importFn == "" {
 		importFilter := db.importFilter()
 		if importFilter == nil {
-			return false, base.HTTPErrorf(http.StatusBadRequest, "No import filter specified")
+			return true, nil
 		}
-		output, err := importFilter.EvaluateFunction(ctx, doc, true)
+		importFn = importFilter.Function()
+	}
+
+	// create new import filter runner for this dry run
+	jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+	importRunner, err := newImportFilterRunner(ctx, importFn, jsTimeout)
+	if err != nil {
+		return false, errors.New("failed to create import filter runner: " + err.Error())
+	}
+	importOutput, err := importRunner.Call(ctx, doc)
+	if err != nil {
+		return false, &base.ImportFilterDryRunError{Err: err}
+	}
+	switch result := importOutput.(type) {
+	case bool:
+		shouldImport = result
+	case string:
+		boolResult, err := strconv.ParseBool(result)
 		if err != nil {
-			return false, &base.ImportFilterDryRunError{Err: err}
+			return false, err
 		}
-		shouldImport = output
-	} else {
-		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
-		importRunner, err := newImportFilterRunner(ctx, importFn, jsTimeout)
-		if err != nil {
-			return false, errors.New("failed to create import filter runner: " + err.Error())
-		}
-		importOuput, err := importRunner.Call(ctx, doc)
-		switch result := importOuput.(type) {
-		case bool:
-			shouldImport = result
-			break
-		case string:
-			boolResult, err := strconv.ParseBool(result)
-			if err != nil {
-				return false, err
-			}
-			shouldImport = boolResult
-			break
-		default:
-			return false, &base.ImportFilterDryRunError{Err: err}
-		}
+		shouldImport = boolResult
+	default:
+		return false, &base.ImportFilterDryRunError{Err: err}
 	}
 
 	return shouldImport, nil
