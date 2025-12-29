@@ -489,11 +489,9 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 // ////// Import Filter Function
 
 // Compiles a JavaScript event function to a jsImportFilterRunner object.
-func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+func newImportFilterRunnerWithLogging(ctx context.Context, funcSource string, timeout time.Duration, errorLogFunc, infoLogFunc func(string)) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
-	err := importFilterRunner.InitWithLogging(funcSource, timeout,
-		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Import %s", base.UD(s)) },
-		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Import %s", base.UD(s)) })
+	err := importFilterRunner.InitWithLogging(funcSource, timeout, errorLogFunc, infoLogFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +502,12 @@ func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.
 	}
 
 	return importFilterRunner, nil
+}
+
+func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+	errLogFunc := func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Import %s", base.UD(s)) }
+	infoLogFunc := func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Import %s", base.UD(s)) }
+	return newImportFilterRunnerWithLogging(ctx, funcSource, timeout, errLogFunc, infoLogFunc)
 }
 
 type ImportFilterFunction struct {
@@ -547,7 +551,7 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, d
 }
 
 // ImportFilterDryRun Runs a document through the import filter and returns a boolean and error
-func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string) (bool, error) {
+func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string, errorLogFunc, infoLogFunc func(string)) (bool, error) {
 
 	var shouldImport bool
 
@@ -562,7 +566,7 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 
 	// create new import filter runner for this dry run
 	jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
-	importRunner, err := newImportFilterRunner(ctx, importFn, jsTimeout)
+	importRunner, err := newImportFilterRunnerWithLogging(ctx, importFn, jsTimeout, errorLogFunc, infoLogFunc)
 	if err != nil {
 		return false, errors.New("failed to create import filter runner: " + err.Error())
 	}

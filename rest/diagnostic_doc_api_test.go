@@ -987,7 +987,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1009,7 +1009,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1037,7 +1037,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1061,7 +1061,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1083,7 +1083,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"channel_from_request_sync_func"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1109,7 +1109,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetOf("newdoc_channel", "olddoc_channel"),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1133,7 +1133,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:    channels.AccessMap{},
 				Roles:     channels.AccessMap{},
 				Exception: "403 user num too low",
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1161,7 +1161,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{`got oldDoc`},
 				},
@@ -1177,7 +1177,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetOf(defaultChannelName),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1208,7 +1208,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"chanLog"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{"This is a console.error log from doc.logerror"},
 					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
 				},
@@ -1237,7 +1237,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"chanLog"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{"This is a console.error log from doc.logerror"},
 					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
 				},
@@ -1331,6 +1331,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1350,6 +1354,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1376,6 +1384,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1396,6 +1408,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1416,6 +1432,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1444,6 +1464,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1461,7 +1485,12 @@ func TestImportFilterDryRun(t *testing.T) {
 					"user": 23,
 				},
 			},
-			expectedOutput: ImportFilterDryRun{},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1478,7 +1507,12 @@ func TestImportFilterDryRun(t *testing.T) {
 					"user": 23,
 				},
 			},
-			expectedOutput: ImportFilterDryRun{},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1502,7 +1536,12 @@ func TestImportFilterDryRun(t *testing.T) {
 					"user": 23,
 				},
 			},
-			expectedOutput: ImportFilterDryRun{},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1518,6 +1557,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1536,6 +1579,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1561,6 +1608,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1570,6 +1621,10 @@ func TestImportFilterDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":125}}`,
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -1582,6 +1637,66 @@ func TestImportFilterDryRun(t *testing.T) {
 			},
 			expectedOutput: ImportFilterDryRun{
 				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "logging with db import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.logerror) {
+							console.error("This is a console.error log from doc.logerror");
+						} else {
+							console.log("This is a console.log log from doc.logerror");
+						}
+						if (doc.loginfo) {
+							console.log("This is a console.log log from doc.loginfo");
+						} else {
+							console.error("This is a console.error log from doc.loginfo");
+						}
+						console.log("one more info for good measure...");
+						return true
+					}`,
+			requestDocID:    true,
+			existingDocBody: `{ "logerror": true, "loginfo": true}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{"This is a console.error log from doc.logerror"},
+					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "logging with request import filter",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.logerror) {
+							console.error("This is a console.error log from doc.logerror");
+						} else {
+							console.log("This is a console.log log from doc.logerror");
+						}
+						if (doc.loginfo) {
+							console.log("This is a console.log log from doc.loginfo");
+						} else {
+							console.error("This is a console.error log from doc.loginfo");
+						}
+						console.log("one more info for good measure...");
+						return true
+					}`,
+			},
+			requestDocID:    true,
+			existingDocBody: `{ "logerror": true, "loginfo": true}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{"This is a console.error log from doc.logerror"},
+					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
+				},
 			},
 			expectedStatus: http.StatusOK,
 		},
