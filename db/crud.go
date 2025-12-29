@@ -1177,8 +1177,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 // SyncFnDryrun Runs the given document body through a sync function and returns expiry, channels doc was placed in,
 // access map for users, roles, handler errors and sync fn exceptions.
 // If syncFn is provided, it will be used instead of the one configured on the database.
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, syncFn string) (*channels.ChannelMapperOutput, error) {
-
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, syncFn string, errorLogFunc, infoLogFunc func(string)) (*channels.ChannelMapperOutput, error) {
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
@@ -1189,32 +1188,30 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 	if err != nil {
 		return nil, err
 	}
-	var output *channels.ChannelMapperOutput
-	var syncErr error
-	if syncFn == "" && db.ChannelMapper != nil {
-		output, err = db.ChannelMapper.MapToChannelsAndAccess(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
-		if err != nil {
-			return nil, &base.SyncFnDryRunError{Err: err}
-		}
-	} else {
-		if syncFn == "" {
+
+	// fetch configured sync function if one is not provided
+	if syncFn == "" {
+		if db.ChannelMapper != nil {
+			syncFn = db.ChannelMapper.Function()
+		} else {
 			scopeAndCollectionName := db.ScopeAndCollectionName()
 			syncFn = channels.GetDefaultSyncFunction(scopeAndCollectionName.Scope, scopeAndCollectionName.Collection)
 		}
-		jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
-		syncRunner, err := channels.NewSyncRunner(ctx, syncFn, jsTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create sync runner: %v", err)
-		}
-		jsOutput, err := syncRunner.Call(ctx, mutableBody, string(oldDoc._rawBody), metaMap, syncOptions)
-		if err != nil {
-
-			return nil, &base.SyncFnDryRunError{Err: err}
-		}
-		output = jsOutput.(*channels.ChannelMapperOutput)
 	}
 
-	return output, syncErr
+	// create new sync runner instance for this dry run
+	jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+	syncRunner, err := channels.NewSyncRunnerWithLogging(ctx, syncFn, jsTimeout, errorLogFunc, infoLogFunc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sync runner: %v", err)
+	}
+
+	jsOutput, err := syncRunner.Call(ctx, mutableBody, sgbucket.JSONString(oldDoc._rawBody), metaMap, syncOptions)
+	if err != nil {
+		return nil, &base.SyncFnDryRunError{Err: err}
+	}
+
+	return jsOutput.(*channels.ChannelMapperOutput), nil
 }
 
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
