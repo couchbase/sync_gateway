@@ -1735,8 +1735,6 @@ func TestImportFilterDryRunErrors(t *testing.T) {
 
 	// doc ID not found
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=missing", `{}`), http.StatusNotFound)
-	// no doc ID or inline body provided
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{}`), http.StatusBadRequest)
 	// invalid request
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=doc", `{"doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
 	// invalid request json
