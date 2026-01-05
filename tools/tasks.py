@@ -282,8 +282,8 @@ class TaskRunner(object):
 
     def __exit__(
         self,
-        exc_type: Optional[BaseException],
-        exc_value: Optional[BaseException],
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[type[BaseException]],
         traceback: Optional[types.TracebackType],
     ):
         self.close_all_files()
