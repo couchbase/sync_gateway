@@ -35,10 +35,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: go-build
         run: go build "./..."
 
@@ -46,10 +46,10 @@ jobs:
     name: addlicense
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - run: go install github.com/google/addlicense@latest
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
@@ -57,14 +57,14 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.0.2
+          version: v2.7
           args: --config=.golangci-strict.yml
 
   test:
@@ -84,10 +84,10 @@ jobs:
       MallocNanoZone: 0
     name: test (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -104,10 +104,10 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: Run Tests
         run: go test -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
@@ -123,10 +123,10 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_USE_DEFAULT_COLLECTION: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: Run Tests
         run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
@@ -139,14 +139,14 @@ jobs:
   python-format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/ruff-action@v3
         with:
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/ruff-action@v3
   test-sgcollect:
     runs-on: ${{ matrix.os }}
@@ -155,7 +155,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
       - name: Run test
         run: |
@@ -171,10 +171,10 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests
@@ -184,9 +184,18 @@ jobs:
     runs-on: ubuntu-latest
     name: build cache perf tool
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: 1.24.4
+          go-version: 1.25.5
       - name: Build
         run: go build "./tools/cache_perf_tool"
+  govulncheck:
+    runs-on: ubuntu-latest
+    name: Run govulncheck
+    steps:
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+           go-version-input: 1.25.5
+           go-package: ./...
