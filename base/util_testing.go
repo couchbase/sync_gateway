@@ -275,8 +275,8 @@ func TestsDisableGSI() bool {
 		return true
 	}
 
-	// Default to disabling GSI, but allow with SG_TEST_USE_GSI=true
-	useGSI := false
+	// Default to enable GSI, but disable with SG_TEST_USE_GSI=false
+	useGSI := true
 	if envUseGSI := os.Getenv(TestEnvSyncGatewayDisableGSI); envUseGSI != "" {
 		useGSI, _ = strconv.ParseBool(envUseGSI)
 	}
