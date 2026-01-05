@@ -18,11 +18,13 @@ import optparse
 import os
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 import threading
 import time
 import traceback
+import types
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -243,6 +245,11 @@ class PythonTask(object):
 
 
 class TaskRunner(object):
+    """
+    TaskRunner manages running tasks and collecting their output into files. Use as a context manager to cleanup the
+    temporary files when finished.
+    """
+
     def __init__(self, verbosity=0, default_name="couchbase.log", tmp_dir=None):
         self.files = {}
         self.tasks = {}
@@ -256,7 +263,7 @@ class TaskRunner(object):
             tmp_dir = os.path.abspath(os.path.expanduser(tmp_dir))
 
         try:
-            self.tmpdir = tempfile.mkdtemp(dir=tmp_dir)
+            self.tmpdir = tempfile.mkdtemp(dir=tmp_dir, prefix="sgcollect")
         except OSError as e:
             print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
             sys.exit(1)
@@ -269,6 +276,18 @@ class TaskRunner(object):
         ):
             log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
             log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[BaseException],
+        exc_value: Optional[BaseException],
+        traceback: Optional[types.TracebackType],
+    ):
+        self.close_all_files()
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def collect_file(self, filename):
         """Add a file to the list of files collected. Used to capture the exact
