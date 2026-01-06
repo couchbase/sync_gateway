@@ -211,9 +211,13 @@ func (h *handler) handleImportFilterDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
 	}
 
+	if len(importFilterPayload.Doc) == 0 && docid == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "no doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
+	}
+
 	var doc db.Body
 	if docid != "" {
-		docInBucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+		docInBucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
 		if err != nil {
 			return err
 		}

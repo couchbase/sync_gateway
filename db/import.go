@@ -252,13 +252,13 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else {
-				shouldImport, err = importFilter.EvaluateFunction(ctx, body, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, body)
 			}
 
 			if err != nil {
@@ -524,36 +524,17 @@ func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, dryRun bool) (bool, error) {
+func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
 
 	result, err := i.Call(ctx, doc)
 	if err != nil {
-		if !dryRun {
-			base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
-		}
 		return false, err
 	}
-	switch result := result.(type) {
-	case bool:
-		return result, nil
-	case string:
-		boolResult, err := strconv.ParseBool(result)
-		if err != nil {
-			return false, err
-		}
-		return boolResult, nil
-	default:
-		if !dryRun {
-			base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
-		}
-		return false, errors.New("Import filter function returned non-boolean value.")
-	}
+	return parseImportFilterOutput(result)
 }
 
 // ImportFilterDryRun Runs a document through the import filter and returns a boolean and error
 func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string, errorLogFunc, infoLogFunc func(string)) (bool, error) {
-
-	var shouldImport bool
 
 	// fetch configured import filter if one is not specified
 	if importFn == "" {
@@ -574,18 +555,22 @@ func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, do
 	if err != nil {
 		return false, &base.ImportFilterDryRunError{Err: err}
 	}
-	switch result := importOutput.(type) {
+
+	return parseImportFilterOutput(importOutput)
+}
+
+func parseImportFilterOutput(output interface{}) (bool, error) {
+	switch result := output.(type) {
 	case bool:
-		shouldImport = result
+		return result, nil
 	case string:
 		boolResult, err := strconv.ParseBool(result)
 		if err != nil {
 			return false, err
 		}
-		shouldImport = boolResult
+		return boolResult, nil
 	default:
-		return false, &base.ImportFilterDryRunError{Err: err}
+		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 
-	return shouldImport, nil
 }

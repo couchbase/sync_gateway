@@ -1703,7 +1703,7 @@ func TestImportFilterDryRun(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		rt.Run(test.name, func(t *testing.T) {
 
 			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/import_filter", test.dbImportFilter), http.StatusOK)
 
@@ -1741,4 +1741,6 @@ func TestImportFilterDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": {"invalid_json"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
+	// no docID and no body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{}`), http.StatusBadRequest)
 }
