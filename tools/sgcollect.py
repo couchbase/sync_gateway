@@ -902,77 +902,75 @@ def main() -> NoReturn:
         do_upload(args[0], options.just_upload_into, options.upload_proxy)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
-    # The output of the tasks will go directly into couchbase.log
-    runner = TaskRunner(
+    with TaskRunner(
         verbosity=options.verbosity,
         default_name="sync_gateway.log",
         tmp_dir=options.tmp_dir,
-    )
+    ) as runner:
+        if not options.product_only:
+            for task in make_os_tasks(["sync_gateway"]):
+                runner.run(task)
 
-    if not options.product_only:
-        for task in make_os_tasks(["sync_gateway"]):
+        # Output the Python version if verbosity was enabled
+        if options.verbosity:
+            log("Python version: %s" % sys.version)
+
+        # Find path to sg binary
+        sg_binary_path = discover_sg_binary_path(options, sg_url, auth_headers)
+
+        # Run SG specific tasks
+        for task in make_sg_tasks(
+            sg_url=sg_url,
+            auth_headers=auth_headers,
+            sync_gateway_config_path_option=options.sync_gateway_config,
+            sync_gateway_executable_path=options.sync_gateway_executable,
+            should_redact=should_redact,
+        ):
             runner.run(task)
 
-    # Output the Python version if verbosity was enabled
-    if options.verbosity:
-        log("Python version: %s" % sys.version)
-
-    # Find path to sg binary
-    sg_binary_path = discover_sg_binary_path(options, sg_url, auth_headers)
-
-    # Run SG specific tasks
-    for task in make_sg_tasks(
-        sg_url=sg_url,
-        auth_headers=auth_headers,
-        sync_gateway_config_path_option=options.sync_gateway_config,
-        sync_gateway_executable_path=options.sync_gateway_executable,
-        should_redact=should_redact,
-    ):
-        runner.run(task)
-
-    if (
-        sg_binary_path is not None
-        and sg_binary_path != ""
-        and os.path.exists(sg_binary_path)
-    ):
-        runner.collect_file(sg_binary_path)
-    else:
-        print(
-            "WARNING: unable to find Sync Gateway executable, omitting from result.  Go pprofs will not be accurate."
-        )
-
-    runner.run(get_sgcollect_info_options_task(options, args))
-
-    runner.close_all_files()
-
-    # Build redacted zip file
-    if should_redact:
-        log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(
-            redact_zip_file, "sgcollect_info", options.salt_value, platform.node()
-        )
-
-    # Build the actual zip file
-    runner.zip(zip_filename, "sgcollect_info", platform.node())
-
-    if options.redact_level != "none":
-        print("Zipfile built: {0}".format(redact_zip_file))
-
-    print("Zipfile built: {0}".format(zip_filename))
-
-    if not upload_url:
-        sys.exit(0)
-    # Upload the zip to the URL to S3 if required
-    try:
-        if should_redact:
-            exit_code = do_upload(redact_zip_file, upload_url, options.upload_proxy)
+        if (
+            sg_binary_path is not None
+            and sg_binary_path != ""
+            and os.path.exists(sg_binary_path)
+        ):
+            runner.collect_file(sg_binary_path)
         else:
-            exit_code = do_upload(zip_filename, upload_url, options.upload_proxy)
-    finally:
-        if not options.keep_zip:
-            delete_zip(zip_filename)
-            delete_zip(redact_zip_file)
-    sys.exit(exit_code)
+            print(
+                "WARNING: unable to find Sync Gateway executable, omitting from result.  Go pprofs will not be accurate."
+            )
+
+        runner.run(get_sgcollect_info_options_task(options, args))
+
+        runner.close_all_files()
+
+        # Build redacted zip file
+        if should_redact:
+            log("Redacting log files to level: %s" % options.redact_level)
+            runner.redact_and_zip(
+                redact_zip_file, "sgcollect_info", options.salt_value, platform.node()
+            )
+
+        try:
+            # Build the actual zip file
+            runner.zip(zip_filename, "sgcollect_info", platform.node())
+
+            if options.redact_level != "none":
+                print("Zipfile built: {0}".format(redact_zip_file))
+
+            print("Zipfile built: {0}".format(zip_filename))
+
+            if not upload_url:
+                sys.exit(0)
+            # Upload the zip to the URL to S3 if required
+            if should_redact:
+                exit_code = do_upload(redact_zip_file, upload_url, options.upload_proxy)
+            else:
+                exit_code = do_upload(zip_filename, upload_url, options.upload_proxy)
+            sys.exit(exit_code)
+        finally:
+            if not options.keep_zip and upload_url:
+                delete_zip(zip_filename)
+                delete_zip(redact_zip_file)
 
 
 def ud(value, should_redact=True):
