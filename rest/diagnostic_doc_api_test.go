@@ -64,74 +64,6 @@ func TestGetAlldocChannels(t *testing.T) {
 
 }
 
-func TestGetDocDryRuns(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
-	defer rt.Close()
-	bucket := rt.Bucket().GetName()
-	ImportFilter := `"function(doc) { if (doc.user.num) { return true; } else { return false; } }"`
-	newSyncFn := `"function(doc,oldDoc){if (doc.user.num >= 100) {channel(doc.channel);} else {throw({forbidden: 'user num too low'});}if (oldDoc){ console.log(oldDoc); if (oldDoc.user.num > doc.user.num) { access(oldDoc.user.name, doc.channel);} else {access(doc.user.name[0], doc.channel);}}}"`
-	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-		`{"bucket":"%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "sync":%s, "import_filter":%s}`,
-		bucket, base.TestUseXattrs(), newSyncFn, ImportFilter))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	// Import filter import=false and type error
-	response := rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"accessUser": "user"}`)
-	RequireStatus(t, response, http.StatusOK)
-
-	var respMap2 ImportFilterDryRun
-	err := json.Unmarshal(response.BodyBytes(), &respMap2)
-	assert.NoError(t, err)
-	assert.Equal(t, respMap2.Error, "TypeError: Cannot access member 'num' of undefined")
-	assert.False(t, respMap2.ShouldImport)
-
-	// Import filter import=true and no error
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"user":{"num":23}}`)
-	RequireStatus(t, response, http.StatusOK)
-
-	err = json.Unmarshal(response.BodyBytes(), &respMap2)
-	assert.NoError(t, err)
-	assert.Equal(t, respMap2.Error, "")
-	assert.True(t, respMap2.ShouldImport)
-
-	// Import filter import=true and no error
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter", `{"user":23}`)
-	RequireStatus(t, response, http.StatusOK)
-
-	err = json.Unmarshal(response.BodyBytes(), &respMap2)
-	assert.NoError(t, err)
-	assert.Equal(t, respMap2.Error, "")
-	assert.False(t, respMap2.ShouldImport)
-
-	_ = rt.PutDoc("doc2", `{"user":{"num":125}}`)
-	// Import filter get doc from bucket with no body
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", ``)
-	RequireStatus(t, response, http.StatusOK)
-
-	err = json.Unmarshal(response.BodyBytes(), &respMap2)
-	assert.NoError(t, err)
-	assert.Equal(t, respMap2.Error, "")
-	assert.True(t, respMap2.ShouldImport)
-
-	// Import filter get doc from bucket error doc not found
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc404", ``)
-	RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &respMap2)
-	assert.NoError(t, err)
-	if base.UnitTestUrlIsWalrus() {
-		assert.Equal(t, respMap2.Error, `key "doc404" missing`)
-	} else {
-		assert.Contains(t, respMap2.Error, "<ud>doc404</ud>: Not Found")
-	}
-	assert.False(t, respMap2.ShouldImport)
-
-	// Import filter get doc from bucket error body provided
-	response = rt.SendDiagnosticRequest("GET", "/{{.keyspace}}/_import_filter?doc_id=doc2", `{"user":{"num":23}}`)
-	RequireStatus(t, response, http.StatusBadRequest)
-
-}
-
 func TestGetUserDocAccessSpan(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -630,6 +562,8 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.TestRequiresCollections(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
@@ -1053,7 +987,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1075,7 +1009,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1103,7 +1037,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1127,7 +1061,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
 				Expiry:   base.Ptr(uint32(10)),
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1149,7 +1083,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"channel_from_request_sync_func"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1175,7 +1109,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetOf("newdoc_channel", "olddoc_channel"),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1199,7 +1133,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Access:    channels.AccessMap{},
 				Roles:     channels.AccessMap{},
 				Exception: "403 user num too low",
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1227,7 +1161,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
 				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{`got oldDoc`},
 				},
@@ -1243,7 +1177,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetOf(defaultChannelName),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
 				},
@@ -1274,7 +1208,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"chanLog"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{"This is a console.error log from doc.logerror"},
 					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
 				},
@@ -1303,7 +1237,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"chanLog"}),
 				Access:   channels.AccessMap{},
 				Roles:    channels.AccessMap{},
-				Logging: SyncFnDryRunLogging{
+				Logging: DryRunLogging{
 					Errors: []string{"This is a console.error log from doc.logerror"},
 					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
 				},
@@ -1357,6 +1291,456 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
-	// invalid javascript function syntax
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"sync_function": "this isn't valid javascript'"}`), http.StatusBadRequest)
+}
+
+func TestImportFilterDryRun(t *testing.T) {
+
+	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	tests := []struct {
+		name            string
+		dbImportFilter  string
+		request         ImportFilterDryRunPayload
+		requestDocID    bool
+		existingDocBody string
+		expectedOutput  ImportFilterDryRun
+		expectedStatus  int
+	}{
+		{
+			name: "db import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: "",
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request db import filter",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "db and request import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": map[string]interface{}{"num": 23},
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "db import filter type error",
+			dbImportFilter: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request import filter type error",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "db and request import filter type error",
+			dbImportFilter: `function(doc) {
+						// This will cause a Type error since the document tested will not contain doc.user.num
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+					// This will cause a Type error since the document tested will not contain doc.user.num
+					if (doc.user.num) {
+						return true;
+					} else {
+						return false;
+					}
+				}`,
+				Doc: db.Body{
+					"accessUser": "user",
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "db import filter does not import doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request import filter does not import doc",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request  and db import filter does not import doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "db import filter with existing doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			requestDocID:    true,
+			existingDocBody: `{"user":{"num":125}}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request import filter with existing doc",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			},
+			requestDocID:    true,
+			existingDocBody: `{"user":{"num":125}}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request and db import filter with existing doc",
+			dbImportFilter: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.user.num) {
+							return true;
+						} else {
+							return false;
+						}
+					}`,
+			},
+			requestDocID:    true,
+			existingDocBody: `{"user":{"num":125}}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:            "no import filter with existing doc",
+			requestDocID:    true,
+			existingDocBody: `{"user":{"num":125}}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "no import filter with request doc",
+			request: ImportFilterDryRunPayload{
+				Doc: db.Body{
+					"user": 23,
+				},
+			},
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "logging with db import filter",
+			dbImportFilter: `function(doc) {
+						if (doc.logerror) {
+							console.error("This is a console.error log from doc.logerror");
+						} else {
+							console.log("This is a console.log log from doc.logerror");
+						}
+						if (doc.loginfo) {
+							console.log("This is a console.log log from doc.loginfo");
+						} else {
+							console.error("This is a console.error log from doc.loginfo");
+						}
+						console.log("one more info for good measure...");
+						return true
+					}`,
+			requestDocID:    true,
+			existingDocBody: `{ "logerror": true, "loginfo": true}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{"This is a console.error log from doc.logerror"},
+					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "logging with request import filter",
+			request: ImportFilterDryRunPayload{
+				Function: `function(doc) {
+						if (doc.logerror) {
+							console.error("This is a console.error log from doc.logerror");
+						} else {
+							console.log("This is a console.log log from doc.logerror");
+						}
+						if (doc.loginfo) {
+							console.log("This is a console.log log from doc.loginfo");
+						} else {
+							console.error("This is a console.error log from doc.loginfo");
+						}
+						console.log("one more info for good measure...");
+						return true
+					}`,
+			},
+			requestDocID:    true,
+			existingDocBody: `{ "logerror": true, "loginfo": true}`,
+			expectedOutput: ImportFilterDryRun{
+				ShouldImport: true,
+				Logging: DryRunLogging{
+					Errors: []string{"This is a console.error log from doc.logerror"},
+					Info:   []string{"This is a console.log log from doc.loginfo", "one more info for good measure..."},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		rt.Run(test.name, func(t *testing.T) {
+
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config/import_filter", test.dbImportFilter), http.StatusOK)
+
+			if test.existingDocBody != "" {
+				rt.PutDoc(test.name, test.existingDocBody)
+			}
+
+			bodyBytes, err := json.Marshal(test.request)
+			require.NoError(t, err)
+
+			url := "/{{.keyspace}}/_import_filter"
+			if test.requestDocID {
+				url += "?doc_id=" + test.name
+			}
+			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
+			RequireStatus(t, resp, test.expectedStatus)
+
+			var output ImportFilterDryRun
+			err = json.Unmarshal(resp.Body.Bytes(), &output)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedOutput, output)
+		})
+	}
+}
+
+func TestImportFilterDryRunErrors(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// doc ID not found
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=missing", `{}`), http.StatusNotFound)
+	// invalid request
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=doc", `{"doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
+	// invalid request json
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": {"invalid_json"}`), http.StatusBadRequest)
+	// invalid doc body type
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
+	// no docID and no body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{}`), http.StatusBadRequest)
 }
