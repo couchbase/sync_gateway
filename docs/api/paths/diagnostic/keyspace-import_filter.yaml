@@ -7,16 +7,31 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
-get:
+  - $ref: ../../components/parameters.yaml#/doc_id
+post:
   summary: Run a doc body through the Import filter and return results.
   description: |-
-    Run a document body through the import filter and return whether its imported or not, and any error messages.
+    Runs a document body through the import filter and return whether its
+    imported or not, and any error messages. If no custom import filter is
+    provided in the request body, the default or user-defined import filter
+    is used.
+
     * Sync Gateway Application Read Only
   requestBody:
     content:
       application/json:
         schema:
-          $ref: ../../components/schemas.yaml#/Document
+          type: object
+          properties:
+            import_filter:
+              description: |-
+                A JavaScript function that all imported documents in the
+                default scope and collection are ran through in order to filter
+                out what to import and what not to import.
+              type: string
+              example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
+            doc:
+              $ref: ../../components/schemas.yaml#/Document
   responses:
     '200':
       description: Document Processed by import filter successfully
