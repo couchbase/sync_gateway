@@ -238,13 +238,13 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, deleteBody)
 			} else {
-				shouldImport, err = importFilter.EvaluateFunction(ctx, body, false)
+				shouldImport, err = importFilter.EvaluateFunction(ctx, body)
 			}
 
 			if err != nil {
@@ -468,11 +468,9 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 // ////// Import Filter Function
 
 // Compiles a JavaScript event function to a jsImportFilterRunner object.
-func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+func newImportFilterRunnerWithLogging(ctx context.Context, funcSource string, timeout time.Duration, errorLogFunc, infoLogFunc func(string)) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
-	err := importFilterRunner.InitWithLogging(funcSource, timeout,
-		func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Import %s", base.UD(s)) },
-		func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Import %s", base.UD(s)) })
+	err := importFilterRunner.InitWithLogging(funcSource, timeout, errorLogFunc, infoLogFunc)
 	if err != nil {
 		return nil, err
 	}
@@ -483,6 +481,12 @@ func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.
 	}
 
 	return importFilterRunner, nil
+}
+
+func newImportFilterRunner(ctx context.Context, funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
+	errLogFunc := func(s string) { base.ErrorfCtx(ctx, base.KeyJavascript.String()+": Import %s", base.UD(s)) }
+	infoLogFunc := func(s string) { base.InfofCtx(ctx, base.KeyJavascript, "Import %s", base.UD(s)) }
+	return newImportFilterRunnerWithLogging(ctx, funcSource, timeout, errLogFunc, infoLogFunc)
 }
 
 type ImportFilterFunction struct {
@@ -499,16 +503,43 @@ func NewImportFilterFunction(ctx context.Context, fnSource string, timeout time.
 }
 
 // Calls a jsEventFunction returning an interface{}
-func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, dryRun bool) (bool, error) {
+func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
 
 	result, err := i.Call(ctx, doc)
 	if err != nil {
-		if !dryRun {
-			base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
-		}
 		return false, err
 	}
-	switch result := result.(type) {
+	return parseImportFilterOutput(result)
+}
+
+// ImportFilterDryRun Runs a document through the import filter and returns a boolean and error
+func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, importFn string, errorLogFunc, infoLogFunc func(string)) (bool, error) {
+
+	// fetch configured import filter if one is not specified
+	if importFn == "" {
+		importFilter := db.importFilter()
+		if importFilter == nil {
+			return true, nil
+		}
+		importFn = importFilter.Function()
+	}
+
+	// create new import filter runner for this dry run
+	jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
+	importRunner, err := newImportFilterRunnerWithLogging(ctx, importFn, jsTimeout, errorLogFunc, infoLogFunc)
+	if err != nil {
+		return false, errors.New("failed to create import filter runner: " + err.Error())
+	}
+	importOutput, err := importRunner.Call(ctx, doc)
+	if err != nil {
+		return false, &base.ImportFilterDryRunError{Err: err}
+	}
+
+	return parseImportFilterOutput(importOutput)
+}
+
+func parseImportFilterOutput(output interface{}) (bool, error) {
+	switch result := output.(type) {
 	case bool:
 		return result, nil
 	case string:
@@ -518,26 +549,7 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body, d
 		}
 		return boolResult, nil
 	default:
-		if !dryRun {
-			base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
-		}
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
-}
-func (db *DatabaseCollectionWithUser) ImportFilterDryRun(ctx context.Context, doc Body, docid string) (bool, error) {
 
-	importFilter := db.importFilter()
-	if docid != "" {
-		docInBucket, err := db.GetDocument(ctx, docid, DocUnmarshalAll)
-		if err == nil {
-			if doc == nil {
-				doc = docInBucket.Body(ctx)
-			}
-		} else {
-			return false, err
-		}
-	}
-	shouldImport, err := importFilter.EvaluateFunction(ctx, doc, true)
-
-	return shouldImport, err
 }
