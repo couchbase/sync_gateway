@@ -70,11 +70,23 @@ post:
                     additionalProperties:
                       x-additionalPropertiesName: channel
                       type: string
-
               exception:
                 description: Errors thrown by the sync function.
                 type: string
-
+              logging:
+                description: Logging emitted by the sync function during evaluation.
+                type: object
+                properties:
+                  errors:
+                    description: Error messages logged by the sync function.
+                    type: array
+                    items:
+                      type: string
+                  info:
+                    description: Info messages logged by the sync function.
+                    type: array
+                    items:
+                      type: string
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   parameters:

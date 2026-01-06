@@ -46,8 +46,20 @@ post:
               error:
                 description: Errors thrown by the Import filter.
                 type: string
-
-
+              logging:
+                description: Logging emitted by the import filter during evaluation.
+                type: object
+                properties:
+                  errors:
+                    description: Error messages logged by the import filter.
+                    type: array
+                    items:
+                      type: string
+                  info:
+                    description: Info messages logged by the import filter.
+                    type: array
+                    items:
+                      type: string
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   parameters:
