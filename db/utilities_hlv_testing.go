@@ -35,11 +35,14 @@ type HLVAgent struct {
 
 var defaultHelperBody = map[string]any{"version": 1}
 
-func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string) *HLVAgent {
+func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string, dontEncode bool) *HLVAgent {
+	if !dontEncode {
+		source = EncodeSource(source)
+	}
 	return &HLVAgent{
 		t:         t,
 		datastore: datastore,
-		Source:    EncodeSource(source), // all writes by the HLVHelper are done as this source
+		Source:    source, // all writes by the HLVHelper are done as this source
 		xattrName: xattrName,
 	}
 }

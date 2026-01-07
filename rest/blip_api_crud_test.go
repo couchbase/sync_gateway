@@ -2023,7 +2023,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 
 		const docID = "doc1"
 		otherSource := "otherSource"
-		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv", false)
 		existingHLVKey := "doc1"
 		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 

@@ -636,7 +636,7 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	newDoc, _, err := collection.GetDocWithXattrs(ctx, "doc1", db.DocUnmarshalAll)
 	require.NoError(t, err)
 
-	agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "newSource", base.VvXattrName)
+	agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "newSource", base.VvXattrName, false)
 	_ = agent.UpdateWithHLV(ctx, "doc1", newDoc.Cas, newDoc.HLV)
 
 	// force import

@@ -162,7 +162,7 @@ func TestReplicateVV(t *testing.T) {
 	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
 
-	hlvAgent := db.NewHLVAgent(t, fromDs, "fakeHLVSourceID", base.VvXattrName)
+	hlvAgent := db.NewHLVAgent(t, fromDs, "fakeHLVSourceID", base.VvXattrName, false)
 
 	testCases := []struct {
 		name        string
@@ -319,7 +319,7 @@ func TestVVObeyMou(t *testing.T) {
 	require.NoError(t, err)
 
 	docID := "doc1"
-	hlvAgent := db.NewHLVAgent(t, fromDs, fromBucketSourceID, base.VvXattrName)
+	hlvAgent := db.NewHLVAgent(t, fromDs, fromBucketSourceID, base.VvXattrName, false)
 	fromCas1 := hlvAgent.InsertWithHLV(ctx, "doc1")
 
 	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
@@ -844,4 +844,77 @@ func requirePV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
 	pvValue, ok := vv.PreviousVersions[sourceID]
 	require.True(t, ok)
 	require.Equal(t, cas, pvValue)
+}
+
+func TestReplicateTargetSource(t *testing.T) {
+	base.LongRunningTest(t)
+
+	ctx := base.TestCtx(t)
+	base.RequireNumTestBuckets(t, 2)
+	fromBucket := base.GetTestBucket(t)
+	defer fromBucket.Close(ctx)
+	toBucket := base.GetTestBucket(t)
+	defer toBucket.Close(ctx)
+
+	opts := XDCROptions{Mobile: MobileOn}
+	xdcr, err := NewXDCR(ctx, fromBucket, toBucket, opts)
+	require.NoError(t, err)
+	require.NoError(t, xdcr.Start(ctx))
+
+	defer func() {
+		// stop XDCR, will already be stopped if test doesn't fail early
+		err := xdcr.Stop(ctx)
+		if err != nil {
+			assert.Equal(t, ErrReplicationNotRunning, err)
+		}
+	}()
+
+	dataStores := map[base.DataStore]base.DataStore{
+		fromBucket.DefaultDataStore(): toBucket.DefaultDataStore(),
+	}
+	var fromDs base.DataStore
+	var toDs base.DataStore
+	if base.TestsUseNamedCollections() {
+		fromDs, err = fromBucket.GetNamedDataStore(0)
+		require.NoError(t, err)
+		toDs, err = toBucket.GetNamedDataStore(0)
+		require.NoError(t, err)
+		dataStores[fromDs] = toDs
+	} else {
+		fromDs = fromBucket.DefaultDataStore()
+		toDs = toBucket.DefaultDataStore()
+	}
+	toBucketSourceID, err := base.GetSourceID(ctx, toBucket)
+	require.NoError(t, err)
+
+	hlvAgent := db.NewHLVAgent(t, fromDs, toBucketSourceID, base.VvXattrName, true)
+
+	hlvAgent.InsertWithHLV(ctx, "doc1")
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats, err := xdcr.Stats(ctx)
+		assert.NoError(t, err)
+		assert.Equal(c, uint64(1), stats.SkippedDocsTargetTotal)
+		assert.Equal(c, uint64(0), stats.DocsWritten)
+	}, time.Second*5, time.Millisecond*100)
+
+	// attempt fetch from target to verify doc not replicated
+	_, _, err = toDs.GetRaw("doc1")
+	require.Error(t, err)
+
+	// try doc with source id not matching target source id
+	hlvAgent2 := db.NewHLVAgent(t, fromDs, "someSource", base.VvXattrName, false)
+	hlvAgent2.InsertWithHLV(ctx, "doc2")
+
+	// assert this is replicated
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats, err := xdcr.Stats(ctx)
+		assert.NoError(t, err)
+		assert.Equal(c, uint64(1), stats.DocsWritten)
+	}, time.Second*5, time.Millisecond*100)
+
+	// verify doc2 is present on target
+	body, _, err := toDs.GetRaw("doc2")
+	require.NoError(t, err)
+	require.JSONEq(t, hlvAgent2.GetHelperBody(), string(body))
 }

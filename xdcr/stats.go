@@ -21,4 +21,7 @@ type Stats struct {
 
 	// TargetNewerDocs is the number of documents that were newer on the target cluster than the source cluster.
 	TargetNewerDocs uint64
+
+	// SkippedDocsTargetTotal Number of Document Mutations that were not replicated to the Target because they originated from the Target
+	SkippedDocsTargetTotal uint64
 }

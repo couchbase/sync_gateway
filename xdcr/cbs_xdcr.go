@@ -31,6 +31,7 @@ const (
 	totalMobileDocsFiltered             = "xdcr_mobile_docs_filtered_total"
 	totalDocsWrittenStat                = "xdcr_docs_written_total"
 	totalDocsConflictResolutionRejected = "xdcr_docs_failed_cr_source_total"
+	skippedDocsTargetTotal              = "xdcr_target_docs_skipped_total"
 )
 
 var errNoXDCRMetrics = errors.New("No metric found")
@@ -240,6 +241,7 @@ func (x *couchbaseServerManager) Stats(ctx context.Context) (*Stats, error) {
 		totalMobileDocsFiltered:             &stats.MobileDocsFiltered,
 		totalDocsWrittenStat:                &stats.DocsWritten,
 		totalDocsConflictResolutionRejected: &stats.TargetNewerDocs,
+		skippedDocsTargetTotal:              &stats.SkippedDocsTargetTotal,
 	}
 	var errs *base.MultiError
 	for metricName, stat := range statMap {

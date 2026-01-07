@@ -3013,7 +3013,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 
 	const docID = "doc1"
 	otherSource := "otherSource"
-	hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv", false)
 	existingHLVKey := docID
 	cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
 	casV1 := cas
@@ -3036,7 +3036,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	assert.Equal(t, casV1, newDoc.HLV.PreviousVersions[encodedSourceV1])
 
 	otherSource = "diffSource"
-	hlvHelper = db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
+	hlvHelper = db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv", false)
 	cas = hlvHelper.UpdateWithHLV(ctx, existingHLVKey, newDoc.Cas, newDoc.HLV)
 	encodedSourceV3 := db.EncodeSource(otherSource)
 	casV3 := cas
