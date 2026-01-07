@@ -38,8 +38,6 @@ github.com/couchbase/cbgt v1.4.10 h1:C+EDv4tV8CgbT84tED/GNm8AT+drXmpa7kdm2dwhoBc
 github.com/couchbase/cbgt v1.4.10/go.mod h1:rtMql4eNJN6U2Pqe7hZHzLcKc1rO+WP8OhsY2AaKbE4=
 github.com/couchbase/clog v0.1.0 h1:4Kh/YHkhRjMCbdQuvRVsm39XZh4FtL1d8fAwJsHrEPY=
 github.com/couchbase/clog v0.1.0/go.mod h1:7tzUpEOsE+fgU81yfcjy5N1H6XtbVC8SgOz/3mCjmd4=
-github.com/couchbase/go-blip v0.0.0-20250325132327-d73efab2df06 h1:npTOLlXHxAARy4dluBY6kchq15b6l0YDkkyRH4kWYm8=
-github.com/couchbase/go-blip v0.0.0-20250325132327-d73efab2df06/go.mod h1:+K082iN0fPzrWgNU/58/sMpydLVTTSdnuJ1srwlWTuk=
 github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a h1:T1kH9va3FH0SjJQBHtpuwEdwvc1e4xVYAXt3rJTdHOs=
 github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a/go.mod h1:+K082iN0fPzrWgNU/58/sMpydLVTTSdnuJ1srwlWTuk=
 github.com/couchbase/go-couchbase v0.1.1 h1:ClFXELcKj/ojyoTYbsY34QUrrYCBi/1G749sXSCkdhk=
