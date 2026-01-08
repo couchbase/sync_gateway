@@ -72,7 +72,7 @@ type changeCache struct {
 	started            base.AtomicBool                     // Set by the Start method
 	stopped            base.AtomicBool                     // Set by the Stop method
 	skippedSeqs        *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
-	lock               sync.RWMutex                        // Coordinates access to struct fields
+	lock               sync.Mutex                          // Coordinates access to struct fields
 	options            CacheOptions                        // Cache config
 	terminator         chan bool                           // Signal termination of background goroutines
 	backgroundTasks    []BackgroundTask                    // List of background tasks.
@@ -93,8 +93,8 @@ type changeCacheStats struct {
 
 func (c *changeCache) updateStats(ctx context.Context) {
 
-	c.lock.RLock()
-	defer c.lock.RUnlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.db == nil {
 		return
 	}
@@ -990,9 +990,9 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 
 // Concurrent-safe get value of nextSequence
 func (c *changeCache) getNextSequence() (nextSequence uint64) {
-	c.lock.RLock()
+	c.lock.Lock()
 	nextSequence = c.nextSequence
-	c.lock.RUnlock()
+	c.lock.Unlock()
 	return nextSequence
 }
 
