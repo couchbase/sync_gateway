@@ -3549,3 +3549,69 @@ func TestTombstoneCount(t *testing.T) {
 	})
 
 }
+
+func TestBlipNoRevOnCorruptHistory(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+
+		const user = "user"
+		rt.CreateUser(user, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username: user,
+		})
+		defer btc.Close()
+
+		ctx := rt.Context()
+		seq, err := rt.GetDatabase().NextSequence(ctx)
+		require.NoError(t, err)
+		badSyncData := fmt.Sprintf(`{
+      "cas": "expand",
+      "channel_set": null,
+      "channel_set_history": null,
+      "channels": null,
+      "history": {
+        "parents": [
+          3,
+          0,
+          -1,
+          2
+        ],
+        "revs": [
+          "3-d",
+          "3-c",
+          "1-a",
+          "2-b"
+        ]
+      },
+      "rev": "3-c",
+      "sequence": %d,
+      "value_crc32c": "expand"
+    }
+		`, seq)
+
+		docID := SafeDocumentName(t, t.Name())
+		_, err = rt.GetSingleDataStore().WriteWithXattrs(
+			ctx,
+			docID,
+			0,
+			0,
+			[]byte(`{"key":"value"}`),
+			map[string][]byte{
+				base.SyncXattrName: []byte(badSyncData),
+			},
+			nil,
+			db.DefaultMutateInOpts(),
+		)
+		require.NoError(t, err)
+
+		expectedVersion := DocVersion{RevTreeID: "3-c"}
+		rt.WaitForVersion(docID, expectedVersion)
+
+		btcRunner.StartOneshotPull(btc.id)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
+}
