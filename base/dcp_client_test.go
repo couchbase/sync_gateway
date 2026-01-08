@@ -79,7 +79,8 @@ func TestOneShotDCP(t *testing.T) {
 	require.NoError(t, startErr)
 
 	defer func() {
-		_ = dcpClient.Close()
+		dcpClient.Close()
+		<-doneChan
 	}()
 
 	// Add additional documents in a separate goroutine, to verify one-shot behaviour
@@ -162,10 +163,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
-	log.Printf("Closing DCP Client")
-	err = dcpClient.Close()
-	log.Printf("DCP Client closed, waiting for feed close notification")
-	require.NoError(t, err)
+	dcpClient.Close()
 
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
@@ -289,9 +287,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 			doneChan2, startErr2 := dcpClient2.Start()
 			require.Error(t, startErr2)
+			require.Nil(t, doneChan2)
 
-			require.NoError(t, dcpClient2.Close())
-			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
@@ -378,7 +375,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	_, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	// Add documents
@@ -408,24 +405,28 @@ func TestContinuousDCPRollback(t *testing.T) {
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		MetadataStoreType: DCPMetadataStoreInMemory,
 	}
-	require.NoError(t, dcpClient.Close())
+	dcpClient.Close()
+	err = <-doneChan
+	require.NoError(t, err)
 
 	dcpClient1, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 	// function to force the rollback of some vBuckets
 	dcpClient1.forceRollbackvBucket(vbUUID)
 
-	_, startErr = dcpClient1.Start()
+	doneChan, startErr = dcpClient1.Start()
 	require.NoError(t, startErr)
+
+	defer func() {
+		dcpClient1.Close()
+		err := <-doneChan
+		assert.NoError(t, err)
+	}()
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
 	// In continuous rollback the streams should not close after they're finished.
 	numVBuckets := len(dcpClient1.activeVbuckets)
 	require.Equal(t, dcpClient1.numVbuckets, uint16(numVBuckets))
-
-	defer func() {
-		assert.NoError(t, dcpClient1.Close())
-	}()
 
 }
 
@@ -466,8 +467,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				err := dcpClient.Close()
-				assert.NoError(t, err)
+				dcpClient.Close()
 			}
 		}
 		return false
@@ -625,11 +625,13 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 	defer func() {
-		assert.NoError(t, dcpClient.Close())
+		dcpClient.Close()
+		<-doneChan
 	}()
 
 	select {
-	case <-doneChan:
+	case err := <-doneChan:
+		require.NoError(t, err)
 		break
 	case <-timeout:
 		t.Fatalf("timeout on client reached")
@@ -729,7 +731,8 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	require.NoError(t, startErr)
 
 	defer func() {
-		_ = dcpClient.Close() // extra close in case of early exit
+		dcpClient.Close()
+		require.NoError(t, <-doneChan)
 	}()
 	xattrName := "_xattr1"
 	xattrBody := []byte(`{"an": "xattr"}`)
@@ -749,7 +752,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 
 	select {
 	case <-foundEvent:
-		require.NoError(t, dcpClient.Close())
+		dcpClient.Close()
 	case <-timeout:
 		t.Fatalf("timeout waiting for doc deletion")
 	}
@@ -813,9 +816,7 @@ func TestDCPClientAgentConfig(t *testing.T) {
 				DCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
 				gocbv2Bucket)
 			require.NoError(t, err)
-			defer func() {
-				assert.NoError(t, dcpClient.Close())
-			}()
+			defer dcpClient.Close()
 
 			config, err := dcpClient.getAgentConfig(gocbv2Bucket.GetSpec())
 			require.NoError(t, err)
