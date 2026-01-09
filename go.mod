@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.2
+	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.13.0
 	github.com/couchbase/cbgt v1.3.10-0.20250613155824-1f75a127519e
 	github.com/couchbase/clog v0.1.0
@@ -14,7 +15,7 @@ require (
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
-	github.com/couchbasedeps/fast-skiplist v0.0.0-20250612112434-65f227bb1892
+	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
 	github.com/couchbaselabs/rosmar v0.0.0-20240610211258-c856107e8e78
@@ -46,7 +47,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.299 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.12 // indirect
 	github.com/couchbase/blance v0.1.5 // indirect
 	github.com/couchbase/cbauth v0.1.11 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
