@@ -909,7 +909,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
+	fmt.Printf("sendRevAsDelta: docID=%s revID=%s deltaSrcRevID=%s\n", base.UD(docID), revID, deltaSrcRevID)
 	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
+	fmt.Printf("sendRevAsDelta: revDelta=%v, redactedRev=%v", revDelta, redactedRev)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
@@ -925,28 +927,23 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	}
 
 	if redactedRev != nil {
+		revTreeHistory, err := toHistory(redactedRev.History, knownRevs, maxHistory)
+		if err != nil {
+			panic("here")
+			err := base.RedactErrorf("Could not get rev tree history for replacement rev delta source in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
+			base.WarnfCtx(ctx, "%s", err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+		}
 		var history []string
 		var revTreeProperty []string
 		if !bsc.useHLV() {
-			var err error
-			history, err = toHistory(redactedRev.History, knownRevs, maxHistory)
-			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
-				base.WarnfCtx(ctx, "%s", err)
-				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-			}
+			history = append(history, revTreeHistory...)
 		} else {
 			history = append(history, redactedRev.HlvHistory)
 		}
 		if bsc.sendRevTreeProperty() {
 			revTreeProperty = append(revTreeProperty, redactedRev.RevID)
-			history, err := toHistory(redactedRev.History, knownRevs, maxHistory)
-			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev when sending  in sendRevAsDelta %s %s: %w, sending a noRev to skip this document for replication at sequence %d.", base.UD(docID), redactedRev.RevID, err, seq)
-				base.WarnfCtx(ctx, "%s", err)
-				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-			}
-			revTreeProperty = append(revTreeProperty, history...)
+			revTreeProperty = append(revTreeProperty, revTreeHistory...)
 		}
 
 		properties, err := blipRevMessageProperties(history, redactedRev.Deleted, seq, "", revTreeProperty)

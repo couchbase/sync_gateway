@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -393,6 +394,7 @@ type RevisionDelta struct {
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+	fmt.Printf("toRev=%#+v\n", toRevision)
 	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		ToCV:                  toRevision.CV.String(),

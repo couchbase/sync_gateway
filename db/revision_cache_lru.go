@@ -13,6 +13,7 @@ package db
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -685,6 +686,7 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 // multiple goroutines try to load at the same time.
 func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeDelta bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
+	fmt.Printf("HONK loading revCacheValue %+v\n", value)
 	// Reading the delta from the revCacheValue requires holding the read lock, so it's managed outside asDocumentRevision,
 	// to reduce locking when includeDelta=false
 	var delta *RevisionDelta
@@ -719,6 +721,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
+			fmt.Printf("HONK value.revID is nil but %+v\n", value)
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
 			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey)
 			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
@@ -729,6 +732,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		} else {
 			revKey := IDAndRev{DocID: value.id, RevID: value.revID}
 			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, hlv, value.err = revCacheLoader(ctx, backingStore, revKey)
+			fmt.Printf("HONK fetched with revCacheLoader %+v\n", value)
 			// based off the revision load we need to populate the hlv key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			if hlv != nil {
 				value.cv = *hlv.ExtractCurrentVersionFromHLV()
@@ -741,6 +745,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 				}
 				value.cv = encodedCV
 			}
+			fmt.Printf("HONK fetched with revCacheLoader and now set cv %+v\n", value.cv)
 		}
 	}
 

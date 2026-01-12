@@ -581,6 +581,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			return nil, nil, err
 		}
 
+		fmt.Printf("fromBodyCopy: %+v\n", fromBodyCopy)
+		fmt.Printf("toBodyCopy: %+v\n", toBodyCopy)
 		// If attachments have changed between these revisions, we'll stamp the metadata into the bodies before diffing
 		// so that the resulting delta also contains attachment metadata changes.
 		if fromRevisionForDiff.Attachments != nil {

@@ -65,6 +65,7 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+	fmt.Printf("rawResponse1 Body: %s\n", rawResponse.Body.String())
 	// Not _all_ documents get CV - `/_local` (aka special) docs for example, only use a `_rev` OCC value - and not even a RevTree for full history.
 	if bodyCV, hasCV := body[db.BodyCV].(string); hasCV {
 		version, err := db.ParseVersion(bodyCV)
@@ -217,6 +218,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if !assert.Contains(c, []int{200, 201}, rawResponse.Code, "Unexpected status code for %s", rawResponse.Body.String()) {
 			return
 		}
+		fmt.Printf("rawResponse Body: %s\n", rawResponse.Body.String())
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 		if version.RevTreeID != "" {
@@ -229,7 +231,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 			return
 		}
 		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
-	}, 10*time.Second, 50*time.Millisecond)
+	}, 1*time.Second, 50*time.Millisecond)
 }
 
 func (rt *RestTester) WaitForVersionRevIDOnly(docID string, version DocVersion) {
