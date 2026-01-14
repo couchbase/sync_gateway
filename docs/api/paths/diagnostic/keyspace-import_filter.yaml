@@ -7,7 +7,6 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
-  - $ref: ../../components/parameters.yaml#/doc_id
 post:
   summary: Run a doc body through the Import filter and return results.
   description: |-
@@ -16,6 +15,14 @@ post:
     provided in the request body, the default or user-defined import filter
     is used.
 
+    The document being run through the import filter can be provided in one of the following ways:
+    | `doc` property | `doc_id` property | Behaviour                                                                                                                                                             |
+    | -------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Set   | Unset  | The document body passed will be the `doc` value in the function.                                                                                                                         |
+    | Unset | Set    | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the function. If the document is not found, an error will be returned |
+    | Set   | Set    | Will throw an error (only one of `doc` or `doc_id` is allowed for the import filter dry run)                                                                                              |
+    | Unset | Unset  | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                       |
+
     * Sync Gateway Application Read Only
   requestBody:
     content:
@@ -23,6 +30,10 @@ post:
         schema:
           type: object
           properties:
+            doc_id:
+              description: An existing document ID to run the dry-run operation against.
+              type: string
+              example: doc1
             import_filter:
               description: |-
                 A JavaScript function that all imported documents in the
@@ -31,7 +42,11 @@ post:
               type: string
               example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
             doc:
-              $ref: ../../components/schemas.yaml#/Document
+              description: A new document body to run the dry-run operation against.
+              type: object
+              additionalProperties: true
+              example:
+                foo: bar
   responses:
     '200':
       description: Document Processed by import filter successfully
@@ -43,27 +58,12 @@ post:
               shouldImport:
                 description: Whether this document would be imported after being processed by the import filter.
                 type: boolean
-              error:
-                description: Errors thrown by the Import filter.
-                type: string
+              exception:
+                $ref: ../../components/schemas.yaml#/DiagnosticFunctionException
               logging:
-                description: Logging emitted by the import filter during evaluation.
-                type: object
-                properties:
-                  errors:
-                    description: Error messages logged by the import filter.
-                    type: array
-                    items:
-                      type: string
-                  info:
-                    description: Info messages logged by the import filter.
-                    type: array
-                    items:
-                      type: string
+                $ref: ../../components/schemas.yaml#/DiagnosticFunctionLogging
     '404':
       $ref: ../../components/responses.yaml#/Not-found
-  parameters:
-    - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Document
-  operationId: get_keyspace-import_filter-docid
+  operationId: get_keyspace-import_filter
