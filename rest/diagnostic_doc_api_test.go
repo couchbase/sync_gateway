@@ -931,6 +931,9 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 
 // Tests the Diagnostic Endpoint to dry run Sync Function
 func TestSyncFuncDryRun(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -1377,6 +1380,10 @@ func TestSyncFuncDryRun(t *testing.T) {
 }
 
 func TestSyncFuncDryRunErrors(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})
