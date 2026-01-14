@@ -1704,7 +1704,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 		return nil, err
 	}
 
-	if len(userMeta) > 0 {
+	if userMeta != nil {
 		metaMap = userMeta
 	}
 

@@ -1271,7 +1271,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				},
 				Meta: map[string]any{"xattrs": map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
 			},
-			xattrKey: `"channelXattr"`,
+			xattrKey: "channelXattr",
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
 				Access:   channels.AccessMap{},
@@ -1299,7 +1299,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				},
 			},
 			existingDocBody: `{"docVersion": 1}`,
-			xattrKey:        `"channelXattr"`,
+			xattrKey:        "channelXattr",
 			xattrVal:        []string{"channel1", "channel3", "useradmin"},
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
@@ -1324,7 +1324,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 					}
 				}`,
 			existingDocBody: `{"docVersion": 1}`,
-			xattrKey:        `"channelXattr"`,
+			xattrKey:        "channelXattr",
 			xattrVal:        []string{"channel1", "channel3", "useradmin"},
 			expectedOutput: SyncFnDryRun{
 				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
@@ -1350,13 +1350,13 @@ func TestSyncFuncDryRun(t *testing.T) {
 			}
 
 			if test.xattrKey != "" {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(`{"user_xattr_key": %s}`, test.xattrKey)), http.StatusCreated)
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(`{"user_xattr_key": "%s"}`, test.xattrKey)), http.StatusCreated)
 			}
 
 			if test.existingDocBody != "" {
 				rt.PutDoc(test.name, test.existingDocBody)
 				if test.xattrKey != "" {
-					_, err := dataStore.SetXattrs(ctx, test.name, map[string][]byte{"channelXattr": base.MustJSONMarshal(t, test.xattrVal)})
+					_, err := dataStore.SetXattrs(ctx, test.name, map[string][]byte{test.xattrKey: base.MustJSONMarshal(t, test.xattrVal)})
 					require.NoError(t, err)
 				}
 			}
