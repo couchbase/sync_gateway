@@ -237,7 +237,6 @@ func (body Body) getExpiry() (uint32, bool, error) {
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, []byte, error) {
 	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revOrCV))
-	//data, xattrMap, _, err := c.dataStore.GetWithXattrs(ctx, oldRevisionKey(docid, revOrCV), []string{base.BackupSyncXattrName})
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revOrCV)
 		return nil, nil, ErrMissing
@@ -280,6 +279,7 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	return
 }
 
+// BackupRevisionChannels holds channel information to be stored alongside a backup revision.
 type BackupRevisionChannels struct {
 	Channels channels.ChannelMap `json:"channels,omitempty"`
 }
@@ -288,26 +288,18 @@ type BackupRevisionChannels struct {
 func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context, docid string, rev string, body []byte, expiry uint32, backupRevChans BackupRevisionChannels) error {
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
-	// todo: stop storing in xattr store all in boyd with separator for xattr part if this works we need to chnage
-	//  delete to not use delet with xattrs (there is a test doing this too
 	chans, err := base.JSONMarshal(&backupRevChans)
 	if err != nil {
 		base.WarnfCtx(ctx, "setOldRevisionJSONBody: error marshalling backupRevChans for doc=%q rev=%q err=%v", base.UD(docid), rev, err)
 		return err
 	}
 	nonJSONBytes := generateMainBackupBodyWithNonJSONPrefix(body, chans)
-	//_, err = db.dataStore.WriteWithXattrs(ctx, oldRevisionKey(docid, rev), expiry, 0, body, map[string][]byte{base.BackupSyncXattrName: chans}, nil, nil)
 	err = db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), rev, len(body), expiry)
 	} else {
 		base.WarnfCtx(ctx, "setOldRevisionJSONBody failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
 	}
-	//cas, _ := db.dataStore.Touch(oldRevisionKey(docid, rev), expiry)
-	//_, err = db.dataStore.UpdateXattrs(ctx, oldRevisionKey(docid, rev), expiry, cas, map[string][]byte{base.BackupSyncXattrName: chans}, nil)
-	//if err != nil {
-	//	base.WarnfCtx(ctx, "setOldRevisionJSONBody: UpdateXattrs failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
-	//}
 	return err
 }
 
@@ -326,12 +318,6 @@ func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid str
 	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
 	return c.dataStore.Delete(oldRevisionKey(docid, revid))
 }
-
-//func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
-//	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
-//
-//	return c.dataStore.DeleteWithXattrs(ctx, oldRevisionKey(docid, revid), []string{base.BackupSyncXattrName})
-//}
 
 // ////// UTILITY FUNCTIONS:
 

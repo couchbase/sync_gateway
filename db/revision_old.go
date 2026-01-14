@@ -27,11 +27,12 @@ const (
 	nonJSONPrefixKindRevPtr
 )
 
-type channelInformationSeperator byte
+// metadataInformationSeperator is a byte used to separate document body and metadata in backup revisions.
+type metadataInformationSeperator byte
 
 const (
 	// channelInformationSeperatorByte used to separate channel information from the body in backup revisions
-	channelInformationSeperatorByte channelInformationSeperator = iota
+	channelInformationSeperatorByte metadataInformationSeperator = iota
 )
 
 // withNonJSONPrefix returns a new byte slice prefixed with a non-JSON byte. The input slice is not modified.
