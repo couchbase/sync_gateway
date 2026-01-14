@@ -36,7 +36,7 @@ type SyncFnDryRun struct {
 
 type ImportFilterDryRun struct {
 	ShouldImport bool          `json:"shouldImport"`
-	Error        string        `json:"error"`
+	Exception    string        `json:"exception"`
 	Logging      DryRunLogging `json:"logging"`
 }
 
@@ -44,12 +44,14 @@ type SyncFnDryRunMetaMap struct {
 	Xattrs map[string]any `json:"xattrs"`
 }
 type SyncFnDryRunPayload struct {
+	DocID    string         `json:"doc_id"`
 	Function string              `json:"sync_function"`
 	Doc      db.Body             `json:"doc,omitempty"`
 	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
+	DocID    string  `json:"doc_id"`
 	Function string  `json:"import_filter"`
 	Doc      db.Body `json:"doc,omitempty"`
 }
@@ -89,7 +91,6 @@ func (h *handler) handleGetDocChannels() error {
 // docid only provided, the sync function will run using the current revision in the bucket as doc
 // If docid is specified and the document does not exist in the bucket, it will return error
 func (h *handler) handleSyncFnDryRun() error {
-	docid := h.getQuery("doc_id")
 
 	var syncDryRunPayload SyncFnDryRunPayload
 	err := h.readJSONInto(&syncDryRunPayload)
@@ -97,6 +98,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
+	docid := syncDryRunPayload.DocID
 	if syncDryRunPayload.Doc == nil && docid == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
 	}
@@ -221,7 +223,6 @@ func (h *handler) handleSyncFnDryRun() error {
 
 // HTTP handler for running a document through the import filter and returning the results
 func (h *handler) handleImportFilterDryRun() error {
-	docid := h.getQuery("doc_id")
 
 	var importFilterPayload ImportFilterDryRunPayload
 	err := h.readJSONInto(&importFilterPayload)
@@ -229,6 +230,7 @@ func (h *handler) handleImportFilterDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading import filter payload: %v", err)
 	}
 
+	docid := importFilterPayload.DocID
 	// Cannot pass both doc_id and body in the request body
 	if len(importFilterPayload.Doc) > 0 && docid != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")
