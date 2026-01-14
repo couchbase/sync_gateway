@@ -7,19 +7,19 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
-  - $ref: ../../components/parameters.yaml#/doc_id
 post:
   summary: Run a doc body through the sync function and return sync data.
   description: |-
-    Runs a document body through the sync function and returns document sync
-    data. If no custom sync function is provided in the request body, the
+    Runs a document body through the sync function and returns resulting sync function data. If no custom sync function is provided in the request body, the
     default or user-defined sync function for the collection is used.
-    | Document | DocID | Behaviour                                                                                                                                                                            |
-    | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-    | Yes      | No    | The document passed will be considered as newDoc and oldDoc will be empty                                                                                                            |
-    | Yes      | Yes   | The document passed in the body will be newDoc and DocID will be read from the bucket/collection and will be passed as the oldDoc. If DocID doesn't exist, then oldDoc will be empty |
-    | No       | No    | Will throw an error                                                                                                                                                                  |
-    | No       | Yes   | The docID will be passed in as the newDoc and oldDoc will be empty. If the document is not found, an error will be returned                                                          |
+
+    The document being run through the sync function can be provided in one of the following ways:
+    | `doc` property | `doc_id` property | Behaviour                                                                                                                                                                                               |
+    | ----- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Set   | Unset       | The document body passed will be the `doc` value in the sync function, and `oldDoc` will be empty.                                                                                                                        |
+    | Unset | Set      | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the sync function. If the document is not found, an error will be returned                            |
+    | Set   | Set      | The document body passed will be the `doc` value in the sync function, and the `doc_id` will be fetched from the bucket/collection and will be the `oldDoc` value. If `doc_id` doesn't exist, then `oldDoc` will be empty |
+    | Unset | Unset       | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                                                       |
 
     * Sync Gateway Application Read Only
   requestBody:
@@ -28,6 +28,10 @@ post:
         schema:
           type: object
           properties:
+            doc_id:
+              description: An existing document ID to run the dry-run operation against.
+              type: string
+              example: doc1
             sync_function:
               description: |-
                 A JavaScript function that defines custom access, channel, and
@@ -36,11 +40,81 @@ post:
                 grants, and validation outcomes during synchronization.
               type: string
               example: |-
-                function (doc, oldDoc) {
+                function (doc, oldDoc, meta) {
                   channel(doc.channels);
                 }
             doc:
-              $ref: ../../components/schemas.yaml#/Document
+              description: A new document body to run the dry-run operation against.
+              type: object
+              additionalProperties: true
+              example:
+                foo: bar
+            meta:
+              description: Optional metadata used during evaluation.
+              type: object
+              properties:
+                xattrs:
+                  description: |-
+                    Optional XATTR values to include during evaluation.
+
+                    To provide the user XATTR, include a property whose name exactly matches the configured `user_xattr_key`.
+                  type: object
+                  properties:
+                    additionalProperties:
+                      x-additionalPropertiesName: user_xattr_key
+                      description: The user XATTR JSON value. The property name must exactly match the configured `user_xattr_key`. The value can be any valid JSON type (Object, String, Number, etc.)
+                      oneOf:
+                        - type: object
+                          additionalProperties: true
+                          example:
+                            foo: bar
+                          description: An object value to be used as the user XATTR.
+                        - type: string
+                          example: foo
+                          description: A string value to be used as the user XATTR.
+                        - type: integer
+                          example: 100
+                          description: A number value to be used as the user XATTR.
+                        - type: boolean
+                          example: true
+                          description: A boolean value to be used as the user XATTR.
+                        - type: array
+                          items:
+                            example:
+                              - foo
+                              - bar
+                            description: An array of values to be used as the user XATTR.
+
+                  example:
+                    my_user_xattr_key:
+                      foo: bar
+            userCtx:
+              description: |-
+                Optional user context used during evaluation. Can be used to impersonate a non-admin user during evaluation. Can be used to test sync function utilities `requireUser()`, `requireRole()`, `requireAccess()`, etc.
+
+                If this `userCtx` is not provided, the sync function will be evaluated as an admin user (e.g. Admin API writes, Import, Resync, etc.)
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: The name of the user to impersonate. Used by `requireUser()`.
+                  example: user1
+                roles:
+                  type: array
+                  items:
+                    type: string
+                  description: A set of roles the user being impersonated has. Used by `requireRole()`.
+                  example:
+                    - role1
+                    - role2
+                channels:
+                  type: array
+                  items:
+                    type: string
+                  description: A set of channels the user being impersonated has (*including those inherited from their roles*). Used by `requireAccess()`.
+                  example:
+                    - channel1
+                    - channel2
   responses:
     '200':
       description: Document Processed by sync function successfully
@@ -50,35 +124,41 @@ post:
             type: object
             properties:
               channels:
-                description: The channels the document was placed in by the sync function.
+                description: A list of channels the document was placed in by the sync function.
                 type: array
+                example:
+                  - channel1
+                  - channel2
               roles:
-                description: An access map of roles granted by the sync function.
+                description: An access map of dynamic roles granted by the sync function. The properties are the usernames and the values are an array of roles.
                 type: object
-                properties:
-                  username:
-                    type: object
-                    additionalProperties:
-                      x-additionalPropertiesName: role
-                      type: string
+                additionalProperties:
+                  x-additionalPropertiesName: username
+                  example: ["role1", "role2"]
+                  type: array
+                  items:
+                    type: string
+                    example: role1
               access:
-                description: An access map of dynamic channels granted by the sync function.
+                description: An access map of dynamic channels granted by the sync function. The properties are the usernames and the values are an array of channels.
                 type: object
-                properties:
-                  username:
-                    type: object
-                    additionalProperties:
-                      x-additionalPropertiesName: channel
-                      type: string
-
+                additionalProperties:
+                  x-additionalPropertiesName: username
+                  example: ["channel1", "channel2"]
+                  type: array
+                  items:
+                    type: string
+                    example: channel1
+              expiry:
+                description: The document expiry (TTL in seconds) as determined by the sync function.
+                type: number
+                example: 300
               exception:
-                description: Errors thrown by the sync function.
-                type: string
-
+                $ref: ../../components/schemas.yaml#/DiagnosticFunctionException
+              logging:
+                $ref: ../../components/schemas.yaml#/DiagnosticFunctionLogging
     '404':
       $ref: ../../components/responses.yaml#/Not-found
-  parameters:
-    - $ref: ../../components/parameters.yaml#/doc_id
   tags:
     - Document
   operationId: get_keyspace-sync
