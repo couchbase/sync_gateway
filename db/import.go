@@ -310,7 +310,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			// If the previous revision body is available in the rev cache,
 			// make a temporary copy in the bucket for other nodes/clusters
 			if db.backupOldRev() && doc.GetRevTreeID() != "" {
-				backupErr := db.backupPreImportRevision(ctx, newDoc.ID, doc.GetRevTreeID())
+				backupErr := db.backupPreImportRevision(ctx, newDoc.ID, doc)
 				if backupErr != nil {
 					base.InfofCtx(ctx, base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
 				}
@@ -451,14 +451,14 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 // the temporary revision bodies made during SG writes.  Allows in-flight replications on
 // other Sync Gateway nodes to serve the previous revision
 // (https://github.com/couchbase/sync_gateway/issues/3740)
-func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Context, docid, revid string) error {
+func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Context, docid string, doc *Document) error {
 
 	// If Delta Sync is enabled, this will already be handled by the backup handling used for delta generation
 	if db.deltaSyncEnabled() {
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(ctx, docid, revid)
+	previousRev, ok := db.revisionCache.Peek(ctx, docid, doc.GetRevTreeID())
 	if !ok {
 		return nil
 	}
@@ -478,7 +478,9 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 		return err
 	}
 
-	setOldRevErr := db.setOldRevisionJSONBody(ctx, docid, revid, oldRevJSON, db.oldRevExpirySeconds())
+	setOldRevErr := db.setOldRevisionJSONBody(ctx, docid, doc.GetRevTreeID(), oldRevJSON, db.oldRevExpirySeconds(), BackupRevisionChannels{
+		Channels: doc.Channels,
+	})
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}

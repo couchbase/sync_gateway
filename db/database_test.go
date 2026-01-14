@@ -845,6 +845,89 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	auth := db.Authenticator(ctx)
+
+	// Create a user who have access to channel ABC.
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC"))
+	require.NoError(t, err, "Error creating user")
+
+	userBob, err := auth.NewUser("bob", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": []string{"ABC"},
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// Try with a user who has access to this revision.
+	collection.user = userAlice
+	body, err := collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	_, rev1Digest := ParseRevID(ctx, rev1ID)
+
+	var interfaceListChannels []any
+	interfaceListChannels = append(interfaceListChannels, "ABC")
+	bodyExpected := Body{
+		"k1":       "v1",
+		"channels": interfaceListChannels,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// try with a user who doesn't have access to this revision.
+	collection.user = userBob
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+	bodyExpected = Body{
+		BodyRemoved: true,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// flush revision cache again from previous load and purge the old revision backup to assert we get 404 error
+	db.FlushRevisionCacheForTest()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	collection.user = userAlice
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
+}
+
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
@@ -952,32 +1035,124 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 		t.Skip("Delta sync only supported in EE")
 	}
 
+	testCases := []struct {
+		name        string
+		userDefined bool
+	}{
+		{
+			name:        "user defined",
+			userDefined: true,
+		},
+		{
+			name:        "user not defiend",
+			userDefined: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+				DeltaSyncOptions: DeltaSyncOptions{
+					Enabled:          true,
+					RevMaxAgeSeconds: 300,
+				},
+				StoreLegacyRevTreeData: base.Ptr(true),
+			})
+
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			require.NoError(t, db.DbStats.InitDeltaSyncStats())
+			if tc.userDefined {
+				auth := db.Authenticator(ctx)
+				u, err := auth.NewUser("bob", "letmein", base.SetOf("ABC"))
+				require.NoError(t, err)
+				collection.user = u
+				collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+			}
+
+			rev1, _, err := collection.Put(ctx, "doc1", Body{"channels": "ABC", "foo": "bar", "bar": "buzz", "quux": "quax"})
+			require.NoError(t, err, "Error creating doc1")
+			rev2, _, err := collection.Put(ctx, "doc1", Body{"channels": "ABC", "foo": "bar", "quux": "fuzz", BodyRev: rev1})
+			require.NoError(t, err, "Error updating doc1")
+
+			// force retrieval from backing store
+			db.FlushRevisionCacheForTest()
+
+			// get delta using legacy RevTree IDs - this should force a lookup for CV1 via the pointer backup revision doc
+			delta, _, err := collection.GetDelta(ctx, "doc1", rev1, rev2)
+			require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", "doc1", rev1, rev2)
+			require.NotNil(t, delta)
+			assert.Equal(t, rev2, delta.ToRevID)
+			assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
+		})
+	}
+
+}
+
+func TestFetchBackupRevisionCVWithChannelAccess(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync other wise CV keyed backup revs won't be stored
 		DeltaSyncOptions: DeltaSyncOptions{
 			Enabled:          true,
-			RevMaxAgeSeconds: 300,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 		},
-		StoreLegacyRevTreeData: base.Ptr(true),
 	})
-
 	defer db.Close(ctx)
+
+	auth := db.Authenticator(ctx)
+
+	// Create a user who have access to channel ABC.
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC"))
+	require.NoError(t, err, "Error creating user")
+
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	require.NoError(t, db.DbStats.InitDeltaSyncStats())
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
-	rev1, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "bar": "buzz", "quux": "quax"})
-	require.NoError(t, err, "Error creating doc1")
-	rev2, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar", "quux": "fuzz", BodyRev: rev1})
-	require.NoError(t, err, "Error updating doc1")
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": []string{"ABC"},
+	}
+	rev1ID, doc, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
 
-	// force retrieval from backing store
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"DEF"},
+		BodyRev:    rev1ID,
+	}
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
 	db.FlushRevisionCacheForTest()
 
-	// get delta using legacy RevTree IDs - this should force a lookup for CV1 via the pointer backup revision doc
-	delta, _, err := collection.GetDelta(ctx, "doc1", rev1, rev2)
-	require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", "doc1", rev1, rev2)
-	require.NotNil(t, delta)
-	assert.Equal(t, rev2, delta.ToRevID)
-	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
+	// Try with a user who has access to this revision.
+	collection.user = userAlice
+	docRev, err := collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	require.NoError(t, err, "Error fetching backup revision CV")
+	assert.Len(t, docRev.Channels, 1)
+	assert.True(t, docRev.Channels.Contains("ABC"))
+
+	// try with a user who doesn't have access to this revision.
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+	userBob, err := auth.NewUser("bob", "pass", base.SetOf("DEF"))
+	require.NoError(t, err, "Error creating user")
+	collection.user = userBob
+	docRev, err = collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	require.NoError(t, err, "Error fetching backup revision CV")
+	assert.Equal(t, []byte(`{"_removed":true}`), docRev.BodyBytes)
+
+	// We can remove this func after CBG-5102 is fixed
+	db.FlushRevisionCacheForTest()
+	// fetch current version, assert access is correct on doc
+	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
+	require.NoError(t, err)
+	assert.Len(t, docRev.Channels, 1)
+	assert.True(t, docRev.Channels.Contains("DEF"))
+	assert.Equal(t, []byte(`{"channels":["DEF"],"k2":"v2"}`), docRev.BodyBytes)
 }
 
 // TestDeltaSyncConcurrentClientCachePopulation tests delta sync behavior when multiple goroutines request the same delta simultaneously.

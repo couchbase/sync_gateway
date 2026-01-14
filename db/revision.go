@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // The body of a CouchDB document/revision as decoded from JSON.
@@ -234,30 +235,31 @@ func (body Body) getExpiry() (uint32, bool, error) {
 
 // getOldRevisionJSON looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, error) {
+func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, []byte, error) {
 	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revOrCV))
+	//data, xattrMap, _, err := c.dataStore.GetWithXattrs(ctx, oldRevisionKey(docid, revOrCV), []string{base.BackupSyncXattrName})
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revOrCV)
-		return nil, ErrMissing
+		return nil, nil, ErrMissing
 	} else if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	kind, revData := stripNonJSONPrefix(data)
+	kind, revData, chans := stripNonJSONPrefix(data)
 	switch kind {
 	case nonJSONPrefixKindRevBody:
 		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revOrCV, len(revData))
-		return revData, nil
+		return revData, chans, nil
 	case nonJSONPrefixKindRevPtr:
 		// pointer to a CV-keyed backup revision - do another fetch by CV for the body
 		base.DebugfCtx(ctx, base.KeyCRUD, "Found old revision pointer %q -> %q / %q", revOrCV, base.UD(docid), string(revData))
 		return c.getOldRevisionJSON(ctx, docid, string(revData))
 	default:
-		return nil, fmt.Errorf("unexpected prefix %b for old revision doc %q / %q", kind, base.UD(docid).String(), revOrCV)
+		return nil, nil, fmt.Errorf("unexpected prefix %b for old revision doc %q / %q", kind, base.UD(docid).String(), revOrCV)
 	}
 }
 
 // Makes a backup of revision body for use by in-flight replications requesting an old revision (for clients not supporting replacementRevs)
-func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte) {
+func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte, backupRevChans BackupRevisionChannels) {
 	if db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() > 0 {
 		// See postWriteUpdateHLV - we're writing a CV and RevTreeID backup there to support delta sync
 		return
@@ -274,30 +276,47 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	}
 
 	// store or refresh the old document revision by revtree ID for in-flight replications
-	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds())
+	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds(), backupRevChans)
 	return
 }
 
+type BackupRevisionChannels struct {
+	Channels channels.ChannelMap `json:"channels,omitempty"`
+}
+
 // setOldRevisionJSONBody stores the raw JSON body of a revision that has been archived to a separate doc.
-func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context, docid string, rev string, body []byte, expiry uint32) error {
+func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context, docid string, rev string, body []byte, expiry uint32, backupRevChans BackupRevisionChannels) error {
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
-	nonJSONBytes := withNonJSONPrefix(nonJSONPrefixKindRevBody, body)
-	err := db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
+	// todo: stop storing in xattr store all in boyd with separator for xattr part if this works we need to chnage
+	//  delete to not use delet with xattrs (there is a test doing this too
+	chans, err := base.JSONMarshal(&backupRevChans)
+	if err != nil {
+		base.WarnfCtx(ctx, "setOldRevisionJSONBody: error marshalling backupRevChans for doc=%q rev=%q err=%v", base.UD(docid), rev, err)
+		return err
+	}
+	nonJSONBytes := generateMainBackupBodyWithNonJSONPrefix(body, chans)
+	//_, err = db.dataStore.WriteWithXattrs(ctx, oldRevisionKey(docid, rev), expiry, 0, body, map[string][]byte{base.BackupSyncXattrName: chans}, nil, nil)
+	err = db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), rev, len(body), expiry)
 	} else {
 		base.WarnfCtx(ctx, "setOldRevisionJSONBody failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
 	}
+	//cas, _ := db.dataStore.Touch(oldRevisionKey(docid, rev), expiry)
+	//_, err = db.dataStore.UpdateXattrs(ctx, oldRevisionKey(docid, rev), expiry, cas, map[string][]byte{base.BackupSyncXattrName: chans}, nil)
+	//if err != nil {
+	//	base.WarnfCtx(ctx, "setOldRevisionJSONBody: UpdateXattrs failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
+	//}
 	return err
 }
 
 // Extends the expiry on a revision backup.  If this fails w/ key not found, will attempt to
 // recreate the revision backup when body is non-empty.
-func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32) error {
+func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32, backupRevChans BackupRevisionChannels) error {
 	_, err := db.dataStore.Touch(oldRevisionKey(docid, revid), expiry)
 	if base.IsDocNotFoundError(err) && len(body) > 0 {
-		return db.setOldRevisionJSONBody(ctx, docid, revid, body, expiry)
+		return db.setOldRevisionJSONBody(ctx, docid, revid, body, expiry, backupRevChans)
 	}
 	return err
 }
@@ -307,6 +326,12 @@ func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid str
 	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
 	return c.dataStore.Delete(oldRevisionKey(docid, revid))
 }
+
+//func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
+//	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
+//
+//	return c.dataStore.DeleteWithXattrs(ctx, oldRevisionKey(docid, revid), []string{base.BackupSyncXattrName})
+//}
 
 // ////// UTILITY FUNCTIONS:
 

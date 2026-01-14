@@ -63,7 +63,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	return doc, nil
 }
 
-func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
+func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error) {
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
@@ -73,10 +73,10 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, err
+	return bodyBytes, nil, nil, err
 }
 
-func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, error) {
+func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, base.Set, AttachmentsMeta, bool, error) {
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
@@ -86,10 +86,10 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 		"current_version": &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, false, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, err
+	return bodyBytes, nil, nil, true, err
 }
 
 type noopBackingStore struct{}
@@ -98,12 +98,12 @@ func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarsha
 	return nil, nil
 }
 
-func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
-	return nil, nil, nil
+func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error) {
+	return nil, nil, nil, nil
 }
 
-func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, error) {
-	return nil, nil, nil
+func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, base.Set, AttachmentsMeta, bool, error) {
+	return nil, nil, nil, false, nil
 }
 
 // testCollectionID is a test collection ID to use for a key in the backing store map to point to a tests backing store.
@@ -2341,7 +2341,7 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 	}
 	// simulate doc revs that are backed up to bucket pre upgrade
 	for i := range 2 {
-		err := collection.setOldRevisionJSONBody(ctx, docID, revIDs[i], []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds())
+		err := collection.setOldRevisionJSONBody(ctx, docID, revIDs[i], []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds(), BackupRevisionChannels{})
 		require.NoError(t, err)
 	}
 

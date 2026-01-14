@@ -9,6 +9,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,6 +27,13 @@ const (
 	nonJSONPrefixKindRevPtr
 )
 
+type channelInformationSeperator byte
+
+const (
+	// channelInformationSeperatorByte used to separate channel information from the body in backup revisions
+	channelInformationSeperatorByte channelInformationSeperator = iota
+)
+
 // withNonJSONPrefix returns a new byte slice prefixed with a non-JSON byte. The input slice is not modified.
 func withNonJSONPrefix(kind nonJSONPrefix, body []byte) []byte {
 	buf := make([]byte, 1, len(body)+1)
@@ -34,12 +42,23 @@ func withNonJSONPrefix(kind nonJSONPrefix, body []byte) []byte {
 	return buf
 }
 
+func generateMainBackupBodyWithNonJSONPrefix(body []byte, channelInfo []byte) []byte {
+	buf := make([]byte, 1, len(body)+len(channelInfo)+2) // +2 for prefix and separator
+	buf[0] = byte(nonJSONPrefixKindRevBody)
+	buf = append(buf, body...)
+	buf = append(buf, byte(channelInformationSeperatorByte))
+	buf = append(buf, channelInfo...)
+	return buf
+}
+
 // stripNonJSONPrefix removes the non-JSON prefix byte and returns the kind and the remainder of the byte slice.
-func stripNonJSONPrefix(data []byte) (kind nonJSONPrefix, body []byte) {
+func stripNonJSONPrefix(data []byte) (kind nonJSONPrefix, body []byte, channels []byte) {
 	if len(data) <= 1 {
-		return nonJSONPrefixKindUnknown, nil
+		return nonJSONPrefixKindUnknown, nil, channels
 	}
-	return nonJSONPrefix(data[0]), data[1:]
+	kind = nonJSONPrefix(data[0])
+	body, channels, _ = bytes.Cut(data[1:], []byte{byte(channelInformationSeperatorByte)})
+	return kind, body, channels
 }
 
 // setOldRevisionJSONPtr stores a pointer from the old revision's RevTreeID to the Current Version hash used to fetch the body.

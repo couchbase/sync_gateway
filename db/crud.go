@@ -687,19 +687,29 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
-func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, attachments AttachmentsMeta, err error) {
+func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, attachments AttachmentsMeta, set base.Set, err error) {
 	bodyBytes = doc.getRevisionBodyJSON(ctx, revid, c.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
+	var chanBytes []byte
 	if bodyBytes == nil {
 		if !doc.History.contains(revid) {
-			return nil, nil, ErrMissing
+			return nil, nil, nil, ErrMissing
 		}
 
-		bodyBytes, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
+		bodyBytes, chanBytes, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
 		if err != nil || bodyBytes == nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
+	}
+	var channelSet base.Set
+	if len(chanBytes) > 0 {
+		var backupRevChans BackupRevisionChannels
+		err = base.JSONUnmarshal(chanBytes, &backupRevChans)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		channelSet = backupRevChans.Channels.CurrentChannels()
 	}
 
 	// optimistically grab the doc body and to store as a pre-unmarshalled version, as well as anticipating no inline attachments.
@@ -709,14 +719,14 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 
 	// handle backup revision inline attachments, or pre-2.5 meta
 	if inlineAtts, cleanBodyBytes, _, err := extractInlineAttachments(bodyBytes); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if len(inlineAtts) > 0 {
 		// we found some inline attachments, so merge them with attachments, and update the bodies
 		attachments = mergeAttachments(inlineAtts, attachments)
 		bodyBytes = cleanBodyBytes
 	}
 
-	return bodyBytes, attachments, nil
+	return bodyBytes, attachments, channelSet, nil
 }
 
 // mergeAttachments copies the attachmentsB map, and merges attachmentsA into it. If both maps are nil, return nil.
@@ -838,7 +848,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 				return nil, false, ErrDeleted
 			}
 		}
-		if bodyBytes, attachments, err = db.getRevision(ctx, doc, revid); err != nil {
+		if bodyBytes, attachments, _, err = db.getRevision(ctx, doc, revid); err != nil {
 			return nil, false, err
 		}
 	}
@@ -875,7 +885,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if bodyBytes, attachments, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
+		if bodyBytes, attachments, _, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
 		}
 	}
@@ -937,7 +947,9 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json)
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, BackupRevisionChannels{
+		Channels: doc.Channels,
+	})
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2144,7 +2156,9 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds(), BackupRevisionChannels{
+			Channels: doc.Channels,
+		})
 	}
 	doc.RemoveBody()
 
@@ -2988,7 +3002,9 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds())
+		_ = db.setOldRevisionJSONBody(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds(), BackupRevisionChannels{
+			Channels: doc.Channels,
+		})
 		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
 		if db.storeLegacyRevTreeData() {
 			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())
@@ -3018,7 +3034,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 	})
 
 	for _, leafRevision := range documentLeafRevisions {
-		_, attachmentMeta, err := db.getRevision(ctx, doc, leafRevision)
+		_, attachmentMeta, _, err := db.getRevision(ctx, doc, leafRevision)
 		if err != nil {
 			return nil, err
 		}

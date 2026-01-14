@@ -127,6 +127,17 @@ func (channelMap ChannelMap) KeySet() []string {
 	return result
 }
 
+// CurrentChannels returns a set of channels that are not removed.
+func (channelMap ChannelMap) CurrentChannels() base.Set {
+	result := base.Set{}
+	for channel, removal := range channelMap {
+		if removal == nil {
+			result.Add(channel)
+		}
+	}
+	return result
+}
+
 // RevAndVersion is used to store both revTreeID and currentVersion in a single property, for backwards compatibility
 // with existing indexes using rev.  When only RevTreeID is specified, is marshalled/unmarshalled as a string.  Otherwise
 // marshalled normally.

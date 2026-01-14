@@ -1593,6 +1593,11 @@ func TestImportRevisionCopy(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	// Create user with access to ABC channel
+	rt.CreateUser("alice", []string{"ABC"})
+	// Create user with access to DEF channel
+	rt.CreateUser("bob", []string{"DEF"})
+
 	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1630,8 +1635,18 @@ func TestImportRevisionCopy(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
-	assert.Equal(t, 200, response.Code)
+	response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// validate we can fetch using user with access to channel ABC
+	response = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "", "alice")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "", "bob")
+	rest.RequireStatus(t, response, http.StatusOK)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body[db.BodyRemoved].(bool), "Expected body to be a tombstone")
 }
 
 // Test creation of backup revision on import, when rev is no longer available in rev cache.
