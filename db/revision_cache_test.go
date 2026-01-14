@@ -2355,24 +2355,127 @@ func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
 		assert.Equal(t, revIDs[i], docRev.RevID)
 	}
 
-	// assert that each legacy rev is populated in both lookup maps
+	// assert that each legacy rev is populated in rev lookup
 	for _, revID := range revIDs {
 		docRev, ok := collection.revisionCache.Peek(ctx, docID, revID)
 		require.True(t, ok)
-		assert.Equal(t, revID, docRev.RevID)
-	}
-	// no peek for CV so just do fetch for CV from legacy rev CV
-	for _, revID := range revIDs {
-		cvVal, err := LegacyRevToRevTreeEncodedVersion(revID)
-		require.NoError(t, err)
-		docRev, err := collection.revisionCache.GetWithCV(ctx, docID, &cvVal, RevCacheOmitDelta)
-		require.NoError(t, err)
 		assert.Equal(t, revID, docRev.RevID)
 	}
 
 	// assert these were all fetched from the rev cache and not loaded from bucket (no rev cache misses)
 	// 3 misses are from the initial load from bucket after rev cache flush above
 	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheNumItems.Value())
+}
+
+func TestEvictionOfRevIDKeysWhenNoItemInCVMap(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
+		RevisionCacheOptions: &RevisionCacheOptions{
+			ShardCount:   1, // turn off sharding for simplicity
+			MaxItemCount: 1,
+			MaxBytes:     0, // turn off memory limit
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a few legacy revs
+	docID := t.Name()
+	revIDs := make([]string, 0)
+	legacyRev, _ := collection.CreateDocNoHLV(t, ctx, docID, Body{"foo": "bar"})
+	revIDs = append(revIDs, legacyRev)
+	for range 2 {
+		newRev, _ := collection.CreateDocNoHLV(t, ctx, docID, Body{BodyRev: legacyRev, "foo": "bar"})
+		revIDs = append(revIDs, newRev)
+		legacyRev = newRev // OCC val
+	}
+	// simulate doc revs that are backed up to bucket pre upgrade
+	for i := range 2 {
+		err := collection.setOldRevisionJSONBody(ctx, docID, revIDs[i], []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds())
+		require.NoError(t, err)
+	}
+
+	// flush all revisions from rev cache to force load from bucket
+	db.FlushRevisionCacheForTest()
+
+	// fetch all three legacy revisions, first two should be loaded from old backup revisions
+	for i := range 3 {
+		docRev, err := collection.getRev(ctx, docID, revIDs[i], 0, nil)
+		require.NoError(t, err)
+		assert.Equal(t, revIDs[i], docRev.RevID)
+	}
+	// at this point we have loaded 3 revs into a cache that can only hold 1 item
+	// assert that only 1 item exists in rev lookup (revID3 from above)
+	_, ok := collection.revisionCache.Peek(ctx, docID, revIDs[2])
+	require.True(t, ok)
+
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
+}
+
+func TestEvictionOfCVKeysWhenNoItemInRevMap(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
+		RevisionCacheOptions: &RevisionCacheOptions{
+			ShardCount:   1, // turn off sharding for simplicity
+			MaxItemCount: 1,
+			MaxBytes:     0, // turn off memory limit
+		},
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// create a few revs
+	docID := t.Name()
+	docCVs := make([]string, 0)
+	rev, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+	docCVs = append(docCVs, doc1.HLV.GetCurrentVersionString())
+	for range 2 {
+		newRev, doc, err := collection.Put(ctx, docID, Body{BodyRev: rev, "foo": "bar"})
+		require.NoError(t, err)
+		docCVs = append(docCVs, doc.HLV.GetCurrentVersionString())
+		rev = newRev // OCC val
+	}
+	// simulate doc revs that are backed up to bucket pre upgrade
+	for i := range 2 {
+		revHash := base.Crc32cHashString([]byte(docCVs[i]))
+		err := collection.setOldRevisionJSONBody(ctx, docID, revHash, []byte(`{"foo":"bar"}`), collection.oldRevExpirySeconds())
+		require.NoError(t, err)
+	}
+
+	// flush all revisions from rev cache to force load from bucket
+	db.FlushRevisionCacheForTest()
+
+	// fetch all three legacy revisions, first two should be loaded from old backup revisions
+	for i := range 3 {
+		docRev, err := collection.getRev(ctx, docID, docCVs[i], 0, nil)
+		require.NoError(t, err)
+		assert.Equal(t, docCVs[i], docRev.CV.String())
+	}
+	// at this point we have loaded 3 revs into a cache that can only hold 1 item
+	// assert that only 1 item exists in rev lookup (revID3 from above)
+	// to do so delete backup revs and fetch through rev cache assert first two have 404 errors whilst last one should succeed (resident in cache)
+	for i := range 2 {
+		revHash := base.Crc32cHashString([]byte(docCVs[i]))
+		err := collection.PurgeOldRevisionJSON(ctx, docID, revHash)
+		require.NoError(t, err)
+	}
+	for i := range 2 {
+		_, err := collection.getRev(ctx, docID, docCVs[i], 0, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "missing")
+	}
+	// last one should succeed
+	docRev, err := collection.getRev(ctx, docID, docCVs[2], 0, nil)
+	require.NoError(t, err)
+	assert.Equal(t, docCVs[2], docRev.CV.String())
+
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
 }
 
 func TestRaceRemovingStaleCVValue(t *testing.T) {
@@ -2530,3 +2633,22 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 }
+
+//func TestCVPopulationOnLegacyRevLoad(t *testing.T) {
+//	db, ctx := setupTestDB(t)
+//	defer db.Close(ctx)
+//
+//	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+//	newRev, _ := collection.CreateDocNoHLV(t, ctx, "legacydoc", Body{"foo": "bar"})
+//
+//	vrs, err := LegacyRevToRevTreeEncodedVersion(newRev)
+//	require.NoError(t, err)
+//
+//	// load legacy rev from bucket (no need to flush cache given legacy rev api doesn't add to cache)
+//	docRev, err := collection.getRev(ctx, "legacydoc", "", 0, nil)
+//	require.NoError(t, err)
+//
+//	assert.Equal(t, newRev, docRev.RevID)
+//	assert.Nil(t, docRev.CV)
+//	assert.Equal(t, vrs.String(), docRev.CV.String())
+//}

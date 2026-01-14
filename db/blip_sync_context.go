@@ -588,7 +588,7 @@ func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, 
 
 	var history []string
 	var revTreeProperty []string
-	if bsc.useHLV() {
+	if bsc.useHLV() && revDelta.ToCV != "" {
 		history = append(history, revDelta.HlvHistory)
 	} else {
 		history = revDelta.RevisionHistory
@@ -603,7 +603,7 @@ func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, 
 	}
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
-	if bsc.useHLV() {
+	if bsc.useHLV() && revDelta.ToCV != "" {
 		base.DebugfCtx(ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToCV, deltaSrcRevID)
 		return bsc.sendRevisionWithProperties(ctx, sender, docID, revDelta.ToCV, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
 			properties, seq, resendFullRevisionFunc)
