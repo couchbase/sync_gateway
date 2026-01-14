@@ -934,8 +934,14 @@ func TestSyncFuncDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
+		CustomTestBucket: bucket,
 	})
 	defer rt.Close()
 
@@ -965,6 +971,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 		requestDocID    bool
 		expectedOutput  SyncFnDryRun
 		expectedStatus  int
+		xattrKey        string
+		xattrVal        any
 	}{
 		{
 			name: "request sync function and doc body",
@@ -1244,6 +1252,89 @@ func TestSyncFuncDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name: "dry run with request user meta and sync function",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				Meta: map[string]any{"xattrs": map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
+			},
+			xattrKey: `"channelXattr"`,
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc user meta and sync function",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+			},
+			existingDocBody: `{"docVersion": 1}`,
+			xattrKey:        `"channelXattr"`,
+			xattrVal:        []string{"channel1", "channel3", "useradmin"},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			requestDocID:   true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with existing doc user meta and sync function",
+			dbSyncFunction: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+			existingDocBody: `{"docVersion": 1}`,
+			xattrKey:        `"channelXattr"`,
+			xattrVal:        []string{"channel1", "channel3", "useradmin"},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			requestDocID:   true,
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range tests {
@@ -1255,8 +1346,16 @@ func TestSyncFuncDryRun(t *testing.T) {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
 			}
 
+			if test.xattrKey != "" {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(`{"user_xattr_key": %s}`, test.xattrKey)), http.StatusCreated)
+			}
+
 			if test.existingDocBody != "" {
 				rt.PutDoc(test.name, test.existingDocBody)
+				if test.xattrKey != "" {
+					_, err := dataStore.SetXattrs(ctx, test.name, map[string][]byte{"channelXattr": base.MustJSONMarshal(t, test.xattrVal)})
+					require.NoError(t, err)
+				}
 			}
 
 			bodyBytes, err := json.Marshal(test.request)
@@ -1278,8 +1377,16 @@ func TestSyncFuncDryRun(t *testing.T) {
 }
 
 func TestSyncFuncDryRunErrors(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
 	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+	dbConfig.UserXattrKey = base.Ptr("channelXattr")
+
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
 
 	// doc ID not found
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync?doc_id=missing", `{}`), http.StatusNotFound)
@@ -1291,6 +1398,11 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
+	// invalid meta
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"foo":"bar"}}`), http.StatusBadRequest)
+	// invalid xattr key
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"xattrs":{"invalidKey": "invalid value"}}}`), http.StatusBadRequest)
+
 }
 
 func TestImportFilterDryRun(t *testing.T) {

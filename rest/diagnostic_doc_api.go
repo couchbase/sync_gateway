@@ -41,8 +41,9 @@ type ImportFilterDryRun struct {
 }
 
 type SyncFnDryRunPayload struct {
-	Function string  `json:"sync_function"`
-	Doc      db.Body `json:"doc,omitempty"`
+	Function string         `json:"sync_function"`
+	Doc      db.Body        `json:"doc,omitempty"`
+	Meta     map[string]any `json:"meta,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
@@ -95,6 +96,18 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	if syncDryRunPayload.Doc == nil && docid == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
+	}
+
+	// checking user defined metadata
+	if syncDryRunPayload.Meta != nil {
+		xattrs, exists := syncDryRunPayload.Meta["xattrs"].(map[string]any)
+		if !exists {
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing xattrs in meta")
+		}
+		_, exists = xattrs[h.collection.UserXattrKey()]
+		if !exists {
+			return base.HTTPErrorf(http.StatusBadRequest, "xattr key passed does not match db defined xattr key")
+		}
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -164,7 +177,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Meta, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
