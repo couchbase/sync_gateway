@@ -262,10 +262,9 @@ const collectionsDbConfigUpsertScopes = `{
 	}`
 
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
-	base.LongRunningTest(t)
+	db.DisableSequenceWaitOnDbRestart(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyImport)
 	base.RequireNumTestDataStores(t, 2)
 
 	ctx := base.TestCtx(t)
@@ -356,11 +355,10 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 }
 
 func TestMultiCollectionImportRemoveCollection(t *testing.T) {
-	base.LongRunningTest(t)
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SkipImportTestsIfNotEnabled(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyImport)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 

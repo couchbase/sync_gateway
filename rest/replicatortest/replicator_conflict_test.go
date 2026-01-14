@@ -2037,10 +2037,11 @@ func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.
 }
 
 func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
+	db.DisableSequenceWaitOnDbRestart(t)
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyCRUD, base.KeyReplicate, base.KeyHTTP)
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test

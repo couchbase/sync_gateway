@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -280,9 +281,9 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.LongRunningTest(t)
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)

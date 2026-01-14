@@ -1198,10 +1198,10 @@ func TestRemovingUserXattr(t *testing.T) {
 
 func TestGetUserCollectionAccess(t *testing.T) {
 	base.LongRunningTest(t)
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -1371,10 +1371,9 @@ func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {
-	base.LongRunningTest(t)
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	testBucket := base.GetTestBucket(t)
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
