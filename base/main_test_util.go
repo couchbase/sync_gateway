@@ -18,6 +18,10 @@ import (
 
 // SkipTestMain logs in the same format as actual test output that we're skipping the current package.
 func SkipTestMain(m *testing.M, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	fmt.Println("=== RUN   TestMain")
 	printfFromLine(2, "    "+format+"\n", args...)
 	fmt.Println("--- SKIP: TestMain (0.00s)")
@@ -26,6 +30,10 @@ func SkipTestMain(m *testing.M, format string, args ...any) {
 
 // printfFromLine prints the given message with the filename and line number from the caller
 func printfFromLine(skip int, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	_, filename, line, _ := runtime.Caller(skip)
 	filename = filepath.Base(filename) // trim
 	args = append([]any{filename, line}, args...)

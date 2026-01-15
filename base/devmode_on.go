@@ -11,13 +11,20 @@
 
 package base
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 const cbSGDevModeBuildTagSet = true
 
 var assertLogFn logFn = PanicfCtx
 
 func panicRecoveryLogFn(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	// add a warn count since the devmode=off path also adds a warn count
 	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Add(1)
 	PanicfCtx(ctx, format, args...)

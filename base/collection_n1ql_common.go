@@ -471,6 +471,11 @@ func isTransientIndexerError(err error) bool {
 }
 
 func SlowQueryLog(ctx context.Context, startTime time.Time, threshold time.Duration, messageFormat string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(messageFormat, args...)
+	}
+
 	if elapsed := time.Now().Sub(startTime); elapsed > threshold {
 		InfofCtx(ctx, KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}

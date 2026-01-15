@@ -25,9 +25,13 @@ var (
 )
 
 // RedactErrorf creates a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
-func RedactErrorf(fmt string, args ...any) *RedactableError {
+func RedactErrorf(format string, args ...any) *RedactableError {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Errorf(format, args...)
+	}
 	return &RedactableError{
-		fmt:  fmt,
+		fmt:  format,
 		args: args,
 	}
 }
