@@ -92,18 +92,20 @@ post:
               description: |-
                 Optional user context used during evaluation. Can be used to impersonate a non-admin user during evaluation. Can be used to test sync function utilities `requireUser()`, `requireRole()`, `requireAccess()`, etc.
 
+                The user, channels and roles do not have to exist in the system to be declared here. The Sync Function dry-run will be evaluated as though they do exist.
+
                 If this `userCtx` is not provided, the sync function will be evaluated as an admin user (e.g. Admin API writes, Import, Resync, etc.)
               type: object
               properties:
                 name:
                   type: string
-                  description: The name of the user to impersonate. Used by `requireUser()`.
+                  description: The name of the user to impersonate. The user does not have to exist. Used by `requireUser()`.
                   example: user1
                 roles:
                   type: array
                   items:
                     type: string
-                  description: A set of roles the user being impersonated has. Used by `requireRole()`.
+                  description: A set of roles the user being impersonated has. The role does not have to exist. Used by `requireRole()`.
                   example:
                     - role1
                     - role2
