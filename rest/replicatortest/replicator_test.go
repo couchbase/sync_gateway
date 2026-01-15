@@ -6790,7 +6790,6 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			ActiveRestTesterConfig: &rest.RestTesterConfig{
 				DatabaseConfig: &rest.DatabaseConfig{
 					DbConfig: rest.DbConfig{
-						Name: "active",
 						DeltaSync: &rest.DeltaSyncConfig{
 							Enabled: base.Ptr(true),
 						},
@@ -6800,7 +6799,6 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			PassiveRestTesterConfig: &rest.RestTesterConfig{
 				DatabaseConfig: &rest.DatabaseConfig{
 					DbConfig: rest.DbConfig{
-						Name: "passive",
 						DeltaSync: &rest.DeltaSyncConfig{
 							Enabled: base.Ptr(true),
 						},
