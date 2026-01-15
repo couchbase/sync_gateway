@@ -9,7 +9,6 @@
 import io
 import os
 import pathlib
-import sys
 import unittest.mock
 import urllib.error
 from typing import Optional
@@ -165,10 +164,7 @@ def test_get_paths_from_expvars_no_url() -> None:
         (
             b'{"cmdline": ["fake_sync_gateway", "-json", "fake_sync_gateway_config.json"]}',
             "fake_sync_gateway",
-            # platform difference is https://github.com/python/cpython/issues/82852
-            "{cwd}{pathsep}fake_sync_gateway_config.json"
-            if sys.platform != "win32"
-            else "fake_sync_gateway_config.json",
+            "{cwd}{pathsep}fake_sync_gateway_config.json",
         ),
         (
             b'{"cmdline": ["fake_sync_gateway", "-json", "{tmpdir}/real_file.json"]}',
