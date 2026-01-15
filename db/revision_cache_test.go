@@ -2633,22 +2633,3 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 	assert.Equal(t, 0, cache.lruList.Len())
 	assert.Equal(t, int64(0), memoryBytesCounted.Value())
 }
-
-//func TestCVPopulationOnLegacyRevLoad(t *testing.T) {
-//	db, ctx := setupTestDB(t)
-//	defer db.Close(ctx)
-//
-//	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-//	newRev, _ := collection.CreateDocNoHLV(t, ctx, "legacydoc", Body{"foo": "bar"})
-//
-//	vrs, err := LegacyRevToRevTreeEncodedVersion(newRev)
-//	require.NoError(t, err)
-//
-//	// load legacy rev from bucket (no need to flush cache given legacy rev api doesn't add to cache)
-//	docRev, err := collection.getRev(ctx, "legacydoc", "", 0, nil)
-//	require.NoError(t, err)
-//
-//	assert.Equal(t, newRev, docRev.RevID)
-//	assert.Nil(t, docRev.CV)
-//	assert.Equal(t, vrs.String(), docRev.CV.String())
-//}

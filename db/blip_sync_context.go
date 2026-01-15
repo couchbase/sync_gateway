@@ -588,10 +588,19 @@ func (bsc *BlipSyncContext) sendDelta(ctx context.Context, sender *blip.Sender, 
 
 	var history []string
 	var revTreeProperty []string
-	if bsc.useHLV() && revDelta.ToCV != "" {
-		history = append(history, revDelta.HlvHistory)
-	} else {
+	localIsLegacyRev := revDelta.ToCV == ""
+	if !bsc.useHLV() || localIsLegacyRev {
 		history = revDelta.RevisionHistory
+	} else {
+		if revDelta.HlvHistory != "" {
+			history = append(history, revDelta.HlvHistory)
+		}
+	}
+
+	if base.IsRevTreeID(deltaSrcRevID) && !localIsLegacyRev && bsc.useHLV() {
+		// append current revID and rest of rev tree after hlv history
+		history = append(history, revDelta.ToRevID)
+		history = append(history, revDelta.RevisionHistory...)
 	}
 	if bsc.sendRevTreeProperty() {
 		revTreeProperty = append(revTreeProperty, revDelta.ToRevID)

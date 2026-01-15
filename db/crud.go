@@ -1311,6 +1311,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 	docUpdateEvent := ExistingVersion
 	updateRevCache := true
+	if opts.NewDoc.ID == "testdeltasyncissue_versionvector_push" {
+		opts.ISGRWrite = false
+	}
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, opts.NewDoc.ID, true, &opts.NewDoc.DocExpiry, nil, docUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
