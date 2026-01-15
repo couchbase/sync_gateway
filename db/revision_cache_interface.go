@@ -460,7 +460,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	if revChannels, ok := doc.channelsForRevTreeID(revid); ok {
 		channels = revChannels
 	}
-	// only add doc hlv idf the revision ewe have fetched is current revision, otherwise we don't know whether hlv applies to that revision
+	// only add doc hlv if the revision we have fetched is current revision, otherwise we don't know whether hlv applies to that revision
 	if doc.GetRevTreeID() == revid {
 		if doc.HLV != nil {
 			hlv = doc.HLV
@@ -477,7 +477,7 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		return nil, nil, nil, false, nil, false, nil, "", nil, err
 	}
 
-	// if we have request current version on teh doc we can add revision ID too. If not we cannot know what the
+	// if we have request current version on the doc we can add revision ID too. If not we cannot know what the
 	// corresponding revID is to pair with the request CV
 	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
 		revid = doc.GetRevTreeID()
