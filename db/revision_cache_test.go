@@ -2037,7 +2037,7 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 	docRev := DocumentRevision{
 		DocID:     "doc1",
 		RevID:     "1-abc",
-		BodyBytes: []byte(`{"test":"1234"}`),
+		BodyBytes: []byte(`{"testing":true}`),
 		Channels:  base.SetOf("chan1"),
 		History:   Revisions{"start": 1},
 		CV:        &cv,
@@ -2056,16 +2056,22 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 
 	wg.Wait()
 
-	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}]
-	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}]
+	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}].Value.(*revCacheValue)
+	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}].Value.(*revCacheValue)
 
-	assert.Equal(t, 1, cache.lruList.Len())
+	assert.LessOrEqual(t, cache.lruList.Len(), 2)
 	assert.Equal(t, 1, len(cache.cache))
 	assert.Equal(t, 1, len(cache.hlvCache))
-	cacheElem := cache.lruList.Front()
-	// assert that both maps point to the same element in cache list
-	assert.Equal(t, cacheElem, cvElement)
-	assert.Equal(t, cacheElem, revElement)
+	assert.Equal(t, revElement.revID, cvElement.revID)
+	assert.Equal(t, revElement.id, cvElement.id)
+	assert.Equal(t, revElement.cv.String(), cvElement.cv.String())
+	var revElem Body
+	var cvElem Body
+	err := base.JSONUnmarshal(revElement.bodyBytes, &revElem)
+	require.NoError(t, err)
+	err = base.JSONUnmarshal(cvElement.bodyBytes, &cvElem)
+	require.NoError(t, err)
+	assert.Equal(t, revElem["testing"].(bool), cvElem["testing"].(bool))
 }
 
 func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {

@@ -513,7 +513,6 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 				return nil, nil, err
 			}
 		}
-		//fromRevisionForDiff := initialFromRevision
 
 		// Check if another writer beat us to generating the delta and caching it.
 		if fromRevisionForDiff.Delta != nil && (fromRevisionForDiff.Delta.ToCV == toRev || fromRevisionForDiff.Delta.ToRevID == toRev) {
