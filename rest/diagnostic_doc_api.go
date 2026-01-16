@@ -44,7 +44,7 @@ type SyncFnDryRunMetaMap struct {
 	Xattrs map[string]any `json:"xattrs"`
 }
 type SyncFnDryRunPayload struct {
-	DocID    string         `json:"doc_id"`
+	DocID    string              `json:"doc_id"`
 	Function string              `json:"sync_function"`
 	Doc      db.Body             `json:"doc,omitempty"`
 	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
