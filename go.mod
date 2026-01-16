@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.2
+	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/couchbase/cbgt v1.4.10
 	github.com/couchbase/clog v0.1.0
@@ -45,7 +46,6 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.12 // indirect
 	github.com/couchbase/blance v0.1.6 // indirect
 	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
@@ -98,3 +98,5 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/coder/websocket => github.com/couchbasedeps/websocket v1.8.13-0.20260116135942-21bb2da15e3d
