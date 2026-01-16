@@ -40,10 +40,13 @@ type ImportFilterDryRun struct {
 	Logging      DryRunLogging `json:"logging"`
 }
 
+type SyncFnDryRunMetaMap struct {
+	Xatrrs map[string]any `json:"xatrrs"`
+}
 type SyncFnDryRunPayload struct {
-	Function string         `json:"sync_function"`
-	Doc      db.Body        `json:"doc,omitempty"`
-	Meta     map[string]any `json:"meta,omitempty"`
+	Function string              `json:"sync_function"`
+	Doc      db.Body             `json:"doc,omitempty"`
+	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
@@ -98,20 +101,20 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
 	}
 
+	var userXattrs map[string]any
 	// checking user defined metadata
-	if syncDryRunPayload.Meta != nil {
-		xattrs, exists := syncDryRunPayload.Meta["xattrs"].(map[string]any)
-		if !exists {
-			return base.HTTPErrorf(http.StatusBadRequest, "Missing xattrs in meta")
-		}
+	if syncDryRunPayload.Meta.Xatrrs != nil {
+		xattrs := syncDryRunPayload.Meta.Xatrrs
 		userXattrKey := h.collection.UserXattrKey()
 		if userXattrKey == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
 		}
-		_, exists = xattrs[userXattrKey]
+		_, exists := xattrs[userXattrKey]
 		if !exists {
 			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
 		}
+		userXattrs = make(map[string]any)
+		userXattrs["xattrs"] = syncDryRunPayload.Meta.Xatrrs
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -181,7 +184,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Meta, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {

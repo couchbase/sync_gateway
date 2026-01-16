@@ -1324,7 +1324,7 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 				Doc: db.Body{
 					"foo": "bar",
 				},
-				Meta: map[string]any{"xattrs": map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
+				Meta: SyncFnDryRunMetaMap{Xatrrs: map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
 			},
 			xattrKey: "channelXattr",
 			expectedOutput: SyncFnDryRun{
@@ -1393,44 +1393,6 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 			requestDocID:   true,
 			expectedStatus: http.StatusOK,
 		},
-		{
-			name: "dry run with invalid meta body",
-			request: SyncFnDryRunPayload{
-				Function: `function(doc, oldDoc, meta) {
-					if (meta.xattrs.channelXattr === undefined){
-					  console.log("no user_xattr_key defined")
-					  channel(null)
-					} else {
-					  channel(meta.xattrs.channelXattr)
-					}
-				}`,
-				Doc: db.Body{
-					"foo": "bar",
-				},
-				Meta: map[string]any{"foo": "bar"},
-			},
-			xattrKey:       "channelXattr",
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name: "dry run with invalid user xattr key",
-			request: SyncFnDryRunPayload{
-				Function: `function(doc, oldDoc, meta) {
-					if (meta.xattrs.channelXattr === undefined){
-					  console.log("no user_xattr_key defined")
-					  channel(null)
-					} else {
-					  channel(meta.xattrs.channelXattr)
-					}
-				}`,
-				Doc: db.Body{
-					"foo": "bar",
-				},
-				Meta: map[string]any{"xattrs": map[string]any{"invalidKey": "invalidValue"}},
-			},
-			xattrKey:       "channelXattr",
-			expectedStatus: http.StatusBadRequest,
-		},
 	}
 
 	for _, test := range tests {
@@ -1486,6 +1448,26 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
+}
+
+func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+	dbConfig.UserXattrKey = base.Ptr("channelXattrs")
+
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+	// Invalid meta body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"foo": "bar"}}`), http.StatusBadRequest)
+	// Invalid meta body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"xattrs": {"foo": "bar"}}}`), http.StatusBadRequest)
 }
 
 func TestImportFilterDryRun(t *testing.T) {
