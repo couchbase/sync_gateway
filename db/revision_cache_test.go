@@ -72,6 +72,9 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 		BodyRev:       doc.GetRevTreeID(),
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
+	if doc.HLV != nil {
+		b[BodyCV] = doc.HLV.GetCurrentVersionString()
+	}
 	bodyBytes, err := base.JSONMarshal(b)
 	return bodyBytes, nil, err
 }
@@ -80,10 +83,13 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
-		"testing":         true,
-		BodyId:            doc.ID,
-		BodyRev:           doc.GetRevTreeID(),
-		"current_version": &Version{Value: doc.HLV.Version, SourceID: doc.HLV.SourceID},
+		"testing":     true,
+		BodyId:        doc.ID,
+		BodyRev:       doc.GetRevTreeID(),
+		BodyRevisions: Revisions{RevisionsStart: 1},
+	}
+	if doc.HLV != nil {
+		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
 		return nil, nil, err
@@ -383,12 +389,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 			backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{[]string{"doc2"}, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
-			var maxBytes int64
-			if testCase.UseCVCache {
-				maxBytes = 233
-			} else {
-				maxBytes = 205
-			}
+			maxBytes := int64(235)
 			cacheOptions := &RevisionCacheOptions{
 				MaxItemCount: 10,
 				MaxBytes:     maxBytes,
@@ -836,7 +837,7 @@ func TestUpdateDeltaRevCacheMemoryStat(t *testing.T) {
 			backingStoreMap := CreateTestSingleBackingStoreMap(&testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, testCollectionID)
 			cacheOptions := &RevisionCacheOptions{
 				MaxItemCount: 10,
-				MaxBytes:     125,
+				MaxBytes:     140,
 			}
 			cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
 
@@ -921,11 +922,7 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.Equal(t, "doc2", docRev.DocID)
-			if testCase.UseCVCache {
-				assert.Equal(t, int64(130), docRev.MemoryBytes)
-			} else {
-				assert.Equal(t, int64(102), docRev.MemoryBytes)
-			}
+			assert.Equal(t, int64(118), docRev.MemoryBytes)
 			assert.NotNil(t, docRev.BodyBytes)
 			assert.Equal(t, int64(0), memoryBytesCounted.Value())
 			assert.Equal(t, int64(0), cacheNumItems.Value())
@@ -1097,19 +1094,14 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 			}
 			assert.NotNil(t, docRev.BodyBytes)
 
-			// memory usage is higher for cv (body bytes on doc rev is higher given the cv definition)
-			if testCase.UseCVCache {
-				assert.Equal(t, int64(130), memoryBytesCounted.Value())
-			} else {
-				assert.Equal(t, int64(102), memoryBytesCounted.Value())
-			}
+			assert.Equal(t, int64(118), memoryBytesCounted.Value())
 			assert.Equal(t, int64(1), cacheNumItems.Value())
 
 			docRev, err = cache.GetActive(ctx, "doc4", testCollectionID)
 			require.NoError(t, err)
 			assert.NotNil(t, docRev.BodyBytes)
 
-			assert.Equal(t, int64(102), memoryBytesCounted.Value())
+			assert.Equal(t, int64(118), memoryBytesCounted.Value())
 			assert.Equal(t, int64(1), cacheNumItems.Value())
 		})
 	}
@@ -1972,16 +1964,30 @@ func TestConcurrentLoadByCVAndRevOnCache(t *testing.T) {
 
 	wg.Wait()
 
-	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}]
-	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}]
-	assert.Equal(t, 1, cache.lruList.Len())
+	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}].Value.(*revCacheValue)
+	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}].Value.(*revCacheValue)
+	// we may have concurrent loads that lead to the same doc being loaded into two
+	// rev cache items but only one reference tyo one or the other in the maps
+	//	┌──────────┐   ┌──────────┐
+	//	│          │   │          │
+	//	│  Doc1    │   │   Doc1   │
+	//	│          │   │          │
+	//	└──────────┘   └──────────┘
+	//	    ▲               ▲
+	//	    │               │
+	//	    │               │
+	//	┌──────┐       ┌──────┐
+	//	│ HLV  │       │ REV  │
+	//	│ MAP  │       │ MAP  │
+	//	└──────┘       └──────┘
+
+	assert.LessOrEqual(t, cache.lruList.Len(), 2)
 	assert.Equal(t, 1, len(cache.cache))
 	assert.Equal(t, 1, len(cache.hlvCache))
-	// grab the single elem in the cache list
-	cacheElem := cache.lruList.Front()
-	// assert that both maps point to the same element in cache list
-	assert.Equal(t, cacheElem, cvElement)
-	assert.Equal(t, cacheElem, revElement)
+	assert.Equal(t, revElement.revID, cvElement.revID)
+	assert.Equal(t, revElement.id, cvElement.id)
+	assert.Equal(t, revElement.cv.String(), cvElement.cv.String())
+	require.JSONEq(t, string(revElement.bodyBytes), string(cvElement.bodyBytes))
 }
 
 // TestGetActive:
@@ -2288,33 +2294,6 @@ func TestRemoveFromRevLookup(t *testing.T) {
 	assert.Equal(t, 10, cache.lruList.Len())
 	assert.Equal(t, 10, len(cache.cache)) // we should now have 10 items in rev lookup given the item above aligned the lookups after eviction
 	assert.Equal(t, 10, len(cache.hlvCache))
-}
-
-func TestIncorrectStatsWhenAddingToLookupMapKeyThatExists(t *testing.T) {
-	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
-	cacheOptions := &RevisionCacheOptions{
-		MaxItemCount: 20,
-		MaxBytes:     0,
-	}
-	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, &cacheHitCounter, &cacheMissCounter, &cacheNumItems, &memoryBytesCounted)
-
-	// NOTE: the below should never happen really in normal processing at the cache but test is forcing a scenario to
-	// force a code path
-	ctx := base.TestCtx(t)
-	// add entry, remove from cv lookup then add same entry again (but diff body)
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
-	cache.RemoveCVOnly(ctx, "doc1", &Version{Value: 123, SourceID: "test"}, testCollectionID)
-	// adding with different body but same revID, docID and CV will cause the addToRevMapPostLoad function to pick up
-	// that the revID entry for this key points to a different element and thus it will remove the old element from the cache
-	cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data1000"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
-
-	// assert that the stats are correct
-	assert.Equal(t, 1, cache.lruList.Len())
-	assert.Equal(t, 1, len(cache.cache))
-	assert.Equal(t, 1, len(cache.hlvCache))
-	assert.Equal(t, int64(1), cacheNumItems.Value())
-	assert.Equal(t, int64(19), memoryBytesCounted.Value())
 }
 
 func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {

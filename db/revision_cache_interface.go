@@ -395,13 +395,15 @@ type RevisionDelta struct {
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
-		ToCV:                  toRevision.CV.String(),
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
 		HlvHistory:            toRevision.HlvHistory,
 		ToDeleted:             deleted,
+	}
+	if toRevision.CV != nil {
+		revDelta.ToCV = toRevision.CV.String()
 	}
 	revDelta.CalculateDeltaBytes()
 	return revDelta

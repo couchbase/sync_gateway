@@ -462,27 +462,18 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(ctx context.Context, docID, revI
 	defer rc.lock.Unlock()
 	// check for existing value in rev cache map (due to concurrent fetch by rev ID)
 	cvElem, cvFound := rc.hlvCache[key]
-	revElem, revFound := rc.cache[legacyKey]
+	_, revFound := rc.cache[legacyKey]
 	if !cvFound {
 		// its possible the element has been evicted if we don't find the element above (high churn on rev cache)
 		// need to return doc revision to caller still but no need repopulate the cache
 		return
 	}
 	// Check if another goroutine has already updated the rev map
-	if revFound {
-		if cvElem == revElem {
-			// already match, return
-			return
-		}
-		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
-		rc.cache[legacyKey] = cvElem
-		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
-		rc.cacheNumItems.Add(-1)
-		rc.lruList.Remove(revElem)
-	} else {
+	if !revFound {
 		// if not found we need to add the element to the rev lookup (for PUT code path)
 		rc.cache[legacyKey] = cvElem
 	}
+	return
 }
 
 // addToHLVMapPostLoad will generate and entry in the CV lookup map for a new document entering the cache
@@ -498,7 +489,7 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(ctx context.Context, docID, revI
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	// check for existing value in rev cache map (due to concurrent fetch by rev ID)
-	cvElem, cvFound := rc.hlvCache[key]
+	_, cvFound := rc.hlvCache[key]
 	revElem, revFound := rc.cache[legacyKey]
 	if !revFound {
 		// its possible the element has been evicted if we don't find the element above (high churn on rev cache)
@@ -506,20 +497,12 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(ctx context.Context, docID, revI
 		return
 	}
 	// Check if another goroutine has already updated the cv map
-	if cvFound {
-		if cvElem == revElem {
-			// already match, return
-			return
-		}
-		// if CV map and rev map are targeting different list elements, update to have both use the cv map element
-		rc.cache[legacyKey] = cvElem
-		rc._decrRevCacheMemoryUsage(ctx, -revElem.Value.(*revCacheValue).getItemBytes())
-		rc.cacheNumItems.Add(-1)
-		rc.lruList.Remove(revElem)
-	} else {
+	if !cvFound {
 		// if not found we need to add the element to the hlv lookup
 		rc.hlvCache[key] = revElem
+		return
 	}
+
 	return
 }
 
