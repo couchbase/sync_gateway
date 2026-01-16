@@ -1324,7 +1324,7 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 				Doc: db.Body{
 					"foo": "bar",
 				},
-				Meta: SyncFnDryRunMetaMap{Xatrrs: map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
+				Meta: SyncFnDryRunMetaMap{Xattrs: map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
 			},
 			xattrKey: "channelXattr",
 			expectedOutput: SyncFnDryRun{

@@ -41,7 +41,7 @@ type ImportFilterDryRun struct {
 }
 
 type SyncFnDryRunMetaMap struct {
-	Xatrrs map[string]any `json:"xatrrs"`
+	Xattrs map[string]any `json:"xattrs"`
 }
 type SyncFnDryRunPayload struct {
 	Function string              `json:"sync_function"`
@@ -103,8 +103,8 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	var userXattrs map[string]any
 	// checking user defined metadata
-	if syncDryRunPayload.Meta.Xatrrs != nil {
-		xattrs := syncDryRunPayload.Meta.Xatrrs
+	if syncDryRunPayload.Meta.Xattrs != nil {
+		xattrs := syncDryRunPayload.Meta.Xattrs
 		userXattrKey := h.collection.UserXattrKey()
 		if userXattrKey == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
@@ -114,7 +114,7 @@ func (h *handler) handleSyncFnDryRun() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
 		}
 		userXattrs = make(map[string]any)
-		userXattrs["xattrs"] = syncDryRunPayload.Meta.Xatrrs
+		userXattrs["xattrs"] = syncDryRunPayload.Meta.Xattrs
 	}
 
 	oldDoc := &db.Document{ID: docid}
