@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1059,4 +1060,35 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 
 	allDbs = rt.ServerContext().allDatabaseSummaries()
 	require.Len(t, allDbs, 1)
+}
+
+func TestCollectStackTraceFile(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	tempPath := t.TempDir()
+	serverConfig := DefaultStartupConfig(tempPath)
+	serverConfig.Logging.LogFilePath = tempPath
+	ctx := t.Context()
+	serverContext := NewServerContext(ctx, &serverConfig, false)
+	defer serverContext.Close(ctx)
+
+	timeStamp := "01"
+	stackTrace, err := base.GetStackTrace()
+	require.NoError(t, err)
+	base.LogStackTraces(ctx, serverConfig.Logging.LogFilePath, stackTrace, timeStamp)
+	require.Len(t, getFilenames(t, tempPath), 1)
+	assert.True(t, slices.Contains(getFilenames(t, tempPath), base.StackFilePrefix+timeStamp+".log"))
+
+	// trigger rotation and assert we don't go above 10 files
+	expectedFiles := make([]string, 0, 10)
+	for i := 2; i < 12; i++ {
+		timeStamp = fmt.Sprintf("%d", i+2)
+		trace, err := base.GetStackTrace()
+		require.NoError(t, err)
+		base.LogStackTraces(ctx, serverConfig.Logging.LogFilePath, trace, timeStamp)
+		expectedFiles = append(expectedFiles, base.StackFilePrefix+timeStamp+".log")
+	}
+	files := getFilenames(t, tempPath)
+	require.Len(t, files, 10)
+	require.ElementsMatch(t, files, expectedFiles)
 }

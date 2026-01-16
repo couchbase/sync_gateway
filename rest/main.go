@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,7 +39,7 @@ func ServerMain() {
 
 // TODO: Pass ctx down into HTTP servers so that serverMain can be stopped.
 func serverMain(ctx context.Context, osArgs []string) error {
-	RegisterSignalHandler(ctx)
+	sigChan := RegisterSignalHandler(ctx, "")
 	defer base.FatalPanicHandler()
 
 	base.InitializeMemoryLoggers()
@@ -56,7 +58,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return legacyServerMain(ctx, osArgs, flagStartupConfig)
 	}
 
-	disablePersistentConfigFallback, err := serverMainPersistentConfig(ctx, fs, flagStartupConfig)
+	disablePersistentConfigFallback, err := serverMainPersistentConfig(ctx, fs, flagStartupConfig, sigChan)
 	if disablePersistentConfigFallback {
 		return legacyServerMain(ctx, osArgs, flagStartupConfig)
 	}
@@ -65,7 +67,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 }
 
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
-func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStartupConfig *StartupConfig) (disablePersistentConfigFallback bool, err error) {
+func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStartupConfig *StartupConfig, sigChan chan os.Signal) (disablePersistentConfigFallback bool, err error) {
 
 	sc := DefaultStartupConfig(defaultLogFilePath)
 	base.TracefCtx(ctx, base.KeyAll, "default config: %#v", sc)
@@ -146,6 +148,14 @@ func serverMainPersistentConfig(ctx context.Context, fs *flag.FlagSet, flagStart
 	svrctx, err := SetupServerContext(ctx, &sc, true)
 	if err != nil {
 		return false, err
+	}
+
+	if runtime.GOOS != "windows" {
+		// stop signal handlers and register for stack trace handling to be able to log to configured directory,
+		// this is not supported for windows environments
+		signal.Stop(sigChan)
+		close(sigChan)
+		RegisterSignalHandler(ctx, svrctx.Config.Logging.LogFilePath)
 	}
 
 	svrctx.initialStartupConfig = initialStartupConfig

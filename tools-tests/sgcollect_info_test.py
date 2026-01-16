@@ -71,6 +71,27 @@ def test_make_collect_logs_heap_profile(tmpdir):
         assert tasks[0].description.startswith("Contents of")
 
 
+def test_make_collect_logs_stacktrace(tmpdir):
+    with unittest.mock.patch(
+        "sgcollect.urlopen",
+        return_value=io.BytesIO(
+            '{{"logfilepath": "{logpath}"}}'.format(
+                logpath=normalize_path_for_json(tmpdir),
+            ).encode("utf-8")
+        ),
+    ):
+        stacktrace_file = tmpdir.join("sg_stack_trace.log")
+        stacktrace_file.write("foo")
+        tasks = sgcollect.make_collect_logs_tasks(
+            sg_url="fakeurl",
+            sg_config_file_path="",
+            auth_headers={},
+        )
+        assert [tasks[0].log_file] == [stacktrace_file.basename]
+        # ensure that this is not redacted task
+        assert tasks[0].description.startswith("Contents of")
+
+
 @pytest.mark.parametrize("should_redact", [True, False])
 def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
     tmpdir1 = tmp_path / "tmpdir1"

@@ -155,6 +155,9 @@ const (
 
 	// FromConnStrWarningThreshold determines the amount of time it should take before we warn about parsing a connstr (mostly for DNS resolution)
 	FromConnStrWarningThreshold = 10 * time.Second
+
+	// StackFilePrefix is the prefix used when writing stack trace files
+	StackFilePrefix = "sg_stack_trace_"
 )
 
 // SyncGatewayRawDocXattrs is a list of xattrs that Sync Gateway will fetch when reading a raw document.
