@@ -2624,6 +2624,6 @@ func TestEvictionOfCVKeysWhenNoItemInRevMap(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, docCVs[2], docRev.CV.String())
 
-	// we should have ine item in cache
+	// we should have one item in cache
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
 }

@@ -1017,7 +1017,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 	assert.Equal(t, "", docRev.RevID)
 	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
 
-	// fetch current revision and enusre we actually get rev2
+	// fetch current revision and ensure we actually get rev2
 	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
 	require.NoError(t, err, "error fetching current revision")
 	assert.Equal(t, rev2ID, docRev.RevID)
