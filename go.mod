@@ -99,3 +99,5 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/coder/websocket => github.com/couchbasedeps/websocket v1.8.13-0.20260116135942-21bb2da15e3d
