@@ -186,28 +186,16 @@ func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
 
 // DebugfCtx logs the given formatted string and args to the debug log level with an optional log key.
 func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
-	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
-	if false {
-		_ = fmt.Sprintf(format, args...)
-	}
 	logTo(ctx, LevelDebug, logKey, format, args...)
 }
 
 // TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
 func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
-	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
-	if false {
-		_ = fmt.Sprintf(format, args...)
-	}
 	logTo(ctx, LevelTrace, logKey, format, args...)
 }
 
 // LogLevelCtx allows logging where the level can be set via parameter.
 func LogLevelCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
-	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
-	if false {
-		_ = fmt.Sprintf(format, args...)
-	}
 	logTo(ctx, logLevel, logKey, format, args...)
 }
 
@@ -289,10 +277,6 @@ var consoleFOutput io.Writer = os.Stderr
 // ConsolefCtx logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
 func ConsolefCtx(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
-	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
-	if false {
-		_ = fmt.Sprintf(format, args...)
-	}
 	logTo(ctx, logLevel, logKey, format, args...)
 
 	logger := consoleLogger.Load()
