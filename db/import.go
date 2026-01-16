@@ -74,8 +74,8 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		Cas:    existingDoc.Cas,
 		Xattrs: make(map[string][]byte),
 	}
-	if db.userXattrKey() != "" {
-		existingBucketDoc.Xattrs[db.userXattrKey()] = existingDoc.rawUserXattr
+	if db.UserXattrKey() != "" {
+		existingBucketDoc.Xattrs[db.UserXattrKey()] = existingDoc.rawUserXattr
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
@@ -272,7 +272,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 		}
 
-		shouldGenerateNewRev := bodyChanged || len(existingDoc.Xattrs[db.userXattrKey()]) == 0
+		shouldGenerateNewRev := bodyChanged || len(existingDoc.Xattrs[db.UserXattrKey()]) == 0
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.

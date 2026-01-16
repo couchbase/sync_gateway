@@ -40,9 +40,13 @@ type ImportFilterDryRun struct {
 	Logging      DryRunLogging `json:"logging"`
 }
 
+type SyncFnDryRunMetaMap struct {
+	Xattrs map[string]any `json:"xattrs"`
+}
 type SyncFnDryRunPayload struct {
-	Function string  `json:"sync_function"`
-	Doc      db.Body `json:"doc,omitempty"`
+	Function string              `json:"sync_function"`
+	Doc      db.Body             `json:"doc,omitempty"`
+	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
@@ -95,6 +99,25 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	if syncDryRunPayload.Doc == nil && docid == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
+	}
+
+	var userXattrs map[string]any
+	// checking user defined metadata
+	if syncDryRunPayload.Meta.Xattrs != nil {
+		xattrs := syncDryRunPayload.Meta.Xattrs
+		if len(xattrs) > 1 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Only one xattr key can be specified in meta")
+		}
+		userXattrKey := h.collection.UserXattrKey()
+		if userXattrKey == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
+		}
+		_, exists := xattrs[userXattrKey]
+		if !exists {
+			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
+		}
+		userXattrs = make(map[string]any)
+		userXattrs["xattrs"] = xattrs
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -164,7 +187,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {

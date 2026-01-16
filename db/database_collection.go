@@ -232,10 +232,11 @@ func (c *DatabaseCollection) unsupportedOptions() *UnsupportedOptions {
 	return c.dbCtx.Options.UnsupportedOptions
 }
 
+
 // syncAndUserXattrKeys returns the xattr keys for the user and sync xattrs.
 func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 	xattrKeys := []string{base.SyncXattrName}
-	userXattrKey := c.userXattrKey()
+	userXattrKey := c.UserXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
 	}
@@ -248,7 +249,7 @@ func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
 	if c.useMou() {
 		xattrKeys = append(xattrKeys, base.MouXattrName)
 	}
-	userXattrKey := c.userXattrKey()
+	userXattrKey := c.UserXattrKey()
 	if userXattrKey != "" {
 		xattrKeys = append(xattrKeys, userXattrKey)
 	}
@@ -256,7 +257,7 @@ func (c *DatabaseCollection) syncMouAndUserXattrKeys() []string {
 }
 
 // Returns the xattr key that will be accessible from the sync function. This is controlled at a database level.
-func (c *DatabaseCollection) userXattrKey() string {
+func (c *DatabaseCollection) UserXattrKey() string {
 	return c.dbCtx.Options.UserXattrKey
 }
 
