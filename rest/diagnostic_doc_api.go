@@ -105,6 +105,9 @@ func (h *handler) handleSyncFnDryRun() error {
 	// checking user defined metadata
 	if syncDryRunPayload.Meta.Xattrs != nil {
 		xattrs := syncDryRunPayload.Meta.Xattrs
+		if len(xattrs) > 1 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Only one xattr key can be specified in meta")
+		}
 		userXattrKey := h.collection.UserXattrKey()
 		if userXattrKey == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
@@ -114,7 +117,7 @@ func (h *handler) handleSyncFnDryRun() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
 		}
 		userXattrs = make(map[string]any)
-		userXattrs["xattrs"] = syncDryRunPayload.Meta.Xattrs
+		userXattrs["xattrs"] = xattrs
 	}
 
 	oldDoc := &db.Document{ID: docid}

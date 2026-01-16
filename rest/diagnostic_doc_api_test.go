@@ -1467,7 +1467,9 @@ func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
 	// Invalid meta body
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"foo": "bar"}}`), http.StatusBadRequest)
 	// Invalid meta body
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"xattrs": {"foo": "bar"}}}`), http.StatusBadRequest)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "meta":{"xattrs": {"foo": "bar"}}}`), http.StatusBadRequest)
+	// Multiple xattr keys
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "meta":{"xattrs": {"channelXattrs": "channel1", "channelXattrs2": "channel2"}}}`), http.StatusBadRequest)
 }
 
 func TestImportFilterDryRun(t *testing.T) {
