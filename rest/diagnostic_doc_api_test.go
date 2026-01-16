@@ -965,7 +965,6 @@ func TestSyncFuncDryRun(t *testing.T) {
 		requestDocID    bool
 		expectedOutput  SyncFnDryRun
 		expectedStatus  int
-		userCtx         SyncDryRunUserCtx
 	}{
 		{
 			name: "request sync function and doc body",
