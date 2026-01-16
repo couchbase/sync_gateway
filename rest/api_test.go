@@ -3528,3 +3528,62 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	assert.Error(t, err, errResp)
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
+
+// TestECCV validates if the ECCV value of the bucket is returned as a response
+// for _cluster_info endpoint. ECCV value is returned for each bucket, if the
+// bucket does not contain any SGW database, the value will be set to false
+func TestECCV(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server since it requires a gocb bucket")
+	}
+
+	tests := []struct {
+		name             string
+		persistentConfig bool
+		dbName           string
+	}{
+		{
+			name:             "PersistentConfig=true",
+			persistentConfig: true,
+			dbName:           "db1",
+		},
+		{
+			name:             "PersistentConfig=false",
+			persistentConfig: false,
+			dbName:           "db2",
+		},
+	}
+
+	for _, tests := range tests {
+		t.Run(tests.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				PersistentConfig: tests.persistentConfig,
+			})
+			defer rt.Close()
+
+			if tests.persistentConfig {
+				dbConfig := rt.NewDbConfig()
+				dbConfig.Name = tests.dbName
+
+				RequireStatus(t, rt.CreateDatabase(tests.dbName, dbConfig), http.StatusCreated)
+			}
+
+			resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			RequireStatus(t, resp, http.StatusOK)
+
+			bucketName := rt.GetDatabase().Bucket.GetName()
+
+			type BucketInfoResponse struct {
+				EnableCrossClusterVersioning bool `json:"enable_cross_cluster_versioning"`
+			}
+			type ClusterInfoResponse struct {
+				LegacyConfig bool                          `json:"legacy_config,omitempty"`
+				Buckets      map[string]BucketInfoResponse `json:"buckets,omitempty"`
+			}
+			var clusterInfo ClusterInfoResponse
+			err := base.JSONUnmarshal(resp.Body.Bytes(), &clusterInfo)
+			require.NoError(t, err)
+			assert.True(t, clusterInfo.Buckets[bucketName].EnableCrossClusterVersioning)
+		})
+	}
+}
