@@ -43,11 +43,17 @@ type ImportFilterDryRun struct {
 type SyncFnDryRunMetaMap struct {
 	Xattrs map[string]any `json:"xattrs"`
 }
+type SyncDryRunUserCtx struct {
+	Name     string   `json:"name"`
+	Roles    []string `json:"roles,omitempty"`
+	Channels []string `json:"channels,omitempty"`
+}
 type SyncFnDryRunPayload struct {
 	DocID    string              `json:"doc_id"`
 	Function string              `json:"sync_function"`
 	Doc      db.Body             `json:"doc,omitempty"`
 	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
+	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
@@ -122,6 +128,29 @@ func (h *handler) handleSyncFnDryRun() error {
 		userXattrs["xattrs"] = xattrs
 	}
 
+	var userCtx map[string]any
+	if syncDryRunPayload.UserCtx != nil {
+		userCtx = make(map[string]any)
+		if syncDryRunPayload.UserCtx.Name == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "no user name provided")
+		}
+		userCtx["name"] = syncDryRunPayload.UserCtx.Name
+		userCtx["channels"] = syncDryRunPayload.UserCtx.Channels
+		/*
+			The user role defined in the User interface is of type ch.TimedSet .
+			TimedSet is basically a map of string and the sequence of when the
+			role was added to the DB. The sequence is never really used in
+			the definition of requireRole. requireRole however needs roles to be
+			of the same structure. The below code assigns a default sequence of 1
+			to all the roles passed by the user in the userCtx object.
+		*/
+		rolesMap := make(map[string]int)
+		for _, role := range syncDryRunPayload.UserCtx.Roles {
+			rolesMap[role] = 1
+		}
+		userCtx["roles"] = rolesMap
+	}
+
 	oldDoc := &db.Document{ID: docid}
 	oldDoc.UpdateBody(syncDryRunPayload.Doc)
 	if docid != "" {
@@ -189,7 +218,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
