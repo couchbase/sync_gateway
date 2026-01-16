@@ -1259,13 +1259,13 @@ func TestSyncFuncDryRun(t *testing.T) {
 				rt.PutDoc(test.name, test.existingDocBody)
 			}
 
-			bodyBytes, err := json.Marshal(test.request)
-			require.NoError(t, err)
-
 			url := "/{{.keyspace}}/_sync"
 			if test.requestDocID {
-				url += "?doc_id=" + test.name
+				test.request.DocID = test.name
 			}
+
+			bodyBytes, err := json.Marshal(test.request)
+			require.NoError(t, err)
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
@@ -1416,13 +1416,14 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 				}
 			}
 
+			url := "/{{.keyspace}}/_sync"
+			if test.requestDocID {
+				test.request.DocID = test.name
+			}
+
 			bodyBytes, err := json.Marshal(test.request)
 			require.NoError(t, err)
 
-			url := "/{{.keyspace}}/_sync"
-			if test.requestDocID {
-				url += "?doc_id=" + test.name
-			}
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
@@ -1439,7 +1440,7 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	defer rt.Close()
 
 	// doc ID not found
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync?doc_id=missing", `{}`), http.StatusNotFound)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc_id": "missing"}`), http.StatusNotFound)
 	// no doc ID or inline body provided
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{}`), http.StatusBadRequest)
 	// invalid request json
@@ -1586,7 +1587,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1610,7 +1611,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1642,7 +1643,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1890,13 +1891,14 @@ func TestImportFilterDryRun(t *testing.T) {
 				rt.PutDoc(test.name, test.existingDocBody)
 			}
 
+			url := "/{{.keyspace}}/_import_filter"
+			if test.requestDocID {
+				test.request.DocID = test.name
+			}
+
 			bodyBytes, err := json.Marshal(test.request)
 			require.NoError(t, err)
 
-			url := "/{{.keyspace}}/_import_filter"
-			if test.requestDocID {
-				url += "?doc_id=" + test.name
-			}
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
@@ -1913,9 +1915,9 @@ func TestImportFilterDryRunErrors(t *testing.T) {
 	defer rt.Close()
 
 	// doc ID not found
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=missing", `{}`), http.StatusNotFound)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc_id": "missing"}`), http.StatusNotFound)
 	// invalid request
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=doc", `{"doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc_id": "doc", "doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
 	// invalid request json
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": {"invalid_json"}`), http.StatusBadRequest)
 	// invalid doc body type
