@@ -9,7 +9,7 @@
 [project] # this isn't a real project, but we need this to make the tools work
 name = "sgcollect_info"
 version = "0.0.1"
-requires-python = ">=3.9,<3.10" # miniconda pyinstaller is pinned to python 3.9
+requires-python = ">=3.13,<3.14" # miniconda pyinstaller is pinned to python 3.13
 
 [tool.mypy]
 files = ["tools/sgcollect_info", "tools-tests/*.py", "tools/*.py"]
