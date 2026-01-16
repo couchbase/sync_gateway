@@ -136,6 +136,14 @@ func (h *handler) handleSyncFnDryRun() error {
 		}
 		userCtx["name"] = syncDryRunPayload.UserCtx.Name
 		userCtx["channels"] = syncDryRunPayload.UserCtx.Channels
+		/*
+			The user role defined in the User interface is of type ch.TimedSet .
+			TimedSet is basically a map of string and the sequence of when the
+			role was added to the DB. The sequence is never really used in
+			the definition of requireRole. requireRole however needs roles to be
+			of the same structure. The below code assigns a default sequence of 1
+			to all the roles passed by the user in the userCtx object.
+		*/
 		rolesMap := make(map[string]int)
 		for _, role := range syncDryRunPayload.UserCtx.Roles {
 			rolesMap[role] = 1
