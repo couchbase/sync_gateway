@@ -104,9 +104,13 @@ func (h *handler) handleSyncFnDryRun() error {
 		if !exists {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing xattrs in meta")
 		}
-		_, exists = xattrs[h.collection.UserXattrKey()]
+		userXattrKey := h.collection.UserXattrKey()
+		if userXattrKey == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
+		}
+		_, exists = xattrs[userXattrKey]
 		if !exists {
-			return base.HTTPErrorf(http.StatusBadRequest, "xattr key passed does not match db defined xattr key")
+			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
 		}
 	}
 

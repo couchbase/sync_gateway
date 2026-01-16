@@ -931,20 +931,11 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 
 // Tests the Diagnostic Endpoint to dry run Sync Function
 func TestSyncFuncDryRun(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("Requires EE for some config properties")
-	}
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(ctx)
-	dataStore := bucket.GetSingleDataStore()
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
-		CustomTestBucket: bucket,
 	})
 	defer rt.Close()
 
@@ -974,8 +965,6 @@ func TestSyncFuncDryRun(t *testing.T) {
 		requestDocID    bool
 		expectedOutput  SyncFnDryRun
 		expectedStatus  int
-		xattrKey        string
-		xattrVal        any
 	}{
 		{
 			name: "request sync function and doc body",
@@ -1255,6 +1244,72 @@ func TestSyncFuncDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
+	}
+
+	for _, test := range tests {
+		rt.Run(test.name, func(t *testing.T) {
+			if test.dbSyncFunction != "" {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", test.dbSyncFunction), http.StatusOK)
+			} else {
+				// reset to default sync function
+				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
+			}
+
+			if test.existingDocBody != "" {
+				rt.PutDoc(test.name, test.existingDocBody)
+			}
+
+			bodyBytes, err := json.Marshal(test.request)
+			require.NoError(t, err)
+
+			url := "/{{.keyspace}}/_sync"
+			if test.requestDocID {
+				url += "?doc_id=" + test.name
+			}
+			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
+			RequireStatus(t, resp, test.expectedStatus)
+
+			var output SyncFnDryRun
+			err = json.Unmarshal(resp.Body.Bytes(), &output)
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedOutput, output)
+		})
+	}
+}
+
+// Tests the Diagnostic Endpoint when user xattrs is passed in the request body
+// This is a separate test, as enabling user xattrs is an EE feature only.
+func TestSyncFuncDryRunUserXattrs(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
+	base.SkipImportTestsIfNotEnabled(t)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: bucket,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	rt.CreateDatabase("db", dbConfig)
+
+	tests := []struct {
+		name            string
+		dbSyncFunction  string
+		existingDocBody string
+		request         SyncFnDryRunPayload
+		requestDocID    bool
+		expectedOutput  SyncFnDryRun
+		expectedStatus  int
+		xattrKey        string
+		xattrVal        any
+	}{
 		{
 			name: "dry run with request user meta and sync function",
 			request: SyncFnDryRunPayload{
@@ -1338,6 +1393,44 @@ func TestSyncFuncDryRun(t *testing.T) {
 			requestDocID:   true,
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name: "dry run with invalid meta body",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				Meta: map[string]any{"foo": "bar"},
+			},
+			xattrKey:       "channelXattr",
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "dry run with invalid user xattr key",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				Meta: map[string]any{"xattrs": map[string]any{"invalidKey": "invalidValue"}},
+			},
+			xattrKey:       "channelXattr",
+			expectedStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, test := range tests {
@@ -1380,20 +1473,8 @@ func TestSyncFuncDryRun(t *testing.T) {
 }
 
 func TestSyncFuncDryRunErrors(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skipf("Requires EE for some config properties")
-	}
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		PersistentConfig: true,
-	})
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
-
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Name = "db1"
-	dbConfig.UserXattrKey = base.Ptr("channelXattr")
-
-	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
 
 	// doc ID not found
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync?doc_id=missing", `{}`), http.StatusNotFound)
@@ -1405,11 +1486,6 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
-	// invalid meta
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"foo":"bar"}}`), http.StatusBadRequest)
-	// invalid xattr key
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"xattrs":{"invalidKey": "invalid value"}}}`), http.StatusBadRequest)
-
 }
 
 func TestImportFilterDryRun(t *testing.T) {
