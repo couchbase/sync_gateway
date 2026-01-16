@@ -965,6 +965,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 		requestDocID    bool
 		expectedOutput  SyncFnDryRun
 		expectedStatus  int
+		userCtx         SyncDryRunUserCtx
 	}{
 		{
 			name: "request sync function and doc body",
@@ -1244,6 +1245,157 @@ func TestSyncFuncDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name: "dry run with request doc sync func and user name",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireUser("sgw-user");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name: "sgw-user",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and incorrect user name",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireUser("sgw-user");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name: "sgw-user1",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg wrong user",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and access channel",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireAccess("access-channel");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:     "sgw-user1",
+					Channels: []string{"access-channel"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and invalid access channel",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireAccess("access-channel");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:     "sgw-user1",
+					Channels: []string{"incorrect-channel"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg missing channel access",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and role",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireRole("sgw-role");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:  "sgw-user1",
+					Roles: []string{"sgw-role"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and invalid role",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireRole("sgw-role");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:  "sgw-user1",
+					Roles: []string{"sgw-role1"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg missing role",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range tests {
@@ -1449,6 +1601,8 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
+	// no user name
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "userCtx": {"roles": ["role1", "role2"]} }`), http.StatusBadRequest)
 }
 
 func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
