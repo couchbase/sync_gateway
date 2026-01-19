@@ -3166,7 +3166,7 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 
 }
 
-func TestTestUnblockPendingWithUnusedRange(t *testing.T) {
+func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
@@ -3177,9 +3177,10 @@ func TestTestUnblockPendingWithUnusedRange(t *testing.T) {
 	opts.CachePendingSeqMaxNum = DefaultCachePendingSeqMaxNum
 	db, ctx := setupTestDBWithCacheOptions(t, opts)
 	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// init change cache
-	entries, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", 1), getChangesOptionsWithZeroSeq(t))
+	_, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	docID := fmt.Sprintf("doc_%d", 1)
@@ -3190,7 +3191,7 @@ func TestTestUnblockPendingWithUnusedRange(t *testing.T) {
 		Sequence:     20,
 		DocID:        docID,
 		RevID:        "1-abcdefabcdefabcdef",
-		CollectionID: 1,
+		CollectionID: collection.GetCollectionID(),
 		Version:      123,
 		SourceID:     "sourceA",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
@@ -3215,7 +3216,7 @@ func TestTestUnblockPendingWithUnusedRange(t *testing.T) {
 		assert.Equal(c, uint64(21), db.changeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
 
-	entries, err = db.changeCache.GetChanges(ctx, channels.NewID("channelA", 1), getChangesOptionsWithZeroSeq(t))
+	entries, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	assert.Len(t, entries, 1)
