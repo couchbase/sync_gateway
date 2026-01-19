@@ -285,6 +285,9 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 	if user != nil {
 		// Views only support default collection, so filter based on default collection channels
 		visibleChannels, err = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
+		if err != nil {
+			return
+		}
 		hasStarChannel = !visibleChannels.Contains("*")
 		if !applyChannelFiltering {
 			return // this is an error
