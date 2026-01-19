@@ -10,7 +10,7 @@ parameters:
 post:
   summary: Dry-run Import filter for testing
   description: |-
-    Runs a document through the import filter and return whether its imported or not, and any error messages.
+    Runs a document through the import filter and return whether it is imported or not, and any error messages.
 
     If no custom import filter is provided in the request body, the default or user-defined import filter is used.
 
