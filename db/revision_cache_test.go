@@ -2627,3 +2627,140 @@ func TestEvictionOfCVKeysWhenNoItemInRevMap(t *testing.T) {
 	// we should have one item in cache
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
 }
+
+func TestBasicLoadBackupRevCacheOnlyPopulateOneMap(t *testing.T) {
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
+		RevisionCacheOptions: &RevisionCacheOptions{
+			ShardCount:   1,  // turn off sharding for simplicity
+			MaxItemCount: 10, // turn off size based eviction
+			MaxBytes:     0,  // turn off memory limit
+		},
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := SafeDocumentName(t, t.Name())
+	var firstRevisionID, firstCV string
+	_, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	firstRevisionID = doc1.GetRevTreeID()
+	firstCV = doc1.HLV.GetCurrentVersionString()
+
+	// make revision 2
+	_, _, err = collection.Put(ctx, docID, Body{BodyRev: firstRevisionID, "foo": "bar"})
+	require.NoError(t, err)
+
+	// flush all revisions from rev cache to force load from bucket, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	_, err = collection.getRev(ctx, docID, firstRevisionID, 0, nil)
+	require.NoError(t, err)
+
+	// assert on fetch by revID that we have one item in rev cache and 1 miss but 0 hits
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheHits.Value())
+
+	// now fetch by CV for backup rev, should load rev and only populate CV map and not revID map but
+	// should have essentially two items in underlying cache that are the same doc
+	_, err = collection.getRev(ctx, docID, firstCV, 0, nil)
+	require.NoError(t, err)
+	// assert on fetch by CV that we have two items in rev cache and 2 miss but 0 hits
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheHits.Value())
+
+	// now fetch by revID and CBV again and assert that we have hits now meaning they are loaded fine into lookup maps
+	_, err = collection.getRev(ctx, docID, firstRevisionID, 0, nil)
+	require.NoError(t, err)
+	_, err = collection.getRev(ctx, docID, firstCV, 0, nil)
+	require.NoError(t, err)
+
+	// assert we get two hits now
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheHits.Value())
+}
+
+func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
+	testCases := []struct {
+		name     string
+		useRevID bool
+	}{
+		{"FetchByRevID", true},
+		{"FetchByCV", false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+				OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
+				RevisionCacheOptions: &RevisionCacheOptions{
+					ShardCount:   1,  // turn off sharding for simplicity
+					MaxItemCount: 10, // turn off size based eviction
+					MaxBytes:     0,  // turn off memory limit
+				},
+				DeltaSyncOptions: DeltaSyncOptions{
+					Enabled:          true,
+					RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+				},
+			})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+			docID := SafeDocumentName(t, t.Name())
+			var firstRevisionID, firstCV string
+			_, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+			require.NoError(t, err)
+
+			firstRevisionID = doc1.GetRevTreeID()
+			firstCV = doc1.HLV.GetCurrentVersionString()
+
+			// make revision 2
+			_, doc1, err = collection.Put(ctx, docID, Body{BodyRev: firstRevisionID, "foo": "baz"})
+			require.NoError(t, err)
+
+			// flush cache, this can be removed pending CBG-4542
+			db.FlushRevisionCacheForTest()
+			// grab current version of the doc
+			if tc.useRevID {
+				_, err = collection.getRev(ctx, docID, doc1.GetRevTreeID(), 0, nil)
+			} else {
+				_, err = collection.getRev(ctx, docID, doc1.HLV.GetCurrentVersionString(), 0, nil)
+			}
+			require.NoError(t, err)
+
+			// now fetch for backup rev, should load rev and only populate CV map and not revID map when fetching
+			// by CV and vice versa for fetch by revID
+			if tc.useRevID {
+				_, err = collection.getRev(ctx, docID, firstRevisionID, 0, nil)
+			} else {
+				_, err = collection.getRev(ctx, docID, firstCV, 0, nil)
+			}
+			require.NoError(t, err)
+			// assert on fetch by CV that we have two items in rev cache and 2 miss but 0 hits
+			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+			assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheHits.Value())
+
+			// now fetch the current revision by the opposite method to which we fetched the backup rev above,
+			// assert we get the correct document
+			var docRev DocumentRevision
+			if tc.useRevID {
+				docRev, err = collection.getRev(ctx, docID, doc1.HLV.GetCurrentVersionString(), 0, nil)
+			} else {
+				docRev, err = collection.getRev(ctx, docID, doc1.GetRevTreeID(), 0, nil)
+			}
+			require.NoError(t, err)
+			assert.Equal(t, doc1.GetRevTreeID(), docRev.RevID)
+			assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
+			assert.JSONEq(t, `{"foo": "baz"}`, string(docRev.BodyBytes))
+		})
+	}
+}
