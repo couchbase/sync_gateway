@@ -8,20 +8,19 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 post:
-  summary: Run a doc body through the Import filter and return results.
+  summary: Dry-run Import filter for testing
   description: |-
-    Runs a document body through the import filter and return whether its
-    imported or not, and any error messages. If no custom import filter is
-    provided in the request body, the default or user-defined import filter
-    is used.
+    Runs a document through the import filter and return whether its imported or not, and any error messages.
+
+    If no custom import filter is provided in the request body, the default or user-defined import filter is used.
 
     The document being run through the import filter can be provided in one of the following ways:
-    | `doc` property | `doc_id` property | Behaviour                                                                                                                                                             |
-    | -------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | Set   | Unset  | The document body passed will be the `doc` value in the function.                                                                                                                         |
-    | Unset | Set    | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the function. If the document is not found, an error will be returned |
-    | Set   | Set    | Will throw an error (only one of `doc` or `doc_id` is allowed for the import filter dry run)                                                                                              |
-    | Unset | Unset  | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                       |
+    | `doc` property | `doc_id` property | Behaviour                                                                                                                                                            |
+    | ------ |----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Set   | Unset | The document body passed will be the `doc` value in the function.                                                                                                                         |
+    | Unset | Set   | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the function. If the document is not found, an error will be returned |
+    | Set   | Set   | Will throw an error (only one of `doc` or `doc_id` is allowed for the import filter dry run)                                                                                              |
+    | Unset | Unset | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                       |
 
     * Sync Gateway Application Read Only
   requestBody:
