@@ -36,16 +36,28 @@ type SyncFnDryRun struct {
 
 type ImportFilterDryRun struct {
 	ShouldImport bool          `json:"shouldImport"`
-	Error        string        `json:"error"`
+	Exception    string        `json:"exception"`
 	Logging      DryRunLogging `json:"logging"`
 }
 
+type SyncFnDryRunMetaMap struct {
+	Xattrs map[string]any `json:"xattrs"`
+}
+type SyncDryRunUserCtx struct {
+	Name     string   `json:"name"`
+	Roles    []string `json:"roles,omitempty"`
+	Channels []string `json:"channels,omitempty"`
+}
 type SyncFnDryRunPayload struct {
-	Function string  `json:"sync_function"`
-	Doc      db.Body `json:"doc,omitempty"`
+	DocID    string              `json:"doc_id"`
+	Function string              `json:"sync_function"`
+	Doc      db.Body             `json:"doc,omitempty"`
+	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
+	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
 
 type ImportFilterDryRunPayload struct {
+	DocID    string  `json:"doc_id"`
 	Function string  `json:"import_filter"`
 	Doc      db.Body `json:"doc,omitempty"`
 }
@@ -85,7 +97,6 @@ func (h *handler) handleGetDocChannels() error {
 // docid only provided, the sync function will run using the current revision in the bucket as doc
 // If docid is specified and the document does not exist in the bucket, it will return error
 func (h *handler) handleSyncFnDryRun() error {
-	docid := h.getQuery("doc_id")
 
 	var syncDryRunPayload SyncFnDryRunPayload
 	err := h.readJSONInto(&syncDryRunPayload)
@@ -93,8 +104,51 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
+	docid := syncDryRunPayload.DocID
 	if syncDryRunPayload.Doc == nil && docid == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
+	}
+
+	var userXattrs map[string]any
+	// checking user defined metadata
+	if syncDryRunPayload.Meta.Xattrs != nil {
+		xattrs := syncDryRunPayload.Meta.Xattrs
+		if len(xattrs) > 1 {
+			return base.HTTPErrorf(http.StatusBadRequest, "Only one xattr key can be specified in meta")
+		}
+		userXattrKey := h.collection.UserXattrKey()
+		if userXattrKey == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "no user xattr key configured for this database")
+		}
+		_, exists := xattrs[userXattrKey]
+		if !exists {
+			return base.HTTPErrorf(http.StatusBadRequest, "configured user xattr key %q not found in provided xattrs", userXattrKey)
+		}
+		userXattrs = make(map[string]any)
+		userXattrs["xattrs"] = xattrs
+	}
+
+	var userCtx map[string]any
+	if syncDryRunPayload.UserCtx != nil {
+		userCtx = make(map[string]any)
+		if syncDryRunPayload.UserCtx.Name == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "no user name provided")
+		}
+		userCtx["name"] = syncDryRunPayload.UserCtx.Name
+		userCtx["channels"] = syncDryRunPayload.UserCtx.Channels
+		/*
+			The user role defined in the User interface is of type ch.TimedSet .
+			TimedSet is basically a map of string and the sequence of when the
+			role was added to the DB. The sequence is never really used in
+			the definition of requireRole. requireRole however needs roles to be
+			of the same structure. The below code assigns a default sequence of 1
+			to all the roles passed by the user in the userCtx object.
+		*/
+		rolesMap := make(map[string]int)
+		for _, role := range syncDryRunPayload.UserCtx.Roles {
+			rolesMap[role] = 1
+		}
+		userCtx["roles"] = rolesMap
 	}
 
 	oldDoc := &db.Document{ID: docid}
@@ -164,7 +218,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
@@ -198,7 +252,6 @@ func (h *handler) handleSyncFnDryRun() error {
 
 // HTTP handler for running a document through the import filter and returning the results
 func (h *handler) handleImportFilterDryRun() error {
-	docid := h.getQuery("doc_id")
 
 	var importFilterPayload ImportFilterDryRunPayload
 	err := h.readJSONInto(&importFilterPayload)
@@ -206,6 +259,7 @@ func (h *handler) handleImportFilterDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading import filter payload: %v", err)
 	}
 
+	docid := importFilterPayload.DocID
 	// Cannot pass both doc_id and body in the request body
 	if len(importFilterPayload.Doc) > 0 && docid != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "doc body and doc id provided. Please provide either the body or a doc id for the import filter dry run")

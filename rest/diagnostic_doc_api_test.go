@@ -1244,6 +1244,157 @@ func TestSyncFuncDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name: "dry run with request doc sync func and user name",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireUser("sgw-user");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name: "sgw-user",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and incorrect user name",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireUser("sgw-user");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name: "sgw-user1",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg wrong user",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and access channel",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireAccess("access-channel");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:     "sgw-user1",
+					Channels: []string{"access-channel"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and invalid access channel",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireAccess("access-channel");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:     "sgw-user1",
+					Channels: []string{"incorrect-channel"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg missing channel access",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and role",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireRole("sgw-role");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:  "sgw-user1",
+					Roles: []string{"sgw-role"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc sync func and user name and invalid role",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					requireRole("sgw-role");
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				UserCtx: &SyncDryRunUserCtx{
+					Name:  "sgw-user1",
+					Roles: []string{"sgw-role1"},
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels:  base.SetFromArray([]string{}),
+				Access:    channels.AccessMap{},
+				Roles:     channels.AccessMap{},
+				Exception: "403 sg missing role",
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range tests {
@@ -1259,13 +1410,171 @@ func TestSyncFuncDryRun(t *testing.T) {
 				rt.PutDoc(test.name, test.existingDocBody)
 			}
 
+			url := "/{{.keyspace}}/_sync"
+			if test.requestDocID {
+				test.request.DocID = test.name
+			}
+
 			bodyBytes, err := json.Marshal(test.request)
 			require.NoError(t, err)
+			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
+			RequireStatus(t, resp, test.expectedStatus)
+
+			var output SyncFnDryRun
+			err = json.Unmarshal(resp.Body.Bytes(), &output)
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedOutput, output)
+		})
+	}
+}
+
+// Tests the Diagnostic Endpoint when user xattrs is passed in the request body
+// This is a separate test, as enabling user xattrs is an EE feature only.
+func TestSyncFuncDryRunUserXattrs(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
+	base.SkipImportTestsIfNotEnabled(t)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		CustomTestBucket: bucket,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	rt.CreateDatabase("db", dbConfig)
+
+	tests := []struct {
+		name            string
+		dbSyncFunction  string
+		existingDocBody string
+		request         SyncFnDryRunPayload
+		requestDocID    bool
+		expectedOutput  SyncFnDryRun
+		expectedStatus  int
+		xattrKey        string
+		xattrVal        any
+	}{
+		{
+			name: "dry run with request user meta and sync function",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+				Meta: SyncFnDryRunMetaMap{Xattrs: map[string]any{"channelXattr": []string{"channel1", "channel3", "useradmin"}}},
+			},
+			xattrKey: "channelXattr",
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with request doc user meta and sync function",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+				Doc: db.Body{
+					"foo": "bar",
+				},
+			},
+			existingDocBody: `{"docVersion": 1}`,
+			xattrKey:        "channelXattr",
+			xattrVal:        []string{"channel1", "channel3", "useradmin"},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			requestDocID:   true,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "dry run with existing doc user meta and sync function",
+			dbSyncFunction: `function(doc, oldDoc, meta) {
+					if (meta.xattrs.channelXattr === undefined){
+					  console.log("no user_xattr_key defined")
+					  channel(null)
+					} else {
+					  channel(meta.xattrs.channelXattr)
+					}
+				}`,
+			existingDocBody: `{"docVersion": 1}`,
+			xattrKey:        "channelXattr",
+			xattrVal:        []string{"channel1", "channel3", "useradmin"},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{"channel1", "channel3", "useradmin"}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			requestDocID:   true,
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		rt.Run(test.name, func(t *testing.T) {
+			if test.dbSyncFunction != "" {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", test.dbSyncFunction), http.StatusOK)
+			} else {
+				// reset to default sync function
+				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/sync", ""), http.StatusOK)
+			}
+
+			if test.xattrKey != "" {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", fmt.Sprintf(`{"user_xattr_key": "%s"}`, test.xattrKey)), http.StatusCreated)
+			}
+
+			if test.existingDocBody != "" {
+				rt.PutDoc(test.name, test.existingDocBody)
+				if test.xattrKey != "" {
+					_, err := dataStore.SetXattrs(ctx, test.name, map[string][]byte{test.xattrKey: base.MustJSONMarshal(t, test.xattrVal)})
+					require.NoError(t, err)
+				}
+			}
 
 			url := "/{{.keyspace}}/_sync"
 			if test.requestDocID {
-				url += "?doc_id=" + test.name
+				test.request.DocID = test.name
 			}
+
+			bodyBytes, err := json.Marshal(test.request)
+			require.NoError(t, err)
+
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
@@ -1282,7 +1591,7 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	defer rt.Close()
 
 	// doc ID not found
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync?doc_id=missing", `{}`), http.StatusNotFound)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc_id": "missing"}`), http.StatusNotFound)
 	// no doc ID or inline body provided
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{}`), http.StatusBadRequest)
 	// invalid request json
@@ -1291,6 +1600,30 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": "invalid_doc"}`), http.StatusBadRequest)
 	// invalid doc body type
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"_sync":"this is a forbidden field"}}`), http.StatusBadRequest)
+	// no user name
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "userCtx": {"roles": ["role1", "role2"]} }`), http.StatusBadRequest)
+}
+
+func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db1"
+	dbConfig.UserXattrKey = base.Ptr("channelXattrs")
+
+	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+	// Invalid meta body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"meta":{"foo": "bar"}}`), http.StatusBadRequest)
+	// Invalid meta body
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "meta":{"xattrs": {"foo": "bar"}}}`), http.StatusBadRequest)
+	// Multiple xattr keys
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc": {"foo":"bar"}, "meta":{"xattrs": {"channelXattrs": "channel1", "channelXattrs2": "channel2"}}}`), http.StatusBadRequest)
 }
 
 func TestImportFilterDryRun(t *testing.T) {
@@ -1407,7 +1740,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1431,7 +1764,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1463,7 +1796,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Error: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1711,13 +2044,14 @@ func TestImportFilterDryRun(t *testing.T) {
 				rt.PutDoc(test.name, test.existingDocBody)
 			}
 
+			url := "/{{.keyspace}}/_import_filter"
+			if test.requestDocID {
+				test.request.DocID = test.name
+			}
+
 			bodyBytes, err := json.Marshal(test.request)
 			require.NoError(t, err)
 
-			url := "/{{.keyspace}}/_import_filter"
-			if test.requestDocID {
-				url += "?doc_id=" + test.name
-			}
 			resp := rt.SendDiagnosticRequest("POST", url, string(bodyBytes))
 			RequireStatus(t, resp, test.expectedStatus)
 
@@ -1734,9 +2068,9 @@ func TestImportFilterDryRunErrors(t *testing.T) {
 	defer rt.Close()
 
 	// doc ID not found
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=missing", `{}`), http.StatusNotFound)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc_id": "missing"}`), http.StatusNotFound)
 	// invalid request
-	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter?doc_id=doc", `{"doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc_id": "doc", "doc": { "user" : {"num": 23 }}}`), http.StatusBadRequest)
 	// invalid request json
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_import_filter", `{"doc": {"invalid_json"}`), http.StatusBadRequest)
 	// invalid doc body type

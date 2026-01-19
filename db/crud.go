@@ -218,7 +218,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
 func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.userXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
+	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.UserXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
 
 }
 
@@ -1697,16 +1697,22 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 // SyncFnDryrun Runs the given document body through a sync function and returns expiry, channels doc was placed in,
 // access map for users, roles, handler errors and sync fn exceptions.
 // If syncFn is provided, it will be used instead of the one configured on the database.
-func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, syncFn string, errorLogFunc, infoLogFunc func(string)) (*channels.ChannelMapperOutput, error) {
+func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, oldDoc *Document, userMeta, syncOptions map[string]any, syncFn string, errorLogFunc, infoLogFunc func(string)) (*channels.ChannelMapperOutput, error) {
 	mutableBody, metaMap, _, err := db.prepareSyncFn(oldDoc, newDoc)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
 		return nil, err
 	}
 
-	syncOptions, err := MakeUserCtx(db.user, db.ScopeName, db.Name)
-	if err != nil {
-		return nil, err
+	if userMeta != nil {
+		metaMap = userMeta
+	}
+
+	if syncOptions == nil {
+		syncOptions, err = MakeUserCtx(db.user, db.ScopeName, db.Name)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// fetch configured sync function if one is not provided
@@ -2236,7 +2242,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 
 func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
-	metaMap, err = doc.GetMetaMap(db.userXattrKey())
+	metaMap, err = doc.GetMetaMap(db.UserXattrKey())
 	if err != nil {
 		return
 	}
