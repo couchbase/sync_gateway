@@ -2761,6 +2761,9 @@ func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
 			assert.Equal(t, doc1.GetRevTreeID(), docRev.RevID)
 			assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
 			assert.JSONEq(t, `{"foo": "baz"}`, string(docRev.BodyBytes))
+			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+			assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheHits.Value())
 		})
 	}
 }
