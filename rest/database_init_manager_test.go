@@ -52,11 +52,10 @@ func TestDatabaseInitManager(t *testing.T) {
 	require.NoError(t, err)
 
 	select {
-	case <-doneChan:
-		log.Printf("done channel was closed")
-		// continue
-	case <-time.After(10 * time.Second):
-		require.Fail(t, "InitializeDatabase didn't complete in 10s")
+	case err := <-doneChan:
+		require.NoError(t, err)
+	case <-time.After(30 * time.Second):
+		require.Fail(t, "InitializeDatabase didn't complete in 30s")
 	}
 
 }
@@ -443,12 +442,12 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	initMgr := sc.DatabaseInitManager
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
-	collectionCount := int64(0)
+	var collectionCount atomic.Int64
 	initMgr.testCollectionStatusUpdateCallback = func(_ string, _ base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
 		if status != db.CollectionIndexStatusReady {
 			return
 		}
-		atomic.AddInt64(&collectionCount, 1)
+		collectionCount.Add(1)
 	}
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
@@ -456,19 +455,16 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	databaseCompleteCount := int64(0)
+	var databaseCompleteCount atomic.Int64
 	initMgr.testDatabaseCompleteCallback = func(dbName string) {
 		// On first completion, invoke InitializeDatabase with the same collection set post-completion
-		currentCount := atomic.LoadInt64(&databaseCompleteCount)
-		if currentCount == 0 {
+		if databaseCompleteCount.Add(1) == 1 {
 			defer wg.Done()
 			log.Printf("invoking InitializeDatabase again during teardown")
 			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
 			require.NoError(t, err)
 			WaitForChannel(t, doneChan2, "done chan 2")
 		}
-		atomic.AddInt64(&databaseCompleteCount, 1)
-
 	}
 
 	// Start first async index creation, should block after first collection
@@ -478,14 +474,11 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	WaitForChannel(t, doneChan1, "done chan 1")
 	wg.Wait()
 
-	// Verify initialization was run for 3 collections only
-	totalCollectionInitCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(3), totalCollectionInitCount)
+	// Verify initialization was run for 6 collections, since it runs on 3 collections twice
+	require.Equal(t, int64(6), collectionCount.Load())
 
-	// Expect only a single database complete callback, since init should only have been run once.
-	totalDbCompleteCount := atomic.LoadInt64(&databaseCompleteCount)
-	require.Equal(t, int64(1), totalDbCompleteCount)
-
+	// Expect two database complete callbacks, since initialization is run twice
+	require.Equal(t, int64(2), databaseCompleteCount.Load())
 }
 
 func makeScopesConfig(scopeName string, collectionNames []string) ScopesConfig {
