@@ -56,6 +56,8 @@ type SyncFnDryRunPayload struct {
 	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
 
+const SYNC_FN_DIAGNOSTIC_DOCID = "diagnostic doc"
+
 type ImportFilterDryRunPayload struct {
 	DocID    string  `json:"doc_id"`
 	Function string  `json:"import_filter"`
@@ -167,6 +169,13 @@ func (h *handler) handleSyncFnDryRun() error {
 		oldDoc.UpdateBody(nil)
 	}
 
+	if docid == "" {
+		if id, exists := syncDryRunPayload.Doc[db.BodyId]; exists {
+			oldDoc.ID = id.(string)
+		} else {
+			oldDoc.ID = SYNC_FN_DIAGNOSTIC_DOCID
+		}
+	}
 	delete(syncDryRunPayload.Doc, db.BodyId)
 
 	// Get the revision ID to match, and the new generation number:
