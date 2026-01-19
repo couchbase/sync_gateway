@@ -299,8 +299,8 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 }
 
 // CreateReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
-func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
-	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
+func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType, conflictResolverFunc string) {
+	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver, conflictResolverFunc)
 }
 
 // DeleteReplication deletes a replication via the REST API with the specified ID
@@ -309,7 +309,7 @@ func (rt *RestTester) DeleteReplication(replicationID string) {
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 }
 
-func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
+func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType, conflictResolverFunc string) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
@@ -317,6 +317,9 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 		Continuous:             continuous,
 		ConflictResolutionType: conflictResolver,
 		CollectionsEnabled:     base.TestsUseNamedCollections(),
+	}
+	if conflictResolver == db.ConflictResolverCustom && conflictResolverFunc != "" {
+		replicationConfig.ConflictResolutionFn = conflictResolverFunc
 	}
 
 	if len(channels) > 0 {
