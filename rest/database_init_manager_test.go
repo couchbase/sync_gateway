@@ -55,7 +55,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	case err := <-doneChan:
 		require.NoError(t, err)
 	case <-time.After(30 * time.Second):
-		require.Fail(t, "InitializeDatabase didn't complete in 10s")
+		require.Fail(t, "InitializeDatabase didn't complete in 30s")
 	}
 
 }
