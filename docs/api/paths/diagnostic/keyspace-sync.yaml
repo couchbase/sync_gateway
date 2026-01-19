@@ -8,18 +8,19 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 post:
-  summary: Run a doc body through the sync function and return sync data.
+  summary: Dry-run Sync Function for testing
   description: |-
-    Runs a document body through the sync function and returns resulting sync function data. If no custom sync function is provided in the request body, the
-    default or user-defined sync function for the collection is used.
+    Runs a document through the Sync Function and returns the result.
+
+    If no custom sync function is provided in the request, the user-defined sync function for the collection is used (or the default).
 
     The document being run through the sync function can be provided in one of the following ways:
     | `doc` property | `doc_id` property | Behaviour                                                                                                                                                                                               |
     | ----- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | Set   | Unset       | The document body passed will be the `doc` value in the sync function, and `oldDoc` will be empty.                                                                                                                        |
+    | Set   | Unset    | The document body passed will be the `doc` value in the sync function, and `oldDoc` will be empty.                                                                                                                        |
     | Unset | Set      | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the sync function. If the document is not found, an error will be returned                            |
     | Set   | Set      | The document body passed will be the `doc` value in the sync function, and the `doc_id` will be fetched from the bucket/collection and will be the `oldDoc` value. If `doc_id` doesn't exist, then `oldDoc` will be empty |
-    | Unset | Unset       | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                                                       |
+    | Unset | Unset    | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                                                       |
 
     * Sync Gateway Application Read Only
   requestBody:
