@@ -139,7 +139,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 	return doneChan, nil
 }
 
-// InitializeDatabase will establish a new cluster connection using the provided server config.  Establishes a new
+// InitializeDatabase establishes a new cluster connection using the provided server config and creates a
 // cluster-only N1QLStore based on the startup config to perform initialization.
 func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
 	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex)
