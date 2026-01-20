@@ -20,10 +20,12 @@ type nonJSONPrefix byte
 const (
 	// nonJSONPrefixKindUnknown is an unused byte value but here for clarity between the zero value
 	nonJSONPrefixKindUnknown nonJSONPrefix = iota
-	// nonJSONPrefixKindRevBody is used for old revision bodies and denotes that everything following is a standard JSON document.
+	// nonJSONPrefixKindRevBody is used for old revision bodies and denotes that everything following is a standard JSON document. (This matches the byte value used by SG < 4.0)
 	nonJSONPrefixKindRevBody
-	// nonJSONPrefixKindRevPtr is used for old revision RevTreeID->CV pointers. The bytes following this are the CV string to be used to fetch the actual body.
+	// nonJSONPrefixKindRevPtr is used for old revision RevTreeID->CV pointers. The bytes following this are the CV string to be used to fetch the actual body. (SG >= 4.0)
 	nonJSONPrefixKindRevPtr
+	// nonJSONPrefixKindRevWithMeta is used for old revision bodies that also have a set of XATTRs. (SG => 4.0.3+)
+	nonJSONPrefixKindRevWithMeta
 )
 
 // withNonJSONPrefix returns a new byte slice prefixed with a non-JSON byte. The input slice is not modified.

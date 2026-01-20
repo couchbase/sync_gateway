@@ -1653,6 +1653,11 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 		t.Skipf("Skipping TestImportRevisionCopyUnavailable when delta sync enabled, delta revision backup handling invalidates test")
 	}
 
+	// Create user with access to ABC channel
+	rt.CreateUser("alice", []string{"ABC"})
+	// Create user with access to DEF channel
+	rt.CreateUser("bob", []string{"DEF"})
+
 	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1683,9 +1688,18 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	// 5. Trigger import of update via SG retrieval
 	rt.TriggerOnDemandImport(key)
 
-	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
-	assert.Equal(t, 404, response.Code)
+	// 6. Attempt to retrieve previous revision body.
+	// Should return missing, as rev wasn't in rev cache when import occurred - impossible to recover this old document body.
+	response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
+	rest.AssertStatus(t, response, http.StatusNotFound)
+
+	// Even if user had access previously, we can't get this information back
+	response = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "", "alice")
+	rest.AssertStatus(t, response, http.StatusNotFound)
+
+	// Likewise for users who only have access to the current version attempting to access the older rev
+	response = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "", "bob")
+	rest.AssertStatus(t, response, http.StatusNotFound)
 }
 
 // Verify config flag for import creation of backup revision on import

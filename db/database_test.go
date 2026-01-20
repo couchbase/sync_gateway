@@ -845,6 +845,91 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	auth := db.Authenticator(ctx)
+
+	// Create a user who have access to channel ABC.
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC"))
+	require.NoError(t, err, "Error creating user")
+
+	userBob, err := auth.NewUser("bob", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": []string{"ABC"},
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// Try with a user who has access to this revision.
+	collection.user = userAlice
+	body, err := collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	_, rev1Digest := ParseRevID(ctx, rev1ID)
+
+	var interfaceListChannels []any
+	interfaceListChannels = append(interfaceListChannels, "ABC")
+	bodyExpected := Body{
+		"k1":       "v1",
+		"channels": interfaceListChannels,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// try with a user who doesn't have access to this revision.
+	collection.user = userBob
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+	bodyExpected = Body{
+		BodyRemoved: true,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// flush revision cache again from previous load and purge the old revision backup to assert we get 404 error
+	db.FlushRevisionCacheForTest()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	collection.user = userAlice
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
+}
+
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
