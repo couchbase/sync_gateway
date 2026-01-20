@@ -3551,23 +3551,44 @@ func TestTombstoneCount(t *testing.T) {
 }
 
 func TestBlipNoRevOnCorruptHistory(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyCRUD, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4 replication only test
 	btcRunner.Run(func(t *testing.T) {
-		rt := NewRestTesterPersistentConfig(t)
+		rt := NewRestTesterPersistentConfigNoDB(t)
 		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 		const user = "user"
 		rt.CreateUser(user, []string{"*"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username: user,
+			Username:     user,
+			ClientDeltas: true,
 		})
 		defer btc.Close()
 
 		ctx := rt.Context()
-		seq, err := rt.GetDatabase().NextSequence(ctx)
-		require.NoError(t, err)
-		badSyncData := fmt.Sprintf(`{
+		for _, useDelta := range []bool{true, false} {
+			rt.Run(fmt.Sprintf("useDelta=%v", useDelta), func(t *testing.T) {
+				rev1 := "1-a"
+				var cas1 uint64
+				docID := SafeDocumentName(t, t.Name())
+				if useDelta {
+					doc := rt.CreateDocNoHLV(docID, db.Body{"delta": true})
+					rev1 = doc.GetRevTreeID()
+					require.NotEmpty(t, rev1)
+					cas1 = doc.Cas
+					btcRunner.StartOneshotPull(btc.id)
+					btcRunner.WaitForVersion(btc.id, docID, DocVersion{RevTreeID: rev1})
+				}
+				seq, err := rt.GetDatabase().NextSequence(ctx)
+				require.NoError(t, err)
+				// document contains an invalid revtree
+				//
+				badSyncData := fmt.Sprintf(`{
       "cas": "expand",
       "channel_set": null,
       "channel_set_history": null,
@@ -3582,7 +3603,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
         "revs": [
           "3-d",
           "3-c",
-          "1-a",
+          "%s",
           "2-b"
         ]
       },
@@ -3590,28 +3611,42 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
       "sequence": %d,
       "value_crc32c": "expand"
     }
-		`, seq)
+		`, rev1, seq)
 
-		docID := SafeDocumentName(t, t.Name())
-		_, err = rt.GetSingleDataStore().WriteWithXattrs(
-			ctx,
-			docID,
-			0,
-			0,
-			[]byte(`{"key":"value"}`),
-			map[string][]byte{
-				base.SyncXattrName: []byte(badSyncData),
-			},
-			nil,
-			db.DefaultMutateInOpts(),
-		)
-		require.NoError(t, err)
+				mutateInOptions := db.DefaultMutateInOpts()
+				_, err = rt.GetSingleDataStore().WriteWithXattrs(
+					ctx,
+					docID,
+					0,
+					cas1,
+					[]byte(`{"key":"value"}`),
+					map[string][]byte{
+						base.SyncXattrName: []byte(badSyncData),
+					},
+					nil,
+					mutateInOptions,
+				)
+				require.NoError(t, err)
 
-		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, expectedVersion)
+				expectedVersion := DocVersion{RevTreeID: "3-c"}
+				/*
+					expectedVersion := DocVersion{RevTreeID: "3-c"}
+					version, doc := rt.GetDoc(docID) // to update the revision cache
+					require.Equal(t, expectedVersion.RevTreeID, version.RevTreeID)
+					fmt.Printf("doc=%s\n", doc)
+					fmt.Printf("version=%+v\n", version)
+					version, doc = rt.GetDoc(docID) // to update the revision cache
+					fmt.Printf("doc=%s\n", doc)
+					fmt.Printf("version=%+v\n", version)
+					require.Equal(t, expectedVersion.RevTreeID, version.RevTreeID)
+				*/
+				rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
 
-		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+				//time.Sleep(1 * time.Second)
+				btcRunner.StartOneshotPull(btc.id)
+				msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
+				require.Equal(t, db.MessageNoRev, msg.Profile())
+			})
+		}
 	})
 }
