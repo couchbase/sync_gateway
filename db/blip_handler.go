@@ -927,7 +927,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	if redactedRev != nil {
 		var history []string
 		var revTreeProperty []string
-		if !bsc.useHLV() {
+		if !bsc.useHLV() || bsc.sendRevTreeProperty() {
 			var err error
 			history, err = toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
