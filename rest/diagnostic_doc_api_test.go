@@ -1393,6 +1393,49 @@ func TestSyncFuncDryRun(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 		},
+		{
+			name: "missing _id in request doc",
+			dbSyncFunction: `function(doc, oldDoc, meta) {
+				console.log(JSON.stringify(doc))
+			}`,
+			request: SyncFnDryRunPayload{
+				Doc: db.Body{
+					"foo": "bar",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{fmt.Sprintf("{\"_id\":\"%s\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}", SYNC_FN_DIAGNOSTIC_DOCID)},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "doc id in request doc",
+			dbSyncFunction: `function(doc, oldDoc, meta) {
+				console.log(JSON.stringify(doc))
+			}`,
+			request: SyncFnDryRunPayload{
+				Doc: db.Body{
+					db.BodyId: "test",
+					"foo":     "bar",
+				},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetFromArray([]string{}),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{"{\"_id\":\"test\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}"},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
 	}
 
 	for _, test := range tests {

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
 
@@ -55,6 +56,8 @@ type SyncFnDryRunPayload struct {
 	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
 	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
+
+const SYNC_FN_DIAGNOSTIC_DOCID = "diagnostic_doc"
 
 type ImportFilterDryRunPayload struct {
 	DocID    string  `json:"doc_id"`
@@ -104,8 +107,8 @@ func (h *handler) handleSyncFnDryRun() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error reading sync function payload: %v", err)
 	}
 
-	docid := syncDryRunPayload.DocID
-	if syncDryRunPayload.Doc == nil && docid == "" {
+	bucketDocID := syncDryRunPayload.DocID
+	if syncDryRunPayload.Doc == nil && bucketDocID == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
 	}
 
@@ -151,10 +154,16 @@ func (h *handler) handleSyncFnDryRun() error {
 		userCtx["roles"] = rolesMap
 	}
 
+	var docid string
+
+	id, _ := syncDryRunPayload.Doc[db.BodyId].(string)
+	docid = cmp.Or(bucketDocID, id, SYNC_FN_DIAGNOSTIC_DOCID)
+
 	oldDoc := &db.Document{ID: docid}
 	oldDoc.UpdateBody(syncDryRunPayload.Doc)
-	if docid != "" {
-		if docInbucket, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll); err == nil {
+	// Read the document from the bucket
+	if bucketDocID != "" {
+		if docInbucket, err := h.collection.GetDocument(h.ctx(), bucketDocID, db.DocUnmarshalAll); err == nil {
 			oldDoc = docInbucket
 			if len(syncDryRunPayload.Doc) == 0 {
 				syncDryRunPayload.Doc = oldDoc.Body(h.ctx())
