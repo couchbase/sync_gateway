@@ -3191,7 +3191,7 @@ func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		db.changeCache.updateStats(ctx)
 		db.UpdateCalculatedStats(ctx)
-		assert.Equal(c, uint64(20), db.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, int64(20), db.DbStats.CacheStats.HighSeqCached.Value())
 		assert.Equal(c, uint64(21), db.changeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
 
