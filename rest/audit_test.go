@@ -508,7 +508,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDDiagnosticsHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodPost,
-					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s /_sync", keyspace),
+					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
 				},
 			},
 		},
