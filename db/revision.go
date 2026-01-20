@@ -43,7 +43,7 @@ const (
 	BodyInternalPrefix = "_sync_" // New internal properties prefix (CBG-1995)
 )
 
-const backupRevisionCannelsMetaKey = "_channels"
+const backupRevisionChannelsMetaKey = "_channels"
 
 // A revisions property found within a Body.  Expected to be of the form:
 //
@@ -261,7 +261,7 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 		}
 		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision (with %d meta properties) %q / %q --> %d bytes", len(meta), base.UD(docid), revOrCV, len(jsonBody))
 		var channelSet base.Set
-		if ch, ok := meta[backupRevisionCannelsMetaKey]; ok && ch != nil {
+		if ch, ok := meta[backupRevisionChannelsMetaKey]; ok && ch != nil {
 			err = base.JSONUnmarshal(ch, &channelSet)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
@@ -328,7 +328,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 		return fmt.Errorf("error marshalling channels for old revision %q / %q: %v", base.UD(docid), rev, err)
 	}
 	meta := []sgbucket.Xattr{
-		{Name: backupRevisionCannelsMetaKey, Value: channelsJSON},
+		{Name: backupRevisionChannelsMetaKey, Value: channelsJSON},
 	}
 	bodyWithMeta := sgbucket.EncodeValueWithXattrs(body, meta...)
 	nonJSONBytes := withNonJSONPrefix(nonJSONPrefixKindRevWithMeta, bodyWithMeta)

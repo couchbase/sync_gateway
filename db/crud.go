@@ -703,7 +703,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 	}
 
 	if channels == nil {
-		// ignore ok value - we don't care if this is a leaf or not if we have the metadata to get channels
+		// ignore ok value - we don't care if this is a leaf or not, if we have the data to get channels we'll use it
 		channels, _ = doc.channelsForRevTreeID(revid)
 	}
 

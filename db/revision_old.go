@@ -24,7 +24,7 @@ const (
 	nonJSONPrefixKindRevBody
 	// nonJSONPrefixKindRevPtr is used for old revision RevTreeID->CV pointers. The bytes following this are the CV string to be used to fetch the actual body. (SG >= 4.0)
 	nonJSONPrefixKindRevPtr
-	// nonJSONPrefixKindRevWithMeta is used for old revision bodies that also have a set of XATTRs. (SG => 4.0.3+)
+	// nonJSONPrefixKindRevWithMeta is used for old revision bodies that also have a set of XATTRs. (SG >= 4.0.3)
 	nonJSONPrefixKindRevWithMeta
 )
 
