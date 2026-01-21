@@ -232,7 +232,6 @@ func (c *DatabaseCollection) unsupportedOptions() *UnsupportedOptions {
 	return c.dbCtx.Options.UnsupportedOptions
 }
 
-
 // syncAndUserXattrKeys returns the xattr keys for the user and sync xattrs.
 func (c *DatabaseCollection) syncAndUserXattrKeys() []string {
 	xattrKeys := []string{base.SyncXattrName}
