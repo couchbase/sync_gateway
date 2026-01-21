@@ -363,26 +363,27 @@ func (role *roleImpl) validate() error {
 
 //////// CHANNEL AUTHORIZATION:
 
-func (role *roleImpl) UnauthError(message string) error {
+// UnauthError returns the underlying error unless Role is the guest user.
+func (role *roleImpl) UnauthError(err error) error {
 	if role.Name_ == "" {
-		return base.HTTPErrorf(http.StatusUnauthorized, "login required: %s", message)
+		return errLoginRequired
 	}
-	return base.NewHTTPError(http.StatusForbidden, message)
+	return err
 }
 
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *roleImpl) canSeeChannel(channel string) bool {
-	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel)
+func (role *roleImpl) canSeeChannel(channel string) (bool, error) {
+	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel), nil
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
-func (role *roleImpl) canSeeChannelSince(channel string) uint64 {
+func (role *roleImpl) canSeeChannelSince(channel string) (uint64, error) {
 	seq := role.Channels()[channel]
 	if seq.Sequence == 0 {
 		seq = role.Channels()[ch.UserStarChannel]
 	}
-	return seq.Sequence
+	return seq.Sequence, nil
 }
 
 func (role *roleImpl) authorizeAllChannels(channels base.Set) error {
@@ -398,7 +399,11 @@ func (role *roleImpl) authorizeAnyChannel(channels base.Set) error {
 func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
 	for channel := range channels {
-		if !princ.canSeeChannel(channel) {
+		canSee, err := princ.canSeeChannel(channel)
+		if err != nil {
+			return err
+		}
+		if !canSee {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
 			}
@@ -406,7 +411,7 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 		}
 	}
 	if forbidden != nil {
-		return princ.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
+		return princ.UnauthError(newErrNotAllowedChannels(forbidden))
 	}
 	return nil
 }
@@ -416,12 +421,16 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 func authorizeAnyChannel(princ Principal, channels base.Set) error {
 	if len(channels) > 0 {
 		for channel := range channels {
-			if princ.canSeeChannel(channel) {
+			canSee, err := princ.canSeeChannel(channel)
+			if err != nil {
+				return err
+			}
+			if canSee {
 				return nil
 			}
 		}
 	} else if princ.Channels().Contains(ch.UserStarChannel) {
 		return nil
 	}
-	return princ.UnauthError("You are not allowed to see this")
+	return princ.UnauthError(errUnauthorized)
 }

@@ -9,8 +9,6 @@
 package auth
 
 import (
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
@@ -149,22 +147,22 @@ func (role *roleImpl) SetCollectionChannelHistory(scope, collection string, hist
 
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string) bool {
+func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string) (bool, error) {
 	if base.IsDefaultCollection(scope, collection) {
 		return role.canSeeChannel(channel)
 	}
 
 	if role == nil {
-		return true
+		return true, nil
 	}
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		return cc.CanSeeChannel(channel)
+		return cc.CanSeeChannel(channel), nil
 	}
-	return false
+	return false, nil
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
-func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
+func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel string) (uint64, error) {
 	if base.IsDefaultCollection(scope, collection) {
 		return role.canSeeChannelSince(channel)
 	}
@@ -174,9 +172,9 @@ func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel st
 		if seq.Sequence == 0 {
 			seq = cc.Channels()[ch.UserStarChannel]
 		}
-		return seq.Sequence
+		return seq.Sequence, nil
 	}
-	return 0
+	return 0, nil
 }
 
 func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, channels base.Set) error {
@@ -195,11 +193,11 @@ func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, c
 			}
 		}
 		if forbidden != nil {
-			return role.UnauthError(fmt.Sprintf("You are not allowed to see channels %v", forbidden))
+			return role.UnauthError(newErrNotAllowedChannels(forbidden))
 		}
 		return nil
 	}
-	return role.UnauthError(fmt.Sprintf("Unauthorized to see channels %v", channels))
+	return role.UnauthError(newErrUnauthorizedChannels(channels))
 }
 
 // Returns an error if the Principal does not have access to any of the channels in the set.
@@ -219,7 +217,7 @@ func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 			return nil
 		}
 	}
-	return role.UnauthError("You are not allowed to see this")
+	return role.UnauthError(errUnauthorized)
 }
 
 // initChannels grants the specified channels to the role as an admin grant, and performs

@@ -1726,7 +1726,7 @@ func externalUserName(name string) string {
 }
 
 // marshalPrincipal outputs a PrincipalConfig in a format for REST API endpoints.
-func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
+func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) (*auth.PrincipalConfig, error) {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1749,7 +1749,11 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 				}
 				if includeDynamicGrantInfo {
 					if user, ok := princ.(auth.User); ok {
-						collectionAccessConfig.Channels_ = user.InheritedCollectionChannels(scopeName, collectionName).AsSet()
+						channels, err := user.InheritedCollectionChannels(scopeName, collectionName)
+						if err != nil {
+							return nil, err
+						}
+						collectionAccessConfig.Channels_ = channels.AsSet()
 						collectionAccessConfig.JWTChannels_ = user.CollectionJWTChannels(scopeName, collectionName).AsSet()
 						lastUpdated := collection.JWTLastUpdated
 						if lastUpdated != nil && !lastUpdated.IsZero() {
@@ -1771,7 +1775,11 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 		info.Disabled = base.Ptr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
-			info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
+			channels, err := user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
+			if err != nil {
+				return nil, err
+			}
+			info.Channels = channels.AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
 			info.JWTIssuer = base.Ptr(user.JWTIssuer())
 			info.JWTRoles = user.JWTRoles().AsSet()
@@ -1786,7 +1794,7 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 			info.Channels = princ.Channels().AsSet()
 		}
 	}
-	return info
+	return &info, nil
 }
 
 // Handles PUT and POST for a user or a role.
@@ -1963,7 +1971,10 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(h.db, user, includeDynamicGrantInfo)
+	info, err := marshalPrincipal(h.db, user, includeDynamicGrantInfo)
+	if err != nil {
+		return err
+	}
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
 	if info.JWTIssuer != nil {
@@ -2004,7 +2015,10 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
+	info, err := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
+	if err != nil {
+		return err
+	}
 	b, err := base.JSONMarshal(info)
 	if err == nil {
 		base.Audit(h.ctx(), base.AuditIDRoleRead, base.AuditFields{

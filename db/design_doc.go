@@ -268,20 +268,26 @@ func (db *Database) QueryDesignDoc(ctx context.Context, ddocName string, viewNam
 				stripSyncProperty(row)
 			}
 		}
-	} else {
-		applyChannelFiltering := options["reduce"] != true && db.GetUserViewsEnabled()
-		result = filterViewResult(result, db.user, applyChannelFiltering)
+		return &result, nil
+	}
+	applyChannelFiltering := options["reduce"] != true && db.GetUserViewsEnabled()
+	result, err = filterViewResult(result, db.user, applyChannelFiltering)
+	if err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
 
 // Cleans up the Value property, and removes rows that aren't visible to the current user
-func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFiltering bool) (result sgbucket.ViewResult) {
+func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFiltering bool) (result sgbucket.ViewResult, err error) {
 	hasStarChannel := false
 	var visibleChannels ch.TimedSet
 	if user != nil {
 		// Views only support default collection, so filter based on default collection channels
-		visibleChannels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
+		visibleChannels, err = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
+		if err != nil {
+			return
+		}
 		hasStarChannel = !visibleChannels.Contains("*")
 		if !applyChannelFiltering {
 			return // this is an error

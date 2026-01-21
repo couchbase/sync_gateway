@@ -38,7 +38,7 @@ type CollectionChannelAPI interface {
 	SetCollectionChannelHistory(scope, collection string, history TimedSetHistory)
 
 	// Returns true if the Principal has access to the given channel.
-	CanSeeCollectionChannel(scope, collection, channel string) bool
+	CanSeeCollectionChannel(scope, collection, channel string) (bool, error)
 
 	// Retrieve invalidation sequence for a collection
 	getCollectionChannelInvalSeq(scope, collection string) uint64
@@ -52,7 +52,7 @@ type CollectionChannelAPI interface {
 
 	// If the Principal has access to the given collection's channel, returns the sequence number at which
 	// access was granted; else returns zero.
-	canSeeCollectionChannelSince(scope, collection, channel string) uint64
+	canSeeCollectionChannelSince(scope, collection, channel string) (uint64, error)
 
 	// Returns an error if the Principal does not have access to all the channels in the set, for the specified collection.
 	authorizeAllCollectionChannels(scope, collection string, channels base.Set) error
@@ -76,23 +76,23 @@ type UserCollectionChannelAPI interface {
 	SetCollectionJWTChannels(scope, collection string, channels ch.TimedSet, seq uint64)
 
 	// Retrieves revoked channels for a collection, based on the given since value
-	RevokedCollectionChannels(scope, collection string, since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
+	RevokedCollectionChannels(scope, collection string, since uint64, lowSeq uint64, triggeredBy uint64) (RevokedChannels, error)
 
 	// Obtains the period over which the user had access to the given collection's channel. Either directly or via a role.
 	CollectionChannelGrantedPeriods(scope, collection, chanName string) ([]GrantHistorySequencePair, error)
 
 	// Every channel the user has access to in the collection, including those inherited from Roles.
-	InheritedCollectionChannels(scope, collection string) ch.TimedSet
+	InheritedCollectionChannels(scope, collection string) (ch.TimedSet, error)
 
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to for the collection, annotated with the sequence number at which access was granted.
 	// Returns a string array containing any channels filtered out due to the user not having access
 	// to them.
-	FilterToAvailableCollectionChannels(scope, collection string, channels base.Set) (filtered ch.TimedSet, removed []string)
+	FilterToAvailableCollectionChannels(scope, collection string, channels base.Set) (filtered ch.TimedSet, removed []string, err error)
 
 	// If the input set contains the wildcard "*" channel, returns the user's inheritedChannels for the collection;
 	// else returns the input channel list unaltered.
-	expandCollectionWildCardChannel(scope, collection string, channels base.Set) base.Set
+	expandCollectionWildCardChannel(scope, collection string, channels base.Set) (base.Set, error)
 }
 
 // PrincipalCollectionAccess defines a common interface for principal access control.  This interface is

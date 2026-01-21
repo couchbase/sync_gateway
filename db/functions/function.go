@@ -281,14 +281,21 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 		for _, channelPattern := range allow.Channels {
 			if channelPattern == channels.AllChannelWildcard {
 				return nil
-			} else if channel, err := expandPattern(channelPattern, args, user); err != nil {
+			}
+			channel, err := expandPattern(channelPattern, args, user)
+			if err != nil {
 				return err
-			} else if user.CanSeeCollectionChannel(base.DefaultScope, base.DefaultCollection, channel) {
+			}
+			canSee, err := user.CanSeeCollectionChannel(base.DefaultScope, base.DefaultCollection, channel)
+			if err != nil {
+				return err
+			}
+			if canSee {
 				return nil // User has access to one of the allowed channels
 			}
 		}
 	}
-	return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", fn.typeName, fn.name))
+	return user.UnauthError(base.HTTPErrorf(http.StatusForbidden, "You are not allowed to call %s %q", fn.typeName, fn.name))
 }
 
 // Expands patterns of the form `${param}` in `pattern`, looking up each such
