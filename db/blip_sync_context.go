@@ -385,7 +385,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 
 			deltaSrcRevID, legacyRev, knownRevs, err = bsc.getKnownRevs(ctx, docID, knownRevsArray)
 			if err != nil {
-				base.ErrorfCtx(ctx, "Invalid response to 'changes' message. Err: %v", err)
+				base.ErrorfCtx(ctx, "Invalid response to 'changes' message for document %q revision %q. Err: %v", base.UD(docID), rev, err)
 				return nil
 			}
 
@@ -397,7 +397,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 				err = bsc.sendRevision(ctx, sender, docID, rev, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx, legacyRev)
 			}
 			if err != nil {
-				return err
+				return base.RedactErrorf("Could not send document %q revision %q: %w", base.UD(docID), rev, err)
 			}
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
