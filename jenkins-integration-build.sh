@@ -61,8 +61,6 @@ else
     go install golang.org/dl/go1.22.8@latest
     ~/go/bin/go1.22.8 download
     ~/go/bin/go1.22.8 install -v github.com/tebeka/go2xunit@latest
-    go install -v github.com/axw/gocov/gocov@latest
-    go install -v github.com/AlekSi/gocov-xml@latest
 fi
 
 if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
@@ -160,13 +158,6 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     LC_CTYPE=C tr -dc [:print:][:space:] < "verbose_unit_ce.out.raw" > "verbose_unit_ce.out"
     ~/go/bin/go2xunit -input "verbose_unit_ee.out" -output "verbose_unit_ee.xml"
     ~/go/bin/go2xunit -input "verbose_unit_ce.out" -output "verbose_unit_ce.xml"
-fi
-
-# Get coverage
-~/go/bin/gocov convert "coverage_int.out" | ~/go/bin/gocov-xml > coverage_int.xml
-if [ "${RUN_WALRUS}" == "true" ]; then
-    ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
-    ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
 
 if [ "${TEST_FAILED:-}" = true ]; then
