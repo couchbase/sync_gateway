@@ -395,13 +395,15 @@ type RevisionDelta struct {
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	revDelta := RevisionDelta{
 		ToRevID:               toRevision.RevID,
-		ToCV:                  toRevision.CV.String(),
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
 		HlvHistory:            toRevision.HlvHistory,
 		ToDeleted:             deleted,
+	}
+	if toRevision.CV != nil {
+		revDelta.ToCV = toRevision.CV.String()
 	}
 	revDelta.CalculateDeltaBytes()
 	return revDelta
@@ -460,8 +462,11 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	if revChannels, ok := doc.channelsForRevTreeID(revid); ok {
 		channels = revChannels
 	}
-	if doc.HLV != nil {
-		hlv = doc.HLV
+	// only add doc hlv if the revision we have fetched is current revision, otherwise we don't know whether hlv applies to that revision
+	if doc.GetRevTreeID() == revid {
+		if doc.HLV != nil {
+			hlv = doc.HLV
+		}
 	}
 
 	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, hlv, err
@@ -474,9 +479,14 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		return nil, nil, nil, false, nil, false, nil, "", nil, err
 	}
 
+	// if we have request current version on the doc we can add revision ID too. If not we cannot know what the
+	// corresponding revID is to pair with the request CV
+	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
+		revid = doc.GetRevTreeID()
+	}
+
 	deleted = doc.Deleted
 	channels = doc.SyncData.getCurrentChannels()
-	revid = doc.GetRevTreeID()
 	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {

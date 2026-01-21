@@ -980,6 +980,88 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
 }
 
+func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync other wise CV keyed backup revs won't be stored
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1": "v1",
+	}
+	rev1ID, doc, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k1":    "v2",
+		BodyRev: rev1ID,
+	}
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
+	docRev, err := collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	require.NoError(t, err, "Error fetching backup revision CV")
+	assert.Equal(t, "", docRev.RevID)
+	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
+
+	// fetch current revision and ensure we actually get rev2
+	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
+	require.NoError(t, err, "error fetching current revision")
+	assert.Equal(t, rev2ID, docRev.RevID)
+	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+}
+
+func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1": "v1",
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k1":    "v2",
+		BodyRev: rev1ID,
+	}
+	_, docV2, err := collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
+	docRev, err := collection.GetRev(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error fetching backup revision by revID")
+	assert.Nil(t, docRev.CV)
+	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
+
+	// fetch current revision and ensure we actually get rev2
+	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
+	require.NoError(t, err, "error fetching current revision")
+	assert.Equal(t, docV2.HLV.GetCurrentVersionString(), docRev.CV.String())
+	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+}
+
 // TestDeltaSyncConcurrentClientCachePopulation tests delta sync behavior when multiple goroutines request the same delta simultaneously.
 // Ensures that only one delta is computed and others wait for the cached result.
 // More instances of duplicated delta computation will be seen for larger documents since the delta computation takes longer.
