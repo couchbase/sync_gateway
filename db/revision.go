@@ -317,7 +317,9 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context
 }
 
 func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, expiry uint32, channels base.Set) error {
+	// no channel information available (Note: this is different than an empty set of channels)
 	if channels == nil {
+		base.WarnfCtx(ctx, "setOldRevisionJSON called with nil channels for old revision %q / %q", base.UD(docid), rev)
 		return db.setOldRevisionJSONBody(ctx, docid, rev, body, expiry)
 	}
 

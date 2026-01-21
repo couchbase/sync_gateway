@@ -927,11 +927,11 @@ func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Con
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
+func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDocRevID string, ch base.Set) {
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
-	ancestorRevId := newDoc.RevID
+	ancestorRevId := newDocRevID
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found. Return early
@@ -940,8 +940,6 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 			break
 		}
 	}
-
-	ch, _ := doc.channelsForRevTreeID(ancestorRevId)
 
 	// Back up the revision JSON as a separate doc in the bucket:
 	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch)
@@ -2528,6 +2526,10 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
+	// grab the current channels so that we're able to use them when stamping the backup revision later
+	// we lose channel information for non-leaf revisions in the RevTree when updated, so we take a copy now.
+	oldChannels := doc.getCurrentChannels()
+
 	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
 	mouMatch := false
 	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.CAS() == doc.Cas {
@@ -2586,7 +2588,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		}
 	}
 
-	col.backupAncestorRevs(ctx, doc, newDoc)
+	col.backupAncestorRevs(ctx, doc, newDoc.RevID, oldChannels)
 
 	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
