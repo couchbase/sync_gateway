@@ -210,6 +210,7 @@ func (r *rosmarManager) processEvent(ctx context.Context, event sgbucket.FeedEve
 
 		}
 		r.docsWritten.Add(1)
+	default:
 	}
 
 	return true

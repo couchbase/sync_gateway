@@ -342,6 +342,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
 		return
+	case DocTypeDocument: // this is processed below
 	}
 
 	collection, exists := c.db.CollectionByID[event.CollectionID]
