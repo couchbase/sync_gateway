@@ -1967,7 +1967,7 @@ func TestConcurrentLoadByCVAndRevOnCache(t *testing.T) {
 	revElement := cache.cache[IDAndRev{RevID: "1-abc", DocID: "doc1"}].Value.(*revCacheValue)
 	cvElement := cache.hlvCache[IDandCV{DocID: "doc1", Source: "test", Version: 123}].Value.(*revCacheValue)
 	// we may have concurrent loads that lead to the same doc being loaded into two
-	// rev cache items but only one reference tyo one or the other in the maps
+	// rev cache items but only one reference to one or the other in the maps
 	//	┌──────────┐   ┌──────────┐
 	//	│          │   │          │
 	//	│  Doc1    │   │   Doc1   │

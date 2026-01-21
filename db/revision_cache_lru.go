@@ -473,7 +473,6 @@ func (rc *LRURevisionCache) addToRevMapPostLoad(ctx context.Context, docID, revI
 		// if not found we need to add the element to the rev lookup (for PUT code path)
 		rc.cache[legacyKey] = cvElem
 	}
-	return
 }
 
 // addToHLVMapPostLoad will generate and entry in the CV lookup map for a new document entering the cache
@@ -500,10 +499,7 @@ func (rc *LRURevisionCache) addToHLVMapPostLoad(ctx context.Context, docID, revI
 	if !cvFound {
 		// if not found we need to add the element to the hlv lookup
 		rc.hlvCache[key] = revElem
-		return
 	}
-
-	return
 }
 
 // Remove removes a value from the revision cache, if present.
