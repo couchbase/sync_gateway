@@ -154,7 +154,7 @@ func (revisions Revisions) ParseRevisions() []string {
 // Returns revisions as a slice of ancestor revids, from the parent to the target ancestor.
 func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) []string {
 	start, ids := splitRevisionList(revisions)
-	if len(ids) < 2 {
+	if ids == nil || len(ids) < 2 {
 		return nil
 	}
 	result := make([]string, 0)
