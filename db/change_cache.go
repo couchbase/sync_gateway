@@ -640,7 +640,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
 	changedChannels := c.processUnusedRange(ctx, fromSequence, toSequence, timeReceived)
-	allChangedChannels.Update(channels.SetFromArrayNoValidate(changedChannels))
+	allChangedChannels = allChangedChannels.Update(channels.SetFromArrayNoValidate(changedChannels))
 
 	if c.notifyChangeFunc != nil {
 		c.notifyChangeFunc(ctx, allChangedChannels)
