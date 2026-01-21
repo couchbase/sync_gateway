@@ -328,6 +328,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				base.Audit(h.ctx(), base.AuditIDAdminHTTPAPIRequest, auditFields)
 			case metricsServer:
 				base.Audit(h.ctx(), base.AuditIDMetricsHTTPAPIRequest, auditFields)
+			case diagnosticServer:
+				base.Audit(h.ctx(), base.AuditIDDiagnosticsHTTPAPIRequest, auditFields)
 			}
 		}
 	}()

@@ -3209,3 +3209,22 @@ CORS:
         type: string
       example: ["https://example.com"]
   title: Cors Configuration
+DiagnosticFunctionException:
+  description: The exception thrown during evaluation (if any).
+  type: string
+DiagnosticFunctionLogging:
+  description: Logging emitted during evaluation.
+  type: object
+  properties:
+    errors:
+      description: Error messages logged during evaluation.
+      type: array
+      items:
+        type: string
+        example: This is an error message produced by console.error("oops").
+    info:
+      description: Info messages logged during evaluation.
+      type: array
+      items:
+        type: string
+        example: This is an info message produced by console.log("test").
