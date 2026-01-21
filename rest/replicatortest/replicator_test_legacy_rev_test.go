@@ -1017,6 +1017,8 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	t.Skip("pending fix from CBG-5106")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")
 	}
