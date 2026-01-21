@@ -57,8 +57,6 @@ if [ "${USE_GO_MODULES:-}" == "false" ]; then
     go get -u -v github.com/AlekSi/gocov-xml
 else
     # Install tools to use
-    go install github.com/axw/gocov/gocov@latest
-    go install github.com/AlekSi/gocov-xml@latest
     go install gotest.tools/gotestsum@latest
 fi
 
@@ -159,13 +157,6 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("integration-EE-", .)' integration.xml > "${INT_LOG_FILE_NAME}.xml"
 else
     cp integration.xml "${INT_LOG_FILE_NAME}.xml"
-fi
-
-# Get coverage
-~/go/bin/gocov convert "coverage_int.out" | ~/go/bin/gocov-xml > coverage_int.xml
-if [ "${RUN_WALRUS}" == "true" ]; then
-    ~/go/bin/gocov convert "coverage_walrus_ee.out" | ~/go/bin/gocov-xml > "coverage_walrus_ee.xml"
-    ~/go/bin/gocov convert "coverage_walrus_ce.out" | ~/go/bin/gocov-xml > "coverage_walrus_ce.xml"
 fi
 
 if [ "${TEST_FAILED:-}" = true ]; then
