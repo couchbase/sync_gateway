@@ -459,9 +459,6 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 		return bodyBytes, history, channels, removed, nil, deleted, nil, hlv, getHistoryErr
 	}
 	history = encodeRevisions(ctx, doc.ID, validatedHistory)
-	if channels == nil {
-		channels = doc.getCurrentChannels()
-	}
 	// only add doc hlv if the revision we have fetched is current revision, otherwise we don't know whether hlv applies to that revision
 	if doc.GetRevTreeID() == revid {
 		if doc.HLV != nil {
@@ -486,9 +483,6 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	}
 
 	deleted = doc.Deleted
-	if channels == nil {
-		channels = doc.getCurrentChannels()
-	}
 	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
