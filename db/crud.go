@@ -941,9 +941,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 		}
 	}
 
-	// TODO: Why doc.getCurrentChannels() - is ancestor rev *always* the oldDoc version?
-	//ch, _ := doc.channelsForRevTreeID(ancestorRevId)
-	ch := doc.getCurrentChannels()
+	ch, _ := doc.channelsForRevTreeID(ancestorRevId)
 
 	// Back up the revision JSON as a separate doc in the bucket:
 	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch)
