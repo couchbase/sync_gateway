@@ -3553,7 +3553,7 @@ func TestTombstoneCount(t *testing.T) {
 }
 
 func TestBlipNoRevOnCorruptHistory(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTesterPersistentConfig(t)
@@ -3620,7 +3620,6 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
 		rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
 
-		//time.Sleep(1 * time.Second)
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
