@@ -66,26 +66,30 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error) {
 	t.getRevisionCounter.Add(1)
 
+	revTreeID := doc.GetRevTreeID()
+	ch, _ := doc.channelsForRevTreeID(revTreeID)
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
-		BodyRev:       doc.GetRevTreeID(),
+		BodyRev:       revTreeID,
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	if doc.HLV != nil {
 		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, nil, err
+	return bodyBytes, nil, ch, err
 }
 
 func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
 	t.getRevisionCounter.Add(1)
 
+	revTreeID := doc.GetRevTreeID()
+	ch, _ := doc.channelsForRevTreeID(revTreeID)
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
-		BodyRev:       doc.GetRevTreeID(),
+		BodyRev:       revTreeID,
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	if doc.HLV != nil {
@@ -95,7 +99,7 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 		return nil, nil, nil, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, nil, err
+	return bodyBytes, nil, ch, err
 }
 
 type noopBackingStore struct{}
