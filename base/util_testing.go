@@ -1030,3 +1030,10 @@ func TestRequiresViews(t testing.TB) {
 		t.Skip("Skipping test - views not supported with this bucket configuration")
 	}
 }
+
+// TestRequiresDeltaSync will skip the current test if not running with EE.
+func TestRequiresDeltaSync(t testing.TB) {
+	if !IsEnterpriseEdition() {
+		t.Skipf("Skipping test - Delta Sync requires EE")
+	}
+}

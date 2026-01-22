@@ -768,7 +768,13 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	}
 	var history []string
 	if !bsc.useHLV() || localIsLegacyRev {
-		history = toHistory(docRev.History, knownRevs, maxHistory)
+		var err error
+		history, err = toHistory(docRev.History, knownRevs, maxHistory)
+		if err != nil {
+			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+			base.WarnfCtx(ctx, "%s", err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+		}
 	} else {
 		if docRev.HlvHistory != "" {
 			history = append(history, docRev.HlvHistory)
@@ -782,7 +788,12 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	// the full rev tree history above to send in the history property.
 	if remoteIsLegacyRev && !localIsLegacyRev {
 		// append current revID and rest of rev tree after hlv history
-		revTreeHistory := toHistory(docRev.History, knownRevs, maxHistory)
+		revTreeHistory, err := toHistory(docRev.History, knownRevs, maxHistory)
+		if err != nil {
+			err := base.RedactErrorf("Could not get rev tree history for %s %s when remote revision is a legacy rev and the local is hlv aware: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
+			base.WarnfCtx(ctx, "%v", err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+		}
 		history = append(history, docRev.RevID)
 		history = append(history, revTreeHistory...)
 	} else if bsc.sendRevTreeProperty() && !localIsLegacyRev {
@@ -791,7 +802,13 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		// should only be sent if the local + remote revisions are not a legacy revisions as the rev tree in this case will be
 		// sent in history property.
 		revTreeHistoryProperty = append(revTreeHistoryProperty, docRev.RevID) // we need current rev
-		revTreeHistoryProperty = append(revTreeHistoryProperty, toHistory(docRev.History, knownRevs, maxHistory)...)
+		history, err := toHistory(docRev.History, knownRevs, maxHistory)
+		if err != nil {
+			err := base.RedactErrorf("Could not get rev tree history for %s %s when local and remote revision are hlv aware: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+			base.WarnfCtx(ctx, "%v", err)
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+		}
+		revTreeHistoryProperty = append(revTreeHistoryProperty, history...)
 	}
 
 	properties, err := blipRevMessageProperties(history, docRev.Deleted, seq, replacedRevID, revTreeHistoryProperty)
@@ -818,9 +835,14 @@ func digests(meta []AttachmentStorageMeta) []string {
 	return digests
 }
 
-func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {
+// toHistory returns an array of revision IDs in a descending array. Truncates array at maxHistory length, or at the first rev in knownRevs. Returns an error with invalid history.
+func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) ([]string, error) {
 	// Get the revision's history as a descending array of ancestor revIDs:
-	history := revisions.ParseRevisions()[1:]
+	revs := revisions.ParseRevisions()
+	if len(revs) == 0 {
+		return nil, fmt.Errorf("invalid revision history")
+	}
+	history := revs[1:]
 	for i, rev := range history {
 		if knownRevs[rev] || (maxHistory > 0 && i+1 >= maxHistory) {
 			history = history[0 : i+1]
@@ -829,7 +851,7 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 			knownRevs[rev] = true
 		}
 	}
-	return history
+	return history, nil
 }
 
 // timeElapsedForStatsReporting will return true if enough time has passed since the previous report.
