@@ -1018,3 +1018,11 @@ func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID stri
 func underGoTest() bool {
 	return testing.Testing()
 }
+
+// TestRequiresDeltaSync will skip the current test if not running with EE.
+
+func TestRequiresDeltaSync(t testing.TB) {
+	if !IsEnterpriseEdition() {
+		t.Skipf("Skipping test - Delta Sync requires EE")
+	}
+}
