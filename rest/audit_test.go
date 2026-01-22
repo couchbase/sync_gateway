@@ -488,7 +488,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			name: "diagnostic request without admin auth",
 			auditableAction: func(t testing.TB) {
 				if rt.AdminInterfaceAuthentication {
-					t.Skip("Skipping subtest that requires admin auth")
+					t.Skip("Skipping subtest that doesn't requires admin auth")
 				}
 				request := SyncFnDryRunPayload{
 					Function: `function(doc) {
@@ -519,7 +519,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			name: "diagnostic request with admin auth",
 			auditableAction: func(t testing.TB) {
 				if !rt.AdminInterfaceAuthentication {
-					t.Skip("Skipping subtest that doesn't requires admin auth")
+					t.Skip("Skipping subtest that requires admin auth")
 				}
 				request := SyncFnDryRunPayload{
 					Function: `function(doc) {
@@ -543,7 +543,10 @@ func TestAuditLoggingFields(t *testing.T) {
 				RequireStatus(t, rt.SendDiagnosticRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_sync", string(bodyBytes), headers), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
-				base.AuditIDAdminUserAuthenticated: {},
+				base.AuditIDAdminUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
 				base.AuditIDDiagnosticsHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodPost,
 					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
