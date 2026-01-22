@@ -485,8 +485,11 @@ func TestAuditLoggingFields(t *testing.T) {
 			},
 		},
 		{
-			name: "diagnostic request",
+			name: "diagnostic request without admin auth",
 			auditableAction: func(t testing.TB) {
+				if rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
 				request := SyncFnDryRunPayload{
 					Function: `function(doc) {
 					channel(doc.channel);
@@ -506,6 +509,41 @@ func TestAuditLoggingFields(t *testing.T) {
 				RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", string(bodyBytes)), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDDiagnosticsHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodPost,
+					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
+				},
+			},
+		},
+		{
+			name: "diagnostic request with admin auth",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that doesn't requires admin auth")
+				}
+				request := SyncFnDryRunPayload{
+					Function: `function(doc) {
+					channel(doc.channel);
+					access(doc.accessUser, doc.accessChannel);
+					role(doc.accessUser, doc.role);
+					expiry(doc.expiry);
+				}`,
+					Doc: db.Body{
+						"accessChannel": []string{"dynamicChan5412"},
+						"accessUser":    "user",
+						"channel":       []string{"dynamicChan222"},
+						"expiry":        10,
+					},
+				}
+				bodyBytes, err := json.Marshal(request)
+				require.NoError(t, err)
+				headers := map[string]string{
+					"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendDiagnosticRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_sync", string(bodyBytes), headers), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticated: {},
 				base.AuditIDDiagnosticsHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodPost,
 					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
