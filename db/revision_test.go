@@ -116,12 +116,12 @@ func TestBackupOldRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, "")
+	_, _, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, "")
 	assert.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+	_, _, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
@@ -135,15 +135,15 @@ func TestBackupOldRevision(t *testing.T) {
 	require.NoError(t, err)
 
 	// now in all cases we'll have revtree ID 1 backed up (for at least 5 minutes)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	_, _, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	if deltasEnabled && xattrsEnabled {
 		// and optionally keyed by CV
-		_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+		_, _, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 	}
 	require.NoError(t, err)
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+	_, _, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
