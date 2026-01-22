@@ -772,6 +772,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		history, err = toHistory(docRev.History, knownRevs, maxHistory)
 		if err != nil {
 			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+			base.WarnfCtx(ctx, "%s", err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	} else {
@@ -839,7 +840,7 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) (
 	// Get the revision's history as a descending array of ancestor revIDs:
 	revs := revisions.ParseRevisions()
 	if len(revs) == 0 {
-		return nil, fmt.Errorf("invalid revision history, no revisions found")
+		return nil, fmt.Errorf("invalid revision history")
 	}
 	history := revs[1:]
 	for i, rev := range history {
