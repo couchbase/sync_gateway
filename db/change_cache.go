@@ -68,7 +68,7 @@ type changeCache struct {
 	initialSequence    uint64                              // DB's current sequence at startup time.
 	receivedSeqs       map[uint64]struct{}                 // Set of all sequences received
 	pendingLogs        LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
-	notifyChange       func(context.Context, channels.Set) // Client callback that notifies of channel changes
+	notifyChangeFunc   func(context.Context, channels.Set) // Client callback that notifies of channel changes
 	started            base.AtomicBool                     // Set by the Start method
 	stopped            base.AtomicBool                     // Set by the Stop method
 	skippedSeqs        *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
@@ -145,7 +145,7 @@ func DefaultCacheOptions() CacheOptions {
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
-// notifyChange is an optional function that will be called to notify of channel changes.
+// notifyChangeFunc is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start using the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 
@@ -153,7 +153,7 @@ func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, chan
 	c.db = dbContext
 	c.logCtx = ctx
 
-	c.notifyChange = notifyChange
+	c.notifyChangeFunc = notifyChange
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
@@ -277,10 +277,9 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	// Trigger _addPendingLogs to process any entries that have been pending too long:
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs(ctx)
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(ctx, changedChannels)
-	}
 	c.lock.Unlock()
+
+	c.notifyChange(ctx, changedChannels)
 
 	return nil
 }
@@ -445,7 +444,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 				UnusedSequence: true,
 			}
 			changedChannels := c.processEntry(ctx, change)
-			changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
+			channelSet := channels.SetFromArrayNoValidate(changedChannels)
+			changedChannelsCombined = changedChannelsCombined.Update(channelSet)
 		}
 		base.DebugfCtx(ctx, base.KeyCache, "Received unused sequences in unused_sequences property for (%q / %q): %v", base.UD(docID), syncData.CurrentRev, syncData.UnusedSequences)
 	}
@@ -491,7 +491,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 				}
 
 				changedChannels := c.processEntry(ctx, change)
-				changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
+				channelSet := channels.SetFromArrayNoValidate(changedChannels)
+				changedChannelsCombined = changedChannelsCombined.Update(channelSet)
 			}
 		}
 		if len(seqsCached) > 0 {
@@ -523,11 +524,12 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	changedChannels := c.processEntry(ctx, change)
-	changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
+	channelSet := channels.SetFromArrayNoValidate(changedChannels)
+	changedChannelsCombined = changedChannelsCombined.Update(channelSet)
 
 	// Notify change listeners for all of the changed channels
-	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(ctx, changedChannelsCombined)
+	if c.notifyChangeFunc != nil && len(changedChannelsCombined) > 0 {
+		c.notifyChangeFunc(ctx, changedChannelsCombined)
 	}
 
 }
@@ -536,6 +538,13 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 type cachePrincipal struct {
 	Name     string `json:"name"`
 	Sequence uint64 `json:"sequence"`
+}
+
+func (c *changeCache) notifyChange(ctx context.Context, chs []channels.ID) {
+	if c.notifyChangeFunc == nil || len(chs) == 0 {
+		return
+	}
+	c.notifyChangeFunc(ctx, channels.SetFromArrayNoValidate(chs))
 }
 
 func (c *changeCache) Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int) {
@@ -571,14 +580,16 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
+	var channelSet channels.Set
 	changedChannels := c.processEntry(ctx, change)
 	if changedChannels == nil {
-		changedChannels = channels.SetOfNoValidate(unusedSeqChannelID)
+		channelSet = channels.SetOfNoValidate(unusedSeqChannelID)
 	} else {
-		changedChannels.Add(unusedSeqChannelID)
+		channelSet = channels.SetFromArrayNoValidate(changedChannels)
+		channelSet.Add(unusedSeqChannelID)
 	}
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(ctx, changedChannels)
+	if c.notifyChangeFunc != nil && len(channelSet) > 0 {
+		c.notifyChangeFunc(ctx, channelSet)
 	}
 }
 
@@ -598,27 +609,30 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
-		allChangedChannels = allChangedChannels.Update(changedChannels)
-		if c.notifyChange != nil {
-			c.notifyChange(ctx, allChangedChannels)
+		channelSet := channels.SetFromArrayNoValidate(changedChannels)
+		allChangedChannels = allChangedChannels.Update(channelSet)
+		if c.notifyChangeFunc != nil {
+			c.notifyChangeFunc(ctx, allChangedChannels)
 		}
 		return
 	}
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
-	allChangedChannels = c.processUnusedRange(ctx, fromSequence, toSequence, allChangedChannels, timeReceived)
+	changedChannels := c.processUnusedRange(ctx, fromSequence, toSequence, timeReceived)
+	allChangedChannels.Update(channels.SetFromArrayNoValidate(changedChannels))
 
-	if c.notifyChange != nil {
-		c.notifyChange(ctx, allChangedChannels)
+	if c.notifyChangeFunc != nil {
+		c.notifyChangeFunc(ctx, allChangedChannels)
 	}
 }
 
 // processUnusedRange handles pushing unused range to pending or skipped lists
-func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, allChangedChannels channels.Set, timeReceived channels.FeedTimestamp) channels.Set {
+func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) []channels.ID {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	var numSkipped int64
+	var changedChannels []channels.ID
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
 		numSkipped = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
@@ -626,8 +640,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
 		// unblock any pending sequences we can after new range(s) have been pushed to pending
-		changedChannels := c._addPendingLogs(ctx)
-		allChangedChannels = allChangedChannels.Update(changedChannels)
+		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
 	} else {
 		// An unused sequence range than includes c.nextSequence in the middle of the range
@@ -641,7 +654,7 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
-	return allChangedChannels
+	return changedChannels
 }
 
 // _pushRangeToPending will push an unused sequence range to pendingLogs
@@ -711,13 +724,14 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	base.InfofCtx(ctx, base.KeyChanges, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(ctx, change)
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(ctx, changedChannels)
-	}
+
+	c.notifyChange(ctx, changedChannels)
 }
 
-// Handles a newly-arrived LogEntry.
-func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channels.Set {
+// processEntry handles a newly-arrived LogEntry and returns the changes channels from this revision.
+// This can be any existing, removed or newly added channels. Its possible for channels slice returned to have duplicates
+// in it. It is the callers responsibility to de-duplicate before notifying any changes.
+func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []channels.ID {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
@@ -752,12 +766,12 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 
-	var changedChannels channels.Set
+	var changedChannels []channels.ID
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(ctx, change)
 		// Also add any pending sequences that are now contiguous:
-		changedChannels = changedChannels.Update(c._addPendingLogs(ctx))
+		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
 	} else if sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
@@ -774,7 +788,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
-			changedChannels = c._addPendingLogs(ctx)
+			changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
 		}
 	} else if sequence > c.initialSequence {
 		// Out-of-order sequence received!
@@ -786,7 +800,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 			base.DebugfCtx(ctx, base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		}
 
-		changedChannels = changedChannels.Update(c._addToCache(ctx, change))
+		changedChannels = append(changedChannels, c._addToCache(ctx, change)...)
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
 		err := c.RemoveSkipped(sequence)
@@ -799,7 +813,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) channe
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channels.Set {
+func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []channels.ID {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -836,11 +850,12 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) channel
 	return updatedChannels
 }
 
-// Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
+// _addPendingLogs Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
 // waiting too long for nextSequence, move nextSequence to skipped queue.
-// Returns the channels that changed.
-func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
-	var changedChannels channels.Set
+// Returns the channels that changed. This may return the same channel more than once, channels should be deduplicated
+// before notifying the changes.
+func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
+	var changedChannels []channels.ID
 	var isNext bool
 
 	for len(c.pendingLogs) > 0 {
@@ -849,7 +864,7 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) channels.Set {
 
 		if isNext {
 			oldestPending = c._popPendingLog(ctx)
-			changedChannels = changedChannels.Update(c._addToCache(ctx, oldestPending))
+			changedChannels = append(changedChannels, c._addToCache(ctx, oldestPending)...)
 		} else if oldestPending.Sequence < c.nextSequence {
 			// oldest pending is lower than next sequence, should be ignored
 			base.InfofCtx(ctx, base.KeyCache, "Oldest entry in pending logs %v (%d, %d) is earlier than cache next sequence (%d), ignoring as sequence has already been cached", base.UD(oldestPending.DocID), oldestPending.Sequence, oldestPending.EndSequence, c.nextSequence)
