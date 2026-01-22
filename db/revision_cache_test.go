@@ -63,39 +63,43 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	return doc, nil
 }
 
-func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
+func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error) {
 	t.getRevisionCounter.Add(1)
 
+	revTreeID := doc.GetRevTreeID()
+	ch, _ := doc.channelsForRevTreeID(revTreeID)
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
-		BodyRev:       doc.GetRevTreeID(),
+		BodyRev:       revTreeID,
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	if doc.HLV != nil {
 		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, err
+	return bodyBytes, nil, ch, err
 }
 
-func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, error) {
+func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
 	t.getRevisionCounter.Add(1)
 
+	revTreeID := doc.GetRevTreeID()
+	ch, _ := doc.channelsForRevTreeID(revTreeID)
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
-		BodyRev:       doc.GetRevTreeID(),
+		BodyRev:       revTreeID,
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	if doc.HLV != nil {
 		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, err
+	return bodyBytes, nil, ch, err
 }
 
 type noopBackingStore struct{}
@@ -104,12 +108,12 @@ func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarsha
 	return nil, nil
 }
 
-func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
-	return nil, nil, nil
+func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error) {
+	return nil, nil, nil, nil
 }
 
-func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, error) {
-	return nil, nil, nil
+func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
+	return nil, nil, nil, nil
 }
 
 // testCollectionID is a test collection ID to use for a key in the backing store map to point to a tests backing store.
