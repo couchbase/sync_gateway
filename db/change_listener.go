@@ -41,7 +41,7 @@ type changeListener struct {
 	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
 	counter                  uint64                 // Event counter; increments on every doc update
 	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts                map[string]uint64      // Latest count at which each doc key was updated
+	keyCounts                map[channels.ID]uint64 // Latest count at which each doc key was updated
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
 	broadcastChangesDoneChan chan struct{}      // Channel to signal that broadcast changes goroutine has terminated
@@ -53,13 +53,16 @@ type changeListener struct {
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
 var unusedSeqChannelID = channels.NewID(unusedSeqKey, unusedSeqCollectionID)
 
+// principalDocCollectionIDForChannelID is the collection ID for construction of channel ID for principal documents (users, roles).
+const principalDocCollectionIDForChannelID = 0
+
 type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
 func (listener *changeListener) Init(name string, groupID string, db *DatabaseContext) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
-	listener.keyCounts = map[string]uint64{}
+	listener.keyCounts = map[channels.ID]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = db.MetadataKeys.SGCfgPrefix(groupID)
 	listener.metaKeys = db.MetadataKeys
@@ -181,7 +184,8 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	docType := listener.DocumentType(event.Key)
 	if docType == DocTypeUser || docType == DocTypeRole {
 		// defer to notify after callback completion
-		defer listener.notifyKey(listener.ctx, string(event.Key))
+		key := channels.NewID(string(event.Key), principalDocCollectionIDForChannelID)
+		defer listener.notifyKey(listener.ctx, key)
 	}
 
 	listener.OnDocChanged(event, docType)
@@ -251,7 +255,7 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	for key := range keys {
-		listener.keyCounts[key.String()] = listener.counter
+		listener.keyCounts[key] = listener.counter
 	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Listener keys %q for %s have changed, count=%d",
 		base.UD(keys), base.MD(listener.bucketName), listener.counter)
@@ -309,7 +313,7 @@ func tickerValForBroadcastSpeed(skippedSequencePresent bool) time.Duration {
 }
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
-func (listener *changeListener) notifyKey(ctx context.Context, key string) {
+func (listener *changeListener) notifyKey(ctx context.Context, key channels.ID) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	listener.keyCounts[key] = listener.counter
@@ -340,7 +344,7 @@ func (listener *changeListener) NotifyCheckForTermination(ctx context.Context, k
 }
 
 // Waits until either the counter, or terminateCheckCounter exceeds the given value. Returns the new counters.
-func (listener *changeListener) Wait(ctx context.Context, keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
+func (listener *changeListener) Wait(ctx context.Context, keys []channels.ID, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.DebugfCtx(ctx, base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
@@ -367,13 +371,13 @@ func (listener *changeListener) Wait(ctx context.Context, keys []string, counter
 }
 
 // Returns the max value of the counter for all the given keys
-func (listener *changeListener) CurrentCount(keys []string) uint64 {
+func (listener *changeListener) CurrentCount(keys []channels.ID) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	return listener._currentCount(keys)
 }
 
-func (listener *changeListener) _currentCount(keys []string) uint64 {
+func (listener *changeListener) _currentCount(keys []channels.ID) uint64 {
 	var max uint64 = 0
 	for _, key := range keys {
 		if count := listener.keyCounts[key]; count > max {
@@ -389,8 +393,8 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 // listener's counter to increment from the value at the last call.
 type ChangeWaiter struct {
 	listener                  *changeListener
-	keys                      []string
-	userKeys                  []string
+	keys                      []channels.ID
+	userKeys                  []channels.ID
 	lastCounter               uint64
 	lastTerminateCheckCounter uint64
 	lastUserCount             uint64
@@ -398,14 +402,14 @@ type ChangeWaiter struct {
 }
 
 // NewWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
-func (listener *changeListener) NewWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
+func (listener *changeListener) NewWaiter(keys []channels.ID, trackUnusedSequences bool) *ChangeWaiter {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	return listener._newWaiter(keys, trackUnusedSequences)
 }
 
 // _newWaiter a new ChangeWaiter that will wait for changes for the given document keys, and will optionally track unused sequences.
-func (listener *changeListener) _newWaiter(keys []string, trackUnusedSequences bool) *ChangeWaiter {
+func (listener *changeListener) _newWaiter(keys []channels.ID, trackUnusedSequences bool) *ChangeWaiter {
 	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
@@ -417,15 +421,16 @@ func (listener *changeListener) _newWaiter(keys []string, trackUnusedSequences b
 
 // NewWaiterWithChannels creates ChangeWaiter for a given channel and user, and will optionally track unused sequences.
 func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user auth.User, trackUnusedSequences bool) *ChangeWaiter {
-	waitKeys := make([]string, 0, 5)
+	waitKeys := make([]channels.ID, 0, 5)
 	for channel := range chans {
-		waitKeys = append(waitKeys, channel.String())
+		waitKeys = append(waitKeys, channel)
 	}
-	var userKeys []string
+	var userKeys []channels.ID
 	if user != nil {
-		userKeys = []string{listener.metaKeys.UserKey(user.Name())}
+		usrID := channels.NewID(listener.metaKeys.UserKey(user.Name()), principalDocCollectionIDForChannelID)
+		userKeys = []channels.ID{usrID}
 		for role := range user.RoleNames() {
-			userKeys = append(userKeys, listener.metaKeys.RoleKey(role))
+			userKeys = append(userKeys, channels.NewID(listener.metaKeys.RoleKey(role), principalDocCollectionIDForChannelID))
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
@@ -480,12 +485,12 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channels.TimedSet) {
 	// This capacity is not right can not accommodate channels without iteration.
 	initialCapacity := len(waiter.userKeys)
-	updatedKeys := make([]string, 0, initialCapacity)
+	updatedKeys := make([]channels.ID, 0, initialCapacity)
 	for channelName, _ := range timedSet {
-		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
+		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID))
 	}
 	if waiter.trackUnusedSequences {
-		updatedKeys = append(updatedKeys, unusedSeqChannelID.String())
+		updatedKeys = append(updatedKeys, unusedSeqChannelID)
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
@@ -505,9 +510,9 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 		if len(waiter.userKeys) == 1 && len(user.RoleNames()) == 0 {
 			return
 		}
-		waiter.userKeys = []string{metaKeys.UserKey(user.Name())}
+		waiter.userKeys = []channels.ID{channels.NewID(metaKeys.UserKey(user.Name()), principalDocCollectionIDForChannelID)}
 		for role := range user.RoleNames() {
-			waiter.userKeys = append(waiter.userKeys, metaKeys.RoleKey(role))
+			waiter.userKeys = append(waiter.userKeys, channels.NewID(metaKeys.RoleKey(role), principalDocCollectionIDForChannelID))
 		}
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 

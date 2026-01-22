@@ -11,7 +11,6 @@ package channels
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -32,21 +31,21 @@ const AllChannelWildcard = "*"  // wildcard for 'all channels'
 
 // ID represents a single channel inside a collection
 type ID struct {
-	Name          string // name of channel
-	CollectionID  uint32 // collection it belongs to
-	serialization string // private method for logging and matching inside changeWaiter notification
+	Name         string // name of channel
+	CollectionID uint32 // collection it belongs to
 }
 
+// String returns the channel name as a string, omitting the collection ID, so beware when using for logging purposes
+// that the collection name is logged from the context on the log line
 func (c ID) String() string {
-	return c.serialization
+	return c.Name
 }
 
 // NewID returns a new ChannelID
 func NewID(channelName string, collectionID uint32) ID {
 	return ID{
-		Name:          channelName,
-		CollectionID:  collectionID,
-		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + base.UserDataPrefix + channelName + base.UserDataSuffix,
+		Name:         channelName,
+		CollectionID: collectionID,
 	}
 }
 
@@ -196,7 +195,7 @@ func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
 	tmp := []byte("{")
 	iterationCount := 0
 	for setItem, _ := range redactorSet.set {
-		tmp = append(tmp, redactorSet.redactorFunc(setItem).String()...)
+		tmp = append(tmp, redactorSet.redactorFunc(setItem).Redact()...)
 		iterationCount++
 		if iterationCount != len(redactorSet.set) {
 			tmp = append(tmp, ", "...)
