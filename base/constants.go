@@ -47,6 +47,9 @@ const (
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
 	TestEnvSyncGatewayTrue      = "True"
 
+	// TestEnvDisableRevCache if set to true will disable the revision cache for tests
+	TestEnvDisableRevCache = "SG_TEST_DISABLE_REV_CACHE"
+
 	// Should the tests drop the GSI indexes?
 	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
 
