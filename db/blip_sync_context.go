@@ -771,7 +771,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		var err error
 		history, err = toHistory(docRev.History, knownRevs, maxHistory)
 		if err != nil {
-			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
+			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}
 	} else {
@@ -803,7 +803,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		revTreeHistoryProperty = append(revTreeHistoryProperty, docRev.RevID) // we need current rev
 		history, err := toHistory(docRev.History, knownRevs, maxHistory)
 		if err != nil {
-			err := base.RedactErrorf("Could not get rev tree history for %s %s when local and remote revision are hlv aware: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
+			err := base.RedactErrorf("Could not get rev tree history for %s %s when local and remote revision are hlv aware: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
 			base.WarnfCtx(ctx, "%v", err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 		}

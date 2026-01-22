@@ -1034,6 +1034,6 @@ func TestRequiresViews(t testing.TB) {
 // TestRequiresDeltaSync will skip the current test if not running with EE.
 func TestRequiresDeltaSync(t testing.TB) {
 	if !IsEnterpriseEdition() {
-		t.Skipf("Skipping test due to running in EE mode")
+		t.Skipf("Skipping test - Delta Sync requires EE")
 	}
 }

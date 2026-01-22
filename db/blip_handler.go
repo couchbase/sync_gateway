@@ -931,7 +931,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 			var err error
 			history, err = toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %d.", base.UD(docID), revID, err, seq)
+				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
 				base.WarnfCtx(ctx, "%s", err)
 				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 			}
@@ -942,7 +942,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 			revTreeProperty = append(revTreeProperty, redactedRev.RevID)
 			history, err := toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev when sending in sendRevAsDelta %s %s: %w, sending a noRev to skip this document for replication at sequence %d.", base.UD(docID), redactedRev.RevID, err, seq)
+				err := base.RedactErrorf("Could not get rev tree history for replacement rev when sending in sendRevAsDelta %s %s: %w, sending a noRev to skip this document for replication at sequence %s.", base.UD(docID), redactedRev.RevID, err, seq)
 				base.WarnfCtx(ctx, "%s", err)
 				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 			}

@@ -3571,7 +3571,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		require.NoError(t, err)
 		// document contains an invalid revtree
 		//
-		// 3-c is a child of 3-d, two revisions of the same generation can not exist in a non branched revtree
+		// 3-c is a child of 3-d, a revision must be one or more generations higher than it its parent, not equal
 		badSyncRaw := `{
 			"cas": "expand",
 			"channel_set":  null,
@@ -3664,7 +3664,7 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		require.NoError(t, err)
 		// document contains an invalid revtree
 		//
-		// 3-c is a child of 3-d, two revisions of the same generation can not exist in a non branched revtree
+		// 3-c is a child of 3-d, a revision must be one or more generations higher than it its parent, not equal
 		badSyncRaw := `{
 			"cas": "expand",
 			"channel_set":  [
