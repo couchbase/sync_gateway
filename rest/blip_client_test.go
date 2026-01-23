@@ -730,6 +730,11 @@ func (btcc *BlipTesterCollectionClient) getAttachment(digest string) (attachment
 func (btcc *BlipTesterCollectionClient) updateLastReplicatedRev(docID string, version DocVersion, msg *blip.Message) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
+	// If this fires after a replication is completed, ignore it since BlipTesterCollectionClient.Close will zero
+	// out all documents
+	if btcc.ctx.Err() != nil {
+		return
+	}
 	doc, ok := btcc._getClientDoc(docID)
 	require.True(btcc.TB(), ok, "docID %q not found in _seqFromDocID", docID)
 	doc._latestServerVersion = version
