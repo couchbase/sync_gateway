@@ -296,7 +296,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)
-			base.WarnfCtx(ctx, "PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
+			base.WarnfCtx(ctx, "PANIC handling 'changes' response: %v\n%s. Canceling the replication.", panicked, debug.Stack())
+			bsc.Close()
 		}
 	}()
 
@@ -481,7 +482,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					bsc.replicationStats.NumHandlersPanicked.Add(1)
-					base.WarnfCtx(ctx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
+					base.WarnfCtx(ctx, "PANIC handling 'sendRevision' response: %v\n%s. Canceling the replication.", panicked, debug.Stack())
 					bsc.Close()
 				}
 			}()
