@@ -507,9 +507,14 @@ func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (
 
 	result, err := i.Call(ctx, doc)
 	if err != nil {
+		base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
 		return false, err
 	}
-	return parseImportFilterOutput(result)
+	ok, err := parseImportFilterOutput(result)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unexpected error parsing output from import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
+	}
+	return ok, err
 }
 
 // ImportFilterDryRun Runs a document through the import filter and returns a boolean and error
