@@ -111,9 +111,10 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 }
 
 type RevisionCacheOptions struct {
-	MaxItemCount uint32
-	MaxBytes     int64
-	ShardCount   uint16
+	MaxItemCount  uint32
+	MaxBytes      int64
+	ShardCount    uint16
+	InsertOnWrite bool
 }
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {
@@ -476,13 +477,9 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 		return nil, nil, nil, false, nil, false, nil, "", nil, err
 	}
 
-	// if we have request current version on the doc we can add revision ID too. If not we cannot know what the
-	// corresponding revID is to pair with the request CV
-	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
-		revid = doc.GetRevTreeID()
-	}
-
 	deleted = doc.Deleted
+	channels = doc.SyncData.getCurrentChannels()
+	revid = doc.GetRevTreeID()
 	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {

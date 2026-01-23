@@ -983,6 +983,10 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(ctx, rev1ID)
 	_, rev2Digest := ParseRevID(ctx, rev2ID)
 
+	syncD, err := collection.GetDocSyncData(ctx, "doc1")
+	require.NoError(t, err, "Error getting doc sync data")
+	fmt.Println(syncD)
+
 	var interfaceListChannels []any
 	interfaceListChannels = append(interfaceListChannels, "ABC")
 	bodyExpected := Body{

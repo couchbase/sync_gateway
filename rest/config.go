@@ -252,6 +252,7 @@ type RevCacheConfig struct {
 	MaxItemCount     *uint32 `json:"size,omitempty"`                // Maximum number of revisions to store in the revision cache
 	MaxMemoryCountMB *uint32 `json:"max_memory_count_mb,omitempty"` // Maximum amount of memory the rev cache should consume in MB, when configured it will work in tandem with max items
 	ShardCount       *uint16 `json:"shard_count,omitempty"`         // Number of shards the rev cache should be split into
+	InsertOnWrite    *bool   `json:"insert_on_write,omitempty"`     // Whether to insert revisions into the cache on document writes
 }
 
 type ChannelCacheConfig struct {

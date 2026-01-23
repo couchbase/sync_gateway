@@ -823,6 +823,9 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 
 // TODO: enhance to compare source/version when expectedChanges are updated to include
 func assertChangeEntryMatches(t *testing.T, expectedChangeEntryString string, result db.ChangeEntry) {
+	if result.ID == "doc_pruned" {
+		fmt.Println("doc")
+	}
 	var expectedChange db.ChangeEntry
 	require.NoError(t, base.JSONUnmarshal([]byte(expectedChangeEntryString), &expectedChange))
 	assert.Equal(t, expectedChange.Seq, result.Seq)

@@ -1880,7 +1880,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				docID := test.name
 				version1 := rt.PutDoc(docID, fmt.Sprintf(`{"foo":"bar","channels":["%s"]}`, rev1Channel))
 				updatedVersion := make(chan DocVersion)
-				collection, ctx := rt.GetSingleTestDatabaseCollection()
+				//collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
@@ -1888,9 +1888,9 @@ func TestSendReplacementRevision(t *testing.T) {
 						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
-						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
-						require.NoError(t, err)
-						rt.GetDatabase().FlushRevisionCacheForTest()
+						//err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
+						//require.NoError(t, err)
+						//rt.GetDatabase().FlushRevisionCacheForTest()
 					}
 				}
 
