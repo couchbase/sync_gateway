@@ -1117,6 +1117,31 @@ func TestSyncFuncDryRun(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
+			name: "request sync function and doc with inline oldDoc",
+			request: SyncFnDryRunPayload{
+				Function: `function(doc, oldDoc) {
+					if (doc) {
+						channel(doc.newDoc);
+					};
+					if (oldDoc) {
+						channel(oldDoc.oldDoc);
+					};
+				}`,
+				Doc:    db.Body{"newDoc": "newdoc_channel"},
+				OldDoc: db.Body{"oldDoc": "olddoc_channel"},
+			},
+			expectedOutput: SyncFnDryRun{
+				Channels: base.SetOf("newdoc_channel", "olddoc_channel"),
+				Access:   channels.AccessMap{},
+				Roles:    channels.AccessMap{},
+				Logging: DryRunLogging{
+					Errors: []string{},
+					Info:   []string{},
+				},
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name: "sync func exception",
 			request: SyncFnDryRunPayload{
 				Function: `function(doc, oldDoc) {
@@ -1411,7 +1436,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Roles:    channels.AccessMap{},
 				Logging: DryRunLogging{
 					Errors: []string{},
-					Info:   []string{fmt.Sprintf("{\"_id\":\"%s\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}", SYNC_FN_DIAGNOSTIC_DOCID)},
+					Info:   []string{fmt.Sprintf("{\"_id\":\"%s\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}", defaultSyncDryRunDocID)},
 				},
 			},
 			expectedStatus: http.StatusOK,
@@ -1635,6 +1660,10 @@ func TestSyncFuncDryRunErrors(t *testing.T) {
 
 	// doc ID not found
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc_id": "missing"}`), http.StatusNotFound)
+	// only oldDoc provided
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"oldDoc": {"foo":"old"}}`), http.StatusBadRequest)
+	// doc ID and inline oldDoc provided
+	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{"doc_id": "somedoc", "oldDoc": {"foo":"old"}}`), http.StatusBadRequest)
 	// no doc ID or inline body provided
 	RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", `{}`), http.StatusBadRequest)
 	// invalid request json
