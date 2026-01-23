@@ -112,7 +112,7 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	bucketDocID := syncDryRunPayload.DocID
 	if syncDryRunPayload.Doc == nil && bucketDocID == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or doc provided")
+		return base.HTTPErrorf(http.StatusBadRequest, "must provide either doc_id or doc")
 	}
 	if syncDryRunPayload.OldDoc != nil && bucketDocID != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "cannot specify doc_id with a provided oldDoc")
