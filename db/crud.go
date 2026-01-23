@@ -1737,7 +1737,11 @@ func (db *DatabaseCollectionWithUser) SyncFnDryrun(ctx context.Context, newDoc, 
 		return nil, fmt.Errorf("failed to create sync runner: %v", err)
 	}
 
-	jsOutput, err := syncRunner.Call(ctx, mutableBody, sgbucket.JSONString(oldDoc._rawBody), metaMap, syncOptions)
+	oldDocBodyBytes, err := oldDoc.BodyBytes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	jsOutput, err := syncRunner.Call(ctx, mutableBody, sgbucket.JSONString(oldDocBodyBytes), metaMap, syncOptions)
 	if err != nil {
 		return nil, &base.SyncFnDryRunError{Err: err}
 	}
