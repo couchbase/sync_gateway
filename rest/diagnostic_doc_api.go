@@ -233,7 +233,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryRun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
