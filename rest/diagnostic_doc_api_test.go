@@ -607,9 +607,6 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
-	if base.TestsUseNamedCollections() {
-		t.Skip("Only works with default collection until CBG-4003 is fixed")
-	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
 	})
