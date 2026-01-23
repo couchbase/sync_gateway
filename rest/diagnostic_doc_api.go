@@ -171,8 +171,11 @@ func (h *handler) handleSyncFnDryRun() error {
 			return err
 		}
 		if len(syncDryRunPayload.Doc) == 0 {
-			// use bucket doc as doc value
+			// use bucket doc as current doc value
 			syncDryRunPayload.Doc = bucketDoc.Body(h.ctx())
+			// set oldDoc for any xattrs that may be present for use in `meta`, but nil the body
+			oldDoc = bucketDoc
+			oldDoc.UpdateBody(nil)
 		} else {
 			// use bucket doc as oldDoc value
 			oldDoc = bucketDoc
