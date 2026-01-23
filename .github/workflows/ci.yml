@@ -136,6 +136,25 @@ jobs:
         with:
           test-results: test.json
 
+    test-disable-rev-cache:
+      runs-on: ubuntu-latest
+      env:
+        GOPRIVATE: github.com/couchbaselabs
+        SG_TEST_DISABLE_REV_CACHE: true
+      steps:
+        - uses: actions/checkout@v5
+        - uses: actions/setup-go@v5
+          with:
+            go-version: 1.25.6
+        - name: Run Tests
+          run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+          shell: bash
+        - name: Annotate Failures
+          if: always()
+          uses: guyarb/golang-test-annotations@v0.8.0
+          with:
+            test-results: test.json
+
   python-format:
     runs-on: ubuntu-latest
     steps:
