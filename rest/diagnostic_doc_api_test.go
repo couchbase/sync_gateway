@@ -1436,7 +1436,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Roles:    channels.AccessMap{},
 				Logging: DryRunLogging{
 					Errors: []string{},
-					Info:   []string{fmt.Sprintf("{\"_id\":\"%s\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}", SYNC_FN_DIAGNOSTIC_DOCID)},
+					Info:   []string{fmt.Sprintf("{\"_id\":\"%s\",\"_rev\":\"1-cd809becc169215072fd567eebd8b8de\",\"foo\":\"bar\"}", defaultSyncDryRunDocID)},
 				},
 			},
 			expectedStatus: http.StatusOK,

@@ -58,7 +58,7 @@ type SyncFnDryRunPayload struct {
 	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
 
-const defaultSyncDryRunDocID = "diagnostic_doc"
+const defaultSyncDryRunDocID = "sync_dryrun"
 
 type ImportFilterDryRunPayload struct {
 	DocID    string  `json:"doc_id"`
