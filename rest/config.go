@@ -1015,7 +1015,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 		}
 		for _, algo := range local.Algorithms {
-			if supported, ok := auth.SupportedAlgorithms[jose.SignatureAlgorithm(algo)]; !ok || !supported {
+			if _, ok := auth.SupportedAlgorithms[jose.SignatureAlgorithm(algo)]; !ok {
 				multiError = multiError.Append(fmt.Errorf("%s: signing algorithm %q invalid or unsupported", name, algo))
 			}
 		}
