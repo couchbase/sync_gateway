@@ -1256,12 +1256,15 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 
 		// create doc1
 		version1 := rt.PutDoc(docID, `{"foo": "bar", "version": "1", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
 
 		btcRunner.StartOneshotPull(client.id)
 		btcRunner.WaitForVersion(client.id, docID, version1)
 
 		// create rev 2
 		version2 := rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
 		rt.GetDatabase().FlushRevisionCacheForTest() // force delta computation from backup rev
 		btcRunner.StartOneshotPull(client.id)
 		btcRunner.WaitForVersion(client.id, docID, version2)
