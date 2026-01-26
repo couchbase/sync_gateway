@@ -1756,7 +1756,7 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := rest.NewRestTester(t, &rtConfig)
