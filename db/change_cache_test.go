@@ -3123,6 +3123,62 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 
 }
 
+func TestUnblockPendingWithUnusedRange(t *testing.T) {
+	base.LongRunningTest(t)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	opts := DefaultCacheOptions()
+	opts.CachePendingSeqMaxWait = 20 * time.Minute
+	opts.CacheSkippedSeqMaxWait = 20 * time.Minute
+	opts.CachePendingSeqMaxNum = DefaultCachePendingSeqMaxNum
+	db, ctx := setupTestDBWithCacheOptions(t, opts)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// init change cache
+	_, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	docID := fmt.Sprintf("doc_%d", 1)
+	highEntry := &LogEntry{
+		Channels: channels.ChannelMap{
+			"channelA": nil,
+		},
+		Sequence:     20,
+		DocID:        docID,
+		RevID:        "1-abcdefabcdefabcdef",
+		CollectionID: collection.GetCollectionID(),
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+	_ = db.changeCache.processEntry(ctx, highEntry)
+
+	// assert that pending list is populated with above entry
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.changeCache.updateStats(ctx)
+		assert.Equal(c, int64(1), db.DbStats.CacheStats.PendingSeqLen.Value())
+		assert.Equal(c, uint64(1), db.changeCache.nextSequence)
+	}, time.Second*10, time.Millisecond*100)
+
+	// process unused sequence range
+	db.changeCache.releaseUnusedSequenceRange(ctx, 1, 19, channels.NewFeedTimestampFromNow())
+
+	// assert on cache stats after range processed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		db.changeCache.updateStats(ctx)
+		db.UpdateCalculatedStats(ctx)
+		assert.Equal(c, int64(20), db.DbStats.CacheStats.HighSeqCached.Value())
+		assert.Equal(c, uint64(21), db.changeCache.nextSequence)
+	}, time.Second*10, time.Millisecond*100)
+
+	entries, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
+	require.NoError(t, err)
+
+	assert.Len(t, entries, 1)
+	assert.Equal(t, docID, entries[0].DocID)
+	assert.Equal(t, uint64(20), entries[0].Sequence)
+}
+
 type sequenceRange struct {
 	start uint64
 	end   uint64
