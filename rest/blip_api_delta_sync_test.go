@@ -1111,12 +1111,12 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()
 		rt.CreateUser(username, []string{"alice"})
-		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true}
+		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true, SupportedBLIPProtocols: SupportedBLIPProtocols}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
 
