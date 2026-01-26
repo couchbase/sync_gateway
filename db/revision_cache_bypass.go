@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -38,7 +39,8 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	}
 
 	docRev = DocumentRevision{
-		RevID: revID,
+		RevID:                  revID,
+		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 	var hlv *HybridLogicalVector
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
@@ -59,7 +61,8 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 
 	docRev = DocumentRevision{
-		CV: cv,
+		CV:                     cv,
+		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
@@ -91,7 +94,8 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	}
 
 	docRev = DocumentRevision{
-		RevID: doc.GetRevTreeID(),
+		RevID:                  doc.GetRevTreeID(),
+		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
 	var hlv *HybridLogicalVector
