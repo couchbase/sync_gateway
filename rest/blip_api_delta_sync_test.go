@@ -1317,7 +1317,7 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		version2 := rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
 		rt.WaitForPendingChanges()
 
-		// Bypass rev cache to force delta computation from backup rev and go through bypass revision cache interface
+		// code will go though bypass revision cache interface, delta will be generated from backup rev
 		btcRunner.WaitForVersion(client.id, docID, version2)
 		// assert rev sent as delta
 		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
