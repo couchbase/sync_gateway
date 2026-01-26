@@ -231,9 +231,9 @@ func BenchmarkSpecialProperties(b *testing.B) {
 	}
 
 	for _, t := range tests {
-		b.Run(t.name+"-stripInternalProperties", func(bb *testing.B) {
+		b.Run(t.name+"-StripInternalProperties", func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
-				stripInternalProperties(t.body)
+				StripInternalProperties(t.body)
 			}
 		})
 		b.Run(t.name+"-stripAllInternalProperties", func(bb *testing.B) {

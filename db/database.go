@@ -1679,7 +1679,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 			return
 		}
-		metaMap, err := doc.GetMetaMap(db.userXattrKey())
+		metaMap, err := doc.GetMetaMap(db.UserXattrKey())
 		if err != nil {
 			return
 		}
