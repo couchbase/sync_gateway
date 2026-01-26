@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -45,6 +46,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	if err != nil {
 		return DocumentRevision{}, err
 	}
+	docRev.RevCacheValueDeltaLock = &sync.Mutex{} // initialize the mutex for delta updates
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
@@ -72,6 +74,7 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 	if err != nil {
 		return DocumentRevision{}, err
 	}
+	docRev.RevCacheValueDeltaLock = &sync.Mutex{} // initialize the mutex for delta updates
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
@@ -99,6 +102,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	if err != nil {
 		return DocumentRevision{}, err
 	}
+	docRev.RevCacheValueDeltaLock = &sync.Mutex{} // initialize the mutex for delta updates
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
