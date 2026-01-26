@@ -176,6 +176,9 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
+	if entry.ID == "doc_pruned" {
+		fmt.Println("stop")
+	}
 	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil)
 	if err != nil {
 		return err
