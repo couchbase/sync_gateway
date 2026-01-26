@@ -62,7 +62,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	}
 
 	docRev = DocumentRevision{
-		RevID: doc.CurrentRev,
+		RevID:                  doc.CurrentRev,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
