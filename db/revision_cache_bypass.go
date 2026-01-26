@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -39,7 +40,8 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, col
 	}
 
 	docRev = DocumentRevision{
-		RevID: revID,
+		RevID:                  revID,
+		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
 	if err != nil {
@@ -61,6 +63,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 
 	docRev = DocumentRevision{
 		RevID: doc.CurrentRev,
+		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.CurrentRev)
