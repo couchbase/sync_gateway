@@ -1086,3 +1086,54 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 
 	})
 }
+
+// TestDeltaGenerationWithBypassRevCache tests that delta generation works when the rev cache is bypassed.
+func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	const (
+		username = "alice"
+		docID    = "doc1"
+	)
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					MaxItemCount: base.Ptr[uint32](0),
+				},
+			},
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t,
+			rtConfig)
+		defer rt.Close()
+		rt.CreateUser(username, []string{"alice"})
+		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true, SupportedBLIPProtocols: SupportedBLIPProtocols}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		// create doc1
+		version1 := rt.PutDoc(docID, `{"foo": "bar", "version": "1", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		btcRunner.StartPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// create rev 2
+		version2 := rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		// code will go though bypass revision cache interface, delta will be generated from backup rev
+		btcRunner.WaitForVersion(client.id, docID, version2)
+		// assert rev sent as delta
+		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+	})
+}
