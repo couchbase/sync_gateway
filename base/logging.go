@@ -380,12 +380,18 @@ func LogTraceEnabled(ctx context.Context, logKey LogKey) bool {
 
 func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 	switch level {
+	case LevelError:
+		return consoleLogger.Load().shouldLog(ctx, level, logKey) || errorLogger.Load().shouldLog(level)
+	case LevelWarn:
+		return consoleLogger.Load().shouldLog(ctx, level, logKey) || warnLogger.Load().shouldLog(level)
 	case LevelInfo:
 		return LogInfoEnabled(ctx, logKey)
 	case LevelDebug:
 		return LogDebugEnabled(ctx, logKey)
 	case LevelTrace:
 		return LogTraceEnabled(ctx, logKey)
+	case LevelNone:
+		return false
 	}
 	return true
 }

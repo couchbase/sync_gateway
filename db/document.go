@@ -1346,6 +1346,8 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
+	case DocUnmarshalNone:
+		// this is a no-op but initializes document
 	}
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body

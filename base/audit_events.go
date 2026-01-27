@@ -1235,7 +1235,7 @@ var AuditEvents = events{
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
 	},
-}
+} //exhaustive:enforce
 
 func init() {
 	AuditEvents.expandFieldGroups()
