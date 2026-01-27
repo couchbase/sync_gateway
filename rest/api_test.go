@@ -3401,6 +3401,9 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 }
 
 func TestDocCRUDWithCV(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Test requires revision cache to be enabled, fetches older revisions expecting to be resident in cache")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

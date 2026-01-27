@@ -40,6 +40,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 
 	docRev = DocumentRevision{
 		RevID:                  revID,
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 	var hlv *HybridLogicalVector
@@ -62,6 +63,7 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 
 	docRev = DocumentRevision{
 		CV:                     cv,
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
@@ -95,6 +97,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 
 	docRev = DocumentRevision{
 		RevID:                  doc.GetRevTreeID(),
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
@@ -103,6 +106,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	if err != nil {
 		return DocumentRevision{}, err
 	}
+	docRev.DocID = docID
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()

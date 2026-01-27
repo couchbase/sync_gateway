@@ -12,8 +12,10 @@ package rest
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -704,6 +706,26 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	})
 }
 
+func TestDeltaBackupDelete(t *testing.T) {
+	sgUseDeltas := base.IsEnterpriseEdition()
+	rtConfig := &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
+
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	const docID = "doc1"
+
+	// create doc1 rev 1
+	version := rt.PutDoc(docID, `{"greetings": [{"hello": "world!"}]}`)
+
+	// delete doc1 at rev 2
+	version = rt.DeleteDoc(docID, version)
+
+	time.Sleep(5 * time.Second)
+
+	fmt.Println("stop")
+}
+
 // TestBlipDeltaSyncPullTombstonedStarChan tests two clients can perform a simple pull replication that deletes a document when the user has access to the star channel.
 //
 // Sync Gateway: creates rev-1 and then tombstones it in rev-2
@@ -721,7 +743,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
@@ -836,13 +858,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		sgCanUseDelta := base.IsEnterpriseEdition()
 		if sgCanUseDelta {
-			assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart+2, deltasSentEnd)
 		} else {
-			assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart, deltasSentEnd)
 		}
@@ -855,6 +881,9 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Skipping enterprise-only delta sync test.")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("rev cache specific test")
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)

@@ -6873,6 +6873,9 @@ func TestUnprocessableDeltas(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some delta sync")
 	}
+	if base.TestDisableRevCache() {
+		t.Skipf("Test requires altering of rev cache values")
+	}
 
 	// need Sync debugging due to AssertLogContains below
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)

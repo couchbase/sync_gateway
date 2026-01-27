@@ -2441,12 +2441,12 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 			t, &RestTesterConfig{
 				LeakyBucketConfig: &base.LeakyBucketConfig{
 					GetWithXattrCallback: func(key string) error {
-						if throw.Load() {
+						if throw.Load() && key == docID {
 							return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
 						}
 						return nil
 					}, GetRawCallback: func(key string) error {
-						if throw.Load() {
+						if throw.Load() && key == docID {
 							return fmt.Errorf("Leaky Bucket GetRawCallback Error")
 						}
 						return nil
@@ -2477,19 +2477,19 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 
 		firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
-
-		throw.Store(true)
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
+		// store throw bool for doc now first rev has arrived
+		throw.Store(true)
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
+		rt.WaitForPendingChanges()
 
 		waitMarkerVersion := rt.PutDoc(waitMarkerID, `{"channels": "!"}`)
 		rt.WaitForPendingChanges()
 
-		rt.WaitForPendingChanges()
 		lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
 		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: false, Since: lastSeqStr})
 

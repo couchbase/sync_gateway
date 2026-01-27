@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"time"
@@ -505,6 +506,7 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 			base.WarnfCtx(ctx, "Marshal error when retrieving active current version body: %v", err)
 			return nil, nil, nil, false, err
 		}
+		cvIsRequested = true
 		channels = doc.SyncData.getCurrentChannels()
 		attachments = doc.Attachments()
 	}
