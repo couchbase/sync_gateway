@@ -30,9 +30,10 @@ const (
 	AuditIDSyncGatewayStartup AuditID = 53260
 
 	// API events
-	AuditIDPublicHTTPAPIRequest  AuditID = 53270
-	AuditIDAdminHTTPAPIRequest   AuditID = 53271
-	AuditIDMetricsHTTPAPIRequest AuditID = 53272
+	AuditIDPublicHTTPAPIRequest      AuditID = 53270
+	AuditIDAdminHTTPAPIRequest       AuditID = 53271
+	AuditIDMetricsHTTPAPIRequest     AuditID = 53272
+	AuditIDDiagnosticsHTTPAPIRequest AuditID = 53273
 
 	// Auth (public) events
 	AuditIDPublicUserAuthenticated        AuditID = 53280
@@ -246,6 +247,29 @@ var AuditEvents = events{
 	AuditIDMetricsHTTPAPIRequest: {
 		Name:        "Metrics HTTP API request",
 		Description: "Metrics HTTP API request was made",
+		MandatoryFields: AuditFields{
+			AuditFieldHTTPMethod: "GET, POST, etc.",
+			AuditFieldHTTPPath:   "request_path",
+			AuditFieldHTTPStatus: 200,
+		},
+		OptionalFields: AuditFields{
+			AuditFieldRequestBody: "request_body",
+			AuditFieldRealUserID: map[string]any{
+				AuditFieldRealUserIDDomain: "user domain",
+				AuditFieldRealUserIDUser:   "user name",
+			},
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDDiagnosticsHTTPAPIRequest: {
+		Name:        "Diagnostic HTTP API request",
+		Description: "Diagnostic HTTP API request was made",
 		MandatoryFields: AuditFields{
 			AuditFieldHTTPMethod: "GET, POST, etc.",
 			AuditFieldHTTPPath:   "request_path",
@@ -1211,7 +1235,7 @@ var AuditEvents = events{
 		FilteringPermitted: true,
 		EventType:          eventTypeData,
 	},
-}
+} //exhaustive:enforce
 
 func init() {
 	AuditEvents.expandFieldGroups()

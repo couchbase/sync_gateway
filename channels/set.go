@@ -76,6 +76,8 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 		if result.Contains(UserStarChannel) {
 			result = base.SetOf(UserStarChannel)
 		}
+	case KeepStar:
+		// do nothing
 	}
 	return result, nil
 }

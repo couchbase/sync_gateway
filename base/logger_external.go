@@ -71,7 +71,7 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...any) 
 		logTo(context.TODO(), LevelInfo, KeyGoCB, format, v...)
 	case gocb.LogDebug:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
-	case gocb.LogTrace:
+	case gocb.LogTrace, gocb.LogMaxVerbosity:
 		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	case gocb.LogSched:
 		logTo(context.TODO(), LevelTrace, KeyGoCB, "<SCHED>: "+format, v...)
@@ -111,7 +111,7 @@ func (GoCBLoggerRemapped) Log(level gocb.LogLevel, offset int, format string, v 
 		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
-	case gocb.LogDebug, gocb.LogTrace, gocb.LogSched:
+	case gocb.LogDebug, gocb.LogTrace, gocb.LogSched, gocb.LogMaxVerbosity:
 		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	}
 	return nil

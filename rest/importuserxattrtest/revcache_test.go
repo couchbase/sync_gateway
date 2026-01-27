@@ -111,6 +111,7 @@ func TestUserXattrRevCache(t *testing.T) {
 }
 
 func TestUserXattrDeleteWithRevCache(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
@@ -131,6 +132,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Name:             "rt1",
 			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
@@ -142,6 +144,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Name:             "rt2",
 			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
@@ -153,7 +156,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	dataStore := rt2.GetSingleDataStore()
 
 	ctx = rt2.Context()
-	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	a := rt2.ServerContext().Database(ctx, rt2.GetDatabase().Name).Authenticator(ctx)
 
 	userDEF, err := a.NewUser("userDEF", "letmein", channels.BaseSetOf(t, "DEF"))
 	require.NoError(t, err)

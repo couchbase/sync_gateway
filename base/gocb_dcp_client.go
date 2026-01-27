@@ -106,20 +106,20 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 		}
 	}
 	client := &GoCBDCPClient{
-		workers:                    make([]*DCPWorker, numWorkers),
-		numVbuckets:                numVbuckets,
-		callback:                   callback,
-		ID:                         ID,
-		spec:                       bucket.GetSpec(),
-		supportsCollections:        bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
-		terminator:                 make(chan bool),
-		doneChannel:                make(chan error, 1),
-		failOnRollback:             options.FailOnRollback,
-		checkpointPrefix:           options.CheckpointPrefix,
-		dbStats:                    options.DbStats,
-		agentPriority:              options.AgentPriority,
-		collectionIDs:              options.CollectionIDs,
-		checkpointPersistFrequency: options.CheckpointPersistFrequency,
+		ctx:                 ctx,
+		workers:             make([]*DCPWorker, numWorkers),
+		numVbuckets:         numVbuckets,
+		callback:            callback,
+		ID:                  ID,
+		spec:                bucket.GetSpec(),
+		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
+		terminator:          make(chan bool),
+		doneChannel:         make(chan error, 1),
+		failOnRollback:      options.FailOnRollback,
+		checkpointPrefix:    options.CheckpointPrefix,
+		dbStats:             options.DbStats,
+		agentPriority:       options.AgentPriority,
+		collectionIDs:       options.CollectionIDs,
 	}
 
 	// Initialize active vbuckets
@@ -673,3 +673,5 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
 }
+
+var _ gocbcore.StreamObserver = &GoCBDCPClient{}

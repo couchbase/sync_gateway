@@ -477,14 +477,9 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, key, DocUnmarshalAll)
-			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+			existingBucketDoc := getBucketDocument(t, collection.DatabaseCollection, key)
+			require.NoError(t, err)
 
-			body = Body{}
-			err = body.Unmarshal(existingBucketDoc.Body)
-			assert.NoError(t, err, "Error unmarshalling body")
-
-			// Set the expiry value
 			syncMetaExpiryUnix := syncMetaExpiry.Unix()
 			expiry := uint32(syncMetaExpiryUnix)
 
@@ -776,7 +771,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body := Body{"key": "value", "version": "1a"}
 	source := "illegal function(doc) {}"
 	importFilterFunc := NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err := importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err := importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, "Unexpected token function error")
 	assert.False(t, result, "Function evaluation result should be false")
 
@@ -784,7 +779,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body = Body{"key": "value", "version": "2a"}
 	source = `function(doc) { if (doc.version == "2a") { return true; } else { return false; }}`
 	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.True(t, result, "Import filter function should return boolean value true")
 
@@ -792,7 +787,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body = Body{"key": "value", "version": "2b"}
 	source = `function(doc) { if (doc.version == "2b") { return 1.01; } else { return 0.01; }}`
 	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, "Import filter function returned non-boolean value")
 	assert.False(t, result, "Import filter function evaluation result should be false")
 
@@ -800,7 +795,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body = Body{"key": "value", "version": "1a"}
 	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
 	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.True(t, result, "Import filter function should return true")
 
@@ -808,7 +803,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body = Body{"key": "value", "version": "2a"}
 	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
 	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.NoError(t, err, "Import filter function shouldn't throw any error")
 	assert.False(t, result, "Import filter function should return false")
 
@@ -816,7 +811,7 @@ func TestEvaluateFunction(t *testing.T) {
 	body = Body{"key": "value", "version": "1a"}
 	source = `function(doc) { if (doc.version == "1a") { return "TruE"; } else { return "FaLsE"; }}`
 	importFilterFunc = NewImportFilterFunction(base.TestCtx(t), source, 0)
-	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body, false)
+	result, err = importFilterFunc.EvaluateFunction(base.TestCtx(t), body)
 	assert.Error(t, err, `strconv.ParseBool: parsing "TruE": invalid syntax`)
 	assert.False(t, result, "Import filter function should return true")
 }
@@ -1493,4 +1488,27 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 
 	base.RequireWaitForStat(t, db.DbStats.Database().Crc32MatchCount.Value, 1)
 
+}
+
+// getBucketDocument reads the current version of a document and turns it into a sgbucket.BucketDocument. This is
+// intended for test use only, since this gets expiry as a separate option.
+func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID string) *sgbucket.BucketDocument {
+	ctx := base.TestCtx(t)
+	xattrNames := append(collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), base.VirtualExpiry)
+	body, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, xattrNames)
+	require.NoError(t, err)
+	var expiry uint32
+	if expiryBytes, ok := xattrs[base.VirtualExpiry]; ok {
+		err := base.JSONUnmarshal(expiryBytes, &expiry)
+		require.NoError(t, err)
+		delete(xattrs, base.VirtualExpiry)
+	}
+
+	return &sgbucket.BucketDocument{
+		Body:        body,
+		Xattrs:      xattrs,
+		Cas:         cas,
+		Expiry:      expiry,
+		IsTombstone: len(body) == 0,
+	}
 }

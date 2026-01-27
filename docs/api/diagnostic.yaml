@@ -32,11 +32,11 @@ paths:
     $ref: ./paths/common/_ping.yaml
   '/{keyspace}/{docid}/_all_channels':
     $ref: './paths/diagnostic/keyspace-docid-_all_channels.yaml'
-  '/{keyspace}/sync':
+  '/{keyspace}/_sync':
     $ref: './paths/diagnostic/keyspace-sync.yaml'
-  '/{keyspace}/import_filter':
+  '/{keyspace}/_import_filter':
     $ref: './paths/diagnostic/keyspace-import_filter.yaml'
-  '/{db}/_user/{name}/all_channels':
+  '/{db}/_user/{name}/_all_channels':
     $ref: './paths/diagnostic/db-_user-name-_all_channels.yaml'
   '/{keyspace}/_user/{name}':
     $ref: './paths/diagnostic/keyspace-_user-name.yaml'

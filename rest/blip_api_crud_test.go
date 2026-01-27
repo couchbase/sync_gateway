@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -2134,7 +2136,7 @@ func TestBlipNorev(t *testing.T) {
 		norevMsg := db.NewNoRevMessage()
 		norevMsg.SetId("docid")
 		norevMsg.SetRev("1-a")
-		norevMsg.SetSequence(db.SequenceID{Seq: 50})
+		require.NoError(t, norevMsg.SetSequence(db.SequenceID{Seq: 50}))
 		norevMsg.SetError("404")
 		norevMsg.SetReason("couldn't send xyz")
 		btc.addCollectionProperty(norevMsg.Message)
@@ -2161,7 +2163,7 @@ func TestNoRevSetSeq(t *testing.T) {
 	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSeq])
 	assert.Equal(t, "", norevMsg.Properties[db.NorevMessageSequence])
 
-	norevMsg.SetSequence(db.SequenceID{Seq: 50})
+	require.NoError(t, norevMsg.SetSequence(db.SequenceID{Seq: 50}))
 	assert.Equal(t, "50", norevMsg.Properties[db.NorevMessageSequence])
 
 	norevMsg.SetSeq(db.SequenceID{Seq: 60})
@@ -3548,4 +3550,183 @@ func TestTombstoneCount(t *testing.T) {
 		assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value())
 	})
 
+}
+
+func TestBlipNoRevOnCorruptHistory(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTesterPersistentConfig(t)
+		defer rt.Close()
+
+		const user = "user"
+		rt.CreateUser(user, []string{"*"})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username: user,
+		})
+		defer btc.Close()
+
+		ctx := rt.Context()
+		seq, err := rt.GetDatabase().NextSequence(ctx)
+		require.NoError(t, err)
+		// document contains an invalid revtree
+		//
+		// 3-c is a child of 3-d, a revision must be one or more generations higher than it its parent, not equal
+		badSyncRaw := `{
+			"cas": "expand",
+			"channel_set":  null,
+			"channels": null,
+			"channel_set_history": null,
+			"history": {
+				"parents": [
+					3,
+					0,
+					-1,
+					2
+				],
+				"revs": [
+					"3-d",
+					"3-c",
+					"1-a",
+					"2-b"
+				]
+			},
+			"rev": "3-c",
+			"sequence": {{.seq}},
+			"value_crc32c": "expand"
+		}`
+		tmpl := template.Must(template.New("badSync").Option("missingkey=error").Parse(badSyncRaw))
+		var badSyncData bytes.Buffer
+		require.NoError(t, tmpl.Execute(&badSyncData, map[string]any{
+			"seq": seq,
+		}))
+
+		docID := SafeDocumentName(t, t.Name())
+		mutateInOptions := db.DefaultMutateInOpts()
+		_, err = rt.GetSingleDataStore().WriteWithXattrs(
+			ctx,
+			docID,
+			0,
+			0,
+			[]byte(`{"key":"value"}`),
+			map[string][]byte{
+				base.SyncXattrName: badSyncData.Bytes(),
+			},
+			nil,
+			mutateInOptions,
+		)
+		require.NoError(t, err)
+
+		expectedVersion := DocVersion{RevTreeID: "3-c"}
+		rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
+
+		btcRunner.StartOneshotPull(btc.id)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
+}
+
+func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
+	base.TestRequiresDeltaSync(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyCRUD, base.KeySGTest)
+	btcRunner := NewBlipTesterClientRunner(t)
+	// a norev message is only sent on delta sync when v2 protocol is used, otherwise the deleted flag on a changes
+	// message is used
+	btcRunner.RunSubprotocolV2(func(t *testing.T) {
+		rt := NewRestTester(t,
+			&RestTesterConfig{
+				PersistentConfig: true,
+				SyncFn:           channels.DocChannelsSyncFunction,
+			},
+		)
+		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
+		dbConfig.AutoImport = false
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+		const user = "user"
+		const channelA = "A"
+		rt.CreateUser(user, []string{channelA})
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username:     user,
+			ClientDeltas: true,
+		})
+		defer btc.Close()
+
+		ctx := rt.Context()
+		docID := SafeDocumentName(t, t.Name())
+		docRev1 := rt.CreateDocNoHLV(docID, db.Body{"delta": true, "channels": []string{channelA}})
+		btcRunner.StartOneshotPull(btc.id)
+		btcRunner.WaitForVersion(btc.id, docID, DocVersion{RevTreeID: docRev1.GetRevTreeID()})
+		seq, err := rt.GetDatabase().NextSequence(ctx)
+		require.NoError(t, err)
+		// document contains an invalid revtree
+		//
+		// 3-c is a child of 3-d, a revision must be one or more generations higher than it its parent, not equal
+		badSyncRaw := `{
+			"cas": "expand",
+			"channel_set":  [
+				{
+					"end": {{.rev3seq}},
+					"name": "A",
+					"start": {{.rev1seq}}
+				}
+			],
+			"channels": {
+				"A": {
+					"rev": "{{.rev1}}",
+					"seq": {{.rev3seq}}
+				}
+			},
+			"channel_set_history": null,
+			"history": {
+				"parents": [
+					3,
+					0,
+					-1,
+					2
+				],
+				"revs": [
+					"3-d",
+					"3-c",
+					"{{.rev1}}",
+					"2-b"
+				]
+			},
+			"rev": "3-c",
+			"sequence": {{.rev3seq}},
+			"value_crc32c": "expand"
+		}`
+		tmpl := template.Must(template.New("badSync").Option("missingkey=error").Parse(badSyncRaw))
+		var badSyncData bytes.Buffer
+		require.NoError(t, tmpl.Execute(&badSyncData, map[string]any{
+			"rev1":    docRev1.GetRevTreeID(),
+			"rev1seq": docRev1.Sequence,
+			"rev3seq": seq,
+		}))
+
+		mutateInOptions := db.DefaultMutateInOpts()
+		_, err = rt.GetSingleDataStore().WriteWithXattrs(
+			ctx,
+			docID,
+			0,
+			docRev1.Cas,
+			[]byte(`{"key":"value"}`),
+			map[string][]byte{
+				base.SyncXattrName: badSyncData.Bytes(),
+			},
+			nil,
+			mutateInOptions,
+		)
+		require.NoError(t, err)
+
+		expectedVersion := DocVersion{RevTreeID: "3-c"}
+		rt.WaitForVersion(docID, expectedVersion)
+
+		btcRunner.StartOneshotPull(btc.id)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
 }

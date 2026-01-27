@@ -1760,12 +1760,13 @@ func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []u
 	}
 }
 
-func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
+// getResyncedDocument runs the sync function on the document and determines if any channels or access grants have changed. Returns ErrUpdateCancel if the document does not need to be rewritten. Any unused sequences should be released by the caller.
+func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool) (updatedDoc *Document, updatedUnusedSequences []uint64, err error) {
 	docid := doc.ID
 	forceUpdate := false
 	if !doc.HasValidSyncData() {
 		// This is a document not known to the sync gateway. Ignore it:
-		return nil, false, nil, doc.Sequence, unusedSequences, base.ErrUpdateCancel
+		return nil, nil, base.ErrUpdateCancel
 	}
 
 	base.TracefCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
@@ -1782,7 +1783,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 			return
 		}
-		metaMap, err := doc.GetMetaMap(db.userXattrKey())
+		metaMap, err := doc.GetMetaMap(db.UserXattrKey())
 		if err != nil {
 			return
 		}
@@ -1797,6 +1798,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
+				var unusedSequences []uint64
 				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
@@ -1814,105 +1816,67 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			// Only update document expiry based on the current (active) rev
 			if syncExpiry != nil {
 				doc.UpdateExpiry(*syncExpiry)
-				updatedExpiry = syncExpiry
 			}
 		}
 	})
-	shouldUpdate = changed > 0 || forceUpdate
-	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
+	if changed == 0 && !forceUpdate {
+		return nil, nil, base.ErrUpdateCancel
+	}
+	doc.SetCrc32cUserXattrHash()
+	return doc, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+// ResyncDocument will re-run the sync function on the document and write an updated version to the bucket. If
+// the sync function doesn't change any channels or access grants, no write will be performed.
+func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid string, previousDoc *sgbucket.BucketDocument, regenerateSequences bool) error {
 	var updatedDoc *Document
-	var shouldUpdate bool
 	var updatedExpiry *uint32
-	if db.UseXattrs() {
-		writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-			// so deleteDoc is always returned as false.
-			if currentValue == nil || len(currentValue) == 0 {
-				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
-			}
-			doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
-			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
-			if err != nil {
-				return sgbucket.UpdatedDoc{}, err
-			}
-			if !shouldUpdate {
-				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
-			}
-			base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-			if updatedExpiry != nil {
-				updatedDoc.UpdateExpiry(*updatedExpiry)
-			}
-			doc.SetCrc32cUserXattrHash()
-
-			// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
-			if db.useMou() {
-				doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-			}
-
-			_, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalXattr, err := updatedDoc.MarshalWithXattrs()
-			updatedDoc := sgbucket.UpdatedDoc{
-				Doc: nil, // Resync does not require document body update
-				Xattrs: map[string][]byte{
-					base.SyncXattrName: rawSyncXattr,
-					base.VvXattrName:   rawVvXattr,
-				},
-				Expiry: updatedExpiry,
-			}
-			if db.useMou() {
-				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
-				if doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
-				}
-			}
-			if rawGlobalXattr != nil {
-				updatedDoc.Xattrs[base.GlobalXattrName] = rawGlobalXattr
-			}
-			return updatedDoc, err
+	var unusedSequences []uint64
+	writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+		// resyncDocument is not called on tombstoned documents, so this value will only be empty if the document was
+		// deleted between DCP event and calling this function. In any case, we do not need to update it.
+		if len(currentValue) == 0 {
+			return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
 		}
-		opts := &sgbucket.MutateInOptions{
-			MacroExpansion: macroExpandSpec(base.SyncXattrName),
+		doc, err := db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll)
+		if err != nil {
+			return sgbucket.UpdatedDoc{}, err
 		}
-		_, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts, writeUpdateFunc)
-	} else {
-		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-			// Be careful: this block can be invoked multiple times if there are races!
-			if currentValue == nil {
-				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-			}
-			doc, err := unmarshalDocument(docid, currentValue)
-			if err != nil {
-				return nil, nil, false, err
-			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
-			if err != nil {
-				return nil, nil, false, err
-			}
-			if shouldUpdate {
-				base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-				if updatedExpiry != nil {
-					updatedDoc.UpdateExpiry(*updatedExpiry)
-				}
+		updatedDoc, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences)
+		if err != nil {
+			return sgbucket.UpdatedDoc{}, err
+		}
+		base.TracefCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q on resync", base.UD(docid))
 
-				updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-				return updatedBytes, updatedExpiry, false, marshalErr
-			} else {
-				return nil, nil, false, base.ErrUpdateCancel
-			}
-		})
+		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
+		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
+		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs()
+		updatedDoc := sgbucket.UpdatedDoc{
+			Doc: nil, // Resync does not require document body update
+			Xattrs: map[string][]byte{
+				base.SyncXattrName: rawSyncXattr,
+				base.MouXattrName:  rawMouXattr,
+			},
+			Expiry: updatedExpiry,
+			Spec: []sgbucket.MacroExpansionSpec{
+				sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+			},
+		}
+		return updatedDoc, err
 	}
+	db.releaseSequences(ctx, unusedSequences)
+
+	// these values are updated by the callback function
+	mutateInOpts := sgbucket.MutateInOptions{}
+	var expiry uint32
+	_, err := db.dataStore.WriteUpdateWithXattrs(ctx, docid, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), expiry, previousDoc, &mutateInOpts, writeUpdateFunc)
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
 			base.AuditFieldDocVersion: updatedDoc.CVOrRevTreeID(),
 		})
 	}
-	return updatedHighSeq, unusedSequences, err
+	return err
 }
 
 // invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:

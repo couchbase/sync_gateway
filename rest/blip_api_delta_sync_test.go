@@ -1146,6 +1146,53 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	})
 }
 
+func TestSendDeltaWhenDeltaCalculatedFromBackup(t *testing.T) {
+	base.LongRunningTest(t)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Skipping enterprise-only delta sync test.")
+	}
+	rtConfig := RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+		}},
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	const docID = "doc1"
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t,
+			&rtConfig)
+		defer rt.Close()
+
+		rt.CreateUser("alice", []string{"public"})
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			ClientDeltas: true,
+			Username:     "alice",
+		})
+		defer client.Close()
+
+		btcRunner.StartPull(client.id)
+
+		version := rt.PutDoc("doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
+
+		btcRunner.WaitForVersion(client.id, docID, version)
+
+		// flush cache to force delta calculation from backup
+		rt.GetDatabase().FlushRevisionCacheForTest()
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": ["public"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
+		data := btcRunner.WaitForVersion(client.id, docID, version)
+		require.JSONEq(t, `{"channels": ["public"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`, string(data))
+		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+	})
+}
+
 func TestBlipDeltaNoAccessPush(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -1176,5 +1223,103 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 		version2 := btcRunner.AddRev(client.id, docID, &version1, []byte(`{"foo": "bar", "version": "2"}`))
 		rt.WaitForVersion(docID, version2)
 
+	})
+}
+
+func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	const (
+		username = "alice"
+		docID    = "doc1"
+	)
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+		}},
+		SyncFn:       channels.DocChannelsSyncFunction,
+		GuestEnabled: true,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t,
+			rtConfig)
+		defer rt.Close()
+		rt.CreateUser(username, []string{"alice"})
+		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		// create doc1
+		version1 := rt.PutDoc(docID, `{"foo": "bar", "version": "1", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		btcRunner.StartOneshotPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// create rev 2
+		version2 := rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		rt.GetDatabase().FlushRevisionCacheForTest() // force delta computation from backup rev
+		btcRunner.StartOneshotPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version2)
+
+		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+	})
+}
+
+// TestDeltaGenerationWithBypassRevCache tests that delta generation works when the rev cache is bypassed.
+func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	const (
+		username = "alice"
+		docID    = "doc1"
+	)
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					MaxItemCount: base.Ptr[uint32](0),
+				},
+			},
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t,
+			rtConfig)
+		defer rt.Close()
+		rt.CreateUser(username, []string{"alice"})
+		opts := &BlipTesterClientOpts{Username: username, ClientDeltas: true}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		// create doc1
+		version1 := rt.PutDoc(docID, `{"foo": "bar", "version": "1", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		btcRunner.StartPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// create rev 2
+		version2 := rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		// code will go though bypass revision cache interface, delta will be generated from backup rev
+		btcRunner.WaitForVersion(client.id, docID, version2)
+		// assert rev sent as delta
+		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 	})
 }

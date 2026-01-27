@@ -9,6 +9,7 @@
 version: "2"
 linters:
   enable:
+    - exhaustive
     - gocritic # The most opinionated Go source code linter
     #- goprintffuncname # Checks that printf-like functions are named with `f` at the end
     #- gosec # Inspects source code for security problems
@@ -24,6 +25,13 @@ linters:
     #- unparam # Reports unused function parameters
     - unused # (megacheck) Checks Go code for unused constants, variables, functions and types
   settings:
+    exhaustive:
+      check:
+        - switch
+        - map
+      default-signifies-exhaustive: true
+      explicit-exhaustive-map: true
+      ignore-enum-members: "(auditdSyncGatewayEndID|levelCount)" # these mark end of an enum
     gocritic:
       enabled-checks:
         - ruleguard
@@ -107,6 +115,11 @@ linters:
       - text: "ST1022:" # comment on exported type should be of the form "TypeName ..."
         linters:
           - staticcheck
+      - text:  "missing cases in switch"
+        linters:
+          - exhaustive
+        path: (_test.go)
+
 formatters:
   enable:
     - goimports

@@ -82,6 +82,16 @@ func (v DocMetadata) GoString() string {
 	return fmt.Sprintf("DocMetadata{\nDocID:%s\n\tRevTreeID:%s\n\tHLV:%+v\n\tMou:%+v\n\tCas:%d\n\tImplicitHLV:%+v\n}", v.DocID, v.RevTreeID, v.HLV, v.Mou, v.Cas, v.ImplicitHLV)
 }
 
+// HLVString represents the HLV as a string in the blip wire format for easier representation in tests.
+func (v DocMetadata) HLVString() string {
+	if v.ImplicitHLV != nil {
+		return v.ImplicitHLV.HLVDebugString()
+	} else if v.HLV != nil {
+		return v.HLV.HLVDebugString()
+	}
+	return ""
+}
+
 // DocMetadataFromDocVersion returns metadata DocVersion from the given document and version.
 func DocMetadataFromDocVersion(t testing.TB, docID string, hlv *db.HybridLogicalVector, version rest.DocVersion) DocMetadata {
 	m := DocMetadata{

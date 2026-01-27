@@ -242,7 +242,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		}
 		return len(agent.N1qlEps()) > 0
 	case sgbucket.BucketStoreFeatureN1qlIfNotExistsDDL:
-		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 1)
+		return b.IsMinimumVersion(7, 1)
 	// added in Couchbase Server 6.6
 	case sgbucket.BucketStoreFeatureCreateDeletedWithXattr:
 		status, err := b.bucket.Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
@@ -252,14 +252,19 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return status == gocb.CapabilityStatusSupported
 	case sgbucket.BucketStoreFeaturePreserveExpiry, sgbucket.BucketStoreFeatureCollections:
 		// TODO: Change to capability check when GOCBC-1218 merged
-		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 0)
+		return b.IsMinimumVersion(7, 0)
 	case sgbucket.BucketStoreFeatureSystemCollections, sgbucket.BucketStoreFeatureMultiXattrSubdocOperations:
-		return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, 7, 6)
+		return b.IsMinimumVersion(7, 6)
 	case sgbucket.BucketStoreFeatureMobileXDCR:
 		return b.supportsHLV
 	default:
 		return false
 	}
+}
+
+// IsMinimumVersion returns whether the connected cluster is at least the specified major/minor version.
+func (b *GocbV2Bucket) IsMinimumVersion(requiredMajor, requiredMinor uint64) bool {
+	return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, requiredMajor, requiredMinor)
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {

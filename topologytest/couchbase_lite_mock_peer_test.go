@@ -110,7 +110,7 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for creating document", p.Type()))
 	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
-	p.TB().Logf("%s: Created document %s with %#v", p, docID, docMetadata)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Created document %s with %#v", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -137,7 +137,7 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 		require.Fail(p.TB(), fmt.Sprintf("unsupported peer type %s for writing document", p.Type()))
 	}
 	docMetadata := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
-	p.TB().Logf("%s: Wrote document %s with %#+v", p, docID, docMetadata)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Wrote document %s with %#v", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
 		docMeta:    docMetadata,
 		body:       body,
@@ -155,7 +155,7 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 	}
 	docVersion, hlv := client.Delete(docID, parentVersion)
 	docMeta := DocMetadataFromDocVersion(p.TB(), docID, hlv, docVersion)
-	p.TB().Logf("%s: Deleted document %s with %#+v", p, docID, docMeta)
+	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Deleted document %s with %#v", p, docID, docMeta.HLVString())
 	return docMeta
 }
 
@@ -324,7 +324,7 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseLiteMockReplication) Start() {
-	r.btc.TB().Logf("starting CBL replication: %s", r)
+	base.InfofCtx(r.btc.TB().Context(), base.KeySGTest, "Starting CBL replication: %s", r)
 	switch r.direction {
 	case PeerReplicationDirectionPush:
 		r.btcRunner.StartPush(r.btc.ID())
@@ -337,7 +337,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
-	r.btc.TB().Logf("stopping CBL replication: %s", r)
+	base.InfofCtx(r.btc.TB().Context(), base.KeySGTest, "Stopping CBL replication: %s", r)
 	switch r.direction {
 	case PeerReplicationDirectionPush:
 		r.btcRunner.StopPush(r.btc.ID())

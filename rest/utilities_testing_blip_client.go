@@ -113,6 +113,10 @@ func (btcc *BlipTesterCollectionClient) getProposeChangesForSeq(seq clientSeq) (
 	if !ok {
 		return nil, false
 	}
+	latestRev := doc._revisionsBySeq[doc._latestSeq]
+	if latestRev.noRev {
+		return nil, false
+	}
 	return doc._proposeChangesEntryForDoc(), true
 }
 
@@ -197,6 +201,7 @@ type clientDocRev struct {
 	isDelete    bool
 	pullMessage *blip.Message // rev or norev message associated with this revision is successfully pulled and the response is received and processed by BlipTesterCollectionClient
 	pushMessage *blip.Message // rev or norev message associated with this revision is successfully pushed to Sync Gateway and a response has been received
+	noRev       bool          // true if this revision was created via a norev message
 }
 
 // clientDoc represents a document stored on the client - it may also contain older versions of the document.
@@ -890,6 +895,7 @@ func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTeste
 			incomingVersion: incomingVersion,
 			incomingHLV:     incomingHLV,
 			msg:             msg,
+			isNoRev:         true,
 		})
 	}
 
@@ -1982,7 +1988,7 @@ func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, vers
 			return
 		}
 		var lookupVersion DocVersion
-		if btcc.UseHLV() {
+		if btcc.UseHLV() && !version.CV.IsEmpty() {
 			lookupVersion = DocVersion{CV: version.CV}
 		} else {
 			lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
@@ -2173,6 +2179,7 @@ type revOptions struct {
 	replacedVersion           *DocVersion             // replacedVersion is the version of the revision that was replaced, to update the global structure of all docIDs<->rev
 	updateLatestServerVersion bool                    // updateLatestServerVersion is true if the latestServerVersion should be updated to the newVersion. This only keeps track of a single Sync Gateway.
 	incomingHLV               *db.HybridLogicalVector // the incoming hlv for the revision. This is nil if revtrees are used and non nil if HLVs are used.
+	isNoRev                   bool                    // isNoRev is true if this revision was created from a _no_rev message
 }
 
 // addRev adds a revision for a specific document.
@@ -2205,6 +2212,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		body:        newBody,
 		HLV:         updatedHLV,
 		version:     newVersion,
+		noRev:       opts.isNoRev,
 	}
 
 	if !hasLocalDoc {

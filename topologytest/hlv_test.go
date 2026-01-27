@@ -52,12 +52,14 @@ func stripInternalProperties(body db.Body) {
 
 // waitForVersionAndBody waits for a document to reach a specific version on all peers.
 func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
-	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
+	ctx := base.TestCtx(t)
+	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
-		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
 		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
+	base.InfofCtx(ctx, base.KeySGTest, "found matching doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 }
 
 // waitForCVAndBody waits for a document to reach a specific cv on all peers.
@@ -95,9 +97,10 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 //   - cv:2@rosmar2 on cbs1, cbs2, cbl2
 //   - cv:2@rosmar2, pv:1@rosmar1 on cbl1
 func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
-	t.Logf("waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
+	ctx := base.TestCtx(t)
+	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
-		t.Logf("waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
 		var body db.Body
 		if peer.Type() == PeerTypeCouchbaseLite {
 			body = peer.WaitForCV(dsName, docID, expectedVersion.docMeta, topology)
@@ -106,6 +109,7 @@ func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID st
 		}
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
+	base.InfofCtx(ctx, base.KeySGTest, "found matching doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 }
 
 // waitForConvergingTombstones waits for all peers to have a tombstone document for a given doc ID. This is the
@@ -151,7 +155,8 @@ func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID st
 //   - CBL1: 7@rosmar1;5@cbl1
 //   - CBL2: 8@rosmar2;6@cbl2
 func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) {
-	t.Logf("waiting for converging tombstones")
+	ctx := base.TestCtx(t)
+	base.InfofCtx(ctx, base.KeySGTest, "waiting for converging tombstones")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nonCBLVersions := make(map[string]DocMetadata)
 		for peerName, peer := range topology.SortedPeers() {
@@ -179,15 +184,18 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 			}
 		}
 	}, totalWaitTime, pollInterval)
+	base.InfofCtx(ctx, base.KeySGTest, "found converging tombstones")
 }
 
 // waitForTombstoneVersion waits for a tombstone document with a particular HLV to be present on all peers.
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
-	t.Logf("waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion)
+	ctx := base.TestCtx(t)
+	base.InfofCtx(ctx, base.KeySGTest, "waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
-		t.Logf("waiting for tombstone version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		base.InfofCtx(ctx, base.KeySGTest, "waiting for tombstone version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
 		peer.WaitForTombstoneVersion(dsName, docID, expectedVersion.docMeta, topology)
 	}
+	base.InfofCtx(ctx, base.KeySGTest, "found matching tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 }
 
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then

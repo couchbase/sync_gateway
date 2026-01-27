@@ -978,6 +978,8 @@ func (s SgwStat) ValueTypeString() string {
 		return PrometheusValueTypeCounter
 	case prometheus.GaugeValue:
 		return PrometheusValueTypeGauge
+	case prometheus.UntypedValue:
+		return ""
 	}
 	return ""
 }

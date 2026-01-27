@@ -276,8 +276,8 @@ func TestsDisableGSI() bool {
 		return true
 	}
 
-	// Default to disabling GSI, but allow with SG_TEST_USE_GSI=true
-	useGSI := false
+	// Default to enable GSI, but disable with SG_TEST_USE_GSI=false
+	useGSI := true
 	if envUseGSI := os.Getenv(TestEnvSyncGatewayDisableGSI); envUseGSI != "" {
 		useGSI, _ = strconv.ParseBool(envUseGSI)
 	}
@@ -1015,4 +1015,18 @@ func UUID(t testing.TB) string {
 	id, err := uuid.NewRandom()
 	require.NoError(t, err)
 	return id.String()
+}
+
+// TestRequiresViews skips a test if the backing bucket doesn't support views.
+func TestRequiresViews(t testing.TB) {
+	if !GTestBucketPool.supportsViews() {
+		t.Skip("Skipping test - views not supported with this bucket configuration")
+	}
+}
+
+// TestRequiresDeltaSync will skip the current test if not running with EE.
+func TestRequiresDeltaSync(t testing.TB) {
+	if !IsEnterpriseEdition() {
+		t.Skipf("Skipping test - Delta Sync requires EE")
+	}
 }

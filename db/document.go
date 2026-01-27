@@ -612,21 +612,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return rawDoc, syncData, nil
 }
 
-func UnmarshalDocumentFromFeed(ctx context.Context, docid string, cas uint64, data []byte, dataType uint8, userXattrKey string) (doc *Document, err error) {
-	if dataType&base.MemcachedDataTypeXattr == 0 {
-		return unmarshalDocument(docid, data)
-	}
-	xattrKeys := []string{base.SyncXattrName}
-	if userXattrKey != "" {
-		xattrKeys = append(xattrKeys, userXattrKey)
-	}
-	body, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
-	if err != nil {
-		return nil, err
-	}
-	return unmarshalDocumentWithXattrs(ctx, docid, body, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[userXattrKey], xattrs[base.VirtualXattrRevSeqNo], nil, cas, DocUnmarshalAll)
-}
-
 func (doc *SyncData) HasValidSyncData() bool {
 
 	valid := doc != nil && doc.GetRevTreeID() != "" && (doc.Sequence > 0)
@@ -1361,6 +1346,8 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 			doc.SyncData = SyncData{}
 		}
 		doc._rawBody = data
+	case DocUnmarshalNone:
+		// this is a no-op but initializes document
 	}
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
@@ -1577,4 +1564,19 @@ func (d DocVersion) CVOrRevTreeID() string {
 		return cv.String()
 	}
 	return d.RevTreeID
+}
+
+// bucketDocumentFromFeed converts a sgbucket.FeedEvent to a sgbucket.BucketDocument
+func bucketDocumentFromFeed(event sgbucket.FeedEvent) (*sgbucket.BucketDocument, error) {
+	body, xattrs, err := sgbucket.DecodeValueWithAllXattrs(event.Value)
+	if err != nil {
+		return nil, err
+	}
+	return &sgbucket.BucketDocument{
+		Body:        body,
+		Xattrs:      xattrs,
+		Cas:         event.Cas,
+		Expiry:      event.Expiry,
+		IsTombstone: event.Opcode == sgbucket.FeedOpDeletion,
+	}, nil
 }

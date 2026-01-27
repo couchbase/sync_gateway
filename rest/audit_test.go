@@ -126,6 +126,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	// auditFieldValueIgnored is a special value for an audit field to skip value-specific checks whilst still ensuring the field property is set
 	// used for unpredictable values, for example timestamps or request IDs (when the test is making concurrent or unordered requests)
 	const auditFieldValueIgnored = "sg_test_audit_field_value_ignored"
+	keyspace := rt.GetKeyspaces()[0]
 
 	testCases := []struct {
 		name string
@@ -480,6 +481,75 @@ func TestAuditLoggingFields(t *testing.T) {
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticationFailed: {
 					base.AuditFieldUserName: "notauser",
+				},
+			},
+		},
+		{
+			name: "diagnostic request without admin auth",
+			auditableAction: func(t testing.TB) {
+				if rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that doesn't requires admin auth")
+				}
+				request := SyncFnDryRunPayload{
+					Function: `function(doc) {
+					channel(doc.channel);
+					access(doc.accessUser, doc.accessChannel);
+					role(doc.accessUser, doc.role);
+					expiry(doc.expiry);
+				}`,
+					Doc: db.Body{
+						"accessChannel": []string{"dynamicChan5412"},
+						"accessUser":    "user",
+						"channel":       []string{"dynamicChan222"},
+						"expiry":        10,
+					},
+				}
+				bodyBytes, err := json.Marshal(request)
+				require.NoError(t, err)
+				RequireStatus(t, rt.SendDiagnosticRequest(http.MethodPost, "/{{.keyspace}}/_sync", string(bodyBytes)), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDDiagnosticsHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodPost,
+					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
+				},
+			},
+		},
+		{
+			name: "diagnostic request with admin auth",
+			auditableAction: func(t testing.TB) {
+				if !rt.AdminInterfaceAuthentication {
+					t.Skip("Skipping subtest that requires admin auth")
+				}
+				request := SyncFnDryRunPayload{
+					Function: `function(doc) {
+					channel(doc.channel);
+					access(doc.accessUser, doc.accessChannel);
+					role(doc.accessUser, doc.role);
+					expiry(doc.expiry);
+				}`,
+					Doc: db.Body{
+						"accessChannel": []string{"dynamicChan5412"},
+						"accessUser":    "user",
+						"channel":       []string{"dynamicChan222"},
+						"expiry":        10,
+					},
+				}
+				bodyBytes, err := json.Marshal(request)
+				require.NoError(t, err)
+				headers := map[string]string{
+					"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
+				}
+				RequireStatus(t, rt.SendDiagnosticRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_sync", string(bodyBytes), headers), http.StatusOK)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDAdminUserAuthenticated: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldRealUserID:    map[string]any{"domain": "cbs", "user": base.TestClusterUsername()},
+				},
+				base.AuditIDDiagnosticsHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodPost,
+					base.AuditFieldHTTPPath:   fmt.Sprintf("/%s/_sync", keyspace),
 				},
 			},
 		},

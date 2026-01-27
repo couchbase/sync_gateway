@@ -845,6 +845,91 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	auth := db.Authenticator(ctx)
+
+	// Create a user who have access to channel ABC.
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC"))
+	require.NoError(t, err, "Error creating user")
+
+	userBob, err := auth.NewUser("bob", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": []string{"ABC"},
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// Try with a user who has access to this revision.
+	collection.user = userAlice
+	body, err := collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	_, rev1Digest := ParseRevID(ctx, rev1ID)
+
+	var interfaceListChannels []any
+	interfaceListChannels = append(interfaceListChannels, "ABC")
+	bodyExpected := Body{
+		"k1":       "v1",
+		"channels": interfaceListChannels,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// try with a user who doesn't have access to this revision.
+	collection.user = userBob
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+	bodyExpected = Body{
+		BodyRemoved: true,
+		BodyRevisions: Revisions{
+			RevisionsStart: 1,
+			RevisionsIds:   []string{rev1Digest},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev1ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// flush revision cache again from previous load and purge the old revision backup to assert we get 404 error
+	db.FlushRevisionCacheForTest()
+	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	collection.user = userAlice
+	body, err = collection.Get1xRevBody(ctx, "doc1", rev1ID, true, nil)
+	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
+}
+
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
@@ -978,6 +1063,299 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 	require.NotNil(t, delta)
 	assert.Equal(t, rev2, delta.ToRevID)
 	assert.Equal(t, []byte(`{"bar":[],"quux":"fuzz"}`), delta.DeltaBytes)
+}
+
+func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync other wise CV keyed backup revs won't be stored
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1": "v1",
+	}
+	rev1ID, doc, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k1":    "v2",
+		BodyRev: rev1ID,
+	}
+	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
+	docRev, err := collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	require.NoError(t, err, "Error fetching backup revision CV")
+	assert.Equal(t, "", docRev.RevID)
+	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
+
+	// fetch current revision and ensure we actually get rev2
+	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
+	require.NoError(t, err, "error fetching current revision")
+	assert.Equal(t, rev2ID, docRev.RevID)
+	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+}
+
+func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1": "v1",
+	}
+	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// create the second revision of doc1.
+	rev2Body := Body{
+		"k1":    "v2",
+		BodyRev: rev1ID,
+	}
+	_, docV2, err := collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Flush the revision cache, this can be removed pending CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
+	docRev, err := collection.GetRev(ctx, "doc1", rev1ID, true, nil)
+	require.NoError(t, err, "Error fetching backup revision by revID")
+	assert.Nil(t, docRev.CV)
+	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
+
+	// fetch current revision and ensure we actually get rev2
+	docRev, err = collection.GetRev(ctx, "doc1", "", true, nil)
+	require.NoError(t, err, "error fetching current revision")
+	assert.Equal(t, docV2.HLV.GetCurrentVersionString(), docRev.CV.String())
+	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+}
+
+// TestDeltaSyncConcurrentClientCachePopulation tests delta sync behavior when multiple goroutines request the same delta simultaneously.
+// Ensures that only one delta is computed and others wait for the cached result.
+// More instances of duplicated delta computation will be seen for larger documents since the delta computation takes longer.
+func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name              string
+		docSize           int
+		concurrentClients int
+	}{
+		{
+			name:              "100KBDoc_100Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "100KBDoc_1000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "5MBDoc_1000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+			docID := "doc1_" + test.name
+			rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			require.NoError(t, err)
+			rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+			require.NoError(t, err)
+
+			wg := sync.WaitGroup{}
+			wg.Add(test.concurrentClients)
+			for i := 0; i < test.concurrentClients; i++ {
+				go func() {
+					defer wg.Done()
+					delta, _, err := collection.GetDelta(ctx, docID, rev1, rev2)
+					require.NoErrorf(t, err, "Error getting delta for doc %q from rev %q to %q", docID, rev1, rev2)
+					require.NotNil(t, delta)
+				}()
+			}
+			wg.Wait()
+
+			// ensure only 1 delta miss and the remaining used cache
+			deltaCacheHits := db.DbStats.DeltaSync().DeltaCacheHit.Value()
+			deltaCacheMisses := db.DbStats.DeltaSync().DeltaCacheMiss.Value()
+			assert.Equal(t, int64(1), deltaCacheMisses, "Unexpected number of delta cache misses")
+			assert.Equal(t, int64(test.concurrentClients-1), deltaCacheHits, "Unexpected number of delta cache hits")
+		})
+	}
+}
+
+func BenchmarkDeltaSyncConcurrentClientCachePopulation(b *testing.B) {
+	if !base.IsEnterpriseEdition() {
+		b.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name              string
+		docSize           int
+		concurrentClients int
+	}{
+		{
+			name:              "100KBDoc_1Client",
+			docSize:           100 * 1024,
+			concurrentClients: 1,
+		},
+		{
+			name:              "100KBDoc_100Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "100KBDoc_1000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "100KBDoc_5000Clients",
+			docSize:           100 * 1024,
+			concurrentClients: 5000,
+		},
+		{
+			name:              "5MBDoc_1Client",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1,
+		},
+		{
+			name:              "5MBDoc_10Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 10,
+		},
+		{
+			name:              "5MBDoc_100Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 100,
+		},
+		{
+			name:              "5MBDoc_1000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 1000,
+		},
+		{
+			name:              "5MBDoc_5000Clients",
+			docSize:           5 * 1024 * 1024,
+			concurrentClients: 5000,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
+
+			docID := "doc1_" + test.name
+			rev1, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+			rev2, _, _ := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+
+			for b.Loop() {
+				wg := sync.WaitGroup{}
+				wg.Add(test.concurrentClients)
+				for i := 0; i < test.concurrentClients; i++ {
+					go func() {
+						defer wg.Done()
+						_, _, _ = collection.GetDelta(ctx, docID, rev1, rev2)
+					}()
+				}
+				wg.Wait()
+			}
+		})
+	}
+}
+
+func BenchmarkDeltaSyncSingleClientCachePopulation(b *testing.B) {
+	if !base.IsEnterpriseEdition() {
+		b.Skip("Delta sync only supported in EE")
+	}
+
+	tests := []struct {
+		name    string
+		docSize int
+	}{
+		{
+			name:    "100KBDoc",
+			docSize: 100 * 1024,
+		},
+		//{
+		//	name:    "5MBDoc",
+		//	docSize: 5 * 1024 * 1024,
+		//},
+	}
+
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			db, ctx := SetupTestDBWithOptions(b, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{Enabled: true, RevMaxAgeSeconds: 300}})
+			defer db.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
+
+			// run benchmark over 1000 non-cached deltas since repeated invocations of b.Loop would hit the cache
+			const numDocs = 1000
+			benchDocs := make([]struct{ docID, rev1, rev2 string }, 0, numDocs)
+			for i := range numDocs {
+				docID := fmt.Sprintf("%s_doc_%d", test.name, i)
+				rev1, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "bar": "buzz", "quux": strings.Repeat("a", test.docSize)})
+				require.NoError(b, err)
+				rev2, _, err := collection.Put(ctx, docID, Body{"foo": "bar", "quux": strings.Repeat("b", test.docSize), BodyRev: rev1})
+				require.NoError(b, err)
+				benchDocs = append(benchDocs, struct{ docID, rev1, rev2 string }{docID: docID, rev1: rev1, rev2: rev2})
+			}
+
+			for b.Loop() {
+				for _, doc := range benchDocs {
+					_, _, _ = collection.GetDelta(ctx, doc.docID, doc.rev1, doc.rev2)
+				}
+			}
+		})
+	}
 }
 
 // Test delta sync behavior when the fromRevision is a channel removal.
@@ -3657,61 +4035,104 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Walrus doesn't support xattr")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
 	db.Options.EnableXattr = true
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	syncFn := `
+	testCases := []struct {
+		name   string
+		useHLV bool
+	}{
+		{
+			name:   "pre 4.0",
+			useHLV: false,
+		},
+		{
+			name:   "has hlv",
+			useHLV: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			startingSyncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
+			syncFn := `
 	function sync(doc, oldDoc){
 		channel("channel." + "ABC");
 	}
 `
-	_, err := collection.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
+			_, err := collection.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
 
-	docID := uuid.NewString()
+			docID := uuid.NewString()
 
-	updateBody := make(map[string]any)
-	updateBody["val"] = "value"
-	_, doc, err := collection.Put(ctx, docID, updateBody)
-	require.NoError(t, err)
-	assert.NotNil(t, doc)
+			updateBody := make(map[string]any)
+			updateBody["val"] = "value"
+			if tc.useHLV {
+				_, _, err := collection.Put(ctx, docID, updateBody)
+				require.NoError(t, err)
+			} else {
+				collection.CreateDocNoHLV(t, ctx, docID, updateBody)
+			}
 
-	syncFn = `
+			syncFn = `
 		function sync(doc, oldDoc){
 			channel("channel." + "ABC12332423234");
 		}
 	`
-	_, err = collection.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
+			_, err = collection.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
 
-	_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
-	require.NoError(t, err)
-	err = collection.WaitForPendingChanges(ctx)
-	require.NoError(t, err)
+			preResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
+			require.NoError(t, err)
+			if !tc.useHLV {
+				require.Nil(t, preResyncDoc.HLV)
+			}
 
-	syncData, err := collection.GetDocSyncData(ctx, docID)
-	assert.NoError(t, err)
+			err = collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false)
+			require.NoError(t, err)
+			err = collection.WaitForPendingChanges(ctx)
+			require.NoError(t, err)
 
-	assert.Len(t, syncData.ChannelSet, 2)
-	assert.Len(t, syncData.Channels, 2)
-	found := false
+			postResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
+			assert.NoError(t, err)
 
-	for _, chSet := range syncData.ChannelSet {
-		if chSet.Name == "channel.ABC12332423234" {
-			found = true
-			break
-		}
+			assert.Len(t, postResyncDoc.ChannelSet, 2)
+			assert.Len(t, postResyncDoc.Channels, 2)
+			found := false
+
+			for _, chSet := range postResyncDoc.ChannelSet {
+				if chSet.Name == "channel.ABC12332423234" {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found)
+
+			if tc.useHLV {
+				require.NotNil(t, postResyncDoc.HLV)
+				require.Equal(t, Version{
+					SourceID: db.EncodedSourceID,
+					Value:    preResyncDoc.Cas,
+				}, Version{
+					SourceID: postResyncDoc.HLV.SourceID,
+					Value:    postResyncDoc.HLV.Version,
+				})
+				assert.Equal(t, preResyncDoc.Cas, postResyncDoc.HLV.CurrentVersionCAS)
+			} else {
+				require.Nil(t, postResyncDoc.HLV)
+			}
+			require.NotNil(t, postResyncDoc.MetadataOnlyUpdate)
+			require.Equal(t, MetadataOnlyUpdate{
+				HexCAS:           base.CasToString(postResyncDoc.Cas),
+				PreviousHexCAS:   base.CasToString(preResyncDoc.Cas),
+				PreviousRevSeqNo: preResyncDoc.RevSeqNo,
+			}, *postResyncDoc.MetadataOnlyUpdate)
+			assert.Equal(t, startingSyncFnCount+2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+		})
 	}
-
-	assert.True(t, found)
-	assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
-
 }
 
 func Test_getUpdatedDocument(t *testing.T) {
@@ -3732,8 +4153,8 @@ func Test_getUpdatedDocument(t *testing.T) {
 		require.NoError(t, err)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
-		assert.Equal(t, base.ErrUpdateCancel, err)
+		_, _, err = collection.getResyncedDocument(ctx, doc, false)
+		require.ErrorIs(t, err, base.ErrUpdateCancel)
 	})
 
 	t.Run("Sync Document", func(t *testing.T) {
@@ -3763,16 +4184,13 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})
+		updatedDoc, _, err := collection.getResyncedDocument(ctx, doc, false)
 		require.NoError(t, err)
-		assert.True(t, shouldUpdate)
-		assert.Equal(t, doc.Sequence, highSeq)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, shouldUpdate, _, _, _, err = collection.getResyncedDocument(ctx, updatedDoc, false, []uint64{})
-		require.NoError(t, err)
-		assert.False(t, shouldUpdate)
+		_, _, err = collection.getResyncedDocument(ctx, updatedDoc, false)
+		require.ErrorIs(t, err, base.ErrUpdateCancel)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))
 	})
 
