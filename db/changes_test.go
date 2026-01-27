@@ -511,7 +511,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-B", revId}, false, ExistingVersionWithUpdateToHLV)
+		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"3-B", "2-A", revId}, false, ExistingVersionWithUpdateToHLV)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}

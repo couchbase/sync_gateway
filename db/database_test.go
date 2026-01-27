@@ -3145,20 +3145,29 @@ func TestConcurrentImport(t *testing.T) {
 // ////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.DisableTestLogging(b)
-
 	for i := 0; b.Loop(); i++ {
 		ctx := base.TestCtx(b)
-		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
-			Server:     base.UnitTestUrl(),
-			BucketName: fmt.Sprintf("b-%d", i)},
-			true)
-		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-		db, _ := CreateDatabase(dbCtx)
+		bucket := base.GetTestBucket(b)
+		defer bucket.Close(ctx)
+		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+			EnableXattr: true,
+			Scopes:      GetScopesOptions(b, bucket, 1),
+		})
+		if err != nil {
+			b.Fatalf("Error creating database context: %v", err)
+		}
+		db, err := CreateDatabase(dbCtx)
+		if err != nil {
+			b.Fatalf("Error creating database: %v", err)
+		}
+		ctx = addDatabaseAndTestUserContext(ctx, db)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 		body := Body{"key1": "value1", "key2": 1234}
-		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, err = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		if err != nil {
+			b.Fatalf("Error putting document: %v", err)
+		}
 
 		db.Close(ctx)
 	}
@@ -3168,18 +3177,26 @@ func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	ctx := base.TestCtx(b)
-	bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
-		Server:     base.UnitTestUrl(),
-		BucketName: "Bucket"},
-		true)
-	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	db, _ := CreateDatabase(context)
+	bucket := base.GetTestBucket(b)
+	defer bucket.Close(ctx)
+	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes:      GetScopesOptions(b, bucket, 1),
+		EnableXattr: true,
+	})
+	db, err := CreateDatabase(context)
+	if err != nil {
+		b.Fatalf("Error creating database: %v", err)
+	}
+	ctx = addDatabaseAndTestUserContext(ctx, db)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"key1": "value1", "key2": 1234}
 
 	for i := 0; b.Loop(); i++ {
-		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		if err != nil {
+			b.Fatalf("Error putting document: %v", err)
+		}
 	}
 
 	db.Close(ctx)

@@ -326,7 +326,17 @@ func BenchmarkCheckpointerUpdateCheckpointLists(b *testing.B) {
 						b.ReportAllocs()
 						b.ResetTimer()
 						for b.Loop() {
-							c := &Checkpointer{expectedSeqs: expectedSeqs, processedSeqs: processedSeqs, expectedSeqCompactionThreshold: 100}
+							c := &Checkpointer{
+								expectedSeqs:                   expectedSeqs,
+								processedSeqs:                  processedSeqs,
+								expectedSeqCompactionThreshold: 100,
+								stats: CheckpointerStats{
+									ProcessedSequenceLen:            &base.SgwIntStat{},
+									ProcessedSequenceLenPostCleanup: &base.SgwIntStat{},
+									ExpectedSequenceLen:             &base.SgwIntStat{},
+									ExpectedSequenceLenPostCleanup:  &base.SgwIntStat{},
+								},
+							}
 							// run checkpointing multiple times to test pruning speedup
 							for range numCheckpoints {
 								_ = c._updateCheckpointLists()
