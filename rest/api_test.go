@@ -3564,7 +3564,6 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 	// fetch rev 1 by its CV, which should include the attachment
 	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
 	RequireStatus(t, resp, http.StatusOK)
-	fmt.Println(resp.Body.String())
 	var body db.Body
 	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
 	require.NoError(t, err)
