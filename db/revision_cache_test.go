@@ -2254,6 +2254,53 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	require.False(t, exists)
 }
 
+func TestFetchBackupWithDeletedFlag(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync so CV revs are backed up
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := t.Name()
+	revID1, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	deleteVrs := DocVersion{
+		RevTreeID: revID1,
+	}
+	revID2, deleteDoc, err := collection.DeleteDoc(ctx, docID, deleteVrs)
+	require.NoError(t, err)
+
+	// flush cache
+	db.FlushRevisionCacheForTest()
+
+	docRev, err := collection.getRev(ctx, docID, doc1.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
+	// assert backup rev is not marked as deleted
+	assert.False(t, docRev.Deleted)
+
+	// resurrect the doc
+	_, _, err = collection.Put(ctx, docID, Body{"foo": "baz", BodyRev: revID2})
+	require.NoError(t, err)
+
+	// flush cache
+	db.FlushRevisionCacheForTest()
+
+	// fetch deleted, will get bvackup rev and assert that the deleted flag is true
+	docRev, err = collection.getRev(ctx, docID, deleteDoc.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, deleteDoc.HLV.GetCurrentVersionString(), docRev.CV.String())
+	// assert backup rev is marked as deleted
+	assert.True(t, docRev.Deleted)
+}
+
 func TestRemoveFromRevLookup(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)

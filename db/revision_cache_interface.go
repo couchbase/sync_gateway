@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"time"
@@ -480,9 +481,14 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	// corresponding revID is to pair with the request CV
 	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
 		revid = doc.GetRevTreeID()
+		deleted = doc.Deleted
+	} else {
+		// we have loaded a non-current version by CV, so check if body is empty to set deleted flag
+		if bytes.Equal(bodyBytes, []byte(base.EmptyDocument)) {
+			deleted = true
+		}
 	}
 
-	deleted = doc.Deleted
 	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
