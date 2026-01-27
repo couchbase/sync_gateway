@@ -15,12 +15,14 @@ post:
     If no custom sync function is provided in the request, the user-defined sync function for the collection is used (or the default).
 
     The document being run through the sync function can be provided in one of the following ways:
-    | `doc` property | `doc_id` property | Behaviour                                                                                                                                                                                               |
-    | ----- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | Set   | Unset    | The document body passed will be the `doc` value in the sync function, and `oldDoc` will be empty.                                                                                                                        |
-    | Unset | Set      | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the sync function. If the document is not found, an error will be returned                            |
-    | Set   | Set      | The document body passed will be the `doc` value in the sync function, and the `doc_id` will be fetched from the bucket/collection and will be the `oldDoc` value. If `doc_id` doesn't exist, then `oldDoc` will be empty |
-    | Unset | Unset    | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                                                       |
+    | `doc` property | `oldDoc` property | `doc_id` property | Behaviour                                                                                                                                                                                               |
+    | ----- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Set   | Unset   | Unset    | The document body passed will be the `doc` value in the sync function, and `oldDoc` will be empty.                                                                                                                        |
+    | Set   | Set     | Unset    | The document body passed will be the `doc` value in the sync function, and the `oldDoc` value will be set to the inline `oldDoc` request body.                                                                              |
+    | Unset | Unset   | Set      | The document of the given id will be fetched from the bucket/collection and will be passed in as the `doc` value in the sync function. If the document is not found, an error will be returned                            |
+    | Set   | Unset   | Set      | The document body passed will be the `doc` value in the sync function, and the `doc_id` will be fetched from the bucket/collection and will be the `oldDoc` value. If `doc_id` doesn't exist, then `oldDoc` will be empty |
+    | Unset | -       | Unset    | Will throw an error (at least one of `doc` or `doc_id` is required)                                                                                                                                                       |
+    | -     | Set     | Set      | Will throw an error (`doc_id` and inline `oldDoc` cannot both be specified)                                                                                                                                                |
 
     * Sync Gateway Application Read Only
   requestBody:
@@ -45,11 +47,19 @@ post:
                   channel(doc.channels);
                 }
             doc:
-              description: A new document body to run the dry-run operation against.
+              description: A document body to run the sync function dry-run operation against.
+              type: object
+              additionalProperties: true
+              example:
+                foo: buzz
+                doc_num_updates: 2
+            oldDoc:
+              description: A document body to use as `oldDoc` during the dry-run. Cannot be used with `doc_id`.
               type: object
               additionalProperties: true
               example:
                 foo: bar
+                doc_num_updates: 1
             meta:
               description: Optional metadata used during evaluation.
               type: object

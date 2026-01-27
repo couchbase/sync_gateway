@@ -53,11 +53,12 @@ type SyncFnDryRunPayload struct {
 	DocID    string              `json:"doc_id"`
 	Function string              `json:"sync_function"`
 	Doc      db.Body             `json:"doc,omitempty"`
+	OldDoc   db.Body             `json:"oldDoc,omitempty"`
 	Meta     SyncFnDryRunMetaMap `json:"meta,omitempty"`
 	UserCtx  *SyncDryRunUserCtx  `json:"userCtx,omitempty"`
 }
 
-const SYNC_FN_DIAGNOSTIC_DOCID = "diagnostic_doc"
+const defaultSyncDryRunDocID = "sync_dryrun"
 
 type ImportFilterDryRunPayload struct {
 	DocID    string  `json:"doc_id"`
@@ -95,10 +96,12 @@ func (h *handler) handleGetDocChannels() error {
 }
 
 // HTTP handler for running a document through the sync function and returning the results
-// body only provided, the sync function will run with no oldDoc provided
-// body and doc ID provided, the sync function will run using the current revision in the bucket as oldDoc
-// docid only provided, the sync function will run using the current revision in the bucket as doc
-// If docid is specified and the document does not exist in the bucket, it will return error
+//
+// The sync function can be dry-run with the following combinations of doc properties:
+//   - If 'doc' only provided, the sync function will run with the provided doc (and no oldDoc)
+//   - If 'doc' and 'oldDoc' provided, the sync function will run using the provided doc and oldDoc
+//   - If 'doc_id' only provided, the sync function will run using the current revision in the bucket as doc
+//   - If 'doc' and 'doc_id' provided, the sync function will run using the provided doc and the current revision in the bucket as oldDoc
 func (h *handler) handleSyncFnDryRun() error {
 
 	var syncDryRunPayload SyncFnDryRunPayload
@@ -109,7 +112,10 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	bucketDocID := syncDryRunPayload.DocID
 	if syncDryRunPayload.Doc == nil && bucketDocID == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "no doc_id or document provided")
+		return base.HTTPErrorf(http.StatusBadRequest, "must provide either doc_id or doc")
+	}
+	if syncDryRunPayload.OldDoc != nil && bucketDocID != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "cannot specify doc_id with a provided oldDoc")
 	}
 
 	var userXattrs map[string]any
@@ -117,7 +123,7 @@ func (h *handler) handleSyncFnDryRun() error {
 	if syncDryRunPayload.Meta.Xattrs != nil {
 		xattrs := syncDryRunPayload.Meta.Xattrs
 		if len(xattrs) > 1 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Only one xattr key can be specified in meta")
+			return base.HTTPErrorf(http.StatusBadRequest, "only one xattr key can be specified in meta")
 		}
 		userXattrKey := h.collection.UserXattrKey()
 		if userXattrKey == "" {
@@ -154,26 +160,29 @@ func (h *handler) handleSyncFnDryRun() error {
 		userCtx["roles"] = rolesMap
 	}
 
-	var docid string
+	inlineDocID, _ := syncDryRunPayload.Doc[db.BodyId].(string)
+	docID := cmp.Or(bucketDocID, inlineDocID, defaultSyncDryRunDocID)
 
-	id, _ := syncDryRunPayload.Doc[db.BodyId].(string)
-	docid = cmp.Or(bucketDocID, id, SYNC_FN_DIAGNOSTIC_DOCID)
-
-	oldDoc := &db.Document{ID: docid}
-	oldDoc.UpdateBody(syncDryRunPayload.Doc)
+	oldDoc := &db.Document{ID: docID}
 	// Read the document from the bucket
 	if bucketDocID != "" {
-		if docInbucket, err := h.collection.GetDocument(h.ctx(), bucketDocID, db.DocUnmarshalAll); err == nil {
-			oldDoc = docInbucket
-			if len(syncDryRunPayload.Doc) == 0 {
-				syncDryRunPayload.Doc = oldDoc.Body(h.ctx())
-				oldDoc.UpdateBody(nil)
-			}
-		} else {
-			return base.HTTPErrorf(http.StatusNotFound, "Error reading document: %v", err)
+		bucketDoc, err := h.collection.GetDocument(h.ctx(), bucketDocID, db.DocUnmarshalAll)
+		if err != nil {
+			return err
 		}
-	} else {
-		oldDoc.UpdateBody(nil)
+		if len(syncDryRunPayload.Doc) == 0 {
+			// use bucket doc as current doc value
+			syncDryRunPayload.Doc = bucketDoc.Body(h.ctx())
+			// set oldDoc for any xattrs that may be present for use in `meta`, but nil the body
+			oldDoc = bucketDoc
+			oldDoc.UpdateBody(nil)
+		} else {
+			// use bucket doc as oldDoc value
+			oldDoc = bucketDoc
+		}
+	} else if syncDryRunPayload.OldDoc != nil {
+		// use inline oldDoc value
+		oldDoc.UpdateBody(syncDryRunPayload.OldDoc)
 	}
 
 	delete(syncDryRunPayload.Doc, db.BodyId)
@@ -188,7 +197,7 @@ func (h *handler) handleSyncFnDryRun() error {
 
 	// Create newDoc which will be used to pass around Body
 	newDoc := &db.Document{
-		ID: docid,
+		ID: docID,
 	}
 	// Pull attachments
 	newDoc.DocAttachments = db.GetBodyAttachments(syncDryRunPayload.Doc)
@@ -227,7 +236,7 @@ func (h *handler) handleSyncFnDryRun() error {
 		logInfo = append(logInfo, s)
 	}
 
-	output, err := h.collection.SyncFnDryrun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
+	output, err := h.collection.SyncFnDryRun(h.ctx(), newDoc, oldDoc, userXattrs, userCtx, syncDryRunPayload.Function, errorLogFn, infoLogFn)
 	if err != nil {
 		var syncFnDryRunErr *base.SyncFnDryRunError
 		if !errors.As(err, &syncFnDryRunErr) {
