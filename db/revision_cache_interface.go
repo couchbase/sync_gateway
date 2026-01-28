@@ -506,9 +506,8 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 			return nil, nil, nil, err
 		}
 		channels = doc.SyncData.getCurrentChannels()
+		attachments = doc.Attachments()
 	}
-
-	attachments = doc.Attachments()
 
 	// handle backup revision inline attachments, or pre-2.5 meta
 	if inlineAtts, cleanBodyBytes, _, err := extractInlineAttachments(bodyBytes); err != nil {
