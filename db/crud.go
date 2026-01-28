@@ -942,7 +942,11 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch, docDeleted)
+	revInfo, ok := doc.History[ancestorRevId]
+	if !ok {
+		return
+	}
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch, revInfo.Deleted)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2159,7 +2163,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, doc.Deleted, db.oldRevExpirySeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, doc.IsDeleted(), db.oldRevExpirySeconds(), doc.getCurrentChannels())
 	}
 	doc.RemoveBody()
 
