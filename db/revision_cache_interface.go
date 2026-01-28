@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"bytes"
 	"context"
 	"sync"
 	"time"
@@ -128,7 +127,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error)
-	getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error)
+	getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error)
 }
 
 // collectionRevisionCache is a view of a revision cache for a collection.
@@ -473,7 +472,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 // revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
 // nolint:staticcheck
 func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv Version) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
-	if bodyBytes, attachments, channels, err = backingStore.getCurrentVersion(ctx, doc, cv); err != nil {
+	if bodyBytes, attachments, channels, deleted, err = backingStore.getCurrentVersion(ctx, doc, cv); err != nil {
 		return nil, nil, nil, false, nil, false, nil, "", nil, err
 	}
 
@@ -482,11 +481,6 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
 		revid = doc.GetRevTreeID()
 		deleted = doc.Deleted
-	} else {
-		// we have loaded a non-current version by CV, so check if body is empty to set deleted flag
-		if bytes.Equal(bodyBytes, []byte(base.EmptyDocument)) {
-			deleted = true
-		}
 	}
 
 	hlv = doc.HLV
@@ -499,17 +493,17 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
 }
 
-func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, err error) {
+func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, deleted bool, err error) {
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
-		bodyBytes, channels, err = c.getOldRevisionJSON(ctx, doc.ID, base.Crc32cHashString([]byte(cv.String())))
+		bodyBytes, channels, deleted, err = c.getOldRevisionJSON(ctx, doc.ID, base.Crc32cHashString([]byte(cv.String())))
 		if err != nil || bodyBytes == nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, false, err
 		}
 	} else {
 		bodyBytes, err = doc.BodyBytes(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Marshal error when retrieving active current version body: %v", err)
-			return nil, nil, nil, err
+			return nil, nil, nil, false, err
 		}
 		channels = doc.SyncData.getCurrentChannels()
 	}
@@ -518,11 +512,11 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 
 	// handle backup revision inline attachments, or pre-2.5 meta
 	if inlineAtts, cleanBodyBytes, _, err := extractInlineAttachments(bodyBytes); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
 	} else if len(inlineAtts) > 0 {
 		// we found some inline attachments, so merge them with attachments, and update the bodies
 		attachments = mergeAttachments(inlineAtts, attachments)
 		bodyBytes = cleanBodyBytes
 	}
-	return bodyBytes, attachments, channels, err
+	return bodyBytes, attachments, channels, deleted, err
 }

@@ -696,7 +696,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 			return nil, nil, nil, ErrMissing
 		}
 
-		bodyBytes, channels, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
+		bodyBytes, channels, _, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
 		if err != nil || bodyBytes == nil {
 			return nil, nil, nil, err
 		}
@@ -927,7 +927,7 @@ func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Con
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDocRevID string, ch base.Set) {
+func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDocRevID string, ch base.Set, docDeleted bool) {
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
@@ -942,7 +942,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch)
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch, docDeleted)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2159,7 +2159,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, doc.Deleted, db.oldRevExpirySeconds(), doc.getCurrentChannels())
 	}
 	doc.RemoveBody()
 
@@ -2533,6 +2533,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// grab the current channels so that we're able to use them when stamping the backup revision later
 	// we lose channel information for non-leaf revisions in the RevTree when updated, so we take a copy now.
 	oldChannels := doc.getCurrentChannels()
+	docDeleted := doc.Deleted
 
 	// compute mouMatch before the callback modifies doc.MetadataOnlyUpdate
 	mouMatch := false
@@ -2592,7 +2593,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		}
 	}
 
-	col.backupAncestorRevs(ctx, doc, newDoc.RevID, oldChannels)
+	col.backupAncestorRevs(ctx, doc, newDoc.RevID, oldChannels, docDeleted)
 
 	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
@@ -3007,7 +3008,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, doc.IsDeleted(), db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
 		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
 		if db.storeLegacyRevTreeData() {
 			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())

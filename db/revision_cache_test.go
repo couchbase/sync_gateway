@@ -81,7 +81,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 	return bodyBytes, nil, ch, err
 }
 
-func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
+func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error) {
 	t.getRevisionCounter.Add(1)
 
 	revTreeID := doc.GetRevTreeID()
@@ -96,10 +96,10 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, ch, err
+	return bodyBytes, nil, ch, false, err
 }
 
 type noopBackingStore struct{}
@@ -112,8 +112,8 @@ func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid s
 	return nil, nil, nil, nil
 }
 
-func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
-	return nil, nil, nil, nil
+func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error) {
+	return nil, nil, nil, false, nil
 }
 
 // testCollectionID is a test collection ID to use for a key in the backing store map to point to a tests backing store.
@@ -2292,7 +2292,7 @@ func TestFetchBackupWithDeletedFlag(t *testing.T) {
 	// flush cache
 	db.FlushRevisionCacheForTest()
 
-	// fetch deleted, will get bvackup rev and assert that the deleted flag is true
+	// fetch deleted, will get backup rev and assert that the deleted flag is true
 	docRev, err = collection.getRev(ctx, docID, deleteDoc.HLV.GetCurrentVersionString(), 0, nil)
 	require.NoError(t, err)
 
