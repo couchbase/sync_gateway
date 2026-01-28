@@ -481,9 +481,9 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
 		revid = doc.GetRevTreeID()
 		deleted = doc.Deleted
+		hlv = doc.HLV
 	}
 
-	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
 		return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err

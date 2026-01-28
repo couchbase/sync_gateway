@@ -2331,6 +2331,41 @@ func TestFetchBackupWithDeletedFlag(t *testing.T) {
 	assert.True(t, docRev.Deleted)
 }
 
+func TestCorrectHLVWhenFetchingBackupRev(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync so CV revs are backed up
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := t.Name()
+	agent := NewHLVAgent(t, collection.dataStore, "someSourceID", base.VvXattrName)
+
+	_ = agent.InsertWithHLV(ctx, docID)
+
+	docRev, err := collection.getRev(ctx, docID, "", 0, nil)
+	require.NoError(t, err)
+	cv := docRev.CV.String()
+
+	_, _, err = collection.Put(ctx, docID, Body{"foo": "bar", BodyRev: docRev.RevID})
+	require.NoError(t, err)
+
+	// flush cache
+	db.FlushRevisionCacheForTest()
+
+	// fetch backup rev and assert that the HLV is correct
+	docRev, err = collection.getRev(ctx, docID, docRev.CV.String(), 0, nil)
+	require.NoError(t, err)
+
+	// hlv history should be empty as we are fetching from backup rev
+	assert.Empty(t, docRev.HlvHistory)
+	assert.Equal(t, cv, docRev.CV.String())
+}
+
 func TestRemoveFromRevLookup(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, cacheNumItems, memoryBytesCounted := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	backingStoreMap := CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID)
