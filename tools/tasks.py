@@ -189,7 +189,7 @@ class Task(object):
                 # there's a tiny chance that command succeeds just before
                 # timer is fired; that would result in a spurious timeout
                 # message
-                if timer_fired.isSet():
+                if timer_fired.is_set():
                     fp.write(
                         f"`{self.command}` timed out after {self.timeout} seconds".encode(
                             "utf-8"
