@@ -42,7 +42,10 @@ const (
 	BodyInternalPrefix = "_sync_" // New internal properties prefix (CBG-1995)
 )
 
-const backupRevisionChannelsMetaKey = "_channels"
+const (
+	backupRevisionChannelsMetaKey    = "_channels"
+	backupRevisionBodyDeletedMetaKey = "_deleted"
+)
 
 // A revisions property found within a Body.  Expected to be of the form:
 //
@@ -240,19 +243,19 @@ func (body Body) getExpiry() (uint32, bool, error) {
 
 // getOldRevisionJSON looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, base.Set, error) {
+func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, base.Set, bool, error) {
 	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revOrCV))
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revOrCV)
-		return nil, nil, ErrMissing
+		return nil, nil, false, ErrMissing
 	} else if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	kind, revData := stripNonJSONPrefix(data)
 	switch kind {
 	case nonJSONPrefixKindRevBody:
 		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revOrCV, len(revData))
-		return revData, nil, nil
+		return revData, nil, false, nil
 	case nonJSONPrefixKindRevPtr:
 		// pointer to a CV-keyed backup revision - do another fetch by CV for the body
 		base.DebugfCtx(ctx, base.KeyCRUD, "Found old revision pointer %q -> %q / %q", revOrCV, base.UD(docid), string(revData))
@@ -260,19 +263,26 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 	case nonJSONPrefixKindRevWithMeta:
 		jsonBody, meta, err := getOldRevisionJSONAndMeta(revData)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision (with %d meta properties) %q / %q --> %d bytes", len(meta), base.UD(docid), revOrCV, len(jsonBody))
 		var channelSet base.Set
 		if ch, ok := meta[backupRevisionChannelsMetaKey]; ok && ch != nil {
 			err = base.JSONUnmarshal(ch, &channelSet)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
+				return nil, nil, false, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
 			}
 		}
-		return jsonBody, channelSet, nil
+		var deletedDoc bool
+		if deletedMeta, ok := meta[backupRevisionBodyDeletedMetaKey]; ok && deletedMeta != nil {
+			err = base.JSONUnmarshal(deletedMeta, &deletedDoc)
+			if err != nil {
+				return nil, nil, false, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
+			}
+		}
+		return jsonBody, channelSet, deletedDoc, nil
 	default:
-		return nil, nil, fmt.Errorf("unexpected prefix %b for old revision doc %q / %q", kind, base.UD(docid).String(), revOrCV)
+		return nil, nil, false, fmt.Errorf("unexpected prefix %b for old revision doc %q / %q", kind, base.UD(docid).String(), revOrCV)
 	}
 }
 
@@ -285,7 +295,7 @@ func getOldRevisionJSONAndMeta(payload []byte) (jsonBody []byte, kvPairs map[str
 }
 
 // Makes a backup of revision body for use by in-flight replications requesting an old revision (for clients not supporting replacementRevs)
-func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte, channels base.Set) {
+func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, docId, oldRev string, oldBody []byte, channels base.Set, deleted bool) {
 	if db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() > 0 {
 		// See postWriteUpdateHLV - we're writing a CV and RevTreeID backup there to support delta sync
 		return
@@ -302,7 +312,7 @@ func (db *DatabaseCollectionWithUser) backupRevisionJSON(ctx context.Context, do
 	}
 
 	// store or refresh the old document revision by revtree ID for in-flight replications
-	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds(), channels)
+	_ = db.refreshOldRevisionJSON(ctx, docId, oldRev, oldBody, db.oldRevExpirySeconds(), channels, deleted)
 }
 
 // setOldRevisionJSONBody stores the raw JSON body of a revision that has been archived to a separate doc.
@@ -319,7 +329,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context
 	return err
 }
 
-func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, expiry uint32, channels base.Set) error {
+func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, docid string, rev string, body []byte, deletedDoc bool, expiry uint32, channels base.Set) error {
 	// no channel information available (Note: this is different than an empty set of channels)
 	if channels == nil {
 		base.WarnfCtx(ctx, "setOldRevisionJSON called with nil channels for old revision %q / %q", base.UD(docid), rev)
@@ -332,8 +342,13 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	if err != nil {
 		return fmt.Errorf("error marshalling channels for old revision %q / %q: %v", base.UD(docid), rev, err)
 	}
+	deletedJSON, err := base.JSONMarshal(deletedDoc)
+	if err != nil {
+		return fmt.Errorf("error marshalling deleted flag for old revision %q / %q: %v", base.UD(docid), rev, err)
+	}
 	meta := []sgbucket.Xattr{
 		{Name: backupRevisionChannelsMetaKey, Value: channelsJSON},
+		{Name: backupRevisionBodyDeletedMetaKey, Value: deletedJSON},
 	}
 	bodyWithMeta := sgbucket.EncodeValueWithXattrs(body, meta...)
 	nonJSONBytes := withNonJSONPrefix(nonJSONPrefixKindRevWithMeta, bodyWithMeta)
@@ -349,10 +364,10 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 }
 
 // Extends the expiry on a revision backup.  If this fails w/ key not found, will attempt to recreate the revision backup when body is non-empty.
-func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32, channels base.Set) error {
+func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32, channels base.Set, deleted bool) error {
 	_, err := db.dataStore.Touch(oldRevisionKey(docid, revid), expiry)
 	if base.IsDocNotFoundError(err) && len(body) > 0 {
-		return db.setOldRevisionJSON(ctx, docid, revid, body, expiry, channels)
+		return db.setOldRevisionJSON(ctx, docid, revid, body, false, expiry, channels)
 	}
 	return err
 }

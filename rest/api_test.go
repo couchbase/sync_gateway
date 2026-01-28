@@ -3435,6 +3435,54 @@ func TestDocCRUDWithCV(t *testing.T) {
 	assert.Greaterf(t, revIDGen(deleteVersion), revIDGen(updateVersion), "Expected revision generation to be bumped on delete")
 }
 
+func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				// enable delta sync to ensure we have a backup revision stored for cv
+				DeltaSync: &DeltaSyncConfig{
+					Enabled:          base.Ptr(true),
+					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	const docID = "doc1"
+
+	createVersion := rt.PutDoc(docID, `{"test":"doc"}`)
+
+	deleteVrs := rt.DeleteDoc(docID, createVersion)
+
+	// flush cache to ensure we're reading from the bucket
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+	assert.Equal(t, "doc", body["test"].(string))
+	// assert that the _deleted property is not present rev 1
+	_, ok := body["_deleted"]
+	assert.False(t, ok)
+
+	// resurrect the document
+	rt.UpdateDoc(docID, deleteVrs, `{"test":"doc resurrected"}`)
+
+	// flush cache to ensure we're reading from the bucket
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// fetch rev 2 which is deleted
+	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(deleteVrs.CV.String())), "")
+	RequireStatus(t, resp, http.StatusOK)
+	body = db.Body{}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+	// assert deleted property is there
+	assert.True(t, body["_deleted"].(bool))
+}
+
 // TestAllowConflictsConfig verifies that the database configuration does not allow
 // the `allow_conflicts` property to be set to true. `allow_conflicts` is no longer
 // supported in SGW 4.0. This test ensures that a config loaded will add the
