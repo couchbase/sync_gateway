@@ -55,19 +55,19 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	// current revision backups depend on delta sync (to support deltas to SDK updates)
 	if deltasEnabled {
-		rev1OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		rev1OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 
-		rev1OldBody, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+		rev1OldBody, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	} else {
-		_, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		_, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 
-		_, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+		_, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -81,26 +81,26 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	// rev 1 should be backed up even without delta sync now (by revTree ID - but not CV)
 	if !deltasEnabled {
-		rev1OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		rev1OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	}
 
 	// again, only backup current winning revision if delta sync
 	if deltasEnabled {
-		rev2OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		rev2OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 
-		rev2OldBody, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+		rev2OldBody, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 	} else {
-		_, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		_, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 
-		_, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+		_, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
