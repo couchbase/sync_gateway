@@ -112,7 +112,10 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 
 func BenchmarkPushSkippedSequenceEntryLargeList(b *testing.B) {
 	skippedList := setupBenchmark(true, false)
-	i := uint64(240000005)
+	i := uint64(240_000_005)
+	if testing.Short() {
+		i = uint64(240)
+	}
 	for b.Loop() {
 		_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i*2, 0))
 		i++
@@ -122,6 +125,9 @@ func BenchmarkPushSkippedSequenceEntryLargeList(b *testing.B) {
 func BenchmarkPushSkippedSequenceEntryLargeListContiguous(b *testing.B) {
 	skippedList := setupBenchmark(true, false)
 	i := uint64(240000005)
+	if testing.Short() {
+		i = uint64(240)
+	}
 	for b.Loop() {
 		_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i, 0))
 		i++
@@ -660,6 +666,7 @@ func TestCompactSkippedList(t *testing.T) {
 }
 
 func BenchmarkCompactSkippedList(b *testing.B) {
+	base.SetUpTestLogging(b, base.LevelError, base.KeyAll)
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
@@ -960,7 +967,11 @@ func setupBenchmark(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist
 	skippedList := NewSkippedSequenceSkiplist()
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
 	if largeSlice {
-		for i := uint64(1); i < 30000000; i++ {
+		size := uint64(30_000_000)
+		if testing.Short() {
+			size = 300
+		}
+		for i := uint64(1); i < size; i++ {
 			if rangeEntries {
 				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
 			} else {
@@ -985,7 +996,11 @@ func setupBenchmarkForInsert(largeSlice bool, rangeEntries bool) *SkippedSequenc
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(200000000, 0))
 	if largeSlice {
-		for range 30000000 {
+		size := 30_000_000
+		if testing.Short() {
+			size = 300
+		}
+		for range size {
 			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
@@ -1012,7 +1027,11 @@ func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool) *SkippedSequenc
 	inputTime := time.Now().Unix() - 1000
 	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, inputTime))
 	if largeSlice {
-		for range 30000000 {
+		size := 30_000_000
+		if testing.Short() {
+			size = 100_000
+		}
+		for range size {
 			startSeq := skippedList.list.GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction

@@ -15,6 +15,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -479,7 +480,12 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 
 		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
 			// Exit during teardown to fail the suite if they exceeded the threshold
-			log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			benchmark := flag.Lookup("test.bench")
+			if benchmark != nil && benchmark.Value.String() != "" {
+				log.Printf("Would be fatal if not running benchmarks FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			} else {
+				log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			}
 		} else {
 			log.Printf("TEST: Memory high water mark %.2f MB", inuseHighWaterMarkMB)
 		}

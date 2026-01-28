@@ -90,10 +90,10 @@ func BenchmarkReadOps_Get(b *testing.B) {
 	}{
 		{"Admin_Simple", "/{{.keyspace}}/doc1k", ""},
 		{"Admin_WithRev", "/{{.keyspace}}/doc1k?rev=" + revid, ""},
-		{"Admin_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all&rev=" + revid, ""},
+		{"Admin_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all", ""},
 		{"User_Simple", "/{{.keyspace}}/doc1k", username},
 		{"User_WithRev", "/{{.keyspace}}/doc1k?rev=" + revid, username},
-		{"User_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all&rev=" + revid, username},
+		{"User_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all", username},
 	}
 
 	for _, bm := range getBenchmarks {
@@ -105,12 +105,9 @@ func BenchmarkReadOps_Get(b *testing.B) {
 				} else {
 					getResponse = rt.SendUserRequest("GET", bm.URI, "", bm.asUser)
 				}
-				b.StopTimer()
 				if getResponse.Code != 200 {
-					log.Printf("Unexpected response status code: %d", getResponse.Code)
-					panic("here")
+					b.Fatalf("Unexpected response status code: %d, output: %s", getResponse.Code, getResponse.BodyString())
 				}
-				b.StartTimer()
 			}
 		})
 	}
@@ -153,10 +150,10 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	}{
 		{"Admin_Simple", "/{{.keyspace}}/doc1k", ""},
 		{"Admin_WithRev", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), ""},
-		{"Admin_OpenRevsAll", fmt.Sprintf("/{{.keyspace}}/doc1k?open_revs=all&rev=%s", revid), ""},
+		{"Admin_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all", ""},
 		{"User_Simple", "/{{.keyspace}}/doc1k", username},
 		{"User_WithRev", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), username},
-		{"User_OpenRevsAll", fmt.Sprintf("/{{.keyspace}}/doc1k?open_revs=all&rev=%s", revid), username},
+		{"User_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all", username},
 	}
 
 	for _, bm := range getBenchmarks {
@@ -174,12 +171,9 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 				} else {
 					getResponse = rt.SendUserRequest("GET", docURI, "", bm.asUser)
 				}
-				b.StopTimer()
 				if getResponse.Code != 200 {
-					log.Printf("Unexpected response status code: %d", getResponse.Code)
-					panic("here")
+					b.Fatalf("Unexpected response status code: %d, output %s", getResponse.Code, getResponse.BodyString())
 				}
-				b.StartTimer()
 			}
 		})
 	}
