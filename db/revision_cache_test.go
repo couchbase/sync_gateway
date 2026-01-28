@@ -81,7 +81,7 @@ func (t *testBackingStore) getRevision(ctx context.Context, doc *Document, revid
 	return bodyBytes, nil, ch, err
 }
 
-func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
+func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error) {
 	t.getRevisionCounter.Add(1)
 
 	revTreeID := doc.GetRevTreeID()
@@ -96,10 +96,10 @@ func (t *testBackingStore) getCurrentVersion(ctx context.Context, doc *Document,
 		b[BodyCV] = doc.HLV.GetCurrentVersionString()
 	}
 	if err := doc.HasCurrentVersion(ctx, cv); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, nil, ch, err
+	return bodyBytes, nil, ch, false, err
 }
 
 type noopBackingStore struct{}
@@ -112,8 +112,8 @@ func (*noopBackingStore) getRevision(ctx context.Context, doc *Document, revid s
 	return nil, nil, nil, nil
 }
 
-func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, error) {
-	return nil, nil, nil, nil
+func (*noopBackingStore) getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error) {
+	return nil, nil, nil, false, nil
 }
 
 // testCollectionID is a test collection ID to use for a key in the backing store map to point to a tests backing store.
@@ -2252,6 +2252,53 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	// rev2 is not in cache but is on server
 	_, exists = collection.revisionCache.Peek(ctx, docID, doc.GetRevTreeID())
 	require.False(t, exists)
+}
+
+func TestFetchBackupWithDeletedFlag(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync so CV revs are backed up
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := t.Name()
+	revID1, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	deleteVrs := DocVersion{
+		RevTreeID: revID1,
+	}
+	revID2, deleteDoc, err := collection.DeleteDoc(ctx, docID, deleteVrs)
+	require.NoError(t, err)
+
+	// flush cache
+	db.FlushRevisionCacheForTest()
+
+	docRev, err := collection.getRev(ctx, docID, doc1.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
+	// assert backup rev is not marked as deleted
+	assert.False(t, docRev.Deleted)
+
+	// resurrect the doc
+	_, _, err = collection.Put(ctx, docID, Body{"foo": "baz", BodyRev: revID2})
+	require.NoError(t, err)
+
+	// flush cache
+	db.FlushRevisionCacheForTest()
+
+	// fetch deleted, will get backup rev and assert that the deleted flag is true
+	docRev, err = collection.getRev(ctx, docID, deleteDoc.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, deleteDoc.HLV.GetCurrentVersionString(), docRev.CV.String())
+	// assert backup rev is marked as deleted
+	assert.True(t, docRev.Deleted)
 }
 
 func TestRemoveFromRevLookup(t *testing.T) {

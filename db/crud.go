@@ -696,7 +696,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 			return nil, nil, nil, ErrMissing
 		}
 
-		bodyBytes, channels, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
+		bodyBytes, channels, _, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
 		if err != nil || bodyBytes == nil {
 			return nil, nil, nil, err
 		}
@@ -942,7 +942,11 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch)
+	revInfo, ok := doc.History[ancestorRevId]
+	if !ok {
+		return
+	}
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch, revInfo.Deleted)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2159,7 +2163,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, doc.IsDeleted(), db.oldRevExpirySeconds(), doc.getCurrentChannels())
 	}
 	doc.RemoveBody()
 
@@ -3007,7 +3011,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, doc.IsDeleted(), db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
 		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
 		if db.storeLegacyRevTreeData() {
 			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())
