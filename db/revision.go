@@ -277,7 +277,7 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 		if deletedMeta, ok := meta[backupRevisionBodyDeletedMetaKey]; ok && deletedMeta != nil {
 			err = base.JSONUnmarshal(deletedMeta, &deletedDoc)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
+				return nil, nil, false, fmt.Errorf("error unmarshalling _deleted xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
 			}
 		}
 		return jsonBody, channelSet, deletedDoc, nil
@@ -367,7 +367,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32, channels base.Set, deleted bool) error {
 	_, err := db.dataStore.Touch(oldRevisionKey(docid, revid), expiry)
 	if base.IsDocNotFoundError(err) && len(body) > 0 {
-		return db.setOldRevisionJSON(ctx, docid, revid, body, false, expiry, channels)
+		return db.setOldRevisionJSON(ctx, docid, revid, body, deleted, expiry, channels)
 	}
 	return err
 }
