@@ -4975,7 +4975,13 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
-	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
+	// wait for checkpoint set count to reach 1, there is small window between rev being sent to passive and awaiting
+	// response before adding sequence to processed sequence list. So calling CheckpointNow before this sent rev is
+	// added to processed sequences will mean CheckpointNow is a no-op. So we should wait for checkpoint count to increment.
+	base.RequireWaitForStat(t, func() int64 {
+		pushCheckpointer.CheckpointNow()
+		return pushCheckpointer.Stats().SetCheckpointCount
+	}, 1)
 	assert.NoError(t, ar.Stop())
 }
 
