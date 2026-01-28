@@ -106,7 +106,6 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	if err != nil {
 		return DocumentRevision{}, err
 	}
-	docRev.DocID = docID
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
