@@ -1582,6 +1582,9 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 func TestImportRevisionCopy(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
+	if base.TestDisableRevCache() {
+		t.Skip("Backup import revs requires previous rev to be in revision cache")
+	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,

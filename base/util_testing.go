@@ -284,6 +284,15 @@ func TestsDisableGSI() bool {
 	return !useGSI
 }
 
+// TestDisableRevCache returns true if environment variable SG_TEST_DISABLE_REV_CACHE is set to true
+func TestDisableRevCache() bool {
+	if disableRevCache := os.Getenv(TestEnvDisableRevCache); disableRevCache != "" {
+		val, _ := strconv.ParseBool(disableRevCache)
+		return val
+	}
+	return false
+}
+
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
 func TestUseCouchbaseServer() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)

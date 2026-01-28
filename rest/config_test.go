@@ -3070,6 +3070,9 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 
 func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	if base.TestDisableRevCache() {
+		t.Skip("test is rev cache config related test, should not override the test")
+	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,

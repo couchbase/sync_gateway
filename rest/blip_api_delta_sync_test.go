@@ -836,13 +836,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		sgCanUseDelta := base.IsEnterpriseEdition()
 		if sgCanUseDelta {
-			assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart+2, deltasSentEnd)
 		} else {
-			assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart, deltasSentEnd)
 		}
@@ -855,6 +859,9 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Skipping enterprise-only delta sync test.")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("rev cache specific test")
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)

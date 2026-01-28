@@ -1154,6 +1154,9 @@ func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")
 	}
+	if base.TestDisableRevCache() {
+		t.Skip("test requires revision cache to be enabled")
+	}
 
 	tests := []struct {
 		name              string
@@ -1661,7 +1664,6 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
-		"key1":      1234,
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
@@ -1683,7 +1685,6 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
-		"key1":      1234,
 		BodyDeleted: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
