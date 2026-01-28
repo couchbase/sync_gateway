@@ -138,7 +138,7 @@ func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert version is fetched and attachments is empty
-	assert.Equal(t, docRev.CV.String(), doc1.HLV.GetCurrentVersionString())
+	assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
 	assert.Empty(t, docRev.Attachments)
 }
 
