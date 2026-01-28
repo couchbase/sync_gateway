@@ -571,7 +571,7 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 	err, _ := RetryLoop(ctx, "setXDCRBucketSetting", func() (bool, error, any) {
 		output, statusCode, err := store.MgmtRequest(ctx, http.MethodPost, url, "application/x-www-form-urlencoded", strings.NewReader(posts.Encode()))
 		if err != nil {
-			tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %w output: %s", statusCode, err, string(output))
+			tbp.Fatalf(ctx, "request to mobile XDCR bucket setting failed, status code: %d error: %s output: %s", statusCode, err, string(output))
 		}
 		if statusCode != http.StatusOK {
 			err := fmt.Errorf("request to mobile XDCR bucket setting failed with status code, %d, output: %s", statusCode, string(output))

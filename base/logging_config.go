@@ -79,7 +79,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	if logFilePath == "" {
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
-		ConsolefCtx(ctx, LevelError, KeyNone, ErrUnsetLogFilePath.Error())
+		ConsolefCtx(ctx, LevelError, KeyNone, "%s", ErrUnsetLogFilePath.Error())
 		nilAllNonConsoleLoggers()
 		return nil
 	}

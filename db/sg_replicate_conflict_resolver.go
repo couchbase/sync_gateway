@@ -285,7 +285,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflic
 	case map[string]any:
 		return result, nil
 	case error:
-		base.WarnfCtx(ctx, "conflictResolverRunner: "+result.Error())
+		base.WarnfCtx(ctx, "conflictResolverRunner: %s", result.Error())
 		return nil, result
 	default:
 		base.WarnfCtx(ctx, "Custom conflict resolution function returned non-document result %v Type: %T", result, result)

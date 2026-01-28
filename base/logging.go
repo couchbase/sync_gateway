@@ -143,6 +143,10 @@ func PanicfCtx(ctx context.Context, format string, args ...any) {
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
 func FatalfCtx(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
 	if errorLogger.Load() == nil {
 		log.Fatalf(format, args...)
@@ -155,16 +159,28 @@ func FatalfCtx(ctx context.Context, format string, args ...any) {
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
 func ErrorfCtx(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	logTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
 func WarnfCtx(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	logTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
 // InfofCtx logs the given formatted string and args to the info log level and given log key.
 func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	logTo(ctx, LevelInfo, logKey, format, args...)
 }
 
@@ -193,6 +209,10 @@ func RecordStats(statsJson string) {
 // logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
 // The function will fan out the log to all of the various outputs for them to decide if they should log it or not.
 func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel < LevelNone || logLevel >= levelCount {
 		return
@@ -272,7 +292,7 @@ func LogSyncGatewayVersion(ctx context.Context) {
 	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 
 	// Log the startup indicator to the stderr.
-	ConsolefCtx(ctx, LevelNone, KeyNone, msg)
+	ConsolefCtx(ctx, LevelNone, KeyNone, "%s", msg)
 
 	// Log the startup indicator to ALL log files too.
 	msg = addPrefixes(msg, ctx, LevelNone, KeyNone)

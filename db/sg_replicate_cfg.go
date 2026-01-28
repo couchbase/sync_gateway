@@ -538,7 +538,7 @@ func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
-				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", err)
+				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
 				continue
 			}
 			m.activeReplicatorsLock.Lock()
@@ -800,7 +800,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 			if isChanged {
 				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
-					base.WarnfCtx(m.loggingCtx, "Error initializing upserted replication %s: %v", initError)
+					base.WarnfCtx(m.loggingCtx, "Error initializing upserted replication %s: %v", replicationID, initError)
 				} else {
 					m.activeReplicators[replicationID] = replicator
 					activeReplicator = replicator

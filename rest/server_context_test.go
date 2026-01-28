@@ -681,11 +681,11 @@ func TestLogFlush(t *testing.T) {
 
 			// Log some stuff (which will go into the memory loggers)
 			ctx := base.TestCtx(t)
-			base.ErrorfCtx(ctx, "error: "+testDirName)
-			base.WarnfCtx(ctx, "warn: "+testDirName)
-			base.InfofCtx(ctx, base.KeyAll, "info: "+testDirName)
-			base.DebugfCtx(ctx, base.KeyAll, "debug: "+testDirName)
-			base.TracefCtx(ctx, base.KeyAll, "trace: "+testDirName)
+			base.ErrorfCtx(ctx, "%s", "error: "+testDirName)
+			base.WarnfCtx(ctx, "%s", "warn: "+testDirName)
+			base.InfofCtx(ctx, base.KeyAll, "%s", "info: "+testDirName)
+			base.DebugfCtx(ctx, base.KeyAll, "%s", "debug: "+testDirName)
+			base.TracefCtx(ctx, base.KeyAll, "%s", "trace: "+testDirName)
 			base.RecordStats("{}")
 
 			config := DefaultStartupConfig(tempPath)

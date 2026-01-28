@@ -865,7 +865,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
 		}
 
-		base.InfofCtx(ctx, base.KeyCRUD, msg)
+		base.InfofCtx(ctx, base.KeyCRUD, "%s", msg)
 		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
 	}
 }
@@ -2268,7 +2268,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
-		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache", err)
+		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache: %s", err)
 		return err
 	}
 

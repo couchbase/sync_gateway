@@ -359,9 +359,9 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 	for attempt = 1; attempt <= configFetchMaxRetryAttempts; attempt++ {
 		msg := fmt.Sprintf("Checking for database config (attempt %d/%d)", attempt, configFetchMaxRetryAttempts)
 		if attempt == 1 {
-			base.DebugfCtx(ctx, base.KeyConfig, msg)
+			base.DebugfCtx(ctx, base.KeyConfig, "%s", msg)
 		} else {
-			base.InfofCtx(ctx, base.KeyConfig, msg)
+			base.InfofCtx(ctx, base.KeyConfig, "%s", msg)
 		}
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {

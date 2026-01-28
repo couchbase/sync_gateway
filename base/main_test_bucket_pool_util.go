@@ -18,12 +18,20 @@ import (
 
 // Fatalf logs and exits.
 func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
 	FatalfCtx(ctx, format, args...)
 }
 
 // Logf formats the given test bucket logging and logs to stderr.
 func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...any) {
+	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
+	if false {
+		_ = fmt.Sprintf(format, args...)
+	}
 	if tbp != nil && !tbp.verbose.IsTrue() {
 		return
 	}
