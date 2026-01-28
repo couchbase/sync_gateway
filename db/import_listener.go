@@ -76,23 +76,13 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-		if il.bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !dbContext.OnlyDefaultCollection() {
-			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
-		}
+		collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
 	}
 	sort.Strings(collectionNamesByScope[scopeName])
 	if dbContext.OnlyDefaultCollection() {
 		il.importDestKey = base.ImportDestKey(il.dbName, "", []string{})
 	} else {
 		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
-	}
-	feedArgs := sgbucket.FeedArguments{
-		ID:               base.DCPImportFeedID,
-		Backfill:         sgbucket.FeedResume,
-		Terminator:       il.terminator,
-		DoneChan:         make(chan struct{}),
-		CheckpointPrefix: il.checkpointPrefix,
-		Scopes:           collectionNamesByScope,
 	}
 
 	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
@@ -105,20 +95,18 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
 
-	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
-	if !ok {
-		// walrus is not a couchbasestore
-		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
-	}
-
-	if !base.IsEnterpriseEdition() {
-		groupID := ""
-		gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
-		if err != nil {
-			return err
+	if !base.IsEnterpriseEdition() || !ok {
+		opts := base.DCPClientOptions{
+			FeedPrefix:       base.DCPImportFeedID,
+			Terminator:       il.terminator,
+			CheckpointPrefix: il.checkpointPrefix,
+			CollectionNames:  collectionNamesByScope,
+			DBStats:          importFeedStatsMap.Map,
+			Callback:         il.ProcessFeedEvent,
 		}
-		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		_, err = base.StartDCPFeed(il.loggingCtx, il.bucket, opts)
+		return err
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,

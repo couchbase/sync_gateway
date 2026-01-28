@@ -2430,7 +2430,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+	if len(db.RequireAttachmentMigration) > 0 {
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
@@ -2536,11 +2536,19 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 }
 
 // PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string) error {
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
-		return err
+		checkpoint := checkpointPrefix + ":" + feedPrefix
+		err := database.MetadataStore.Delete(checkpoint)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return err
+		}
+		if base.IsDocNotFoundError(err) {
+			return nil
+		}
+		return nil
 	}
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {

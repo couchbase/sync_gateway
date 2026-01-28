@@ -42,15 +42,15 @@ var ErrVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
 
 type GoCBDCPClient struct {
 	ctx                        context.Context
-	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
-	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
+	ID                         string                         // unique ID for GoCBDCPClient - used for DCP stream name, must be unique
+	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to GoCBDCPClient stream observer implementation
 	callback                   sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
 	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
-	workersWg                  sync.WaitGroup                 // Active workers WG - used for signaling when the DCPClient workers have all stopped so the doneChannel can be closed
+	workersWg                  sync.WaitGroup                 // Active workers WG - used for signaling when the GoCBDCPClient workers have all stopped so the doneChannel can be closed
 	spec                       BucketSpec                     // Bucket spec for the target data store
 	supportsCollections        bool                           // Whether the target data store supports collections
 	numVbuckets                uint16                         // number of vbuckets on target data store
-	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
+	terminator                 chan bool                      // Used to close worker goroutines spawned by the GoCBDCPClient
 	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
 	metadata                   DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
 	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
@@ -67,21 +67,20 @@ type GoCBDCPClient struct {
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 }
 
-type DCPClientOptions struct {
+type GoCBDCPClientOptions struct {
 	NumWorkers                 int
 	OneShot                    bool
 	FailOnRollback             bool                      // When true, the DCP client will terminate on DCP rollback
 	InitialMetadata            []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration            // Overrides metadata persistence frequency - intended for test use
 	MetadataStoreType          DCPMetadataStoreType      // define storage type for DCPMetadata
-	GroupID                    string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 	CheckpointPrefix           string
 }
 
-func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
+func NewGocbDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
 
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
@@ -91,7 +90,7 @@ func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCal
 	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
 }
 
-func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 
 	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -250,8 +249,9 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 	return nil
 }
 
-// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
-func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
+// Start returns an error and a channel to indicate when the GoCBDCPClient is done. If Start returns an error, GoCBDCPClient.Close() needs to be called.
+func (dc *GoCBDCPClient) Start(ctx context.Context) (doneChan chan error, err error) {
+	dc.ctx = ctx
 	err = dc.initAgent(dc.spec)
 	if err != nil {
 		return dc.doneChannel, err
@@ -273,10 +273,9 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	return dc.doneChannel, nil
 }
 
-// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *GoCBDCPClient) Close() error {
+// Close is used externally to stop the DCP client.
+func (dc *GoCBDCPClient) Close() {
 	dc.close()
-	return dc.getCloseError()
 }
 
 // GetMetadata returns metadata for all vbuckets
@@ -588,8 +587,8 @@ func (dc *GoCBDCPClient) onStreamEnd(e endStreamEvent) {
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
-		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
-		dc.fatalError(fmt.Errorf("Stream (vb:%d) closed by DCPClient", e.vbID))
+		DebugfCtx(dc.ctx, KeyDCP, "Stream (vb:%d) closed by GoCBDCPClient", e.vbID)
+		dc.fatalError(fmt.Errorf("Stream (vb:%d) closed by GoCBDCPClient", e.vbID))
 		return
 	}
 
@@ -624,7 +623,7 @@ func (dc *GoCBDCPClient) fatalError(err error) {
 func (dc *GoCBDCPClient) setCloseError(err error) {
 	dc.closeErrorLock.Lock()
 	defer dc.closeErrorLock.Unlock()
-	// If the DCPClient is already closing, don't update the error.  If an initial error triggered the close,
+	// If the GoCBDCPClient is already closing, don't update the error.  If an initial error triggered the close,
 	// then closeError will already be set.  In the event of a requested close, we want to ignore EOF errors associated
 	// with stream close
 	if dc.closing.IsTrue() {
@@ -671,7 +670,7 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 }
 
 // NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
-func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
 }
 

@@ -407,8 +407,6 @@ func TestSyncFnTimeout(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -455,8 +453,6 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -497,8 +493,6 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncRegenerateSequences(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		if (doc.userdoc){
@@ -627,8 +621,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 // CBG-2150: Tests that resync status is cluster aware
 func TestResyncPersistence(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 

@@ -24,9 +24,7 @@ import (
 
 // TestResyncRollback ensures that we allow rollback of
 func TestResyncRollback(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
+	base.TestRequiresGocbDCPClient(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) { channel("x") }`, // use custom sync function to increment sync function counter
 	})
@@ -56,8 +54,7 @@ func TestResyncRollback(t *testing.T) {
 	require.Equal(t, db.BackgroundProcessStateStopped, status.State)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateResyncDCPStreamName(status.ResyncID)
-	checkpointPrefix := fmt.Sprintf("%s:%v", rt.GetDatabase().MetadataKeys.DCPCheckpointPrefix(rt.GetDatabase().Options.GroupID), name)
+	checkpointPrefix := db.GenerateResyncCheckpointPrefix(rt.GetDatabase(), status.ResyncID)
 	meta := base.NewDCPMetadataCS(rt.Context(), rt.Bucket().DefaultDataStore(), 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	var garbageVBUUID gocbcore.VbUUID = 1234
@@ -129,7 +126,6 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	if !base.TestsUseNamedCollections() {
 		t.Skip("Test requires named collections, performs default collection handling independently")
 	}

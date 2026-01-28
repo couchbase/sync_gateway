@@ -36,6 +36,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -757,24 +758,10 @@ func TestRequiresCollections(t testing.TB) {
 	}
 }
 
-// TestRequiresOneShotDCPClient will skip the current test until rosmar supports one-shot DCP.
-func TestRequiresOneShotDCPClient(t testing.TB) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("rosmar doesn't have an abstracted one shot DCP client CBG-4246")
-	}
-}
-
-// TestRequiresDCPResync will skip the current test DCP sync is not supported.
-func TestRequiresDCPResync(t testing.TB) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus doesn't support DCP resync CBG-2661/CBG-4246")
-	}
-}
-
 // TestRequiresGocbDCPClient will skip the current test if using rosmar.
 func TestRequiresGocbDCPClient(t testing.TB) {
 	if UnitTestUrlIsWalrus() {
-		t.Skip("rosmar doesn't support base.DCPClient")
+		t.Skip("rosmar doesn't support GocbDCPClient")
 	}
 }
 
@@ -1022,6 +1009,12 @@ func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID stri
 // underGoTest returns true if the tests are being run via 'go test'
 func underGoTest() bool {
 	return testing.Testing()
+}
+
+func UUID(t testing.TB) string {
+	id, err := uuid.NewRandom()
+	require.NoError(t, err)
+	return id.String()
 }
 
 // TestRequiresViews skips a test if the backing bucket doesn't support views.
