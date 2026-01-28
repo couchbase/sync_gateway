@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -103,6 +104,42 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
+}
+
+func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync so CV revs are backed up
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create rev 1
+	revID, doc1, err := collection.Put(ctx, "doc1", Body{"test": "value1"})
+	require.NoError(t, err)
+
+	// Create rev 2 with attachment
+	var rev2Body Body
+	rev2Data := fmt.Sprintf(`{"test":"value2", "%s":"%s", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`, BodyRev, revID)
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err)
+
+	// can remove in CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	docRev, err := collection.GetRev(ctx, "doc1", doc1.HLV.GetCurrentVersionString(), false, nil)
+	require.NoError(t, err)
+
+	// assert version is fetched and attachments is empty
+	assert.Equal(t, docRev.CV.String(), doc1.HLV.GetCurrentVersionString())
+	assert.Empty(t, docRev.Attachments)
 }
 
 func TestAttachments(t *testing.T) {

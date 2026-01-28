@@ -3540,6 +3540,40 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
 }
 
+func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				// enable delta sync to ensure we have a backup revision stored for cv
+				DeltaSync: &DeltaSyncConfig{
+					Enabled:          base.Ptr(true),
+					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	docID := t.Name()
+	// create rev 1 with attachment
+	createVersion := rt.PutDoc(docID, `{"test":"data", "_attachments": {"att1": {"data":"SGVsbG8gd29ybGQh"}}}`)
+
+	// update to rev 2 without attachment
+	rt.UpdateDoc(docID, createVersion, `{"test":"data updated"}`)
+
+	// fetch rev 1 by its CV, which should include the attachment
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
+	RequireStatus(t, resp, http.StatusOK)
+	var body db.Body
+	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
+	require.NoError(t, err)
+
+	attachments, ok := body["_attachments"].(map[string]interface{})
+	require.True(t, ok, "expected _attachments in response body")
+	_, ok = attachments["att1"].(map[string]interface{})
+	require.True(t, ok, "expected att1 in _attachments")
+}
+
 // TestECCV validates if the ECCV value of the bucket is returned as a response
 // for _cluster_info endpoint. ECCV value is returned for each bucket, if the
 // bucket does not contain any SGW database, the value will be set to false
