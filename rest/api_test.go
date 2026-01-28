@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -3752,4 +3753,48 @@ func TestGetConfigAfterFailToStartOnlineProcess(t *testing.T) {
 	// Original bug will trigger panic here on this endpoint
 	resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
 	RequireStatus(t, resp, http.StatusOK)
+}
+
+func TestMOUDeletedOnTombstone(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	docID := t.Name()
+	docBody := map[string]any{"foo": "bar"}
+
+	rtConfig := RestTesterConfig{
+		CustomTestBucket: bucket,
+		GuestEnabled:     true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		btcRunner.StartPull(client.ID())
+		btcRunner.StartPush(client.ID())
+
+		err := col.Set(docID, 0, &sgbucket.UpsertOptions{}, docBody)
+		require.NoError(t, err)
+
+		rt.WaitForDoc(docID)
+		version, _ := rt.GetDoc(docID)
+
+		btcRunner.WaitForVersion(client.ID(), docID, version)
+
+		tombStoneVersion := btcRunner.DeleteDoc(client.ID(), docID, &version)
+		rt.WaitForTombstone(docID, tombStoneVersion)
+
+		rawDoc := rt.GetRawDoc(docID)
+		assert.NotContains(t, rawDoc.Xattrs.RawDocXattrsOthers, base.MouXattrName)
+
+	})
 }
