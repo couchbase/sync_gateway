@@ -24,6 +24,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
@@ -2943,6 +2944,82 @@ func TestBlipPushRevWithAttachment(t *testing.T) {
 		RequireStatus(t, response, http.StatusOK)
 		require.Equal(t, attachmentData, string(response.BodyBytes()))
 	})
+}
+
+// TestGetNonWinningRevisionAttachmentLeak tests that when fetching a non-winning revision via the REST API,
+// users do not see attachment metadata from revisions they don't have access to.
+func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync (required for backup revisions in 4.x) requires EE")
+	}
+
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	rt.CreateUser("alice", []string{"ABC"})
+
+	for _, revType := range []string{"RevTreeID", "CV"} {
+		t.Run(revType, func(t *testing.T) {
+			for _, flushCache := range []bool{false, true} {
+				cacheName := "cached"
+				if flushCache {
+					cacheName = "uncached"
+				}
+				t.Run(cacheName, func(t *testing.T) {
+					docID := fmt.Sprintf("doc_%s_%s", revType, cacheName)
+
+					// version 1 in channel A (alice has access) without attachments
+					resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"channels": ["ABC"], "value": "v1"}`)
+					RequireStatus(t, resp, http.StatusCreated)
+					version1 := DocVersionFromPutResponse(t, resp)
+
+					// version 2 moves to channel B (alice has no access) with an attachment
+					resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID,
+						`{"channels": ["NBC"], "value": "v2", "_attachments": {"attachment.txt": {"data": "YXR0ZGF0YQ=="}}}`)
+					RequireStatus(t, resp, http.StatusCreated)
+
+					if flushCache {
+						rt.GetDatabase().FlushRevisionCacheForTest()
+					}
+
+					revParam := version1.RevTreeID
+					if revType == "CV" {
+						revParam = version1.CV.String()
+					}
+
+					// Alice requests v1 - she has access to this revision
+					resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revParam), "", "alice")
+					RequireStatus(t, resp, http.StatusOK)
+					t.Logf("resp body: %s", resp.BodyBytes())
+
+					var body db.Body
+					require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+
+					assert.Equal(t, "v1", body["value"], "Should get v1's body content")
+
+					// v1 should have no attachments - it was created without any
+					attachments := body["_attachments"]
+					assert.Nil(t, attachments, "v1 should have no attachments")
+
+					// Try to fetch the attachment directly - should fail since v1 has no attachments
+					resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s/attachment.txt?rev=%s", docID, revParam), "", "alice")
+
+					assert.NotEqual(t, http.StatusOK, resp.Code, "Should not be able to fetch attachment that doesn't exist on v1")
+
+					assert.NotEqual(t, "attdata", resp.Body.String(), "Should not receive attachment content from v2")
+				})
+			}
+		})
+	}
 }
 
 // attachmentMetaResponse is the response body for GET /ks/doc/att?meta=true
