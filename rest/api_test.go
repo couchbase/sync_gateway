@@ -3794,7 +3794,8 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 		rt.WaitForTombstone(docID, tombStoneVersion)
 
 		rawDoc := rt.GetRawDoc(docID)
-		assert.NotContains(t, rawDoc.Xattrs.RawDocXattrsOthers, base.MouXattrName)
+		mou, _ := rawDoc.Xattrs.RawDocXattrsOthers[base.MouXattrName]
+		assert.Nil(t, mou)
 
 	})
 }
