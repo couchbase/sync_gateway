@@ -711,7 +711,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 
 		// if this is a filtered replication, ensure the replacement rev is in one of the filtered channels
 		// normal channel access checks are already applied in GetRev above
-		if !replacementRev.Channels.HasMatch(collectionCtx.channels) {
+		if collectionCtx.channels != nil && !replacementRev.Channels.HasMatch(collectionCtx.channels) {
 			base.DebugfCtx(ctx, base.KeySync, "Sending norev %q %s due to filtered channels (%s) excluding active revision channels (%s)", base.UD(docID), revID, base.UD(collectionCtx.channels), base.UD(replacementRev.Channels))
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, originalErr)
 		}

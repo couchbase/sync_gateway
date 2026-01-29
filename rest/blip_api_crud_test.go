@@ -1960,37 +1960,48 @@ func TestSendReplacementRevision(t *testing.T) {
 
 	userChannels := []string{"ABC", "DEF"}
 	rev1Channel := "ABC"
-	replicationChannels := "ABC,XYZ"
 
 	tests := []struct {
 		name                      string
 		expectReplacementRev      bool
 		clientSendReplacementRevs bool
 		replacementRevChannel     string
+		replicationChannels       string // empty string means no filter (user's accessible channels)
 	}{
 		{
 			name:                      "no replacements",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: false,
 			replacementRevChannel:     "ABC",
+			replicationChannels:       "ABC,XYZ",
 		},
 		{
 			name:                      "opt-in",
 			expectReplacementRev:      true,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "ABC",
+			replicationChannels:       "ABC,XYZ",
+		},
+		{
+			name:                      "opt-in no channel filter",
+			expectReplacementRev:      true,
+			clientSendReplacementRevs: true,
+			replacementRevChannel:     "ABC",
+			replicationChannels:       "", // no filter - uses user's accessible channels
 		},
 		{
 			name:                      "opt-in filtered channel",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "DEF", // accessible but filtered out
+			replicationChannels:       "ABC,XYZ",
 		},
 		{
 			name:                      "opt-in inaccessible channel",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "XYZ", // inaccessible
+			replicationChannels:       "ABC,XYZ",
 		},
 	}
 
@@ -2034,7 +2045,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
 				rt.WaitForPendingChanges()
-				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: replicationChannels, Continuous: false})
+				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: test.replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
