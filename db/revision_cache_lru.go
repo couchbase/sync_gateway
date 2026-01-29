@@ -57,8 +57,8 @@ func (sc *ShardedLRURevisionCache) GetWithRev(ctx context.Context, docID, revID 
 	return sc.getShard(docID).GetWithRev(ctx, docID, revID, collectionID, includeDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetWithCV(ctx, docID, cv, collectionID, includeDelta)
+func (sc *ShardedLRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetWithCV(ctx, docID, cv, collectionID, includeDelta, loadBackup)
 }
 
 func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
@@ -164,8 +164,8 @@ func (rc *LRURevisionCache) GetWithRev(ctx context.Context, docID, revID string,
 	return rc.getFromCacheByRev(ctx, docID, revID, collectionID, true, includeDelta)
 }
 
-func (rc *LRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (DocumentRevision, error) {
-	return rc.getFromCacheByCV(ctx, docID, cv, collectionID, true, includeDelta)
+func (rc *LRURevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
+	return rc.getFromCacheByCV(ctx, docID, cv, collectionID, true, includeDelta, loadBackup)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
@@ -212,7 +212,8 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 		return DocumentRevision{}, nil
 	}
 
-	docRev, statEvent, err := value.load(ctx, rc.backingStores[collectionID], includeDelta)
+	// for revID pathway we should always load from backup if required
+	docRev, statEvent, err := value.load(ctx, rc.backingStores[collectionID], includeDelta, true)
 	rc.statsRecorderFunc(statEvent)
 
 	if !statEvent && err == nil {
@@ -233,13 +234,14 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 	return docRev, err
 }
 
-func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, cv *Version, collectionID uint32, loadCacheOnMiss bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, cv *Version, collectionID uint32, loadCacheOnMiss bool, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
 	value := rc.getValueByCV(ctx, docID, cv, collectionID, loadCacheOnMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
 
-	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], includeDelta)
+	// for CV pathway we respect the loadBackup flag passed in
+	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], includeDelta, loadBackup)
 	rc.statsRecorderFunc(cacheHit)
 
 	if err != nil {
@@ -655,7 +657,7 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeDelta bool) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeDelta bool, loadBackup bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	// Reading the delta from the revCacheValue requires holding the read lock, so it's managed outside asDocumentRevision,
 	// to reduce locking when includeDelta=false
@@ -692,7 +694,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
 			hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
-			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey)
+			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForCv(ctx, backingStore, hlvKey, loadBackup)
 			// based off the current value load we need to populate the revid key with what has been fetched from the bucket (for use of populating the opposite lookup map)
 			if revid != "" {
 				value.revID = revid
@@ -780,7 +782,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
-			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForDocumentCV(ctx, backingStore, doc, value.cv)
+			value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, revid, hlv, value.err = revCacheLoaderForDocumentCV(ctx, backingStore, doc, value.cv, false)
 			if revid != "" {
 				value.revID = revid
 			}

@@ -1090,14 +1090,14 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 		"k1":    "v2",
 		BodyRev: rev1ID,
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, doc2, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Flush the revision cache, this can be removed pending CBG-4542
 	db.FlushRevisionCacheForTest()
 
 	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
-	docRev, err := collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc.HLV.ExtractCurrentVersionFromHLV(), false, true)
 	require.NoError(t, err, "Error fetching backup revision CV")
 	assert.Equal(t, "", docRev.RevID)
 	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
@@ -1107,6 +1107,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 	require.NoError(t, err, "error fetching current revision")
 	assert.Equal(t, rev2ID, docRev.RevID)
 	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+	assert.Equal(t, doc2.HLV.GetCurrentVersionString(), docRev.CV.String())
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {

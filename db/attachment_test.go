@@ -137,7 +137,7 @@ func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
 	// can remove in CBG-4542
 	db.FlushRevisionCacheForTest()
 
-	docRev, err := collection.GetRev(ctx, "doc1", doc1.HLV.GetCurrentVersionString(), false, nil)
+	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc1.HLV.ExtractCurrentVersionFromHLV(), false, true)
 	require.NoError(t, err)
 
 	// assert version is fetched and attachments is empty
