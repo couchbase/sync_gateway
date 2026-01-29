@@ -152,7 +152,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
