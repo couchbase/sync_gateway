@@ -1403,10 +1403,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
 				_ = agent.InsertWithHLV(ctx, docID, db.Body{"channels": "alice"})
 
-				// wai for import to be processed
-				base.RequireWaitForStat(t, func() int64 {
-					return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
-				}, 1)
+				// import doc
 				version1, _ := rt.GetDoc(docID)
 
 				if tc.filteredChannels != "" {
@@ -1495,10 +1492,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
 		_ = agent.InsertWithHLV(ctx, docID, nil)
 
-		// wai for import to be processed
-		base.RequireWaitForStat(t, func() int64 {
-			return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
-		}, 1)
+		// import doc
 		version1, _ := rt.GetDoc(docID)
 
 		btcRunner.StartPull(client.id)
