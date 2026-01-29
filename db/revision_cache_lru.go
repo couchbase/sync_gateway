@@ -228,7 +228,7 @@ func (rc *LRURevisionCache) getFromCacheByRev(ctx context.Context, docID, revID 
 	}
 
 	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
+		rc.removeValue(value, collectionID) // don't keep failed loads in the cache
 	}
 
 	return docRev, err
@@ -245,7 +245,7 @@ func (rc *LRURevisionCache) getFromCacheByCV(ctx context.Context, docID string, 
 	rc.statsRecorderFunc(cacheHit)
 
 	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
+		rc.removeValue(value, collectionID) // don't keep failed loads in the cache
 	}
 
 	if !cacheHit && err == nil {
@@ -295,7 +295,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	}
 
 	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
+		rc.removeValue(value, collectionID) // don't keep failed loads in the cache
 	}
 
 	return docRev, err
@@ -594,10 +594,10 @@ func (rc *LRURevisionCache) removeFromCVLookup(ctx context.Context, docID string
 }
 
 // removeValue removes a value from the revision cache, if present and the value matches the the value. If there's an item in the revision cache with a matching docID and revID but the document is different, this item will not be removed from the rev cache.
-func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
+func (rc *LRURevisionCache) removeValue(value *revCacheValue, collectionID uint32) {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	revKey := IDAndRev{DocID: value.id, RevID: value.revID}
+	revKey := IDAndRev{DocID: value.id, RevID: value.revID, CollectionID: collectionID}
 	var itemRemoved bool
 	if element := rc.cache[revKey]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
@@ -605,7 +605,7 @@ func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 		itemRemoved = true
 	}
 	// need to also check hlv lookup cache map
-	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value}
+	hlvKey := IDandCV{DocID: value.id, Source: value.cv.SourceID, Version: value.cv.Value, CollectionID: collectionID}
 	if element := rc.hlvCache[hlvKey]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
 		delete(rc.hlvCache, hlvKey)

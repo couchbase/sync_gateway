@@ -2881,13 +2881,14 @@ func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
 			if tc.useRevID {
 				_, err = collection.getRev(ctx, docID, firstRevisionID, 0, nil)
 				require.NoError(t, err)
+				assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
 			} else {
 				_, err = collection.getRev(ctx, docID, firstCV, 0, nil)
 				require.Error(t, err)
 				require.ErrorContains(t, err, "missing")
+				assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
 			}
 			// assert on stats after fetch
-			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
 			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 			assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheHits.Value())
 
@@ -2903,7 +2904,11 @@ func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
 			assert.Equal(t, doc1.GetRevTreeID(), docRev.RevID)
 			assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
 			assert.JSONEq(t, `{"foo": "baz"}`, string(docRev.BodyBytes))
-			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+			if tc.useRevID {
+				assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+			} else {
+				assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
+			}
 			assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 			assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheHits.Value())
 		})
