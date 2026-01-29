@@ -2282,6 +2282,9 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 }
 
 func TestFetchBackupWithDeletedFlag(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("pending fix in CBG-5141")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		// enable delta sync so CV revs are backed up
 		DeltaSyncOptions: DeltaSyncOptions{

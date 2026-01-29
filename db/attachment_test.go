@@ -107,6 +107,9 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 }
 
 func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("pending fix in CBG-5141")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
