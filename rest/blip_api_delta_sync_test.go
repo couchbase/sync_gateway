@@ -1363,10 +1363,10 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 			name:             "filtered channels",
 			filteredChannels: "alice",
 		},
-		//{
-		//	name:             "unfiltered channels",
-		//	filteredChannels: "",
-		//},
+		{
+			name:             "unfiltered channels",
+			filteredChannels: "",
+		},
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
