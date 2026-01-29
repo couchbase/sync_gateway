@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -3001,7 +3002,7 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 
 					revParam := version1.RevTreeID
 					if revType == "CV" {
-						revParam = version1.CV.String()
+						revParam = url.QueryEscape(version1.CV.String())
 					}
 
 					// Alice requests v1 - she has access to this revision
