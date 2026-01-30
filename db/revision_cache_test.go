@@ -277,6 +277,9 @@ func TestLRURevisionCacheEvictionMixedRevAndCV(t *testing.T) {
 }
 
 func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Revision cache disabled, eviction test needs revision cache enabled")
+	}
 	testCases := []struct {
 		name       string
 		UseCVCache bool
@@ -691,6 +694,9 @@ func TestBypassRevisionCache(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put
 func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
+	if base.TestDisableRevCache() {
+		t.Skip("Revision cache expected to be used for this test")
+	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
@@ -959,6 +965,9 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 //   - Add new doc that will take over the shard memory capacity and assert that that eviction takes place and
 //     all stats are as expected
 func TestShardedMemoryEviction(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Test is sharded revision cache specific")
+	}
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxBytes:     160,
@@ -1009,6 +1018,9 @@ func TestShardedMemoryEviction(t *testing.T) {
 //   - Test adding a doc to sharded revision cache that will immediately be evicted due to size
 //   - Assert that stats look as expected
 func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test is sharded revision cache specific")
+	}
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxBytes:     100,
@@ -1112,6 +1124,9 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 }
 
 func TestResetRevCache(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Revision cache expected to be used for this test")
+	}
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxBytes:     100,
@@ -1137,6 +1152,9 @@ func TestResetRevCache(t *testing.T) {
 }
 
 func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Revision cache expected to be used for this test")
+	}
 	testCases := []struct {
 		name       string
 		UseCVCache bool
@@ -1333,6 +1351,9 @@ func TestConcurrentLoad(t *testing.T) {
 }
 
 func TestRevisionCacheRemove(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires revision cache to be enabled")
+	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1375,6 +1396,9 @@ func TestRevisionCacheRemove(t *testing.T) {
 //   - Assert each doc returned is the correct one (correct rev ID etc)
 //   - Assert that each doc is found at the rev cache and no misses are reported
 func TestRevCacheHitMultiCollection(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires revision cache to be enabled")
+	}
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -2226,6 +2250,9 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 }
 
 func TestRevCacheOnDemandImportNoCache(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled")
+	}
 	base.SkipImportTestsIfNotEnabled(t)
 
 	db, ctx := setupTestDB(t)
@@ -2255,6 +2282,9 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 }
 
 func TestFetchBackupWithDeletedFlag(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("pending fix in CBG-5141")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		// enable delta sync so CV revs are backed up
 		DeltaSyncOptions: DeltaSyncOptions{
@@ -2354,6 +2384,9 @@ func TestRemoveFromRevLookup(t *testing.T) {
 }
 
 func TestLoadFromBucketLegacyRevsThatAreBackedUpPreUpgrade(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2561,6 +2594,9 @@ func TestUpdateDeltaRevCacheMemoryStatPanicMultipleEntries(t *testing.T) {
 }
 
 func TestEvictionOfRevIDKeysWhenNoItemInCVMap(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled for eviction to run")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2614,6 +2650,9 @@ func TestEvictionOfRevIDKeysWhenNoItemInCVMap(t *testing.T) {
 }
 
 func TestEvictionOfCVKeysWhenNoItemInRevMap(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled for eviction to run")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2681,6 +2720,9 @@ func TestEvictionOfCVKeysWhenNoItemInRevMap(t *testing.T) {
 
 func TestBasicLoadBackupRevCacheOnlyPopulateOneMap(t *testing.T) {
 
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled")
+	}
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		OldRevExpirySeconds: base.DefaultOldRevExpirySeconds,
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2741,6 +2783,9 @@ func TestBasicLoadBackupRevCacheOnlyPopulateOneMap(t *testing.T) {
 }
 
 func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled")
+	}
 	testCases := []struct {
 		name     string
 		useRevID bool

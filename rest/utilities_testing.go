@@ -379,6 +379,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
 
+		if base.TestDisableRevCache() {
+			if rt.DatabaseConfig.CacheConfig == nil {
+				rt.DatabaseConfig.CacheConfig = &CacheConfig{}
+			}
+			if rt.DatabaseConfig.CacheConfig.RevCacheConfig == nil {
+				rt.DatabaseConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{}
+			}
+			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr[uint32](0)
+		}
+
 		// Check for override of AutoImport in the rt config
 		if rt.AutoImport != nil {
 			rt.DatabaseConfig.AutoImport = *rt.AutoImport
@@ -2572,6 +2582,14 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	} else {
 		config.Index = &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
+		}
+	}
+
+	if base.TestDisableRevCache() {
+		config.CacheConfig = &CacheConfig{
+			RevCacheConfig: &RevCacheConfig{
+				MaxItemCount: base.Ptr[uint32](0),
+			},
 		}
 	}
 

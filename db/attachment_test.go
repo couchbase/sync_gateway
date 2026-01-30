@@ -107,6 +107,9 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 }
 
 func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("pending fix in CBG-5141")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
@@ -138,7 +141,7 @@ func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert version is fetched and attachments is empty
-	assert.Equal(t, docRev.CV.String(), doc1.HLV.GetCurrentVersionString())
+	assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
 	assert.Empty(t, docRev.Attachments)
 }
 
