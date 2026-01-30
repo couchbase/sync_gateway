@@ -233,7 +233,7 @@ func TestReplicateVV(t *testing.T) {
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
 				ctx := base.TestCtx(t)
-				return hlvAgent.InsertWithHLV(ctx, docID)
+				return hlvAgent.InsertWithHLV(ctx, docID, nil)
 			},
 		},
 	}
@@ -316,7 +316,7 @@ func TestVVObeyMou(t *testing.T) {
 
 	docID := "doc1"
 	hlvAgent := db.NewHLVAgent(t, fromDs, fromBucketSourceID, base.VvXattrName)
-	fromCas1 := hlvAgent.InsertWithHLV(ctx, "doc1")
+	fromCas1 := hlvAgent.InsertWithHLV(ctx, "doc1", nil)
 
 	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
 	defer func() {

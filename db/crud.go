@@ -357,7 +357,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV
 			revision, getErr = db.revisionCache.GetWithRev(ctx, docid, *revID, RevCacheOmitDelta)
 		} else {
 			cv = &currentVersion
-			revision, getErr = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+			revision, getErr = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta, false)
 		}
 	} else {
 		// No rev given, so load active revision
@@ -432,7 +432,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 
 func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
 	if cv != nil {
-		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta, false)
 	} else {
 		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
@@ -462,7 +462,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		initialFromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		// It is possible delta source will not be resident in the cache and we may want to lookup to the bucket for a backup revision
+		initialFromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -503,7 +504,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// fromRevisionForDiff is a version of the fromRevision that is guarded by the delta lock that we will use to generate the delta (or check again for a newly cached delta)
 		var fromRevisionForDiff DocumentRevision
 		if fromRevIsCV {
-			fromRevisionForDiff, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+			fromRevisionForDiff, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -537,7 +538,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			if err != nil {
 				return nil, nil, err
 			}
-			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
+			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta, false)
 			if err != nil {
 				return nil, nil, err
 			}
