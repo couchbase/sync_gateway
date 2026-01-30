@@ -70,7 +70,9 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 	if err != nil {
 		return nil, fmt.Errorf("couldn't parse version string: %w", err)
 	}
-	if ee && !version.Less(cbs8) {
+	// for GSI, use default storage backend: magma for 8.0+ or couchstore for <8.0
+	// views aren't supported with magma
+	if !TestsDisableGSI() && ee && !version.Less(cbs8) {
 		cluster.storageBackend = gocb.StorageBackendMagma
 	}
 	return cluster, nil
@@ -244,11 +246,7 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int, conflictResolution X
 	body.Set("name", name)
 	body.Set("numReplicas", strconv.Itoa(numReplicas))
 	body.Set("ramQuotaMB", fmt.Sprintf("%d", quotaMB))
-	// for GSI, use default storage backend: magma for 8.0+ or couchstore for <8.0
-	// views aren't supported with magma
-	if TestsDisableGSI() {
-		body.Set("storageBackend", "couchstore")
-	}
+	body.Set("storageBackend", string(c.storageBackend))
 	output, status, err := c.MgmtRequest(
 		http.MethodPost,
 		"/pools/default/buckets",
