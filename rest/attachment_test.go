@@ -3007,7 +3007,7 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 
 					// Alice requests v1 - she has access to this revision
 					resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revParam), "", "alice")
-					if revType == "CV" && flushCache {
+					if revType == "CV" && flushCache || revType == "CV" && base.TestDisableRevCache() {
 						// if flushed cache and fetching by cv we will return not found
 						RequireStatus(t, resp, http.StatusNotFound)
 						t.Logf("resp body: %s", resp.BodyBytes())

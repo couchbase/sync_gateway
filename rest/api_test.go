@@ -3602,6 +3602,8 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 	})
 	defer rt.Close()
 
+	coll, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
 	docID := t.Name()
 	// create rev 1 with attachment
 	createVersion := rt.PutDoc(docID, `{"test":"data", "_attachments": {"att1": {"data":"SGVsbG8gd29ybGQh"}}}`)
@@ -3609,17 +3611,15 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 	// update to rev 2 without attachment
 	rt.UpdateDoc(docID, createVersion, `{"test":"data updated"}`)
 
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
 	// fetch rev 1 by its CV, which should include the attachment
-	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
-	RequireStatus(t, resp, http.StatusOK)
-	var body db.Body
-	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
+	docRev, err := coll.GetRevisionCacheForTest().GetWithCV(ctx, docID, &createVersion.CV, false, true)
 	require.NoError(t, err)
 
-	attachments, ok := body["_attachments"].(map[string]interface{})
-	require.True(t, ok, "expected _attachments in response body")
-	_, ok = attachments["att1"].(map[string]interface{})
-	require.True(t, ok, "expected att1 in _attachments")
+	assert.Len(t, docRev.Attachments, 1)
+	_, ok := docRev.Attachments["att1"]
+	assert.True(t, ok, "Expected attachment 'att1' to be present in fetched revision")
 }
 
 // TestECCV validates if the ECCV value of the bucket is returned as a response
