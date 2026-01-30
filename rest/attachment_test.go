@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -2993,23 +2994,28 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 
 					revParam := version1.RevTreeID
 					if revType == "CV" {
-						revParam = version1.CV.String()
+						revParam = url.QueryEscape(version1.CV.String())
 					}
 
 					// Alice requests v1 - she has access to this revision
 					resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revParam), "", "alice")
-					RequireStatus(t, resp, http.StatusOK)
-					t.Logf("resp body: %s", resp.BodyBytes())
+					if revType == "CV" && flushCache || revType == "CV" && base.TestDisableRevCache() {
+						// if flushed cache and fetching by cv we will return not found
+						RequireStatus(t, resp, http.StatusNotFound)
+						t.Logf("resp body: %s", resp.BodyBytes())
+					} else {
+						RequireStatus(t, resp, http.StatusOK)
+						t.Logf("resp body: %s", resp.BodyBytes())
 
-					var body db.Body
-					require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+						var body db.Body
+						require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
 
-					assert.Equal(t, "v1", body["value"], "Should get v1's body content")
+						assert.Equal(t, "v1", body["value"], "Should get v1's body content")
 
-					// v1 should have no attachments - it was created without any
-					attachments := body["_attachments"]
-					assert.Nil(t, attachments, "v1 should have no attachments")
-
+						// v1 should have no attachments - it was created without any
+						attachments := body["_attachments"]
+						assert.Nil(t, attachments, "v1 should have no attachments")
+					}
 					// Try to fetch the attachment directly - should fail since v1 has no attachments
 					resp = rt.SendUserRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s/attachment.txt?rev=%s", docID, revParam), "", "alice")
 

@@ -2165,7 +2165,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		otherSource := "otherSource"
 		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
 		existingHLVKey := "doc1"
-		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey, nil)
 
 		// force import of this write
 		_, _ = rt.GetDoc(docID)
