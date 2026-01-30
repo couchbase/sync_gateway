@@ -168,6 +168,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		},
 		UseViews:                    base.Ptr(false),
 		SendWWWAuthenticateHeader:   base.Ptr(true),
+		DisablePasswordAuth:         base.Ptr(false),
 		BucketOpTimeoutMs:           nil,
 		SlowQueryWarningThresholdMs: base.Ptr(kDefaultSlowQueryWarningThreshold),
 		DeltaSync: &DeltaSyncConfig{
@@ -185,6 +186,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		ClientPartitionWindowSecs:        base.Ptr(int(base.DefaultClientPartitionWindow.Seconds())),
 		JavascriptTimeoutSecs:            base.Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.Ptr(sc.IsServerless()),
+		ChangesRequestPlus:               base.Ptr(false),
 		Logging:                          DefaultPerDBLogging(sc.Logging),
 		DisablePublicAllDocs:             base.Ptr(false),
 	}
