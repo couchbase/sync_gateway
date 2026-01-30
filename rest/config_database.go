@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -160,7 +161,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		LocalDocExpirySecs:    base.Ptr(base.DefaultLocalDocExpirySecs),
 		EnableXattrs:          base.Ptr(base.DefaultUseXattrs),
 		SecureCookieOverride:  base.Ptr(sc.API.HTTPS.TLSCertPath != ""),
-		SessionCookieName:     "",
+		SessionCookieName:     auth.DefaultCookieName,
 		SessionCookieHTTPOnly: base.Ptr(false),
 		AllowConflicts:        base.Ptr(base.DefaultAllowConflicts),
 		Index: &IndexConfig{
@@ -169,7 +170,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		UseViews:                    base.Ptr(false),
 		SendWWWAuthenticateHeader:   base.Ptr(true),
 		DisablePasswordAuth:         base.Ptr(false),
-		BucketOpTimeoutMs:           nil,
+		BucketOpTimeoutMs:           base.Ptr(uint32(base.DefaultGocbV2OperationTimeout.Milliseconds())),
 		SlowQueryWarningThresholdMs: base.Ptr(kDefaultSlowQueryWarningThreshold),
 		DeltaSync: &DeltaSyncConfig{
 			Enabled:          base.Ptr(db.DefaultDeltaSyncEnabled),
@@ -184,6 +185,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		QueryPaginationLimit:             base.Ptr(db.DefaultQueryPaginationLimit),
 		UserXattrKey:                     nil,
 		ClientPartitionWindowSecs:        base.Ptr(int(base.DefaultClientPartitionWindow.Seconds())),
+		Guest:                            &auth.PrincipalConfig{Disabled: base.Ptr(true)},
 		JavascriptTimeoutSecs:            base.Ptr(base.DefaultJavascriptTimeoutSecs),
 		Suspendable:                      base.Ptr(sc.IsServerless()),
 		ChangesRequestPlus:               base.Ptr(false),
@@ -195,6 +197,8 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		dbConfig.AutoImport = base.Ptr(base.DefaultAutoImport)
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
+		} else {
+			dbConfig.ImportPartitions = base.Ptr(uint16(0))
 		}
 		dbConfig.Index.NumPartitions = base.Ptr(db.DefaultNumIndexPartitions)
 	} else {
