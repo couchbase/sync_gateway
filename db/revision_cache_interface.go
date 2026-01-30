@@ -34,9 +34,9 @@ type RevisionCache interface {
 	GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
 
 	// GetWithCV returns the given revision by CV, and stores if not already cached.
-	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (DocumentRevision, error)
+	// When loadBackup=true, will load from backup revisions if requested version is not active document
+	GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
@@ -127,7 +127,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
 	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, base.Set, error)
-	getCurrentVersion(ctx context.Context, doc *Document, cv Version) ([]byte, AttachmentsMeta, base.Set, bool, error)
+	getCurrentVersion(ctx context.Context, doc *Document, cv Version, loadBackup bool) ([]byte, AttachmentsMeta, base.Set, bool, error)
 }
 
 // collectionRevisionCache is a view of a revision cache for a collection.
@@ -150,8 +150,8 @@ func (c *collectionRevisionCache) GetWithRev(ctx context.Context, docID, revID s
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, includeDelta bool) (DocumentRevision, error) {
-	return (*c.revCache).GetWithCV(ctx, docID, cv, c.collectionID, includeDelta)
+func (c *collectionRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
+	return (*c.revCache).GetWithCV(ctx, docID, cv, c.collectionID, includeDelta, loadBackup)
 }
 
 // GetActive is for per collection access to GetActive method
@@ -421,7 +421,7 @@ func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore,
 
 // revCacheLoaderForCv will load a document from the bucket using the CV, compare the fetched doc and the CV specified in the function,
 // and will still return revid for purpose of populating the Rev ID lookup map on the cache
-func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingStore, id IDandCV) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
+func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingStore, id IDandCV, loadBackup bool) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
 	cv := Version{
 		Value:    id.Version,
 		SourceID: id.Source,
@@ -431,7 +431,7 @@ func revCacheLoaderForCv(ctx context.Context, backingStore RevisionCacheBackingS
 		return bodyBytes, history, channels, removed, attachments, deleted, expiry, revid, hlv, err
 	}
 
-	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv)
+	return revCacheLoaderForDocumentCV(ctx, backingStore, doc, cv, loadBackup)
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
@@ -471,8 +471,8 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 
 // revCacheLoaderForDocumentCV used either during cache miss (from revCacheLoaderForCv), or used directly when getting current active CV from cache
 // nolint:staticcheck
-func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv Version) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
-	if bodyBytes, attachments, channels, deleted, err = backingStore.getCurrentVersion(ctx, doc, cv); err != nil {
+func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, cv Version, loadBackup bool) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, revid string, hlv *HybridLogicalVector, err error) {
+	if bodyBytes, attachments, channels, deleted, err = backingStore.getCurrentVersion(ctx, doc, cv, loadBackup); err != nil {
 		return nil, nil, nil, false, nil, false, nil, "", nil, err
 	}
 
@@ -481,9 +481,9 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	if doc.HLV.ExtractCurrentVersionFromHLV().Equal(cv) {
 		revid = doc.GetRevTreeID()
 		deleted = doc.Deleted
+		hlv = doc.HLV
 	}
 
-	hlv = doc.HLV
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
 		return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
@@ -493,8 +493,12 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, revid, hlv, err
 }
 
-func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, deleted bool, err error) {
+func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version, loadBackup bool) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, deleted bool, err error) {
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
+		if !loadBackup {
+			// do not attempt to fetch backup revision by CV unless specified
+			return nil, nil, nil, false, ErrMissing
+		}
 		bodyBytes, channels, deleted, err = c.getOldRevisionJSON(ctx, doc.ID, base.Crc32cHashString([]byte(cv.String())))
 		if err != nil || bodyBytes == nil {
 			return nil, nil, nil, false, err
