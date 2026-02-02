@@ -241,7 +241,7 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.heartbeaterKey, metadataKeys.HeartbeaterPrefix(test.groupID))
 			require.Equal(t, test.sgCfgPrefix, metadataKeys.SGCfgPrefix(test.groupID))
 			if test.groupID == "" {
-				// need a groupID for this, specificying default
+				// need a groupID for this, specifying default
 				persistentConfigKey, err := metadataKeys.PersistentConfigKey("default")
 				require.NoError(t, err)
 				require.Equal(t, test.persistentConfigKey, persistentConfigKey)

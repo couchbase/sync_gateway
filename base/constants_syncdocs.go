@@ -201,7 +201,7 @@ func (m *MetadataKeys) ReplicationStatusKey(replicationID string) string {
 	return m.sgrStatusPrefix + m.serializeIfLonger(replicationID)
 }
 
-// HeartbeaterPrefix returns a document prefix to use for heartbeat documents. For compatibity, an empty metadataID
+// HeartbeaterPrefix returns a document prefix to use for heartbeat documents. For compatibility, an empty metadataID
 // does not include the "hb:" component in the prefix.
 //
 //	format: _sync:{m_$}:hb:[groupID:]   (collections)
