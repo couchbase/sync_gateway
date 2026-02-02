@@ -783,6 +783,11 @@ func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
 }
 
+// RequireXattrDeleteOnDocumentInsertError asserts that the given error represents error deleting xattrs during document delete
+func RequireXattrDeleteOnDocumentInsertError(t testing.TB, e error) {
+	require.True(t, errors.Is(e, sgbucket.ErrDeleteXattrOnDocumentInsert))
+}
+
 // RequireXattrNotFoundError asserts that the given error represents an xattr not found error.
 func RequireXattrNotFoundError(t testing.TB, e error) {
 	require.True(t, IsXattrNotFoundError(e), fmt.Sprintf("Expected error to be an xattr not found error, but was: %v", e))
