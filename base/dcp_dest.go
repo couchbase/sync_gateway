@@ -285,7 +285,7 @@ func (d *DCPLoggingDest) DataDeleteEx(partition string, key []byte, seq uint64,
 
 func (d *DCPLoggingDest) SnapshotStart(partition string,
 	snapStart, snapEnd uint64) error {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "SnapshotStart:%d, %d, %d", partition, snapStart, snapEnd)
+	TracefCtx(d.dest.loggingCtx, KeyDCP, "SnapshotStart:%s, %d, %d", partition, snapStart, snapEnd)
 	return d.dest.SnapshotStart(partition, snapStart, snapEnd)
 }
 

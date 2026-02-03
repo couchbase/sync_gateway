@@ -12,7 +12,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/couchbase/clog"
@@ -248,7 +247,7 @@ func (l CBGoUtilsLogger) Severea(f func() string) { l.warnNotImplemented("Severe
 func (l CBGoUtilsLogger) Fatala(f func() string)  { l.warnNotImplemented("Fatala", f) }
 
 func (CBGoUtilsLogger) warnNotImplemented(name string, f func() string) {
-	WarnfCtx(context.Background(), fmt.Sprintf("CBGoUtilsLogger: %s not implemented! %s", name, f()))
+	WarnfCtx(context.Background(), "CBGoUtilsLogger: %s not implemented! %s", name, f())
 }
 
 // **************************************************************************
