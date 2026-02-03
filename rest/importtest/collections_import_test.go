@@ -326,7 +326,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(docCount))
 
 	// update config to add second collection
 	twoCollectionConfig := rest.GetCollectionsConfig(t, testBucket, 2)
@@ -348,7 +348,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(docCount))
 
 	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(collectionsDbConfig, testBucket.GetName(), string(twoCollectionConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
