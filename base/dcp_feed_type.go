@@ -58,7 +58,7 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 
 	if feedParams.DbName == "" {
 		// consider switching to AssertfCtx one CBG-4730 is fixed
-		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params %s during cbgtRootCAsProvider. Continuing without TLS authentication.")
+		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params %#v during cbgtRootCAsProvider. Continuing without TLS authentication.", UD(feedParams))
 		return nil
 	}
 
