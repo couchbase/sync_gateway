@@ -702,12 +702,12 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 
 	fromSequence, err := strconv.ParseUint(sequences[0], 10, 64)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to identify from sequence number for unused sequences notification with key: %s, error:", base.UD(docID), err)
+		base.WarnfCtx(ctx, "Unable to identify from sequence number for unused sequences notification with key: %s, error: %s", base.UD(docID), err)
 		return
 	}
 	toSequence, err := strconv.ParseUint(sequences[1], 10, 64)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to identify to sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
+		base.WarnfCtx(ctx, "Unable to identify to sequence number for unused sequence notification with key: %s, error: %s", base.UD(docID), err)
 		return
 	}
 
