@@ -39,6 +39,7 @@ var SupportedAlgorithms = map[jose.SignatureAlgorithm]bool{
 	jose.PS256: true,
 	jose.PS384: true,
 	jose.PS512: true,
+	jose.EdDSA: true,
 }
 
 // Full list of supported algorithms is used to initially parse the JWT.  The more restricted list (based
@@ -53,6 +54,7 @@ var SupportedAlgorithmsSlice = []jose.SignatureAlgorithm{
 	jose.PS256,
 	jose.PS384,
 	jose.PS512,
+	jose.EdDSA,
 }
 
 // JWTConfigCommon groups together configuration options common to both OIDC and local JWT authentication.
