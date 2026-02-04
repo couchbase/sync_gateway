@@ -430,7 +430,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	return purgedAttachmentCount.Value(), dcpClient.GetMetadataKeyPrefix(), err
 }
 
-// attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with	an attachment compaction xattr. Returns
+// attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with an attachment compaction xattr. Returns
 // the DCP checkpoint prefix and any error encountered.
 func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
