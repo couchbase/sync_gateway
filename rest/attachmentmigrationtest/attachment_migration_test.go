@@ -50,7 +50,6 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
@@ -146,7 +145,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
@@ -245,7 +243,6 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
@@ -324,7 +321,6 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 1)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,

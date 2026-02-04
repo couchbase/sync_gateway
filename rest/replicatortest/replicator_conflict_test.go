@@ -1583,7 +1583,6 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 			useRemoteRevTreeID:    false,
 		},
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // test has flaked in jenkins, need to debug
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
@@ -2040,7 +2039,6 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test

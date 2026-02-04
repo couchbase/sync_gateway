@@ -697,7 +697,6 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("Revision cache expected to be used for this test")
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -740,7 +739,6 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
 func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

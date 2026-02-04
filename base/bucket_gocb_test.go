@@ -1614,7 +1614,6 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 func TestGetXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -1700,7 +1699,6 @@ func TestGetXattr(t *testing.T) {
 func TestGetXattrAndBody(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -2395,7 +2393,6 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	if !bucket.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
 	}
-	SetUpTestLogging(t, LevelInfo, KeyAll)
 
 	testCases := []struct {
 		name          string

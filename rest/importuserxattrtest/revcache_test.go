@@ -21,7 +21,6 @@ import (
 )
 
 func TestUserXattrRevCache(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// need to disable sequence batching given two rest testers allocating sequence batches
 	// can mean that the changes feed has to wait for sequences from another to be released to
@@ -112,7 +111,6 @@ func TestUserXattrRevCache(t *testing.T) {
 
 func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	// Sync function to set channel access to a channels UserXattrKey

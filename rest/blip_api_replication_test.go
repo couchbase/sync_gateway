@@ -23,7 +23,6 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Skipping test that requires xattrs")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
@@ -97,7 +96,6 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 func TestBlipClientPushAndPullReplication(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},

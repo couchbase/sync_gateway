@@ -636,7 +636,6 @@ func TestReplicateXattrs(t *testing.T) {
 // target without attachment links, and after migration the update is replicated and attachments
 // become available on the target.
 func TestXDCRBeforeAttachmentMigration(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	srcBucket, srcDs, dstBucket, _ := getTwoBucketDataStores(t)
 	ctx := base.TestCtx(t)

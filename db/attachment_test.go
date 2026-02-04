@@ -33,7 +33,6 @@ func unmarshalBody(t *testing.T, j string) Body {
 }
 
 func TestBackupOldRevisionWithAttachments(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	deltasEnabled := base.IsEnterpriseEdition()
 
@@ -110,7 +109,6 @@ func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("pending fix in CBG-5141")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		// enable delta sync so CV revs are backed up
@@ -529,7 +527,6 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	attData := []byte(`hello world`)
 	ctx := base.TestCtx(t)
@@ -773,7 +770,6 @@ func TestStoreAttachments(t *testing.T) {
 
 // TestMigrateBodyAttachments will set up a document with an attachment in pre-2.5 metadata format, and test various upgrade scenarios.
 func TestMigrateBodyAttachments(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const docKey = "TestMigrateBodyAttachments"
 

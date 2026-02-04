@@ -223,7 +223,6 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 
 // Ensures that a database remains offline when using async online with an invalid config that causes StartOnlineProcesses to fail.
 func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,

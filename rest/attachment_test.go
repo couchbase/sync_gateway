@@ -36,7 +36,6 @@ import (
 
 // Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
@@ -2130,7 +2129,6 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 }
 
 func TestAttachmentsMissing(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
@@ -2156,7 +2154,6 @@ func TestAttachmentsMissing(t *testing.T) {
 }
 
 func TestAttachmentsMissingNoBody(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
@@ -2217,7 +2214,6 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
@@ -2500,7 +2496,6 @@ func TestProveAttachmentNotFound(t *testing.T) {
 
 	// Should log:
 	// "Peer sent prove attachment error 404 attachment not found, falling back to getAttachment for proof in doc <ud>doc1</ud> (digest sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=)"
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Use different attachment name to bypass digest check in ForEachStubAttachment() which skips prove attachment code
 	// Set attachment to V2 so it can be retrieved by RT successfully

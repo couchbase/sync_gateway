@@ -252,7 +252,6 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 }
 
 func TestStatsLoggerStopped(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sc := DefaultStartupConfig("")
 
@@ -364,7 +363,6 @@ outerLoop:
 }
 
 func TestStartAndStopHTTPServers(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
@@ -489,7 +487,6 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 
 // CBG-1535 - test Bootstrap.UseTLSServer option
 func TestUseTLSServer(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %v"
 	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %v"
 	testCases := []struct {
@@ -670,7 +667,6 @@ func TestLogFlush(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			// Setup memory logging
 			base.InitializeMemoryLoggers()
@@ -822,7 +818,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -1065,7 +1060,6 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 }
 
 func TestCollectStackTraceFile(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	tempPath := t.TempDir()
 	serverConfig := DefaultStartupConfig(tempPath)

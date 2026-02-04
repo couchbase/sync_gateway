@@ -22,7 +22,6 @@ import (
 )
 
 func TestUserXattrAutoImport(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -139,7 +138,6 @@ func TestUserXattrAutoImport(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -232,7 +230,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
