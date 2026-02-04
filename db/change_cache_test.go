@@ -1807,7 +1807,12 @@ func BenchmarkProcessEntry(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
-			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			bucket := base.GetTestBucket(b)
+			defer bucket.Close(ctx)
+			context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+				EnableXattr: true,
+				Scopes:      GetScopesOptions(b, bucket, 1),
+			})
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
@@ -1967,7 +1972,11 @@ func BenchmarkDocChanged(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
-			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
+			bucket := base.GetTestBucket(b)
+			defer bucket.Close(ctx)
+			context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+				Scopes: GetScopesOptions(b, bucket, 1),
+			})
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
