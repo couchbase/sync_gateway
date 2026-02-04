@@ -741,7 +741,6 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	b.StartTimer()
 	for i := range docCount {
 		cache.addToCache(ctx, testLogEntry(uint64(i), docIDs[i], "1-a"), false)
 	}
@@ -899,7 +898,6 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	b.StartTimer()
 	for i := range docCount {
 		cache.addToCache(ctx, docs[i], false)
 	}
