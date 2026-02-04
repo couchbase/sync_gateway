@@ -28,6 +28,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -3739,5 +3740,50 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
+}
+
+func TestMOUDeletedOnTombstone(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	docID := t.Name()
+	docBody := map[string]any{"foo": "bar"}
+
+	rtConfig := RestTesterConfig{
+		CustomTestBucket: bucket,
+		GuestEnabled:     true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		btcRunner.StartPull(client.ID())
+		btcRunner.StartPush(client.ID())
+
+		err := col.Set(docID, 0, &sgbucket.UpsertOptions{}, docBody)
+		require.NoError(t, err)
+
+		rt.WaitForDoc(docID)
+		version, _ := rt.GetDoc(docID)
+
+		btcRunner.WaitForVersion(client.ID(), docID, version)
+
+		tombStoneVersion := btcRunner.DeleteDoc(client.ID(), docID, &version)
+		rt.WaitForTombstone(docID, tombStoneVersion)
+
+		rawDoc := rt.GetRawDoc(docID)
+		mou, _ := rawDoc.Xattrs.RawDocXattrsOthers[base.MouXattrName]
+		assert.Nil(t, mou)
+
 	})
 }

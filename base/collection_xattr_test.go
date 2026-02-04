@@ -798,6 +798,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 				finalXattrs: map[string][]byte{
 					"_xattr1": []byte(`{"c": "d"}`),
 				},
+				writeErrorFunc: RequireXattrDeleteOnDocumentInsertError,
 			},
 			{
 				name:        "previousDoc=nil,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=0,deleteBody=true",
@@ -811,7 +812,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					"_xattr1": []byte(`{"c": "d"}`),
 				},
 				deleteBody:     true,
-				writeErrorFunc: RequireDocNotFoundError,
+				writeErrorFunc: RequireXattrDeleteOnDocumentInsertError,
 			},
 			{
 				name: "previousDoc=body+_xattr1,_xattr2,xattrsToUpdate=_xattr1,xattrsToDelete=_xattr2,cas=correct,deleteBody=false",
@@ -819,6 +820,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					Body: []byte(`{"foo": "bar"}`),
 					Xattrs: map[string][]byte{
 						"_xattr1": []byte(`{"a" : "b"}`),
+						"_xattr2": []byte(`{"c": "d"}`),
 					},
 				},
 				updatedXattrs: map[string][]byte{
@@ -838,6 +840,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					Body: []byte(`{"foo": "bar"}`),
 					Xattrs: map[string][]byte{
 						"_xattr1": []byte(`{"a" : "b"}`),
+						"_xattr2": []byte(`{"c": "d"}`),
 					},
 				},
 				updatedXattrs: map[string][]byte{
@@ -874,7 +877,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 					cas = casOut
 				}
 			}
-			_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.updatedXattrs, nil, test.deleteBody, nil)
+			_, err := col.WriteTombstoneWithXattrs(ctx, docID, exp, cas, test.updatedXattrs, test.xattrsToDelete, test.deleteBody, nil)
 			if test.writeErrorFunc != nil {
 				test.writeErrorFunc(t, err)
 				if test.finalBody != nil {
