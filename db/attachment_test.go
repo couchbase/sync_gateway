@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -54,19 +55,19 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	// current revision backups depend on delta sync (to support deltas to SDK updates)
 	if deltasEnabled {
-		rev1OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		rev1OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 
-		rev1OldBody, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+		rev1OldBody, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	} else {
-		_, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		_, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 
-		_, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
+		_, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev1.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
@@ -80,29 +81,68 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 	// rev 1 should be backed up even without delta sync now (by revTree ID - but not CV)
 	if !deltasEnabled {
-		rev1OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
+		rev1OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid1)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev1OldBody), "hello.txt")
 	}
 
 	// again, only backup current winning revision if delta sync
 	if deltasEnabled {
-		rev2OldBody, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		rev2OldBody, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 
-		rev2OldBody, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+		rev2OldBody, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.NoError(t, err)
 		assert.Contains(t, string(rev2OldBody), "hello.txt")
 	} else {
-		_, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
+		_, _, _, err := collection.getOldRevisionJSON(ctx, docID, revid2)
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 
-		_, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
+		_, _, _, err = collection.getOldRevisionJSON(ctx, docID, base.Crc32cHashString([]byte(docRev2.HLV.GetCurrentVersionString())))
 		require.Error(t, err)
 		assert.Equal(t, "404 missing", err.Error())
 	}
+}
+
+func TestGetBackupRevisionWhenCurrentRevisionHasAttachments(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("pending fix in CBG-5141")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		// enable delta sync so CV revs are backed up
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Create rev 1
+	revID, doc1, err := collection.Put(ctx, "doc1", Body{"test": "value1"})
+	require.NoError(t, err)
+
+	// Create rev 2 with attachment
+	var rev2Body Body
+	rev2Data := fmt.Sprintf(`{"test":"value2", "%s":"%s", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`, BodyRev, revID)
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+	_, _, err = collection.Put(ctx, "doc1", rev2Body)
+	require.NoError(t, err)
+
+	// can remove in CBG-4542
+	db.FlushRevisionCacheForTest()
+
+	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc1.HLV.ExtractCurrentVersionFromHLV(), false, true)
+	require.NoError(t, err)
+
+	// assert version is fetched and attachments is empty
+	assert.Equal(t, doc1.HLV.GetCurrentVersionString(), docRev.CV.String())
+	assert.Empty(t, docRev.Attachments)
 }
 
 func TestAttachments(t *testing.T) {

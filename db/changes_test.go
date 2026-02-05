@@ -9,8 +9,6 @@
 package db
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"reflect"
@@ -459,91 +457,6 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
-
-}
-
-// Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
-func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
-	base.SetUpBenchmarkLogging(b, base.LevelWarn, base.KeyHTTP)
-
-	db, ctx := setupTestDB(b)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
-
-	fieldVal := func(valSizeBytes int) string {
-		buffer := bytes.Buffer{}
-		for range valSizeBytes {
-			buffer.WriteString("a")
-		}
-		return buffer.String()
-	}
-
-	createDoc := func(numKeys, valSizeBytes int) Body {
-		doc := Body{}
-		for keyNum := range numKeys {
-			doc[fmt.Sprintf("%v", keyNum)] = fieldVal(valSizeBytes)
-		}
-		return doc
-	}
-
-	numDocs := 400
-	numKeys := 200
-	valSizeBytes := 1024
-
-	// Create 2k docs of size 50k, 1000 keys with branches, 1 parent + 2 child branches -- doesn't matter which API .. bucket api
-	for range numDocs {
-
-		// Create the parent rev
-		docid, err := base.GenerateRandomID()
-		require.NoError(b, err)
-		docBody := createDoc(numKeys, valSizeBytes)
-		revId, _, err := collection.Put(ctx, docid, docBody)
-		if err != nil {
-			b.Fatalf("Error creating doc: %v", err)
-		}
-
-		// Create child rev 1
-		docBody["child"] = "A"
-		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-A", revId}, false, ExistingVersionWithUpdateToHLV)
-		if err != nil {
-			b.Fatalf("Error creating child1 rev: %v", err)
-		}
-
-		// Create child rev 2
-		docBody["child"] = "B"
-		_, _, err = collection.PutExistingRevWithBody(ctx, docid, docBody, []string{"2-B", revId}, false, ExistingVersionWithUpdateToHLV)
-		if err != nil {
-			b.Fatalf("Error creating child2 rev: %v", err)
-		}
-
-	}
-
-	// Start changes feed
-	var options ChangesOptions
-	options.Conflicts = true  // style=all_docs
-	options.ActiveOnly = true // active_only=true
-	options.Since = SequenceID{Seq: 0}
-
-	for b.Loop() {
-
-		// Changes params: POST /pm/_changes?feed=normal&heartbeat=30000&style=all_docs&active_only=true
-		// Changes request of all docs (could also do GetDoc call, but misses other possible things). One shot, .. etc
-
-		changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(b))
-		options.ChangesCtx = changesCtx
-		feed, err := collection.MultiChangesFeed(ctx, base.SetOf("*"), options)
-		if err != nil {
-			b.Fatalf("Error getting changes feed: %v", err)
-		}
-		for changeEntry := range feed {
-			// log.Printf("changeEntry: %v", changeEntry)
-			if changeEntry == nil {
-				break
-			}
-		}
-		changesCtxCancel()
-
-	}
 
 }
 

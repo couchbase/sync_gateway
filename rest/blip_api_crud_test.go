@@ -28,6 +28,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -1830,37 +1831,48 @@ func TestSendReplacementRevision(t *testing.T) {
 
 	userChannels := []string{"ABC", "DEF"}
 	rev1Channel := "ABC"
-	replicationChannels := "ABC,XYZ"
 
 	tests := []struct {
 		name                      string
 		expectReplacementRev      bool
 		clientSendReplacementRevs bool
 		replacementRevChannel     string
+		replicationChannels       string // empty string means no filter (user's accessible channels)
 	}{
 		{
 			name:                      "no replacements",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: false,
 			replacementRevChannel:     "ABC",
+			replicationChannels:       "ABC,XYZ",
 		},
 		{
 			name:                      "opt-in",
 			expectReplacementRev:      true,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "ABC",
+			replicationChannels:       "ABC,XYZ",
+		},
+		{
+			name:                      "opt-in no channel filter",
+			expectReplacementRev:      true,
+			clientSendReplacementRevs: true,
+			replacementRevChannel:     "ABC",
+			replicationChannels:       "", // no filter - uses user's accessible channels
 		},
 		{
 			name:                      "opt-in filtered channel",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "DEF", // accessible but filtered out
+			replicationChannels:       "ABC,XYZ",
 		},
 		{
 			name:                      "opt-in inaccessible channel",
 			expectReplacementRev:      false,
 			clientSendReplacementRevs: true,
 			replacementRevChannel:     "XYZ", // inaccessible
+			replicationChannels:       "ABC,XYZ",
 		},
 	}
 
@@ -1904,7 +1916,7 @@ func TestSendReplacementRevision(t *testing.T) {
 
 				// one shot or else we'll carry on to send rev 2-... normally, and we can't assert correctly on the final state of the client
 				rt.WaitForPendingChanges()
-				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: replicationChannels, Continuous: false})
+				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: test.replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
 				version2 := <-updatedVersion
@@ -2027,7 +2039,7 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 		otherSource := "otherSource"
 		hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
 		existingHLVKey := "doc1"
-		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+		cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey, nil)
 
 		// force import of this write
 		_, _ = rt.GetDoc(docID)
@@ -3728,5 +3740,50 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
+	})
+}
+
+func TestMOUDeletedOnTombstone(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	docID := t.Name()
+	docBody := map[string]any{"foo": "bar"}
+
+	rtConfig := RestTesterConfig{
+		CustomTestBucket: bucket,
+		GuestEnabled:     true,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		btcRunner.StartPull(client.ID())
+		btcRunner.StartPush(client.ID())
+
+		err := col.Set(docID, 0, &sgbucket.UpsertOptions{}, docBody)
+		require.NoError(t, err)
+
+		rt.WaitForDoc(docID)
+		version, _ := rt.GetDoc(docID)
+
+		btcRunner.WaitForVersion(client.ID(), docID, version)
+
+		tombStoneVersion := btcRunner.DeleteDoc(client.ID(), docID, &version)
+		rt.WaitForTombstone(docID, tombStoneVersion)
+
+		rawDoc := rt.GetRawDoc(docID)
+		mou, _ := rawDoc.Xattrs.RawDocXattrsOthers[base.MouXattrName]
+		assert.Nil(t, mou)
+
 	})
 }

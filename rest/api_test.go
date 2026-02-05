@@ -3015,7 +3015,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	otherSource := "otherSource"
 	hlvHelper := db.NewHLVAgent(t, rt.GetSingleDataStore(), otherSource, "_vv")
 	existingHLVKey := docID
-	cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey)
+	cas := hlvHelper.InsertWithHLV(ctx, existingHLVKey, nil)
 	casV1 := cas
 	encodedSourceV1 := db.EncodeSource(otherSource)
 
@@ -3401,6 +3401,9 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 }
 
 func TestDocCRUDWithCV(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Test requires revision cache to be enabled, fetches older revisions expecting to be resident in cache")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -3443,6 +3446,51 @@ func TestDocCRUDWithCV(t *testing.T) {
 	require.NotEqual(t, updateVersion, deleteVersion)
 	assert.Greaterf(t, deleteVersion.CV.Value, updateVersion.CV.Value, "Expected CV Value to be bumped on delete")
 	assert.Greaterf(t, revIDGen(deleteVersion), revIDGen(updateVersion), "Expected revision generation to be bumped on delete")
+}
+
+func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				// enable delta sync to ensure we have a backup revision stored for cv
+				DeltaSync: &DeltaSyncConfig{
+					Enabled:          base.Ptr(true),
+					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	const docID = "doc1"
+
+	createVersion := rt.PutDoc(docID, `{"test":"doc"}`)
+
+	deleteVrs := rt.DeleteDoc(docID, createVersion)
+
+	// flush cache to ensure we're reading from the bucket
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	docRev, err := collection.GetRevisionCacheForTest().GetWithCV(ctx, docID, &createVersion.CV, false, true)
+	require.NoError(t, err)
+	// assert doc is not deleted
+	assert.False(t, docRev.Deleted)
+	assert.False(t, bytes.Contains(docRev.BodyBytes, []byte("{}")))
+
+	// resurrect the document
+	rt.UpdateDoc(docID, deleteVrs, `{"test":"doc resurrected"}`)
+
+	// flush cache to ensure we're reading from the bucket
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// fetch rev 2 which is deleted
+	docRev, err = collection.GetRevisionCacheForTest().GetWithCV(ctx, docID, &deleteVrs.CV, false, true)
+	require.NoError(t, err)
+	assert.True(t, docRev.Deleted)
+	// assert deleted property is there
+	assert.True(t, bytes.Contains(docRev.BodyBytes, []byte("{}")))
 }
 
 // TestAllowConflictsConfig verifies that the database configuration does not allow
@@ -3538,6 +3586,40 @@ func TestDisableAllowStarChannel(t *testing.T) {
 	_, err := rt.ServerContext().ReloadDatabase(ctx, dbName, false)
 	assert.Error(t, err, errResp)
 	base.DebugfCtx(t.Context(), base.KeySGTest, "additional logs")
+}
+
+func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				// enable delta sync to ensure we have a backup revision stored for cv
+				DeltaSync: &DeltaSyncConfig{
+					Enabled:          base.Ptr(true),
+					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	coll, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	docID := t.Name()
+	// create rev 1 with attachment
+	createVersion := rt.PutDoc(docID, `{"test":"data", "_attachments": {"att1": {"data":"SGVsbG8gd29ybGQh"}}}`)
+
+	// update to rev 2 without attachment
+	rt.UpdateDoc(docID, createVersion, `{"test":"data updated"}`)
+
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// fetch rev 1 by its CV, which should include the attachment
+	docRev, err := coll.GetRevisionCacheForTest().GetWithCV(ctx, docID, &createVersion.CV, false, true)
+	require.NoError(t, err)
+
+	assert.Len(t, docRev.Attachments, 1)
+	_, ok := docRev.Attachments["att1"]
+	assert.True(t, ok, "Expected attachment 'att1' to be present in fetched revision")
 }
 
 // TestECCV validates if the ECCV value of the bucket is returned as a response
@@ -3752,4 +3834,48 @@ func TestGetConfigAfterFailToStartOnlineProcess(t *testing.T) {
 	// Original bug will trigger panic here on this endpoint
 	resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
 	RequireStatus(t, resp, http.StatusOK)
+}
+
+func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				// enable delta sync to ensure we have a backup revision stored for cv
+				DeltaSync: &DeltaSyncConfig{
+					Enabled:          base.Ptr(true),
+					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	docID := t.Name()
+	// create rev 1
+	createVersion := rt.PutDoc(docID, `{"test":"data"}`)
+
+	// update to rev 2
+	rt.UpdateDoc(docID, createVersion, `{"test":"data updated"}`)
+
+	// flush cache
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// fetch rev 1 by its CV
+	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, url.QueryEscape(createVersion.CV.String())), "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, string(resp.BodyBytes()), "missing")
+
+	// flush cache
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// fetch rev 1 by revID
+	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, createVersion.RevTreeID), "")
+	RequireStatus(t, resp, http.StatusOK)
+	var body db.Body
+	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
+	require.NoError(t, err)
+	assert.Equal(t, "data", body["test"].(string))
+	assert.Equal(t, docID, body[db.BodyId])
+	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
+	assert.Nil(t, body[db.BodyCV])
 }

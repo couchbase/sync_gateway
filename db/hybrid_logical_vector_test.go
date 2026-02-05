@@ -335,7 +335,7 @@ func TestHLVImport(t *testing.T) {
 			name: "HLV write from without mou",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
-				_ = hlvHelper.InsertWithHLV(ctx, docID)
+				_ = hlvHelper.InsertWithHLV(ctx, docID, nil)
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
 				return &MetadataOnlyUpdate{
@@ -356,7 +356,7 @@ func TestHLVImport(t *testing.T) {
 			name: "XDCR stamped with _mou",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
-				cas := hlvHelper.InsertWithHLV(ctx, docID)
+				cas := hlvHelper.InsertWithHLV(ctx, docID, nil)
 
 				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 				require.NoError(t, err)
@@ -387,7 +387,7 @@ func TestHLVImport(t *testing.T) {
 			name: "invalid _mou, but valid hlv",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				hlvHelper := NewHLVAgent(t, collection.dataStore, otherSource, "_vv")
-				cas := hlvHelper.InsertWithHLV(ctx, docID)
+				cas := hlvHelper.InsertWithHLV(ctx, docID, nil)
 
 				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 				require.NoError(t, err)

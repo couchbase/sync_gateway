@@ -667,7 +667,7 @@ func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setChec
 					base.InfofCtx(c.ctx, base.KeyReplicate, "Revision mismatch in setCheckpoint - updated from %q to %q based on existing checkpoint, will retry", checkpoint.Rev, existingCheckpoint.Rev)
 					checkpoint.Rev = existingCheckpoint.Rev
 				} else {
-					base.InfofCtx(c.ctx, base.KeyReplicate, "Revision mismatch in setCheckpoint, and unable to retrieve existing, will retry", getErr)
+					base.InfofCtx(c.ctx, base.KeyReplicate, "Revision mismatch in setCheckpoint, and unable to retrieve existing, will retry")
 					// pause before falling through to retry, in case of temporary failure on getFn
 					time.Sleep(time.Millisecond * 100)
 				}

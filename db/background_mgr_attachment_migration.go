@@ -211,7 +211,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if failedDocs > 0 {
 			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
 		}
-		base.InfofCtx(ctx, base.KeyAll, msg)
+		base.InfofCtx(ctx, base.KeyAll, "%s", msg)
 	case <-terminator.Done():
 		dcpClient.Close()
 		err = <-doneChan
@@ -223,7 +223,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		if failedDocs > 0 {
 			msg += fmt.Sprintf(" with %d docs failed", failedDocs)
 		}
-		base.InfofCtx(ctx, base.KeyAll, msg)
+		base.InfofCtx(ctx, base.KeyAll, "%s", msg)
 	}
 	return nil
 }

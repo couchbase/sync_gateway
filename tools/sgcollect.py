@@ -45,14 +45,9 @@ from tasks import (
     urlopen,
 )
 
-try:
-    # Don't validate HTTPS by default.
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    # Running an older version of Python which won't validate HTTPS anyway.
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
+# Don't validate HTTPS by default.
+# mypy 1.19.1 has mismatched types for these functions
+ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[assignment]
 
 # Collects the following info from Sync Gateway
 #

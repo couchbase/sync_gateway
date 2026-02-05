@@ -74,6 +74,10 @@ if [ "${TEST_DEBUG:-}" == "true" ]; then
     export SG_TEST_BUCKET_POOL_DEBUG="true"
 fi
 
+if [ "${DISABLE_REV_CACHE:-}" == "true" ]; then
+    export SG_TEST_DISABLE_REV_CACHE="true"
+fi
+
 if [ "${TARGET_TEST}" != "ALL" ]; then
     GO_TEST_FLAGS+=(-run "${TARGET_TEST}")
 fi

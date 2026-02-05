@@ -125,7 +125,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 			if err != nil {
 				return failProcess(err, "[%s] Failed to mark attachment %s from doc %s with attachment docID %s. Err: %v", compactionLoggingID, base.UD(attachmentName), base.UD(docID), base.UD(attachmentDocID), err)
 			}
-			base.DebugfCtx(ctx, base.KeyAll, "[%s] Marked attachment %s from doc %s with attachment docID %s ; Event CAS: %s", compactionLoggingID, base.UD(attachmentName), base.UD(docID), base.UD(attachmentDocID), event.Cas)
+			base.DebugfCtx(ctx, base.KeyAll, "[%s] Marked attachment %s from doc %s with attachment docID %s ; Event CAS: %d", compactionLoggingID, base.UD(attachmentName), base.UD(docID), base.UD(attachmentDocID), event.Cas)
 			markedAttachmentCount.Add(1)
 		}
 		return true

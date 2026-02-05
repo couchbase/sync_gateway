@@ -502,17 +502,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				dbContext.AccessLock.RLock()
 				defer dbContext.AccessLock.RUnlock()
 			}
-
-			dbState := atomic.LoadUint32(&dbContext.State)
-
-			// if dbState == db.DBOnline, continue flow and invoke the handler method
-			if dbState == db.DBOffline {
-				// DB is offline, only handlers with runOffline true can run in this state
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
-			} else if dbState != db.DBOnline {
-				// DB is in transition state, no calls will be accepted until it is Online or Offline state
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is %v - try again later", db.RunStateString[dbState])
-			}
 		}
 	}
 
@@ -634,6 +623,19 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		h.permissionsResults = make(map[string]bool)
 		for _, responsePermission := range responsePermissions {
 			h.permissionsResults[responsePermission.PermissionName] = true
+		}
+	}
+
+	if dbContext != nil && !h.runOffline {
+		dbState := atomic.LoadUint32(&dbContext.State)
+
+		// if dbState == db.DBOnline, continue flow and invoke the handler method
+		if dbState == db.DBOffline {
+			// DB is offline, only handlers with runOffline true can run in this state
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
+		} else if dbState != db.DBOnline {
+			// DB is in transition state, no calls will be accepted until it is Online or Offline state
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is %v - try again later", db.RunStateString[dbState])
 		}
 	}
 

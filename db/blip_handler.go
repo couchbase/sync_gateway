@@ -335,6 +335,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Start asynchronous changes goroutine
 	go func() {
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(bh.loggingCtx, "PANIC sending changes: %v\n%s. Canceling the replication.", panicked, debug.Stack())
+				bh.Close()
+			}
+		}()
+
 		// Pull replication stats by type
 		if continuous {
 			bh.replicationStats.SubChangesContinuousActive.Add(1)

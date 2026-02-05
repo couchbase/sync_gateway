@@ -566,6 +566,13 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
+
+	if base.TestDisableRevCache() {
+		if dbcOptions.RevisionCacheOptions == nil {
+			dbcOptions.RevisionCacheOptions = DefaultRevisionCacheOptions()
+		}
+		dbcOptions.RevisionCacheOptions.MaxItemCount = 0
+	}
 }
 
 // SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).

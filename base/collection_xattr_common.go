@@ -88,7 +88,7 @@ func (c *Collection) WriteTombstoneWithXattrs(ctx context.Context, k string, exp
 
 		// If deleteBody == true, remove the body and update xattr
 		if deleteBody {
-			casOut, tombstoneErr = c.updateXattrsDeleteBody(ctx, k, exp, cas, xattrs, nil, opts)
+			casOut, tombstoneErr = c.updateXattrsDeleteBody(ctx, k, exp, cas, xattrs, xattrsToDelete, opts)
 		} else {
 			if len(xattrs) == 0 && len(xattrsToDelete) == 0 {
 				return false, sgbucket.ErrNeedXattrs, 0
