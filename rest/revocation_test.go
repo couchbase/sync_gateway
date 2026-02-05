@@ -1447,7 +1447,6 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-
 	xattrKey := "channelInfo"
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
@@ -1724,7 +1723,6 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-
 
 	sgrRunner := NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
@@ -2039,7 +2037,6 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-
 	sgrRunner := NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		// Passive
@@ -2252,7 +2249,6 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 func TestRevocationMessage(t *testing.T) {
 	base.LongRunningTest(t)
-
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2495,7 +2491,6 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 func TestBlipRevokeNonExistentRole(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
@@ -2538,7 +2533,6 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	base.LongRunningTest(t)
-
 
 	defer db.SuspendSequenceBatching()()
 

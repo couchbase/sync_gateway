@@ -69,7 +69,6 @@ func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key strin
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -186,7 +185,6 @@ func TestHasAttachmentsFlag(t *testing.T) {
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
-
 
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)

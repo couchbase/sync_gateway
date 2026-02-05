@@ -1959,7 +1959,6 @@ func TestDocIDFilterResurrection(t *testing.T) {
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
 
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	})

@@ -1614,7 +1614,6 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 func TestGetXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1698,7 +1697,6 @@ func TestGetXattr(t *testing.T) {
 
 func TestGetXattrAndBody(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
-
 
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)

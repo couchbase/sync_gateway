@@ -818,7 +818,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
 	}
 
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{

@@ -424,7 +424,6 @@ func testGetIndexesMeta(t *testing.T, database *db.Database, indexInitOptions db
 // TestInitializeIndexesConcurrentMultiNode simulates a large multi-node SG cluster starting up and racing to create indexes.
 func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 
-
 	// Pick a high enough number that it's likely to trigger the concurrent/race conditions we're testing for.
 	//
 	// This number doesn't significantly increase test time since, since there's still the same number of indexes being created.

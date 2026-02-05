@@ -174,7 +174,6 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 
 func TestDatabase(t *testing.T) {
 
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

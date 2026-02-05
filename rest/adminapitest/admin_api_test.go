@@ -1589,7 +1589,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
 	assert.NotPanicsf(t, func() {
 		rt := rest.NewRestTester(t, nil)
@@ -2672,7 +2671,7 @@ func TestConfigEndpoint(t *testing.T) {
 }
 
 func TestLoggingDeprecationWarning(t *testing.T) {
-
+	base.ResetGlobalTestLogging(t)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 

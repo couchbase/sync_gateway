@@ -2186,7 +2186,6 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 func TestSkippedSequenceCompact(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
@@ -3174,7 +3173,6 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 
 func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	base.LongRunningTest(t)
-
 
 	opts := DefaultCacheOptions()
 	opts.CachePendingSeqMaxWait = 20 * time.Minute

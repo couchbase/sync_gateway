@@ -950,7 +950,6 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
 
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	// Create the docs that will be marked and not swept

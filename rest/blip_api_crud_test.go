@@ -2130,7 +2130,6 @@ func TestActiveOnlyContinuous(t *testing.T) {
 // Test that exercises Sync Gateway's norev handler
 func TestBlipNorev(t *testing.T) {
 
-
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2336,7 +2335,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.LongRunningTest(t)
-
 
 	// TODO: CBG-2653: change this to use NewBlipTester
 	bt := NewBlipTesterDefaultCollection(t)

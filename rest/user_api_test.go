@@ -1089,7 +1089,6 @@ func TestRemovingUserXattr(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 
-
 	testCases := []struct {
 		name          string
 		autoImport    bool

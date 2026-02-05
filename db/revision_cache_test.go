@@ -739,7 +739,6 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
 func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

@@ -506,7 +506,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		}
 	}`
 
-
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: syncFn,

@@ -450,7 +450,6 @@ func TestResumeStoppedFeed(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)

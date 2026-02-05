@@ -280,7 +280,6 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -368,7 +367,6 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 func TestBlipDeltaSyncPull(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -442,7 +440,6 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Enterprise-only test for delta sync")
 	}
-
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -543,7 +540,6 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -607,7 +603,6 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 // └──────────────┘ └───────────────────────────────────┘
 func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	base.LongRunningTest(t)
-
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{
@@ -855,7 +850,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("rev cache specific test")
 	}
-
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{

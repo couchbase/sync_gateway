@@ -35,7 +35,6 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-
 	// turn off auto import - since we want reliable XDCR stats and don't want MOU/import echos to interfere
 	rtA := rest.NewRestTester(t, &rest.RestTesterConfig{AutoImport: base.Ptr(false)})
 	defer rtA.Close()

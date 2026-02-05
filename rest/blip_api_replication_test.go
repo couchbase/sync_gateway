@@ -96,7 +96,6 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 func TestBlipClientPushAndPullReplication(t *testing.T) {
 	base.LongRunningTest(t)
 
-
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},
 		GuestEnabled:   true,
