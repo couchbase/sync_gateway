@@ -101,7 +101,7 @@ func TestImportDestKey(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.key, ImportDestKey(test.dbName, test.scopeName, test.collections))
+			require.Equal(t, test.key, DestKey(test.dbName, test.scopeName, test.collections, ImportDestType))
 		})
 	}
 }
