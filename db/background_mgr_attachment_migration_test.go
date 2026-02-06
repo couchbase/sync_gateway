@@ -84,6 +84,8 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
+	// create some docs with attachments defined, a large number is needed to allow us to stop the migration midway
+	// through without it completing first
 	for i := range 4000 {
 		docBody := Body{
 			"value":         1234,
@@ -268,25 +270,25 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 		expected      string
 	}{
 		{
-			name:          "default collection, no metadata id",
+			name:          "default collection, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "",
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:att_migration:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection, metadata id",
+			name:          "default collection, group ID=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:att_migration:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, no metadata id",
+			name:          "default collection + collection 1, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "",
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:att_migration:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, metadata id",
+			name:          "default collection + collection 1, group ID=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "foo",
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:att_migration:1234", base.ProductAPIVersion),

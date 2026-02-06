@@ -651,25 +651,25 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 		expected      string
 	}{
 		{
-			name:          "default collection, no metadata id",
+			name:          "default collection, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "",
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection, metadata id",
+			name:          "default collection, group id= foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, no metadata id",
+			name:          "default collection + collection 1, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "",
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, metadata id",
+			name:          "default collection + collection 1, group id=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "foo",
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
