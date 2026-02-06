@@ -657,7 +657,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection, group id= foo",
+			name:          "default collection, group id=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
