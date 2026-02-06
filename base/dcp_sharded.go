@@ -141,7 +141,13 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		return err
 	}
 
-	indexParams, err := cbgtIndexParams(DestKey(dbName, scope, collections, ImportDestType))
+	var destType DestType
+	if resyncIndex {
+		destType = ResyncDestType
+	} else {
+		destType = ImportDestType
+	}
+	indexParams, err := cbgtIndexParams(DestKey(dbName, scope, collections, destType))
 	if err != nil {
 		return err
 	}

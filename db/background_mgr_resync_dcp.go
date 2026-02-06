@@ -118,6 +118,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
+	var doneChan chan error
+	dcpClient := &base.GoCBDCPClient{}
+
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
 		if err != nil {
@@ -195,6 +198,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		// TODO: Handle multiple scopes
 
+		loggingCtx := db.AddBucketUserLogContext(ctx)
+		cbStore, ok := base.AsCouchbaseBucketStore(bucket)
+		if !ok {
+			base.InfofCtx(loggingCtx, base.KeyResync, "walrus bucket detected while running distributed resync")
+			return nil
+		}
+
+		if !base.IsEnterpriseEdition() {
+			base.WarnfCtx(loggingCtx, "CE SGW detected while running distributed resync")
+			return nil
+		}
 		// Dest creation
 		for sn := range db.Scopes {
 			scopeName = sn
@@ -211,7 +225,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		} else {
 			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncDestType)
 		}
-		loggingCtx := db.AddBucketUserLogContext(ctx)
 
 		maxVbNo, err := bucket.GetMaxVbno()
 
@@ -250,38 +263,31 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
-		cbStore, ok := base.AsCouchbaseBucketStore(bucket)
-		if !ok {
-			// TODO: How to handle walrus for distributed resync?
-			base.InfofCtx(loggingCtx, base.KeyResync, "walrus bucket detected while running distributed resync")
-			return nil
-		}
-		// TODO: make num partitions as a user configurable value for resync
-		numpartitions := uint16(1)
+		numpartitions := db.Options.ImportOptions.ImportPartitions
 		resyncCbgtContext, err = base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
 			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, true)
 
 		if err != nil {
 			return fmt.Errorf("Error starting sharded dcp feed: %v", err)
 		}
-	}
+	} else {
+		dcpClient, err = base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
+			return err
+		}
 
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
-	if err != nil {
-		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
-		return err
-	}
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
+		doneChan, err = dcpClient.Start()
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
+			_ = dcpClient.Close()
+			return err
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
-	doneChan, err := dcpClient.Start()
-	if err != nil {
-		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
-		_ = dcpClient.Close()
-		return err
+		r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 	}
-	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
-
-	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	select {
 	case <-doneChan:
@@ -353,20 +359,21 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			db.RequireResync = collectionsRequiringResync
 		}
 	case <-terminator.Done():
+		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
 		if r.Distributed {
 			resyncCbgtContext.Stop()
 			resyncHB.Stop(ctx)
-		}
-		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
+		} else {
+			err = dcpClient.Close()
+			if err != nil {
+				base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+				return err
+			}
 
-		err = <-doneChan
-		if err != nil {
-			return err
+			err = <-doneChan
+			if err != nil {
+				return err
+			}
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
