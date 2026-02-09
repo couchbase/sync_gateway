@@ -12,7 +12,7 @@ require (
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
 	github.com/couchbase/gocb/v2 v2.11.1
 	github.com/couchbase/gocbcore/v10 v10.8.1
-	github.com/couchbase/gomemcached v0.2.1
+	github.com/couchbase/gomemcached v0.3.4
 	github.com/couchbase/sg-bucket v0.0.0-20250522135601-8c9a5acda2c2
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
@@ -61,6 +61,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
+	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/pprof v0.0.0-20240227163752-401108e1b7e7 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
