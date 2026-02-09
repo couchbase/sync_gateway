@@ -357,7 +357,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV
 			revision, getErr = db.revisionCache.GetWithRev(ctx, docid, *revID, RevCacheOmitDelta)
 		} else {
 			cv = &currentVersion
-			revision, getErr = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+			revision, getErr = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta, false)
 		}
 	} else {
 		// No rev given, so load active revision
@@ -432,7 +432,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 
 func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
 	if cv != nil {
-		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta)
+		revision, err = db.revisionCache.GetWithCV(ctx, docid, cv, RevCacheOmitDelta, false)
 	} else {
 		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
@@ -462,7 +462,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		initialFromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+		// It is possible delta source will not be resident in the cache and we may want to lookup to the bucket for a backup revision
+		initialFromRevision, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -503,7 +504,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// fromRevisionForDiff is a version of the fromRevision that is guarded by the delta lock that we will use to generate the delta (or check again for a newly cached delta)
 		var fromRevisionForDiff DocumentRevision
 		if fromRevIsCV {
-			fromRevisionForDiff, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta)
+			fromRevisionForDiff, err = db.revisionCache.GetWithCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -537,7 +538,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 			if err != nil {
 				return nil, nil, err
 			}
-			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta)
+			toRevision, err = db.revisionCache.GetWithCV(ctx, docID, &cv, RevCacheIncludeDelta, false)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -696,7 +697,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 			return nil, nil, nil, ErrMissing
 		}
 
-		bodyBytes, channels, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
+		bodyBytes, channels, _, err = c.getOldRevisionJSON(ctx, doc.ID, revid)
 		if err != nil || bodyBytes == nil {
 			return nil, nil, nil, err
 		}
@@ -942,7 +943,11 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch)
+	revInfo, ok := doc.History[ancestorRevId]
+	if !ok {
+		return
+	}
+	db.backupRevisionJSON(ctx, doc.ID, ancestorRevId, json, ch, revInfo.Deleted)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.GetRevTreeID() {
@@ -2159,7 +2164,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes(ctx)
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, doc.IsDeleted(), db.oldRevExpirySeconds(), doc.getCurrentChannels())
 	}
 	doc.RemoveBody()
 
@@ -3007,7 +3012,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 			}
 		}
 		revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revHash, newBodyWithAtts, doc.IsDeleted(), db.deltaSyncRevMaxAgeSeconds(), doc.getCurrentChannels())
 		// Optionally store a lookup document to find the CV-based revHash by legacy RevTree ID
 		if db.storeLegacyRevTreeData() {
 			_ = db.setOldRevisionJSONPtr(ctx, doc, db.deltaSyncRevMaxAgeSeconds())

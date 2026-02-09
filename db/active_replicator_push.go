@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"errors"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -228,6 +229,13 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 
 	apr.activeSendChanges.Add(1)
 	go func(s *blip.Sender) {
+		// Defer a panic recovery handler to ensure panics in this goroutine are logged and the BLIP handler is closed.
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(apr.ctx, "PANIC sending ISGR changes: %v\n%s. Canceling the replication.", panicked, debug.Stack())
+				bh.Close()
+			}
+		}()
 		defer apr.activeSendChanges.Add(-1)
 		isComplete, err := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,

@@ -160,7 +160,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			ctx := base.TestCtx(b)
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				doc := NewDocument("testDocID")
 				docReader := bytes.NewReader(doc1k_body)

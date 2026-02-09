@@ -2129,7 +2129,12 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "rt2", body["source"])
 
-		assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPull)
+		// replication status updates just after the document has been written in a blip handler callback, so the
+		// document can exist before stat is updated
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			status := ar.GetStatus(ctx1)
+			assert.Equal(c, strconv.FormatUint(remoteDoc.Sequence, 10), status.LastSeqPull, "status=%#+v", status)
+		}, 5*time.Second, 10*time.Millisecond)
 	})
 }
 
@@ -6872,6 +6877,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 func TestUnprocessableDeltas(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some delta sync")
+	}
+	if base.TestDisableRevCache() {
+		t.Skipf("Test requires altering of rev cache values")
 	}
 
 	// need Sync debugging due to AssertLogContains below

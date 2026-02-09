@@ -15,6 +15,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -284,6 +285,15 @@ func TestsDisableGSI() bool {
 	return !useGSI
 }
 
+// TestDisableRevCache returns true if environment variable SG_TEST_DISABLE_REV_CACHE is set to true
+func TestDisableRevCache() bool {
+	if disableRevCache := os.Getenv(TestEnvDisableRevCache); disableRevCache != "" {
+		val, _ := strconv.ParseBool(disableRevCache)
+		return val
+	}
+	return false
+}
+
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
 func TestUseCouchbaseServer() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
@@ -479,7 +489,12 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 
 		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
 			// Exit during teardown to fail the suite if they exceeded the threshold
-			log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			benchmark := flag.Lookup("test.bench")
+			if benchmark != nil && benchmark.Value.String() != "" {
+				log.Printf("Would be fatal if not running benchmarks FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			} else {
+				log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			}
 		} else {
 			log.Printf("TEST: Memory high water mark %.2f MB", inuseHighWaterMarkMB)
 		}
@@ -781,6 +796,11 @@ func TestRequiresGocbDCPClient(t testing.TB) {
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
+}
+
+// RequireXattrDeleteOnDocumentInsertError asserts that the given error represents error deleting xattrs during document delete
+func RequireXattrDeleteOnDocumentInsertError(t testing.TB, e error) {
+	require.True(t, errors.Is(e, sgbucket.ErrDeleteXattrOnDocumentInsert))
 }
 
 // RequireXattrNotFoundError asserts that the given error represents an xattr not found error.

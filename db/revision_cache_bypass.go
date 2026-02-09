@@ -40,6 +40,7 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 
 	docRev = DocumentRevision{
 		RevID:                  revID,
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 	var hlv *HybridLogicalVector
@@ -58,10 +59,11 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 }
 
 // GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (docRev DocumentRevision, err error) {
 
 	docRev = DocumentRevision{
 		CV:                     cv,
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
@@ -71,12 +73,11 @@ func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *
 	}
 
 	var hlv *HybridLogicalVector
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStores[collectionID], doc, *cv)
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStores[collectionID], doc, *cv, loadBackup)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 	if hlv != nil {
-		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
@@ -95,6 +96,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 
 	docRev = DocumentRevision{
 		RevID:                  doc.GetRevTreeID(),
+		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 

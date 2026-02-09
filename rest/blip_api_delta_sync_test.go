@@ -836,13 +836,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 		sgCanUseDelta := base.IsEnterpriseEdition()
 		if sgCanUseDelta {
-			assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart+2, deltasSentEnd)
 		} else {
-			assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
-			assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			if !base.TestDisableRevCache() {
+				assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+				assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+			}
 			assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
 			assert.Equal(t, deltasSentStart, deltasSentEnd)
 		}
@@ -855,6 +859,9 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Skipping enterprise-only delta sync test.")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("rev cache specific test")
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
@@ -1321,5 +1328,190 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		btcRunner.WaitForVersion(client.id, docID, version2)
 		// assert rev sent as delta
 		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+	})
+}
+
+func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	const (
+		username = "alice"
+	)
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+			// force revs to be loaded from bucket, avoids need for flushing cache all the time
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					MaxItemCount: base.Ptr[uint32](0),
+				},
+			},
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+
+	testCases := []struct {
+		name             string
+		filteredChannels string
+	}{
+		{
+			name:             "filtered channels",
+			filteredChannels: "alice",
+		},
+		{
+			name:             "unfiltered channels",
+			filteredChannels: "",
+		},
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // not applicable to rev trees, we will look to backup bodies always for rev tree clients
+	btcRunner.Run(func(t *testing.T) {
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				docID := SafeDocumentName(t, t.Name())
+				rt := NewRestTester(t,
+					rtConfig)
+				defer rt.Close()
+				rt.CreateUser(username, []string{"*"})
+				var version2 db.DocVersion
+				updatedVersion := make(chan DocVersion)
+
+				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
+				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
+					if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
+						updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+					}
+				}
+
+				opts := &BlipTesterClientOpts{
+					Username:             username,
+					ClientDeltas:         true,
+					changesEntryCallback: changesEntryCallbackFn,
+					sendReplacementRevs:  true,
+				}
+				client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+				defer client.Close()
+				ctx := t.Context()
+
+				// add doc from a different source to rest tester
+				agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
+				_ = agent.InsertWithHLV(ctx, docID, db.Body{"channels": "alice"})
+
+				// import doc
+				version1, _ := rt.GetDoc(docID)
+
+				if tc.filteredChannels != "" {
+					btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Channels: tc.filteredChannels, Continuous: true})
+				} else {
+					btcRunner.StartPull(client.id)
+				}
+				btcRunner.WaitForVersion(client.id, docID, version1)
+
+				// create rev 2
+				version2 = rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+				rt.WaitForPendingChanges()
+
+				// block until we've written the update and got the new version to use in assertions
+				version3 := <-updatedVersion
+
+				// we should get the new updated version through replacement rev functionality
+				btcRunner.WaitForVersion(client.id, docID, version3)
+
+				// rev message with a replacedRev property referring to the originally requested rev
+				msg2, ok := btcRunner.SingleCollection(client.id).GetPullRevMessage(docID, version3)
+				require.True(t, ok)
+				assert.Equal(t, db.MessageRev, msg2.Profile())
+				assert.Equal(t, version3.CV.String(), msg2.Properties[db.RevMessageRev])
+				assert.Equal(t, version2.CV.String(), msg2.Properties[db.RevMessageReplacedRev])
+
+				base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 1)
+				base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 0)
+			})
+		}
+	})
+}
+
+func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	const (
+		username = "alice"
+	)
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.Ptr(true),
+			},
+			// force revs to be loaded from bucket, avoids need for flushing cache all the time
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					MaxItemCount: base.Ptr[uint32](0),
+				},
+			},
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // only for rev tree clients will we always load backup rev isf one is available
+	btcRunner.Run(func(t *testing.T) {
+
+		docID := SafeDocumentName(t, t.Name())
+		rt := NewRestTester(t,
+			rtConfig)
+		defer rt.Close()
+		rt.CreateUser(username, []string{"*"})
+		var version2 db.DocVersion
+		updatedVersion := make(chan DocVersion)
+
+		// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
+		changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
+			if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
+				updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+			}
+		}
+
+		opts := &BlipTesterClientOpts{
+			Username:             username,
+			ClientDeltas:         true,
+			changesEntryCallback: changesEntryCallbackFn,
+		}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+		ctx := t.Context()
+
+		// add doc from a different source to rest tester
+		agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
+		_ = agent.InsertWithHLV(ctx, docID, nil)
+
+		// import doc
+		version1, _ := rt.GetDoc(docID)
+
+		btcRunner.StartPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version1)
+
+		// create rev 2
+		version2 = rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
+		rt.WaitForPendingChanges()
+
+		// block until we've written the update and got the new version to use in assertions
+		version3 := <-updatedVersion
+
+		// we should get the delta still for version 2
+		btcRunner.WaitForVersion(client.id, docID, version2)
+
+		// expect delta sent for rev 3 after
+		btcRunner.WaitForVersion(client.id, docID, version3)
+
+		// expect two deltas sent
+		assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 	})
 }

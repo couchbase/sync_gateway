@@ -1090,14 +1090,14 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 		"k1":    "v2",
 		BodyRev: rev1ID,
 	}
-	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
+	rev2ID, doc2, err := collection.Put(ctx, "doc1", rev2Body)
 	require.NoError(t, err, "Error creating doc")
 
 	// Flush the revision cache, this can be removed pending CBG-4542
 	db.FlushRevisionCacheForTest()
 
 	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
-	docRev, err := collection.GetRev(ctx, "doc1", doc.CV(), true, nil)
+	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc.HLV.ExtractCurrentVersionFromHLV(), false, true)
 	require.NoError(t, err, "Error fetching backup revision CV")
 	assert.Equal(t, "", docRev.RevID)
 	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
@@ -1107,6 +1107,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 	require.NoError(t, err, "error fetching current revision")
 	assert.Equal(t, rev2ID, docRev.RevID)
 	assert.Equal(t, `{"k1":"v2"}`, string(docRev.BodyBytes))
+	assert.Equal(t, doc2.HLV.GetCurrentVersionString(), docRev.CV.String())
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
@@ -1153,6 +1154,9 @@ func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
 func TestDeltaSyncConcurrentClientCachePopulation(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("test requires revision cache to be enabled")
 	}
 
 	tests := []struct {
@@ -1661,7 +1665,6 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
-		"key1":      1234,
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
@@ -1683,7 +1686,6 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
-		"key1":      1234,
 		BodyDeleted: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
@@ -3145,20 +3147,29 @@ func TestConcurrentImport(t *testing.T) {
 // ////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.DisableTestLogging(b)
-
 	for i := 0; b.Loop(); i++ {
 		ctx := base.TestCtx(b)
-		bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
-			Server:     base.UnitTestUrl(),
-			BucketName: fmt.Sprintf("b-%d", i)},
-			true)
-		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-		db, _ := CreateDatabase(dbCtx)
+		bucket := base.GetTestBucket(b)
+		defer bucket.Close(ctx)
+		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+			EnableXattr: true,
+			Scopes:      GetScopesOptions(b, bucket, 1),
+		})
+		if err != nil {
+			b.Fatalf("Error creating database context: %v", err)
+		}
+		db, err := CreateDatabase(dbCtx)
+		if err != nil {
+			b.Fatalf("Error creating database: %v", err)
+		}
+		ctx = addDatabaseAndTestUserContext(ctx, db)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 		body := Body{"key1": "value1", "key2": 1234}
-		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, err = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		if err != nil {
+			b.Fatalf("Error putting document: %v", err)
+		}
 
 		db.Close(ctx)
 	}
@@ -3168,18 +3179,26 @@ func BenchmarkPut(b *testing.B) {
 	base.DisableTestLogging(b)
 
 	ctx := base.TestCtx(b)
-	bucket, _ := ConnectToBucket(ctx, base.BucketSpec{
-		Server:     base.UnitTestUrl(),
-		BucketName: "Bucket"},
-		true)
-	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	db, _ := CreateDatabase(context)
+	bucket := base.GetTestBucket(b)
+	defer bucket.Close(ctx)
+	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes:      GetScopesOptions(b, bucket, 1),
+		EnableXattr: true,
+	})
+	db, err := CreateDatabase(context)
+	if err != nil {
+		b.Fatalf("Error creating database: %v", err)
+	}
+	ctx = addDatabaseAndTestUserContext(ctx, db)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
 	body := Body{"key1": "value1", "key2": 1234}
 
 	for i := 0; b.Loop(); i++ {
-		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
+		if err != nil {
+			b.Fatalf("Error putting document: %v", err)
+		}
 	}
 
 	db.Close(ctx)

@@ -87,7 +87,7 @@ func (h *handler) handleGetDoc() error {
 		})
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
-				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
+				base.DebugfCtx(h.ctx(), base.KeyImport, "Import cancelled as document %v is purged", base.UD(docid))
 				return nil
 			}
 			if h.collection.ForceAPIForbiddenErrors() && base.IsDocNotFoundError(err) {

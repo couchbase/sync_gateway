@@ -526,6 +526,9 @@ func TestDBOffline503Response(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
+	rest.RequireStatus(t, rt.SendRequest("GET", "/{{.keyspace}}/doc1", ""), http.StatusUnauthorized)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), http.StatusOK)
+
 	response = rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, response, 200)
 
@@ -534,7 +537,8 @@ func TestDBOffline503Response(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	rest.RequireStatus(t, rt.SendRequest("GET", "/{{.keyspace}}/doc1", ""), 503)
+	rest.RequireStatus(t, rt.SendRequest("GET", "/{{.keyspace}}/doc1", ""), http.StatusUnauthorized)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), http.StatusServiceUnavailable)
 }
 
 // Take DB offline and ensure can put db config
