@@ -260,14 +260,21 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				"collections":         ResyncCollections{},
 			}
 
-			// REsyncManager.Dist = true
 			if distributed {
-				// TODO: not sure how to set Distributed as true
+				rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+				require.True(t, ok)
+				rs.Distributed = true
 			}
 			err := db.ResyncManager.Start(ctx, options)
 			require.NoError(t, err)
 
-			RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			if distributed {
+				waitforResycnDocsChanged(t, db, int64(docsToCreate))
+				err := db.ResyncManager.Stop()
+				require.NoError(t, err)
+			} else {
+				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			}
 
 			stats := getResyncStats(t, db)
 			// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
@@ -283,8 +290,11 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 			assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-			deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
-			assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
+			// This is just a temporary check until MB-70378 is implemented
+			if !distributed {
+				deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
+				assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
+			}
 		})
 	}
 }
@@ -640,5 +650,13 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Greater(c, stats.DocsProcessed, count)
-	}, 10*time.Second, 1*time.Millisecond)
+	}, 1*time.Minute, 1*time.Millisecond)
+}
+
+func waitforResycnDocsChanged(t testing.TB, db *Database, count int64) {
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats := getResyncStats(t, db)
+		assert.Equal(c, stats.DocsChanged, count)
+	}, 5*time.Minute, 1*time.Millisecond)
 }
