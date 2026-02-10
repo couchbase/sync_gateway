@@ -189,16 +189,15 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment migration DCP feed: %v", migrationLoggingID, err)
-		_ = dcpClient.Close()
 		return err
 	}
 	base.TracefCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
 
 	select {
-	case <-doneChan:
-		err = dcpClient.Close()
+	case err := <-doneChan:
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
+			base.WarnfCtx(ctx, "[%s] Attachment migration DCP client closed unexpectedly: %v", migrationLoggingID, err)
+			return err
 		}
 		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
 		// set sync info metadata version
@@ -225,15 +224,8 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		}
 		base.InfofCtx(ctx, base.KeyAll, "%s", msg)
 	case <-terminator.Done():
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
-			return err
-		}
-		err = <-doneChan
-		if err != nil {
-			return err
-		}
+		dcpClient.Close()
+		<-doneChan // ignore DCP close error, we just want to terminate the process
 		msg := fmt.Sprintf("[%s] Attachment Migration was terminated. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
 		failedDocs := a.docsFailed.Load()
 		if failedDocs > 0 {

@@ -667,22 +667,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	var status AttachmentManagerResponse
-	err = WaitForConditionWithOptions(t, func() bool {
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
-
-		if status.State == BackgroundProcessStateError {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	require.NoError(t, err)
-
-	assert.Equal(t, status.State, BackgroundProcessStateError)
+	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
