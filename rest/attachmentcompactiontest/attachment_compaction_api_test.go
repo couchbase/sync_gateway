@@ -412,9 +412,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	require.Equal(t, db.MarkPhase, stat.Phase)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateCompactionDCPStreamName(stat.CompactID, "mark")
-	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
-
+	checkpointPrefix := db.GetAttachmentCompactionCheckpointPrefix(rt.GetDatabase(), stat.CompactID, db.MarkPhase)
 	meta := base.NewDCPMetadataCS(rt.Context(), dataStore, 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	vbMeta.VbUUID = garbageVBUUID

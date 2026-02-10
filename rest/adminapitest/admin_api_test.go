@@ -624,7 +624,6 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -651,7 +650,6 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	base.TestRequiresCollections(t)
 
 	testCases := []struct {
@@ -708,8 +706,6 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 }
 
 func TestResyncUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	testCases := []struct {
 		docsCreated int
 	}{
@@ -774,8 +770,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncUsingDCPStreamReset(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -836,7 +830,6 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 }
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	base.TestRequiresCollections(t)
 
 	numCollections := 2
@@ -898,8 +891,6 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1424,8 +1415,6 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TestRequiresDCPResync(t)
-
 	syncFn := `
 	function(doc) {
 		channel("x")

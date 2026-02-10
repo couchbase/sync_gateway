@@ -268,8 +268,7 @@ func (b *GocbV2Bucket) IsMinimumVersion(requiredMajor, requiredMinor uint64) boo
 }
 
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	groupID := ""
-	return StartGocbDCPFeed(ctx, b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return errors.New("GocbV2Bucket does not support StartDCPFeed; use NewDCPClient instead")
 }
 
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

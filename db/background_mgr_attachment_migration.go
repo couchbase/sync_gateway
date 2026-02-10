@@ -158,48 +158,36 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
+	scopes, currCollectionIDs, err := getCollectionsForAttachmentMigration(db)
 	if err != nil {
 		return err
 	}
-
-	currCollectionIDs, err := getCollectionIDsForMigration(db)
-	if err != nil {
-		return err
-	}
-	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
-	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
+	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
-	checkpointPrefix := fmt.Sprintf("%s:%v", dcpPrefix, dcpFeedKey)
-	err = a.resetDCPMetadataIfNeeded(ctx, db, checkpointPrefix, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, dcpOptions.FeedPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
 	}
-	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for attachment migration", migrationLoggingID, dcpFeedKey)
+	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for attachment migration", migrationLoggingID)
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment migration DCP feed: %v", migrationLoggingID, err)
-		_ = dcpClient.Close()
+		dcpClient.Close()
 		return err
 	}
 	base.TracefCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
 
 	select {
 	case <-doneChan:
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)
-		}
 		updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(db.CollectionByID))
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
@@ -225,11 +213,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		}
 		base.InfofCtx(ctx, base.KeyAll, "%s", msg)
 	case <-terminator.Done():
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was terminated %v", migrationLoggingID, err)
-			return err
-		}
+		dcpClient.Close()
 		err = <-doneChan
 		if err != nil {
 			return err
@@ -291,16 +275,18 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-func getMigrationDCPClientOptions(collectionIDs []uint32, groupID, prefix string) *base.DCPClientOptions {
-	clientOptions := &base.DCPClientOptions{
+func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, scopes base.CollectionNames, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+	prefix := getAttachmentMigrationPrefix(migrationID)
+
+	return base.DCPClientOptions{
+		FeedPrefix:        prefix,
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
-		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  prefix,
+		CollectionNames:   scopes,
+		CheckpointPrefix:  fmt.Sprintf("%s:%v", db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), prefix),
+		Callback:          callback,
 	}
-	return clientOptions
 }
 
 type AttachmentMigrationManagerResponse struct {
@@ -320,8 +306,8 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
-// GenerateAttachmentMigrationDCPStreamName returns the DCP stream name for a resync.
-func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
+// getAttachmentMigrationPrefix returns a prefix for identifying attachment migration dcp feed and checkpoints.
+func getAttachmentMigrationPrefix(migrationID string) string {
 	return fmt.Sprintf(
 		"sg-%v:att_migration:%v",
 		base.ProductAPIVersion,
@@ -329,15 +315,15 @@ func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
+		err := PurgeDCPCheckpoints(ctx, database, checkpointPrefix, feedPrefix)
+		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
 		return nil
@@ -347,7 +333,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		err := PurgeDCPCheckpoints(ctx, database, checkpointPrefix, feedPrefix)
 		if err != nil {
 			return err
 		}
@@ -355,25 +341,34 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	return nil
 }
 
-// getCollectionIDsForMigration will get all collection IDs required for DCP client on migration run
-func getCollectionIDsForMigration(db *DatabaseContext) ([]uint32, error) {
+// getCollectionsForAttachmentMigration will get all datastores.
+func getCollectionsForAttachmentMigration(db *DatabaseContext) (scopes map[string][]string, ids []uint32, err error) {
+	collections := make(map[string][]string, 1) // one scope always
 	collectionIDs := make([]uint32, 0)
-
 	// if all collections are included in RequireAttachmentMigration then we need to run against all collections,
 	// if no collections are specified in RequireAttachmentMigration, run against all collections. This is to support job
 	// being triggered by rest api (even after job was previously completed)
 	if len(db.RequireAttachmentMigration) == 0 {
-		// get all collection IDs
-		collectionIDs = db.GetCollectionIDs()
+		for _, collection := range db.CollectionByID {
+			if _, ok := collections[collection.ScopeName]; !ok {
+				collections[collection.ScopeName] = make([]string, 0)
+			}
+			collections[collection.ScopeName] = append(collections[collection.ScopeName], collection.Name)
+			collectionIDs = append(collectionIDs, collection.GetCollectionID())
+		}
 	} else {
 		// iterate through and grab collectionIDs we need
 		for _, v := range db.RequireAttachmentMigration {
 			collection, err := db.GetDatabaseCollection(v.ScopeName(), v.CollectionName())
 			if err != nil {
-				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(v.ScopeName()), base.MD(v.CollectionName()))
+				return nil, nil, base.RedactErrorf("failed to find collection %s.%s", base.MD(v.ScopeName()), base.MD(v.CollectionName()))
 			}
+			if _, ok := collections[collection.ScopeName]; !ok {
+				collections[collection.ScopeName] = make([]string, 0)
+			}
+			collections[collection.ScopeName] = append(collections[collection.ScopeName], collection.Name)
 			collectionIDs = append(collectionIDs, collection.GetCollectionID())
 		}
 	}
-	return collectionIDs, nil
+	return collections, collectionIDs, nil
 }

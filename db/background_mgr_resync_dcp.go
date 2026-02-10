@@ -167,31 +167,24 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return err
-	}
-
 	if r.hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
 	} else {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(r.collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
-
-	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+	clientOptions := getResyncDCPClientOptions(db, r.ResyncID, r.ResyncedCollections, callback)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
-	doneChan, err := dcpClient.Start()
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, clientOptions.FeedPrefix)
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
-		_ = dcpClient.Close()
+		dcpClient.Close()
 		return err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
@@ -201,11 +194,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
 
 		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
@@ -269,13 +257,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
+		dcpClient.Close()
 
-		err = <-doneChan
+		err := <-doneChan
 		if err != nil {
 			return err
 		}
@@ -410,22 +394,28 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
-// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
-	return &base.DCPClientOptions{
-		OneShot:           true,
-		FailOnRollback:    false,
-		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
-		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  prefix,
-	}
-}
-
-// GenerateResyncDCPStreamName returns the DCP stream name for a resync.
-func GenerateResyncDCPStreamName(resyncID string) string {
+func getResyncDCPPrefix(resyncID string) string {
 	return fmt.Sprintf(
 		"sg-%v:resync:%v",
 		base.ProductAPIVersion,
 		resyncID)
+}
+
+// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
+func getResyncDCPClientOptions(db *Database, resyncID string, collectionNames base.CollectionNames, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+	resyncPrefix := getResyncDCPPrefix(resyncID)
+	return base.DCPClientOptions{
+		FeedPrefix:        resyncPrefix,
+		OneShot:           true,
+		FailOnRollback:    false,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		CollectionNames:   collectionNames,
+		CheckpointPrefix:  GenerateResyncCheckpointPrefix(db.DatabaseContext, resyncPrefix),
+		Callback:          callback,
+	}
+}
+
+// GenerateResyncCheckpointPrefix returns the prefix for the checkpoint documents
+func GenerateResyncCheckpointPrefix(db *DatabaseContext, resyncID string) string {
+	return db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID) + getResyncDCPPrefix(resyncID)
 }

@@ -28,10 +28,6 @@ const oneShotDCPTimeout = 5 * time.Minute
 
 func TestOneShotDCP(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -54,33 +50,23 @@ func TestOneShotDCP(t *testing.T) {
 		return false
 	}
 
-	// start one shot feed
-	feedID := t.Name()
-
-	collection, err := AsCollection(dataStore)
-	require.NoError(t, err)
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
-	clientOptions := DCPClientOptions{
+	dcpOptions := DCPClientOptions{
+		FeedPrefix: t.Name(),
+		CollectionNames: CollectionNames{
+			dataStore.ScopeName(): {dataStore.CollectionName()},
+		},
 		OneShot:          true,
-		CollectionIDs:    collectionIDs,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		Callback:         counterCallback,
 	}
 
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, counterCallback, clientOptions, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
-	defer func() {
-		_ = dcpClient.Close()
-	}()
+	defer dcpClient.Close()
 
 	// Add additional documents in a separate goroutine, to verify one-shot behaviour
 	var additionalDocsWg sync.WaitGroup
@@ -112,10 +98,6 @@ func TestOneShotDCP(t *testing.T) {
 
 func TestTerminateDCPFeed(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -129,15 +111,17 @@ func TestTerminateDCPFeed(t *testing.T) {
 		return false
 	}
 
-	// start continuous feed with terminator
-	feedID := t.Name()
-
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-	require.NoError(t, err)
-	options := DCPClientOptions{
+	dcpOptions := DCPClientOptions{
+		FeedPrefix: t.Name(),
+		CollectionNames: map[string][]string{
+			dataStore.ScopeName(): {dataStore.CollectionName()},
+		},
+		OneShot:          false,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		Callback:         counterCallback,
 	}
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, counterCallback, options, gocbv2Bucket)
+
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -157,15 +141,14 @@ func TestTerminateDCPFeed(t *testing.T) {
 		}
 	}()
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for some processing to complete, then close the feed
 	time.Sleep(10 * time.Millisecond)
 	log.Printf("Closing DCP Client")
-	err = dcpClient.Close()
+	dcpClient.Close()
 	log.Printf("DCP Client closed, waiting for feed close notification")
-	require.NoError(t, err)
 
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
@@ -224,8 +207,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				return false
 			}
 
-			feedID := t.Name()
-
 			// Add documents
 			updatedBody := map[string]any{"foo": "bar"}
 			for i := range 10000 {
@@ -233,27 +214,22 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				err := dataStore.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
-			collection, ok := dataStore.(*Collection)
-			require.True(t, ok)
-			var collectionIDs []uint32
-			if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-				collectionIDs = append(collectionIDs, collection.GetCollectionID())
-			}
+			collectionNames := CollectionNames{dataStore.ScopeName(): []string{dataStore.CollectionName()}}
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := DCPClientOptions{
 				OneShot:          true,
 				FailOnRollback:   true,
-				CollectionIDs:    collectionIDs,
+				CollectionNames:  collectionNames,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				Callback:         counterCallback,
+				FeedPrefix:       t.Name(),
 			}
 
-			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-			require.NoError(t, err)
-			dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 			require.NoError(t, err)
 
-			doneChan, startErr := dcpClient.Start()
+			doneChan, startErr := dcpClient.Start(ctx)
 			require.NoError(t, startErr)
 
 			// Wait for first feed to complete
@@ -278,37 +254,43 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			uuidMismatchMetadata[0].SnapEndSeqNo = test.startSeqNo
 
 			dcpClientOpts = DCPClientOptions{
+				FeedPrefix:       t.Name(),
+				CollectionNames:  collectionNames,
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   true,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				Callback:         counterCallback,
 			}
-			dcpClient2, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 			require.NoError(t, err)
 
-			doneChan2, startErr2 := dcpClient2.Start()
+			doneChan2, startErr2 := dcpClient2.Start(ctx)
 			require.Error(t, startErr2)
 
-			require.NoError(t, dcpClient2.Close())
+			dcpClient2.Close()
 			<-doneChan2
 			log.Printf("Starting third feed")
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
 			dcpClientOpts = DCPClientOptions{
+				FeedPrefix:       t.Name(),
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   false,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
+				CollectionNames:  collectionNames,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				Callback:         counterCallback,
 			}
 
-			dcpClient3, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient3, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 			require.NoError(t, err)
 
-			doneChan3, startErr3 := dcpClient3.Start()
+			doneChan3, startErr3 := dcpClient3.Start(ctx)
 			require.NoError(t, startErr3)
 
+			client, ok := dcpClient3.(*GoCBDCPClient)
+			require.True(t, ok)
 			// Wait for third feed to complete
 			feed3Timeout := time.After(oneShotDCPTimeout)
 			select {
@@ -317,7 +299,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, int(vbucketZeroExpected), int(mutationCount))
 				// check the rolled back vBucket has in fact closed the stream after its finished
-				numVBuckets := len(dcpClient.activeVbuckets)
+				numVBuckets := len(client.activeVbuckets)
 				require.Equal(t, uint16(0), uint16(numVBuckets))
 			case <-feed3Timeout:
 				t.Errorf("timeout waiting for first one-shot feed to complete")
@@ -352,33 +334,25 @@ func TestContinuousDCPRollback(t *testing.T) {
 		return false
 	}
 
-	feedID := t.Name()
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-	require.NoError(t, err)
-
-	collection, err := AsCollection(dataStore)
-	require.NoError(t, err)
-
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
+	collectionNames := CollectionNames{dataStore.ScopeName(): []string{dataStore.CollectionName()}}
 
 	dcpClientOpts := DCPClientOptions{
 		FailOnRollback:    false,
 		OneShot:           false,
-		CollectionIDs:     collectionIDs,
+		FeedPrefix:        t.Name(),
+		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
+		Callback:          counterCallback,
 	}
 
 	// timeout for feed to complete
 	timeout := time.After(20 * time.Second)
 
-	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
 
-	_, startErr := dcpClient.Start()
+	_, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Add documents
@@ -404,27 +378,32 @@ func TestContinuousDCPRollback(t *testing.T) {
 		InitialMetadata:   dcpClient.GetMetadata(),
 		FailOnRollback:    false,
 		OneShot:           false,
-		CollectionIDs:     collectionIDs,
+		CollectionNames:   collectionNames,
+		FeedPrefix:        t.Name(),
+		Callback:          counterCallback,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 	}
-	require.NoError(t, dcpClient.Close())
+	dcpClient.Close()
 
-	dcpClient1, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient1, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
-	// function to force the rollback of some vBuckets
-	dcpClient1.forceRollbackvBucket(vbUUID)
+	client, ok := dcpClient1.(*GoCBDCPClient)
+	require.True(t, ok)
 
-	_, startErr = dcpClient1.Start()
+	// function to force the rollback of some vBuckets
+	client.forceRollbackvBucket(vbUUID)
+
+	_, startErr = dcpClient1.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
 	// In continuous rollback the streams should not close after they're finished.
-	numVBuckets := len(dcpClient1.activeVbuckets)
-	require.Equal(t, dcpClient1.numVbuckets, uint16(numVBuckets))
+	numVBuckets := len(client.activeVbuckets)
+	require.Equal(t, client.numVbuckets, uint16(numVBuckets))
 
 	defer func() {
-		assert.NoError(t, dcpClient1.Close())
+		dcpClient1.Close()
 	}()
 
 }
@@ -445,20 +424,13 @@ func (dc *GoCBDCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	SetUpTestLogging(t, LevelDebug, KeyAll)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
 	dataStore := bucket.GetSingleDataStore()
 
-	var dcpClient *GoCBDCPClient
+	var dcpClient DCPClient
 
 	// create callback
 	mutationCount := uint64(0)
@@ -466,14 +438,13 @@ func TestResumeStoppedFeed(t *testing.T) {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
-				err := dcpClient.Close()
-				assert.NoError(t, err)
+				dcpClient.Close()
 			}
 		}
 		return false
 	}
 
-	feedID := t.Name()
+	collectionNames := CollectionNames{dataStore.ScopeName(): []string{dataStore.CollectionName()}}
 
 	// Add documents
 	updatedBody := map[string]any{"foo": "bar"}
@@ -483,32 +454,25 @@ func TestResumeStoppedFeed(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Start first one-shot DCP feed, will be stopped by callback after processing 5000 records
-	// Set metadata persistence frequency to zero to force persistence on every mutation
-	highFrequency := 0 * time.Second
-
-	collection, ok := dataStore.(*Collection)
-	require.True(t, ok)
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
 	dcpClientOpts := DCPClientOptions{
-		OneShot:                    true,
-		FailOnRollback:             false,
-		CheckpointPersistFrequency: &highFrequency,
-		CollectionIDs:              collectionIDs,
-		CheckpointPrefix:           DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		FeedPrefix:       t.Name(),
+		Callback:         counterCallback,
+		CollectionNames:  collectionNames,
+		OneShot:          true,
+		FailOnRollback:   false,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
 
-	dcpClient, err = NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
-	require.NoError(t, err)
+	if !UnitTestUrlIsWalrus() {
+		dc, ok := dcpClient.(*GoCBDCPClient)
+		require.True(t, ok)
+		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
+	}
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for first feed to complete
@@ -519,7 +483,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		require.Greater(t, int(mutationCount), 5000)
 		log.Printf("Total processed first feed: %v", mutationCount)
 	case <-timeout:
-		t.Errorf("timeout waiting for first one-shot feed to complete")
+		t.Fatalf("timeout waiting for first one-shot feed to complete")
 	}
 
 	var secondFeedCount uint64
@@ -535,14 +499,22 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClientOpts = DCPClientOptions{
 		FailOnRollback:   false,
 		OneShot:          true,
-		CollectionIDs:    collectionIDs,
+		FeedPrefix:       t.Name(),
+		Callback:         secondCallback,
+		CollectionNames:  collectionNames,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient2, err := NewDCPClient(ctx, feedID, secondCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
 
-	doneChan2, startErr2 := dcpClient2.Start()
+	if !UnitTestUrlIsWalrus() {
+		dc, ok := dcpClient2.(*GoCBDCPClient)
+		require.True(t, ok)
+		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
+	}
+
+	doneChan2, startErr2 := dcpClient2.Start(ctx)
 	require.NoError(t, startErr2)
 
 	// Wait for second feed to complete
@@ -576,14 +548,14 @@ func TestBadAgentPriority(t *testing.T) {
 		t.Error(t, "Should not hit this callback")
 		return false
 	}
-	dcpClientOpts := DCPClientOptions{
+	dcpClientOpts := GoCBDCPClientOptions{
 		AgentPriority: gocbcore.DcpAgentPriorityHigh,
 	}
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err := NewGocbDCPClient(TestCtx(t), feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }
@@ -604,29 +576,27 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		return false
 	}
 
-	feedID := t.Name()
+	dataStore := bucket.GetSingleDataStore()
+	collectionNames := CollectionNames{dataStore.ScopeName(): []string{dataStore.CollectionName()}}
 	dcpClientOpts := DCPClientOptions{
+		FeedPrefix:        t.Name(),
 		FailOnRollback:    false,
 		OneShot:           true,
-		CollectionIDs:     getCollectionIDs(t, bucket),
+		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
+		Callback:          callback,
 	}
 
 	// timeout for feed to complete
 	timeout := time.After(20 * time.Second)
 
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
 
-	dcpClient, err := NewDCPClient(ctx, feedID, callback, dcpClientOpts, gocbv2Bucket)
-	require.NoError(t, err)
-
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
-	defer func() {
-		assert.NoError(t, dcpClient.Close())
-	}()
+	defer dcpClient.Close()
 
 	select {
 	case <-doneChan:
@@ -640,55 +610,31 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	dcpClientOpts = DCPClientOptions{
 		FailOnRollback:    false,
 		OneShot:           true,
-		CollectionIDs:     getCollectionIDs(t, bucket),
+		FeedPrefix:        t.Name(),
+		CollectionNames:   collectionNames,
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-		MetadataStoreType: DCPMetadataStoreInMemory,
+		MetadataStoreType: DCPMetadataStoreCS,
 		InitialMetadata:   metadata,
+		Callback:          callback,
 	}
 
-	dcpClient, err = NewDCPClient(ctx, feedID, callback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err = NewDCPClient(ctx, bucket, dcpClientOpts)
 	require.NoError(t, err)
 
-	_, startErr = dcpClient.Start()
+	_, startErr = dcpClient.Start(ctx)
 	require.Error(t, startErr)
 	require.Contains(t, startErr.Error(), "out of range")
 
 }
 
-func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
-	collection, err := AsCollection(bucket.GetSingleDataStore())
-	require.NoError(t, err)
-
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-	return collectionIDs
-
-}
-
 func TestDCPFeedEventTypes(t *testing.T) {
-	TestRequiresGocbDCPClient(t)
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
 	collection := bucket.GetSingleDataStore()
 
-	// start one shot feed
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
-	clientOptions := DCPClientOptions{
-		CollectionIDs:    collectionIDs,
-		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-	}
-
-	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-	require.NoError(t, err)
+	collectionNames := CollectionNames{collection.ScopeName(): []string{collection.CollectionName()}}
 
 	foundEvent := make(chan struct{})
 	docID := t.Name()
@@ -721,16 +667,19 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		}
 		return true
 	}
-
-	dcpClient, err := NewDCPClient(ctx, t.Name(), callback, clientOptions, gocbv2Bucket)
+	clientOptions := DCPClientOptions{
+		FeedPrefix:       t.Name(),
+		CollectionNames:  collectionNames,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		Callback:         callback,
+	}
+	dcpClient, err := NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
-	defer func() {
-		_ = dcpClient.Close() // extra close in case of early exit
-	}()
+	defer dcpClient.Close() // extra close in case of early exit
 	xattrName := "_xattr1"
 	xattrBody := []byte(`{"an": "xattr"}`)
 	writeMutationCas, err := collection.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: xattrBody}, nil, nil)
@@ -749,7 +698,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 
 	select {
 	case <-foundEvent:
-		require.NoError(t, dcpClient.Close())
+		dcpClient.Close()
 	case <-timeout:
 		t.Fatalf("timeout waiting for doc deletion")
 	}
@@ -766,9 +715,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 }
 
 func TestDCPClientAgentConfig(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("exercises gocbcore code")
-	}
+	TestRequiresGocbDCPClient(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -807,17 +754,21 @@ func TestDCPClientAgentConfig(t *testing.T) {
 			oldBucketSpecServer := gocbv2Bucket.Spec.Server
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
 			gocbv2Bucket.Spec.Server += tc.serverSuffix
-			dcpClient, err := NewDCPClient(ctx,
-				"fakeFeedID",
-				func(sgbucket.FeedEvent) bool { return true },
-				DCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
-				gocbv2Bucket)
+			opts := DCPClientOptions{
+				FeedPrefix: t.Name(),
+				CollectionNames: CollectionNames{
+					bucket.GetSingleDataStore().ScopeName(): {bucket.GetSingleDataStore().CollectionName()},
+				},
+				MetadataStoreType: DCPMetadataStoreInMemory,
+				Callback:          func(sgbucket.FeedEvent) bool { return true },
+			}
+			dcpClient, err := NewDCPClient(ctx, bucket, opts)
 			require.NoError(t, err)
-			defer func() {
-				assert.NoError(t, dcpClient.Close())
-			}()
+			defer dcpClient.Close()
 
-			config, err := dcpClient.getAgentConfig(gocbv2Bucket.GetSpec())
+			client, ok := dcpClient.(*GoCBDCPClient)
+			require.True(t, ok, "expected GoCBDCPClient type for DCP client")
+			config, err := client.getAgentConfig(gocbv2Bucket.GetSpec())
 			require.NoError(t, err)
 
 			require.Equal(t, tc.networkType, config.IoConfig.NetworkType)

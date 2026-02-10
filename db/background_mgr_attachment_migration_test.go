@@ -20,9 +20,6 @@ import (
 )
 
 func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -76,10 +73,6 @@ func getAttachmentMigrationStats(t *testing.T, migrationManager BackgroundManage
 }
 
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -142,9 +135,6 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 }
 
 func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -182,9 +172,6 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 }
 
 func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
