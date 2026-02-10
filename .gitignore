@@ -1,4 +1,5 @@
 *.idea
+*.vscode
 *.sublime-workspace
 *.walrus
 **/git_info.go.bak
