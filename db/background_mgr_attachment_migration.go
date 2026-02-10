@@ -178,7 +178,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
+	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, dcpPrefix)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
@@ -291,12 +291,13 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-func getMigrationDCPClientOptions(collectionIDs []uint32, groupID, prefix string) *base.DCPClientOptions {
+// getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
+// CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
+func getMigrationDCPClientOptions(collectionIDs []uint32, prefix string) *base.DCPClientOptions {
 	clientOptions := &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
 		CheckpointPrefix:  prefix,
 	}
