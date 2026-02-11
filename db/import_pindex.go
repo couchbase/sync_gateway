@@ -98,23 +98,3 @@ func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexPara
 	}
 	return openImportPIndexImplUsing
 }
-
-// NewImportDest returns a cbgt.Dest targeting the importListener's ProcessFeedEvent
-func (il *importListener) NewImportDest(janitorRollback func()) (cbgt.Dest, error) {
-	callback := il.ProcessFeedEvent
-
-	maxVbNo, err := il.bucket.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
-	if err != nil {
-		return nil, err
-	}
-
-	importFeedStatsMap := il.dbStats.ImportFeedMapStats
-	importPartitionStat := il.importStats.ImportPartitions
-
-	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys)
-	if err != nil {
-		return nil, err
-	}
-
-	return importDest, nil
-}
