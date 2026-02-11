@@ -36,57 +36,62 @@ type SGDest interface {
 // is done on-demand per vbucket, as a given Dest isn't expected to manage the full set of vbuckets for a bucket.
 type DCPDest struct {
 	*DCPCommon
-	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It optionally stores checkpoints in the _default._default collection if persistentCheckpoints is true with prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID have a unique string appended. Specific stats for DCP are stored in expvars rather than SgwStats, except for importPartitionStat representing the number of import partitions. Each import partition will have a DCPDest object.
-func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool,
-	dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string, metaKeys *MetadataKeys) (SGDest, context.Context, error) {
-
-	// TODO: Metadata store?
-	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix, metaKeys)
+// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. If persistCheckpoints is true, stores checkpoints as documents in metadataStore starting with checkpointPrefix.
+// Specific stats for DCP are stored in expvars rather than SgwStats, except for partition stat, which indicates the number of cbgt partitions assigned to this node.
+// Each partition will have its own DCPDest object.
+func NewDCPDest(
+	ctx context.Context,
+	callback sgbucket.FeedEventCallbackFunc,
+	metadataStore sgbucket.DataStore,
+	maxVbNo uint16,
+	persistCheckpoints bool,
+	dcpStats *expvar.Map,
+	partitionStat *SgwIntStat,
+	checkpointPrefix string,
+) (SGDest, error) {
+	dcpCommon, err := NewDCPCommon(ctx, callback, metadataStore, maxVbNo, persistCheckpoints, dcpStats, checkpointPrefix)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
-		stats:              dcpStats,
-		partitionCountStat: importPartitionStat,
-		metaInitComplete:   make([]bool, dcpCommon.maxVbNo),
+		partitionCountStat: partitionStat,
+		metaInitComplete:   make([]bool, maxVbNo),
 	}
 
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.partitionCountStat.String())
+		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed. Total partitions:%v", d.partitionCountStat.String())
 	}
 
 	if LogDebugEnabled(d.loggingCtx, KeyDCP) {
 		InfofCtx(d.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingDest{dest: d}
-		return logRec, d.loggingCtx, nil
+		return logRec, nil
 	}
 
-	return d, d.loggingCtx, nil
+	return d, nil
 }
 
 func (d *DCPDest) Close(_ bool) error {
 	// ignore param remove since sync gateway pindexes are not persisted on disk, cbgt.Manager dataDir is set to empty string
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(-1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.partitionCountStat.String())
+		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed. Total partitions:%v", d.partitionCountStat.String())
 	}
-	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
+	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest")
 	return nil
 }
 
 func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	val []byte, cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	if !dcpKeyFilter(key, d.metaKeys) {
+	if isMetadataDocumentName(key) {
 		return nil
 	}
 	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpMutation)
@@ -97,7 +102,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
 	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 
-	if !dcpKeyFilter(key, d.metaKeys) {
+	if isMetadataDocumentName(key) {
 		return nil
 	}
 
@@ -124,7 +129,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 	cas uint64,
 	extrasType cbgt.DestExtrasType, extras []byte) error {
-	if !dcpKeyFilter(key, d.metaKeys) {
+	if isMetadataDocumentName(key) {
 		return nil
 	}
 
@@ -135,7 +140,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 
 func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
-	if !dcpKeyFilter(key, d.metaKeys) {
+	if isMetadataDocumentName(key) {
 		return nil
 	}
 
