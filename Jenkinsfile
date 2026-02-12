@@ -14,6 +14,7 @@ pipeline {
         GH_ACCESS_TOKEN_CREDENTIAL = 'github_cb-robot-sg_access_token'
     }
 
+    // This is only used to bootstrap a go installation, doesn't need to be the latest version
     tools {
         go '1.25.7'
     }
@@ -28,7 +29,6 @@ pipeline {
                     if (env.CHANGE_TARGET) {
                         env.BRANCH = env.CHANGE_TARGET
                     }
-                    env.GOTOOLS = sh(returnStdout: true, script: 'go env GOPATH').trim()
                 }
                 // forces go to get private modules via ssh
                 sh 'git config --global url."git@github.com:".insteadOf "https://github.com/"'
@@ -38,9 +38,30 @@ pipeline {
             stages {
                 stage('Go Modules') {
                     steps {
-                        sh 'which go'
-                        sh 'go version'
-                        sh 'go env'
+                        env.GO_VERSION = sh(
+                            returnStdout: true,
+                            script: 'go$(cat go.mod | grep "^go" | cut -f2 -d " ")'
+                        ).trim()
+                        script {
+                          echo "Sync Gateway go.mod version is ${GO_VERSION}"
+                          go install "golang.org/dl/${GO_VERSION}@latest
+                          ~/go/bin/${GO_VERSION} download
+                        }
+                        env.GOROOT = sh(
+                          returnStdout: true,
+                          script: '$(${GO_VERSION} env GOROOT)'
+                        ).trim()
+                        env.GOTOOLS = sh(
+                          returnStdout: true,
+                          script: 'go env GOPATH'
+                        ).trim()
+                        env.PATH+GOROOT_BIN = "${env.GOROOT}/bin"
+                        env.PATH = "${env.GOTOOLS}/bin:${env.PATH}"
+                        script {
+                           which go
+                           go version
+                           go env
+                        }
                         sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                             sh '''
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
