@@ -383,7 +383,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
-	// in order to pass it to RegisterImportPindexImpl
+	// in order to pass it to RegisterPindexImpl
 	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig)
 
 	if err := base.RequireNoBucketTTL(ctx, bucket); err != nil {
@@ -418,7 +418,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Register the cbgt pindex type for the configGroup
-	RegisterImportPindexImpl(ctx, options.GroupID)
+	RegisterPindexImpl(ctx, options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:                 dbName,

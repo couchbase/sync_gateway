@@ -51,6 +51,7 @@ const (
 	KeyMigrate
 	KeyQuery
 	KeyReplicate
+	KeyResync
 	KeySync
 	KeySyncMsg
 	KeyVV
@@ -86,6 +87,7 @@ var (
 		KeyMigrate:        "Migrate",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
+		KeyResync:         "Resync",
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
 		KeyVV:             "VV",
