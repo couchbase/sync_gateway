@@ -274,12 +274,12 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
 
-	// requires index init
-
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
-	rt.TakeDbOffline()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.Ptr(true)
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
