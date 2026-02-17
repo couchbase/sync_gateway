@@ -35,7 +35,6 @@ const kCheckpointTimeThreshold = 1 * time.Minute
 // DCP Feed IDs are used to build unique DCP identifiers
 const DCPCachingFeedID = "SG"
 const DCPImportFeedID = "SGI"
-const DCPResyncFeedID = "SGR"
 
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map

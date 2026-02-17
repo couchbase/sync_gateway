@@ -31,7 +31,7 @@ func TestIndexName(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("dbName %s -> indexName %s", test.indexName, test.dbName), func(t *testing.T) {
-			require.Equal(t, test.indexName, GenerateIndexName(test.dbName))
+			require.Equal(t, test.indexName, GenerateIndexName(test.dbName, DCPImportFeedID))
 		})
 	}
 }
@@ -101,7 +101,7 @@ func TestImportDestKey(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.key, DestKey(test.dbName, test.scopeName, test.collections, ImportDestType))
+			require.Equal(t, test.key, DestKey(test.dbName, test.scopeName, test.collections, ImportShardedDCPFeedType))
 		})
 	}
 }

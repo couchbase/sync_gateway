@@ -2576,3 +2576,7 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
 }
+
+func (db *DatabaseContext) useShardedDCP() bool {
+	return base.IsEnterpriseEdition() && !db.BucketSpec.IsWalrusBucket()
+}

@@ -199,16 +199,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		// TODO: Handle multiple scopes
 
 		loggingCtx := db.AddBucketUserLogContext(ctx)
-		cbStore, ok := base.AsCouchbaseBucketStore(bucket)
-		if !ok {
-			base.InfofCtx(loggingCtx, base.KeyResync, "walrus bucket detected while running distributed resync")
+
+		if !db.useShardedDCP(){
+			base.WarnfCtx(loggingCtx, "running distributed resync is not supported")
 			return nil
 		}
 
-		if !base.IsEnterpriseEdition() {
-			base.WarnfCtx(loggingCtx, "CE SGW detected while running distributed resync")
-			return nil
-		}
+		cbStore, _ := base.AsCouchbaseBucketStore(bucket)
 		// Dest creation
 		for sn := range db.Scopes {
 			scopeName = sn
@@ -221,9 +218,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		sort.Strings(collectionNamesByScope[scopeName])
 		if db.OnlyDefaultCollection() {
-			resyncDestKey = base.DestKey(db.Name, "", []string{}, base.ResyncDestType)
+			resyncDestKey = base.DestKey(db.Name, "", []string{}, base.ResyncShardedDCPFeedType)
 		} else {
-			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncDestType)
+			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
 		}
 
 		maxVbNo, err := bucket.GetMaxVbno()
@@ -235,7 +232,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, _, err := base.NewDCPDest(loggingCtx, callback, db.Bucket, maxVbNo, true, nil, base.DCPResyncFeedID, nil, checkPointPrefix, db.MetadataKeys)
+			resyncDest, _, err := base.NewDCPDest(loggingCtx, callback, db.Bucket, maxVbNo, true, nil, dcpFeedKey, nil, checkPointPrefix, db.MetadataKeys)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}
@@ -244,7 +241,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		base.StoreDestFactory(loggingCtx, resyncDestKey, resyncDestFunc)
 
-		base.InfofCtx(loggingCtx, base.KeyResync, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
+		base.InfofCtx(loggingCtx, base.KeyJavascript, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
 
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix(db.Options.GroupID)
@@ -256,6 +253,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}
+		defer resyncHB.Stop(ctx)
 
 		// CFG creation:
 		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(db.Options.GroupID))
@@ -265,11 +263,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		numpartitions := db.Options.ImportOptions.ImportPartitions
 		resyncCbgtContext, err = base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, true)
+			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, dcpFeedKey)
 
 		if err != nil {
 			return fmt.Errorf("Error starting sharded dcp feed: %v", err)
 		}
+		defer resyncCbgtContext.Stop()
 	} else {
 		dcpClient, err = base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
 		if err != nil {
