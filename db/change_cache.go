@@ -374,12 +374,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.DebugfCtx(ctx, base.KeyCache, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
-		return
-	}
-
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.UserXattrKey(), false)
 	if err != nil {
