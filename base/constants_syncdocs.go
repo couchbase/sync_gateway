@@ -39,6 +39,8 @@ const (
 	MetaKeyRolePrefix                                          // "role:"
 	MetaKeyUserEmailPrefix                                     // "useremail:"
 	MetaKeySessionPrefix                                       // "session:"
+	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
+	MetaKeyResyncCfgPrefix                                     // "resync_cfg
 )
 
 var metadataKeyNames = []string{
@@ -55,7 +57,8 @@ var metadataKeyNames = []string{
 	"role:",                         // stores a role
 	"useremail:",                    // stores a role
 	"session:",                      // stores a session
-
+	"resync_hb:",                    // document prefix used to store resync data
+	"resync_cfg:",                   // document prefix used to store resync cfg data
 }
 
 func (m metadataKey) String() string {
@@ -108,6 +111,8 @@ type MetadataKeys struct {
 	rolePrefix                string
 	userEmailPrefix           string
 	sessionPrefix             string
+	resyncHeartbeaterPrefix   string
+	resyncCfgPrefix           string
 }
 
 // sha1HashLength is the number of characters in a sha1
@@ -130,6 +135,8 @@ var DefaultMetadataKeys = &MetadataKeys{
 	rolePrefix:                formatDefaultMetadataKey(MetaKeyRolePrefix),
 	userEmailPrefix:           formatDefaultMetadataKey(MetaKeyUserEmailPrefix),
 	sessionPrefix:             formatDefaultMetadataKey(MetaKeySessionPrefix),
+	resyncHeartbeaterPrefix:   formatDefaultMetadataKey(MetaKeyResyncHeartBeaterPrefix),
+	resyncCfgPrefix:           formatDefaultMetadataKey(MetaKeyResyncCfgPrefix),
 }
 
 // NewMetadataKeys returns MetadataKeys for the specified MetadataID  If metadataID is empty string, returns the default (legacy) metadata keys.
@@ -153,6 +160,8 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 			rolePrefix:                formatInvertedMetadataKey(metadataID, MetaKeyRolePrefix),
 			userEmailPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyUserEmailPrefix),
 			sessionPrefix:             formatInvertedMetadataKey(metadataID, MetaKeySessionPrefix),
+			resyncHeartbeaterPrefix:   formatInvertedMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
+			resyncCfgPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
 		}
 	}
 }
@@ -222,6 +231,28 @@ func (m *MetadataKeys) SGCfgPrefix(groupID string) string {
 		return m.sgCfgPrefix + groupID + ":"
 	}
 	return m.sgCfgPrefix
+}
+
+// ResyncHeartbeaterPrefix returns a document prefix to use for resync heartbeat documents.
+//
+//	format: _sync:{m_$}:resync_hb:[groupID:]   (collections)
+//	format: _sync:resync_hb:[groupID:]   (default)
+func (m *MetadataKeys) ResyncHeartbeaterPrefix(groupID string) string {
+	if groupID != "" {
+		return m.resyncHeartbeaterPrefix + groupID + ":"
+	}
+	return m.resyncHeartbeaterPrefix
+}
+
+// ResyncCfgPrefix returns a document prefix to use for resync cfg documents
+//
+//	format: _sync:{m_$}:cfg[groupID:]   (collections)
+//	format: _sync:cfg:[groupID:]   (default)
+func (m *MetadataKeys) ResyncCfgPrefix(groupID string) string {
+	if groupID != "" {
+		return m.resyncCfgPrefix + groupID + ":"
+	}
+	return m.resyncCfgPrefix
 }
 
 // PersistentConfigKey returns a document key to use for persisted database configurations

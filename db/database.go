@@ -383,7 +383,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
-	// in order to pass it to RegisterImportPindexImpl
+	// in order to pass it to RegisterPindexImpl
 	ctx = base.DatabaseLogCtx(ctx, dbName, options.LoggingConfig)
 
 	if err := base.RequireNoBucketTTL(ctx, bucket); err != nil {
@@ -418,7 +418,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Register the cbgt pindex type for the configGroup
-	RegisterImportPindexImpl(ctx, options.GroupID)
+	RegisterPindexImpl(ctx, options.GroupID)
 
 	dbContext := &DatabaseContext{
 		Name:                 dbName,
@@ -2575,4 +2575,22 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 	default:
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
+}
+
+func (db *DatabaseContext) useShardedDCP() bool {
+	return base.IsEnterpriseEdition() && !db.BucketSpec.IsWalrusBucket()
+}
+
+func (db *DatabaseContext) GetCollectionNamesByScope() (map[string][]string, error) {
+	collectionNamesByScope := make(map[string][]string)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
+	if err != nil {
+		return collectionNamesByScope, err
+	}
+	for _, collection := range db.CollectionByID {
+		if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !db.OnlyDefaultCollection() {
+			collectionNamesByScope[collection.Name] = append(collectionNamesByScope[collection.Name], collection.Name)
+		}
+	}
+	return collectionNamesByScope, nil
 }

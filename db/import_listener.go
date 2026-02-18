@@ -82,9 +82,9 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	}
 	sort.Strings(collectionNamesByScope[scopeName])
 	if dbContext.OnlyDefaultCollection() {
-		il.importDestKey = base.ImportDestKey(il.dbName, "", []string{})
+		il.importDestKey = base.DestKey(il.dbName, "", []string{}, base.ImportShardedDCPFeedType)
 	} else {
-		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
+		il.importDestKey = base.DestKey(il.dbName, scopeName, collectionNamesByScope[scopeName], base.ImportShardedDCPFeedType)
 	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
@@ -122,7 +122,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		il.bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG, base.ImportShardedDCPFeedType, base.DCPImportFeedID)
 	return err
 }
 

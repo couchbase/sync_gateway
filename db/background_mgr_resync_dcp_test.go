@@ -240,47 +240,63 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	})
 
-	t.Run("Resync with updated sync function", func(t *testing.T) {
-		docsToCreate := 100
-		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
-		defer db.Close(ctx)
+	for _, distributed := range []bool{false, true} {
+		t.Run("Resync with updated sync function", func(t *testing.T) {
+			docsToCreate := 100
+			db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+			defer db.Close(ctx)
 
-		dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		scopeAndCollectionName := dbc.ScopeAndCollectionName()
-		scopeName := scopeAndCollectionName.ScopeName()
-		collectionName := scopeAndCollectionName.CollectionName()
+			dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			scopeAndCollectionName := dbc.ScopeAndCollectionName()
+			scopeName := scopeAndCollectionName.ScopeName()
+			collectionName := scopeAndCollectionName.CollectionName()
 
-		initialStats := getResyncStats(t, db)
-		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
+			initialStats := getResyncStats(t, db)
+			log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-		options := map[string]any{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         ResyncCollections{},
-		}
+			options := map[string]any{
+				"database":            db,
+				"regenerateSequences": false,
+				"collections":         ResyncCollections{},
+			}
 
-		err := db.ResyncManager.Start(ctx, options)
-		require.NoError(t, err)
+			if distributed {
+				rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+				require.True(t, ok)
+				rs.Distributed = true
+			}
+			err := db.ResyncManager.Start(ctx, options)
+			require.NoError(t, err)
 
-		RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			if distributed {
+				waitforResyncDocsChanged(t, db, int64(docsToCreate))
+				err := db.ResyncManager.Stop()
+				require.NoError(t, err)
+			} else {
+				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			}
 
-		stats := getResyncStats(t, db)
-		// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
-		// be greater than DocsChanged
-		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+			stats := getResyncStats(t, db)
+			// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
+			// be greater than DocsChanged
+			assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
-		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
-		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
+			cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
-		assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
-	})
+			// This is just a temporary check until MB-70378 is implemented
+			if !distributed {
+				deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
+				assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
+			}
+		})
+	}
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
@@ -634,7 +650,15 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Greater(c, stats.DocsProcessed, count)
-	}, 10*time.Second, 1*time.Millisecond)
+	}, 1*time.Minute, 1*time.Millisecond)
+}
+
+func waitforResyncDocsChanged(t testing.TB, db *Database, count int64) {
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats := getResyncStats(t, db)
+		assert.Equal(c, stats.DocsChanged, count)
+	}, 5*time.Minute, 1*time.Millisecond)
 }
 
 func TestResyncCheckpointPrefix(t *testing.T) {

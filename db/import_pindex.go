@@ -20,32 +20,34 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// registerImportPindexImplMutex locks access to cbgt.RegisterImportPindexImpl.
-var registerImportPindexImplMutex = sync.Mutex{}
+// registerPindexImplMutex locks access to cbgt.RegisterPindexImpl.
+var registerPindexImplMutex = sync.Mutex{}
 
-// RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
+// RegisterPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
-func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
-	registerImportPindexImplMutex.Lock()
-	defer registerImportPindexImplMutex.Unlock()
+func RegisterPindexImpl(ctx context.Context, configGroup string) {
+	registerPindexImplMutex.Lock()
+	defer registerPindexImplMutex.Unlock()
 
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
-	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
-	cbgt.RegisterPIndexImplType(pIndexType,
-		&cbgt.PIndexImplType{
-			New:       getNewPIndexImplType(ctx),
-			Open:      OpenImportPIndexImpl,
-			OpenUsing: getOpenImportPIndexImplUsing(ctx),
-			Description: "general/syncGateway-import " +
-				" - import processing for shared bucket access",
-		})
+	for _, pIndexName := range []string{base.CBGTIndexTypeSyncGatewayImport, base.CBGTIndexTypeSyncGatewayResync} {
+		pIndexType := pIndexName + configGroup
+		base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+		cbgt.RegisterPIndexImplType(pIndexType,
+			&cbgt.PIndexImplType{
+				New:       getNewPIndexImplType(ctx),
+				Open:      OpenPIndexImpl,
+				OpenUsing: getOpenPIndexImplUsing(ctx),
+				Description: "general/syncGateway " +
+					" - import processing and resync for shared bucket access",
+			})
+	}
 }
 
-// getListenerForIndex looks up the importListener for the dbName specified in the index params
-func getListenerImportDest(ctx context.Context, indexParams string, restart func()) (cbgt.Dest, error) {
+// getListenerForIndex looks up the Dest instance for a given set of cbgt index parameters.
+func getListenerDest(ctx context.Context, indexParams string, restart func()) (cbgt.Dest, error) {
 
 	var outerParams struct {
 		Params string `json:"params"`
@@ -61,39 +63,39 @@ func getListenerImportDest(ctx context.Context, indexParams string, restart func
 		return nil, fmt.Errorf("error unmarshalling dbname from cbgt index params: %w", err)
 	}
 
-	base.DebugfCtx(ctx, base.KeyDCP, "Fetching listener import dest for %v", base.MD(sgIndexParams.DestKey))
+	base.DebugfCtx(ctx, base.KeyDCP, "Fetching dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
-		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)
+		return nil, fmt.Errorf("error retrieving dest for indexParams %v: %v", indexParams, fetchErr)
 	}
 	return destFactory(restart)
 }
 
 func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	// NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
-	// OpenImportPindexImplUsing is called.
-	newImportPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	// OpenImportindexImplUsing is called.
+	newPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 		defer base.FatalPanicHandler()
 
-		importDest, err := getListenerImportDest(ctx, indexParams, restart)
+		dest, err := getListenerDest(ctx, indexParams, restart)
 		if err != nil {
 			// This error can occur when a stale index definition hasn't yet been removed from the plan (e.g. on update to db config)
-			base.InfofCtx(ctx, base.KeyDCP, "No importDest found for indexParams - usually an obsolete index pending removal. %v", err)
+			base.InfofCtx(ctx, base.KeyDCP, "No dest found for indexParams - usually an obsolete index pending removal. %v", err)
 		}
-		return nil, importDest, err
+		return nil, dest, err
 	}
-	return newImportPIndexImpl
+	return newPIndexImpl
 }
 
-// OpenImportPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
-func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+// OpenPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
+func OpenPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
 
-func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+func getOpenPIndexImplUsing(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
 	openImportPIndexImplUsing := func(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-		importDest, err := getListenerImportDest(ctx, indexParams, restart)
+		importDest, err := getListenerDest(ctx, indexParams, restart)
 		return nil, importDest, err
 	}
 	return openImportPIndexImplUsing
