@@ -203,6 +203,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 	}
 
 	dcpClientOpts := base.DCPClientOptions{
+		FeedID:            "purgeFeed-" + bucket.GetName(),
 		OneShot:           true,
 		FailOnRollback:    false,
 		CollectionIDs:     slices.Collect(maps.Keys(collections)),
@@ -273,12 +274,11 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		}
 		return false
 	}
-	feedID := "purgeFeed-" + bucket.GetName()
 	gocbBucket, err := base.AsGocbV2Bucket(bucket)
 	if err != nil {
 		return err
 	}
-	dcpClient, err := base.NewDCPClient(ctx, feedID, purgeCallback, dcpClientOpts, gocbBucket)
+	dcpClient, err := base.NewDCPClient(ctx, purgeCallback, dcpClientOpts, gocbBucket)
 	if err != nil {
 		return err
 	}

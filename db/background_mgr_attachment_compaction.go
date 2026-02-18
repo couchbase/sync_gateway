@@ -182,7 +182,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
-func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase, keyPrefix string) (bool, error) {
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase attachmentCompactionPhase, keyPrefix string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)

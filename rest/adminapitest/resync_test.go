@@ -56,8 +56,7 @@ func TestResyncRollback(t *testing.T) {
 	require.Equal(t, db.BackgroundProcessStateStopped, status.State)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateResyncDCPStreamName(status.ResyncID)
-	checkpointPrefix := fmt.Sprintf("%s:%v", rt.GetDatabase().MetadataKeys.DCPCheckpointPrefix(rt.GetDatabase().Options.GroupID), name)
+	checkpointPrefix := db.GetResyncDCPCheckpointPrefix(rt.GetDatabase(), status.ResyncID)
 	meta := base.NewDCPMetadataCS(rt.Context(), rt.Bucket().DefaultDataStore(), 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	var garbageVBUUID gocbcore.VbUUID = 1234
