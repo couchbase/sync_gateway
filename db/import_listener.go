@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -25,32 +26,24 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName       string                                // Used for logging
 	terminator       chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
-	dbName           string                                // used for naming the DCP feed
-	bucket           base.Bucket                           // bucket to get vb stats for feed
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
-	metadataKeys     *base.MetadataKeys
-	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
-	checkpointPrefix string            // DCP checkpoint key prefix
-	loggingCtx       context.Context   // ctx for logging on event callbacks
-	importDestKey    string            // cbgt index name
+	cbgtContext      *base.CbgtContext                     // Handle to cbgt manager,cfg
+	checkpointPrefix string                                // DCP checkpoint key prefix
+	loggingCtx       context.Context                       // ctx for logging on event callbacks
+	importDestKey    string                                // cbgt index name
 }
 
 // NewImportListener constructs an object to start an import feed.
 func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *DatabaseContext) *importListener {
 	importListener := &importListener{
-		bucket:           dbContext.Bucket,
-		bucketName:       dbContext.Bucket.GetName(),
-		dbName:           dbContext.Name,
 		dbStats:          dbContext.DbStats.Database(),
 		checkpointPrefix: checkpointPrefix,
 		collections:      make(map[uint32]DatabaseCollectionWithUser),
 		importStats:      dbContext.DbStats.SharedBucketImport(),
 		loggingCtx:       ctx,
-		metadataKeys:     dbContext.MetadataKeys,
 		terminator:       make(chan bool),
 	}
 
@@ -76,15 +69,15 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-		if il.bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !dbContext.OnlyDefaultCollection() {
+		if !dbContext.OnlyDefaultCollection() {
 			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
 		}
 	}
 	sort.Strings(collectionNamesByScope[scopeName])
 	if dbContext.OnlyDefaultCollection() {
-		il.importDestKey = base.ImportDestKey(il.dbName, "", []string{})
+		il.importDestKey = base.ImportDestKey(dbContext.Name, "", []string{})
 	} else {
-		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
+		il.importDestKey = base.ImportDestKey(dbContext.Name, scopeName, collectionNamesByScope[scopeName])
 	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
@@ -100,29 +93,34 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
+	base.StoreDestFactory(il.loggingCtx, il.importDestKey, getImportDestFactory(
+		il.loggingCtx,
+		il.ProcessFeedEvent,
+		dbContext,
+		il.checkpointPrefix),
+	)
 
 	// Start DCP mutation feed
-	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
+	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(dbContext.Bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(dbContext.Bucket)
 	if !ok {
 		// walrus is not a couchbasestore
-		return il.bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(dbContext.Bucket)
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, dbContext.Bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		il.bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		dbContext.Bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
 }
 
@@ -274,4 +272,29 @@ func (db *DatabaseContext) ImportPartitionCount() int {
 	il := db.ImportListener
 	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
 	return len(pindexes)
+}
+
+// getImportDestFactory returns a function to create cbgt.Dest targeting the importListener's ProcessFeedEvent
+func getImportDestFactory(
+	ctx context.Context,
+	callback sgbucket.FeedEventCallbackFunc,
+	dbContext *DatabaseContext,
+	checkpointPrefix string) func(func(),
+) (cbgt.Dest, error) {
+	ctx = base.CorrelationIDLogCtx(ctx, base.DCPImportFeedID)
+	return func(janitorRollback func()) (cbgt.Dest, error) {
+		importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
+		importPartitionStat := dbContext.DbStats.SharedBucketImport().ImportPartitions
+		persistCheckpoints := true
+
+		return base.NewDCPDest(
+			ctx,
+			callback,
+			dbContext.MetadataStore,
+			dbContext.numVBuckets,
+			persistCheckpoints,
+			importFeedStatsMap.Map,
+			importPartitionStat,
+			checkpointPrefix)
+	}
 }

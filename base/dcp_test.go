@@ -57,9 +57,9 @@ func TestTransformBucketCredentials(t *testing.T) {
 
 }
 
-func TestDCPKeyFilter(t *testing.T) {
+func TestDCPIsMetadataDocument(t *testing.T) {
 
-	testCases := []struct {
+	metadataCases := []struct {
 		name     string
 		metaKeys *MetadataKeys
 	}{
@@ -67,26 +67,76 @@ func TestDCPKeyFilter(t *testing.T) {
 		{"default meta keys from empty metaID", NewMetadataKeys("")},
 		{"db specific meta keys", NewMetadataKeys("dbname")},
 	}
-	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s", tc.name), func(t *testing.T) {
-
-			assert.True(t, dcpKeyFilter([]byte("doc123"), tc.metaKeys))
-			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UnusedSeqKey(1234)), tc.metaKeys))
-			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UserKey("user1")), tc.metaKeys))
-			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UserKey("role2")), tc.metaKeys))
-			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.SGCfgPrefix("")+"123"), tc.metaKeys))
-			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.SGCfgPrefix("group")+"123"), tc.metaKeys))
-
-			assert.False(t, dcpKeyFilter([]byte(SyncDocPrefix+"unusualSeq"), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(SyncFunctionKeyWithoutGroupID), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(DCPCheckpointRootPrefix+"12"), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData"), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.DCPCheckpointPrefix("")+"12"), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.DCPCheckpointPrefix("group")+"12"), tc.metaKeys))
-			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.SyncSeqKey()), tc.metaKeys))
+	for _, m := range metadataCases {
+		t.Run(m.name, func(t *testing.T) {
+			testCases := []struct {
+				docName          string
+				metadataDocument bool
+			}{
+				{
+					docName:          "doc123",
+					metadataDocument: false,
+				},
+				{
+					docName:          m.metaKeys.UnusedSeqKey(1234),
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.UserKey("user1"),
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.RoleKey("role2"),
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.SGCfgPrefix("") + "123",
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.SGCfgPrefix("group") + "123",
+					metadataDocument: true,
+				},
+				{
+					docName:          SyncDocPrefix + "unusualSeq",
+					metadataDocument: true,
+				},
+				{
+					docName:          SyncFunctionKeyWithoutGroupID,
+					metadataDocument: true,
+				},
+				{
+					docName:          DCPCheckpointRootPrefix + "12",
+					metadataDocument: true,
+				},
+				{
+					docName:          TxnPrefix + "atrData",
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.DCPCheckpointPrefix("") + "12",
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.DCPCheckpointPrefix("group") + "12",
+					metadataDocument: true,
+				},
+				{
+					docName:          m.metaKeys.SyncSeqKey(),
+					metadataDocument: true,
+				},
+			}
+			for _, tc := range testCases {
+				t.Run(tc.docName, func(t *testing.T) {
+					if tc.metadataDocument {
+						assert.True(t, isMetadataDocumentName([]byte(tc.docName)))
+					} else {
+						assert.False(t, isMetadataDocumentName([]byte(tc.docName)))
+					}
+				})
+			}
 		})
 	}
-
 }
 
 func TestCBGTIndexCreation(t *testing.T) {

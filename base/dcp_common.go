@@ -13,7 +13,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"errors"
 	"expvar"
 	"fmt"
 	"sync"
@@ -39,49 +38,40 @@ const DCPImportFeedID = "SGI"
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	couchbaseStore         CouchbaseBucketStore
 	metaStore              DataStore                      // For metadata persistence/retrieval
-	metaKeys               *MetadataKeys                  // Metadata key generator for filtering and checkpoints
-	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
 	meta                   [][]byte                       // To track metadata blob's per vbucketId.
-	vbuuids                map[uint16]uint64              // Map of vbucket uuids, by vbno.  Used in cases of manual vbucket metadata creation
 	updatesSinceCheckpoint []uint64                       // Number of updates since the last checkpoint. Used to avoid checkpoint persistence feedback loop
 	lastCheckpointTime     []time.Time                    // Time of last checkpoint persistence, per vbucket.  Used to manage checkpoint persistence volume
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
-	feedID                 string                         // Unique feed ID, used for logging
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-// NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. The bucket is the gocb bucket to stream events from. It stores checkpoints in the metaStore collection prefixes from metaKeys + checkpointPrefix. The feed name will start with feedID and DCPCommon will add unique string. Specific stats for DCP are stored in expvars rather than SgwStats.
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
-	maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
-
-	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return nil, errors.New("DCP not supported for non-Couchbase data source")
-	}
+// NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. It stores checkpoints in the metaStore starting with checkpointPrefix if persistCheckpoints is true.
+// Specific stats for DCP are stored in expvars rather than SgwStats.
+func NewDCPCommon(
+	ctx context.Context,
+	callback sgbucket.FeedEventCallbackFunc,
+	metaStore DataStore,
+	maxVbNo uint16,
+	persistCheckpoints bool,
+	dbStats *expvar.Map,
+	checkpointPrefix string) (*DCPCommon, error) {
 
 	c := &DCPCommon{
 		dbStatsExpvars:         dbStats,
-		couchbaseStore:         couchbaseStore,
 		metaStore:              metaStore,
-		metaKeys:               metaKeys,
-		maxVbNo:                maxVbNo,
 		persistCheckpoints:     persistCheckpoints,
 		seqs:                   make([]uint64, maxVbNo),
 		meta:                   make([][]byte, maxVbNo),
-		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
 		callback:               callback,
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
-		feedID:                 feedID,
 		checkpointPrefix:       checkpointPrefix,
+		loggingCtx:             ctx,
 	}
-
-	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
 
 	return c, nil
 }
@@ -236,32 +226,15 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 
 // DCP-related utilities
 
-// Only a subset of Sync Gateway's internal documents need to be included during DCP processing: user, role, and
-// unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
-// dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
-// c is used to get the SG Cfg prefix
-func dcpKeyFilter(key []byte, metaKeys *MetadataKeys) bool {
+// isMetadataDocument returns true if the document is not a metadata document.
+func isMetadataDocumentName(key []byte) bool {
 
 	// If it's a _txn doc, don't process
 	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
-		return false
-	}
-
-	// If it's not a _sync doc, process
-	if !bytes.HasPrefix(key, []byte(SyncDocPrefix)) {
 		return true
 	}
 
-	// User, role, unused sequence markers and cbgt cfg (regardless of group ID) docs should be processed
-	if bytes.HasPrefix(key, []byte(metaKeys.unusedSeqPrefix)) ||
-		bytes.HasPrefix(key, []byte(metaKeys.unusedSeqRangePrefix)) ||
-		bytes.HasPrefix(key, []byte(UserPrefixRoot)) ||
-		bytes.HasPrefix(key, []byte(RolePrefixRoot)) ||
-		bytes.HasPrefix(key, []byte(metaKeys.sgCfgPrefix)) {
-		return true
-	}
-
-	return false
+	return bytes.HasPrefix(key, []byte(SyncDocPrefix))
 }
 
 // Makes a feedEvent that can be passed to a FeedEventCallbackFunc implementation
