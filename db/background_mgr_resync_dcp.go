@@ -113,9 +113,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	regenerateSequences := options["regenerateSequences"].(bool)
 	resyncCollections := options["collections"].(ResyncCollections)
 
-	resyncCbgtContext := &base.CbgtContext{}
-	resyncHB := &base.CouchbaseHeartBeater{}
-
 	resyncLoggingID := "Resync: " + r.ResyncID
 
 	var doneChan chan error
@@ -194,28 +191,25 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
-		collectionNamesByScope := make(map[string][]string)
 
 		// TODO: Handle multiple scopes
 
 		loggingCtx := db.AddBucketUserLogContext(ctx)
 
-		if !db.useShardedDCP(){
-			base.WarnfCtx(loggingCtx, "running distributed resync is not supported")
-			return nil
+		if !db.useShardedDCP() {
+			return fmt.Errorf("running distributed resync is not supported")
 		}
 
-		cbStore, _ := base.AsCouchbaseBucketStore(bucket)
 		// Dest creation
 		for sn := range db.Scopes {
 			scopeName = sn
 		}
 
-		for _, collection := range db.CollectionByID {
-			if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !db.OnlyDefaultCollection() {
-				collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
-			}
+		collectionNamesByScope, err := db.GetCollectionNamesByScope()
+		if err != nil {
+			return fmt.Errorf("getting collection names by scope failed: %v", err)
 		}
+
 		sort.Strings(collectionNamesByScope[scopeName])
 		if db.OnlyDefaultCollection() {
 			resyncDestKey = base.DestKey(db.Name, "", []string{}, base.ResyncShardedDCPFeedType)
@@ -223,16 +217,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
 		}
 
-		maxVbNo, err := bucket.GetMaxVbno()
-
-		// TODO: Should I use separate checkpoints or can the same import checkpoints be used?
+		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
 		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
 		if err != nil {
 			return fmt.Errorf("Error getting max VB number: %v", err)
 		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, _, err := base.NewDCPDest(loggingCtx, callback, db.Bucket, maxVbNo, true, nil, dcpFeedKey, nil, checkPointPrefix, db.MetadataKeys)
+			resyncDest, _, err := base.NewDCPDest(loggingCtx, callback, db.Bucket, db.numVBuckets, true, nil, dcpFeedKey, nil, checkPointPrefix, db.MetadataKeys)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}
@@ -245,7 +237,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix(db.Options.GroupID)
-		resyncHB, err = base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
+		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
 		if err != nil {
 			return fmt.Errorf("Error creating resync heartbeater: %v", err)
 		}
@@ -253,7 +245,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}
-		defer resyncHB.Stop(ctx)
 
 		// CFG creation:
 		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(db.Options.GroupID))
@@ -262,13 +253,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		numpartitions := db.Options.ImportOptions.ImportPartitions
-		resyncCbgtContext, err = base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, dcpFeedKey)
+		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
+			db.BucketSpec, scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, dcpFeedKey)
 
 		if err != nil {
-			return fmt.Errorf("Error starting sharded dcp feed: %v", err)
+			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
 		defer resyncCbgtContext.Stop()
+		defer func() {
+			resyncCbgtContext.Stop()
+			resyncHB.Stop(ctx)
+		}()
 	} else {
 		dcpClient, err = base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
 		if err != nil {
@@ -359,20 +354,15 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-		if r.Distributed {
-			resyncCbgtContext.Stop()
-			resyncHB.Stop(ctx)
-		} else {
-			err = dcpClient.Close()
-			if err != nil {
-				base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-				return err
-			}
+		err = dcpClient.Close()
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+			return err
+		}
 
-			err = <-doneChan
-			if err != nil {
-				return err
-			}
+		err = <-doneChan
+		if err != nil {
+			return err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())

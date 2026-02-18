@@ -47,7 +47,7 @@ type ShardedDCPFeedType string
 
 const (
 	ImportShardedDCPFeedType ShardedDCPFeedType = "import" // "import"
-	ResyncShardedDCPFeedType                    = "resync" // "resync"
+	ResyncShardedDCPFeedType ShardedDCPFeedType = "resync" // "resync"
 )
 
 // nodeExtras is the contents of the JSON value of the cbgt.NodeDef.Extras field as used by Sync Gateway.
@@ -123,13 +123,9 @@ func GenerateIndexName(dbName string, feedID string) string {
 	}
 }
 
-// Given a dbName and feedType, generates a name based on the approach used prior to CBG-626.  Used for upgrade handling
-func GenerateLegacyIndexName(dbName string, feedType ShardedDCPFeedType) string {
-	if feedType == ImportShardedDCPFeedType {
-		return dbName + "_import"
-	} else {
-		return dbName + "_resync"
-	}
+// Given a dbName, generates a name based on the approach used prior to CBG-626.  Used for upgrade handling
+func GenerateLegacyIndexName(dbName string) string {
+	return dbName + "_import"
 }
 
 // Creates a CBGT index definition for the specified bucket.  This adds the index definition
@@ -204,7 +200,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 func dcpSafeIndexName(ctx context.Context, c *CbgtContext, dbName string, feedType ShardedDCPFeedType, feedID string) (safeIndexName, previousUUID string) {
 
 	indexName := GenerateIndexName(dbName, feedID)
-	legacyIndexName := GenerateLegacyIndexName(dbName, feedType)
+	legacyIndexName := GenerateLegacyIndexName(dbName)
 
 	indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
 	legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)

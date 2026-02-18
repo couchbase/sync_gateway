@@ -143,7 +143,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingCurrentIndex: false,
 			feedID:               DCPImportFeedID,
 			feedType:             ImportShardedDCPFeedType,
-			expectedIndexName:    GenerateLegacyIndexName(shortDbName, ImportShardedDCPFeedType),
+			expectedIndexName:    GenerateLegacyIndexName(shortDbName),
 		},
 		{
 			name:                 "upgradeFromUnsafeLegacy",
@@ -209,7 +209,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 				bucketUUID, _ := bucket.UUID()
 				sourceParams, err := legacyFeedParams(spec)
 				require.NoError(t, err)
-				legacyIndexName := GenerateLegacyIndexName(tc.dbName, tc.feedType)
+				legacyIndexName := GenerateLegacyIndexName(tc.dbName)
 				indexParams := `{"name": "` + tc.dbName + `"}`
 				planParams := cbgt.PlanParams{
 					MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -308,7 +308,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	bucketUUID, _ := bucket.UUID()
 	sourceParams, err := cbgtFeedParams(ctx, "", nil, testDbName)
 	require.NoError(t, err)
-	legacyIndexName := GenerateLegacyIndexName(testDbName, ImportShardedDCPFeedType)
+	legacyIndexName := GenerateLegacyIndexName(testDbName)
 	indexParams := `{"name": "` + testDbName + `"}`
 	planParams := cbgt.PlanParams{
 		MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -386,7 +386,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	bucketUUID, _ := bucket.UUID()
 	sourceParams, err := cbgtFeedParams(ctx, "", nil, unsafeTestDBName)
 	require.NoError(t, err)
-	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName, ImportShardedDCPFeedType)
+	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName)
 	indexParams := `{"name": "` + unsafeTestDBName + `"}`
 	planParams := cbgt.PlanParams{
 		MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.

@@ -2580,3 +2580,17 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 func (db *DatabaseContext) useShardedDCP() bool {
 	return base.IsEnterpriseEdition() && !db.BucketSpec.IsWalrusBucket()
 }
+
+func (db *DatabaseContext) GetCollectionNamesByScope() (map[string][]string, error) {
+	collectionNamesByScope := make(map[string][]string)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
+	if err != nil {
+		return collectionNamesByScope, err
+	}
+	for _, collection := range db.CollectionByID {
+		if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !db.OnlyDefaultCollection() {
+			collectionNamesByScope[collection.Name] = append(collectionNamesByScope[collection.Name], collection.Name)
+		}
+	}
+	return collectionNamesByScope, nil
+}

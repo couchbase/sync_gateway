@@ -269,7 +269,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			require.NoError(t, err)
 
 			if distributed {
-				waitforResycnDocsChanged(t, db, int64(docsToCreate))
+				waitforResyncDocsChanged(t, db, int64(docsToCreate))
 				err := db.ResyncManager.Stop()
 				require.NoError(t, err)
 			} else {
@@ -653,7 +653,7 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	}, 1*time.Minute, 1*time.Millisecond)
 }
 
-func waitforResycnDocsChanged(t testing.TB, db *Database, count int64) {
+func waitforResyncDocsChanged(t testing.TB, db *Database, count int64) {
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
