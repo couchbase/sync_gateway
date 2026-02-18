@@ -42,7 +42,7 @@ var ErrVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
 
 type GoCBDCPClient struct {
 	ctx                        context.Context
-	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
+	dcpStreamName              string                         // DCP stream name, must be unique
 	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
 	callback                   sgbucket.FeedEventCallbackFunc // Callback invoked on DCP mutations/deletions
 	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
@@ -68,6 +68,7 @@ type GoCBDCPClient struct {
 }
 
 type DCPClientOptions struct {
+	FeedID                     string // Optional description for a DCP feed
 	NumWorkers                 int
 	OneShot                    bool
 	FailOnRollback             bool                      // When true, the DCP client will terminate on DCP rollback
@@ -81,17 +82,17 @@ type DCPClientOptions struct {
 	CheckpointPrefix           string
 }
 
-func NewDCPClient(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
+func NewDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
 
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
+	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
 }
 
-func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+func newDCPClientWithForBuckets(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 
 	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -106,12 +107,16 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 			return nil, fmt.Errorf("callers must specify a checkpoint prefix when persisting metadata")
 		}
 	}
+	dcpStreamName, err := GenerateDcpStreamName(options.FeedID)
+	if err != nil {
+		return nil, fmt.Errorf("error generating DCP stream name: %w", err)
+	}
 	client := &GoCBDCPClient{
 		ctx:                 ctx,
+		dcpStreamName:       dcpStreamName,
 		workers:             make([]*DCPWorker, numWorkers),
 		numVbuckets:         numVbuckets,
 		callback:            callback,
-		ID:                  ID,
 		spec:                bucket.GetSpec(),
 		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
 		terminator:          make(chan bool),
@@ -129,12 +134,11 @@ func newDCPClientWithForBuckets(ctx context.Context, ID string, callback sgbucke
 		client.activeVbuckets[vbNo] = struct{}{}
 	}
 
-	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
 		// TODO: Change GetSingleDataStore to a metadata Store?
 		metadataStore := bucket.DefaultDataStore()
-		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, checkpointPrefix)
+		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, options.CheckpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
@@ -368,7 +372,7 @@ func (dc *GoCBDCPClient) initAgent(spec BucketSpec) error {
 	flags := memd.DcpOpenFlagProducer
 	flags |= memd.DcpOpenFlagIncludeXattrs
 	var agentErr error
-	dc.agent, agentErr = gocbcore.CreateDcpAgent(agentConfig, dc.ID, flags)
+	dc.agent, agentErr = gocbcore.CreateDcpAgent(agentConfig, dc.dcpStreamName, flags)
 	if agentErr != nil {
 		return fmt.Errorf("Unable to start DCP client - error creating agent: %w", agentErr)
 	}
@@ -671,8 +675,8 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 }
 
 // NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
-func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
-	return newDCPClientWithForBuckets(ctx, ID, callback, options, bucket, numVbuckets)
+func NewDCPClientForTest(ctx context.Context, t *testing.T, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
 }
 
 var _ gocbcore.StreamObserver = &GoCBDCPClient{}

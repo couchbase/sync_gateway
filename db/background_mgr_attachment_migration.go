@@ -167,24 +167,22 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	if err != nil {
 		return err
 	}
-	dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(a.MigrationID)
-	dcpPrefix := db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID)
+	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, currCollectionIDs)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
-	checkpointPrefix := fmt.Sprintf("%s:%v", dcpPrefix, dcpFeedKey)
-	err = a.resetDCPMetadataIfNeeded(ctx, db, checkpointPrefix, currCollectionIDs)
+
+	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpOptions := getMigrationDCPClientOptions(currCollectionIDs, db.Options.GroupID, dcpPrefix)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *dcpOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, callback, *dcpOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
 	}
-	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for attachment migration", migrationLoggingID, dcpFeedKey)
+	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for attachment migration", migrationLoggingID)
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
@@ -291,14 +289,19 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-func getMigrationDCPClientOptions(collectionIDs []uint32, groupID, prefix string) *base.DCPClientOptions {
+// getMigrationDCPClientOptions returns the options for attachment migration DCP client
+func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, collectionIDs []uint32) *base.DCPClientOptions {
 	clientOptions := &base.DCPClientOptions{
+		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  prefix,
+		CheckpointPrefix: fmt.Sprintf("%s:sg-%v:att_migration:%v",
+			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
+			base.ProductAPIVersion,
+			migrationID,
+		),
 	}
 	return clientOptions
 }
@@ -318,14 +321,6 @@ type AttachmentMigrationMeta struct {
 type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationManagerResponse `json:"status"`
 	AttachmentMigrationMeta            `json:"meta"`
-}
-
-// GenerateAttachmentMigrationDCPStreamName returns the DCP stream name for a resync.
-func GenerateAttachmentMigrationDCPStreamName(migrationID string) string {
-	return fmt.Sprintf(
-		"sg-%v:att_migration:%v",
-		base.ProductAPIVersion,
-		migrationID)
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run

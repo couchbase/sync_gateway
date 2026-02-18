@@ -257,7 +257,7 @@ func makeFeedEvent(key []byte, value []byte, dataType uint8, cas uint64, expiry 
 	return event
 }
 
-// Create a prefix that will be used to create the dcp stream name, which must be globally unique
+// GenerateDcpStreamName creates a prefix that will be used to create the dcp stream name, which must be globally unique
 // in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
 // version number / commit for debugging purposes
 func GenerateDcpStreamName(feedID string) (string, error) {
@@ -270,12 +270,15 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 
 	commitTruncated := StringPrefix(GitCommit, 7)
 
-	return fmt.Sprintf(
+	feedName := fmt.Sprintf(
 		"%v-v-%v-commit-%v-uuid-%v",
 		feedID,
 		ProductAPIVersion,
 		commitTruncated,
 		u.String(),
-	), nil
-
+	)
+	if len(feedName) > 200 {
+		return "", fmt.Errorf("Generated DCP feed name is too long: %d characters.  Max length is 200 characters.  Generated name: %s", len(feedName), feedName)
+	}
+	return feedName, nil
 }

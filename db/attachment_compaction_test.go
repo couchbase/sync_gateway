@@ -286,10 +286,13 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
 	require.NoError(t, err)
-	dcpFeedKey := GenerateCompactionDCPStreamName(t.Name(), CleanupPhase)
-	clientOptions, err := getCompactionDCPClientOptions(collectionID, testDb.Options.GroupID, testDb.MetadataKeys.DCPCheckpointPrefix(testDb.Options.GroupID))
-	require.NoError(t, err)
-	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, nil, *clientOptions, bucket)
+	clientOptions := getCompactionDCPClientOptions(
+		testDb,
+		t.Name(),
+		collectionID,
+		CleanupPhase,
+	)
+	dcpClient, err := base.NewDCPClient(ctx, nil, *clientOptions, bucket)
 	require.NoError(t, err)
 
 	// alter dcp metadata to feed into the compaction manager
@@ -298,7 +301,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	metadataKeys := base.NewMetadataKeys(testDb.Options.MetadataID)
 	testDb.AttachmentCompactionManager = NewAttachmentCompactionManager(dataStore, metadataKeys)
-	manager := AttachmentCompactionManager{CompactID: t.Name(), Phase: CleanupPhase, VBUUIDs: vbUUID}
+	manager := AttachmentCompactionManager{CompactID: t.Name(), Phase: string(CleanupPhase), VBUUIDs: vbUUID}
 	testDb.AttachmentCompactionManager.Process = &manager
 
 	terminator := base.NewSafeTerminator()

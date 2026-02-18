@@ -310,17 +310,15 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			require.NoError(t, err)
 			defer db.Close(ctx)
 			clientOptions := getMigrationDCPClientOptions(
+				db,
+				migrationID,
 				test.collectionIDs,
-				db.Options.GroupID,
-				db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 			)
 
-			dcpFeedKey := GenerateAttachmentMigrationDCPStreamName(migrationID)
 			b, err := base.AsGocbV2Bucket(bucket)
 			require.NoError(t, err)
 			dcpClient, err := base.NewDCPClient(
 				ctx,
-				dcpFeedKey,
 				nil,
 				*clientOptions,
 				b,

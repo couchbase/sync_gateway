@@ -54,9 +54,6 @@ func TestOneShotDCP(t *testing.T) {
 		return false
 	}
 
-	// start one shot feed
-	feedID := t.Name()
-
 	collection, err := AsCollection(dataStore)
 	require.NoError(t, err)
 	var collectionIDs []uint32
@@ -72,7 +69,7 @@ func TestOneShotDCP(t *testing.T) {
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, counterCallback, clientOptions, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(TestCtx(t), counterCallback, clientOptions, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -130,14 +127,13 @@ func TestTerminateDCPFeed(t *testing.T) {
 	}
 
 	// start continuous feed with terminator
-	feedID := t.Name()
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 	options := DCPClientOptions{
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, counterCallback, options, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(TestCtx(t), counterCallback, options, gocbv2Bucket)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -224,8 +220,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				return false
 			}
 
-			feedID := t.Name()
-
 			// Add documents
 			updatedBody := map[string]any{"foo": "bar"}
 			for i := range 10000 {
@@ -250,7 +244,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 			require.NoError(t, err)
-			dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient, err := NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start()
@@ -284,7 +278,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
-			dcpClient2, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient2, err := NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start()
@@ -303,7 +297,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
-			dcpClient3, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+			dcpClient3, err := NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start()
@@ -352,7 +346,6 @@ func TestContinuousDCPRollback(t *testing.T) {
 		return false
 	}
 
-	feedID := t.Name()
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
@@ -375,7 +368,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// timeout for feed to complete
 	timeout := time.After(20 * time.Second)
 
-	dcpClient, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	_, startErr := dcpClient.Start()
@@ -410,7 +403,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	}
 	require.NoError(t, dcpClient.Close())
 
-	dcpClient1, err := NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient1, err := NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 	// function to force the rollback of some vBuckets
 	dcpClient1.forceRollbackvBucket(vbUUID)
@@ -473,8 +466,6 @@ func TestResumeStoppedFeed(t *testing.T) {
 		return false
 	}
 
-	feedID := t.Name()
-
 	// Add documents
 	updatedBody := map[string]any{"foo": "bar"}
 	for i := range 10000 {
@@ -505,7 +496,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	dcpClient, err = NewDCPClient(ctx, feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err = NewDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -539,7 +530,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient2, err := NewDCPClient(ctx, feedID, secondCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient2, err := NewDCPClient(ctx, secondCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
@@ -571,7 +562,6 @@ func TestBadAgentPriority(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	feedID := "fakeID"
 	panicCallback := func(event sgbucket.FeedEvent) bool {
 		t.Error(t, "Should not hit this callback")
 		return false
@@ -583,7 +573,7 @@ func TestBadAgentPriority(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	dcpClient, err := NewDCPClient(TestCtx(t), feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(TestCtx(t), panicCallback, dcpClientOpts, gocbv2Bucket)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }
@@ -604,7 +594,6 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		return false
 	}
 
-	feedID := t.Name()
 	dcpClientOpts := DCPClientOptions{
 		FailOnRollback:    false,
 		OneShot:           true,
@@ -619,7 +608,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket)
 	require.NoError(t, err)
 
-	dcpClient, err := NewDCPClient(ctx, feedID, callback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(ctx, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -646,7 +635,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 		InitialMetadata:   metadata,
 	}
 
-	dcpClient, err = NewDCPClient(ctx, feedID, callback, dcpClientOpts, gocbv2Bucket)
+	dcpClient, err = NewDCPClient(ctx, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	_, startErr = dcpClient.Start()
@@ -722,7 +711,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		return true
 	}
 
-	dcpClient, err := NewDCPClient(ctx, t.Name(), callback, clientOptions, gocbv2Bucket)
+	dcpClient, err := NewDCPClient(ctx, callback, clientOptions, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -808,7 +797,6 @@ func TestDCPClientAgentConfig(t *testing.T) {
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
 			gocbv2Bucket.Spec.Server += tc.serverSuffix
 			dcpClient, err := NewDCPClient(ctx,
-				"fakeFeedID",
 				func(sgbucket.FeedEvent) bool { return true },
 				DCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
 				gocbv2Bucket)
