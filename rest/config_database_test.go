@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -27,6 +28,70 @@ func TestDefaultDbConfig(t *testing.T) {
 	sc := DefaultStartupConfig("")
 	compactIntervalDays := *(DefaultDbConfig(&sc, useXattrs).CompactIntervalDays)
 	require.Equal(t, db.DefaultCompactInterval, time.Duration(compactIntervalDays)*time.Hour*24)
+}
+
+// TestDefaultDbConfigFieldCoverage ensures that all fields in DbConfig are either:
+// 1. Set to a non-zero value in DefaultDbConfig(), or
+// 2. Explicitly listed in the allowlist as intentionally unset
+//
+// This prevents new fields from being added to DbConfig without considering whether
+// they should have a default value exposed in include_runtime=true config output.
+func TestDefaultDbConfigFieldCoverage(t *testing.T) {
+	sc := DefaultStartupConfig("/default/log/file/path")
+	defaultConfig := DefaultDbConfig(&sc, true)
+
+	// Fields that are intentionally left unset in DefaultDbConfig.
+	// When adding a field here, add a comment explaining why it doesn't need a default.
+	intentionallyUnsetFields := map[string]string{
+		// Embedded struct - fields checked separately
+		"BucketConfig":           "embedded struct, fields checked separately",
+		"Scopes":                 "opt-in with no default",
+		"Replications":           "opt-in with no default",
+		"UserFunctions":          "opt-in with no default",
+		"OIDCConfig":             "opt-in with no default",
+		"LocalJWTConfig":         "opt-in with no default",
+		"CORS":                   "opt-in with no default",
+		"EventHandlers":          "opt-in with no default",
+		"ImportFilter":           "opt-in with no default",
+		"UserXattrKey":           "opt-in with no default",
+		"Name":                   "stamped at runtime",
+		"UpdatedAt":              "persisted timestamp",
+		"CreatedAt":              "persisted timestamp",
+		"Unsupported":            "unsupported",
+		"DeprecatedRevCacheSize": "deprecated",
+		"NumIndexReplicas":       "deprecated",
+		"FeedType":               "deprecated",
+		"Users":                  "legacy config",
+		"Roles":                  "legacy config",
+	}
+
+	configType := reflect.TypeFor[DbConfig]()
+	configValue := reflect.ValueOf(*defaultConfig)
+
+	for i := 0; i < configType.NumField(); i++ {
+		field := configType.Field(i)
+		fieldName := field.Name
+		fieldValue := configValue.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			t.Logf("%q: Skipping unexported field", fieldName)
+			continue
+		}
+
+		// Check if field is in the allowlist
+		if reason, ok := intentionallyUnsetFields[fieldName]; ok {
+			if testing.Verbose() {
+				t.Logf("%q: intentionally unset: %s", fieldName, reason)
+			}
+			continue
+		}
+
+		// Check if the field has a non-zero value
+		if fieldValue.IsZero() {
+			assert.Failf(t, "Field not present in DefaultDbConfig", "%q: missing - either add a default value in DefaultDbConfig() or add it to the allowlist with a reason", fieldName)
+		}
+	}
 }
 
 func TestDbConfigUpdatedAtField(t *testing.T) {
