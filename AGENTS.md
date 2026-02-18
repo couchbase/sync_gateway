@@ -125,4 +125,4 @@ These variables are read by Go test code via `os.Getenv` and work with `go test`
 - EE build requires SSH access to `github.com/couchbaselabs/go-fleecedelta` private repo.
 - Integration tests must always force `-count=1 -p 1` (serial execution) to avoid cross-package interference.
 - Rosmar is an in-memory Couchbase bucket simulator used for unit tests; it lives in `github.com/couchbaselabs/rosmar`.
-  - It does not have 100% feature-parity, so any features heavily using Couchbase-Server should be tested in both modes to ensure compatability.
+  - It does not have 100% feature-parity, so any features heavily using Couchbase-Server should be tested in both modes to ensure compatibility.
