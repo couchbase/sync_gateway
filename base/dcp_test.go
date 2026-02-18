@@ -86,7 +86,7 @@ func TestDCPIsMetadataDocument(t *testing.T) {
 					metadataDocument: true,
 				},
 				{
-					docName:          m.metaKeys.UserKey("role2"),
+					docName:          m.metaKeys.RoleKey("role2"),
 					metadataDocument: true,
 				},
 				{
