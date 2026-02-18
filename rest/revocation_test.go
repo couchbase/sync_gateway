@@ -2452,6 +2452,18 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 						return nil
 					},
 				},
+				// we need to insert on write to rev cache for this test as the LeakyBucketConfig above
+				// intercepts the GetWithXattr call when attempting to load revision from bucket for sending revision
+				// to client
+				DatabaseConfig: &DatabaseConfig{
+					DbConfig: DbConfig{
+						CacheConfig: &CacheConfig{
+							RevCacheConfig: &RevCacheConfig{
+								InsertOnWrite: base.Ptr(true),
+							},
+						},
+					},
+				},
 			},
 		)
 

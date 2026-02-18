@@ -2909,11 +2909,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			CV:          &Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version},
 		}
 
-		if updateRevCache {
-			if createNewRevIDSkipped {
-				db.revisionCache.Upsert(ctx, documentRevision)
-			} else {
-				db.revisionCache.Put(ctx, documentRevision)
+		// only insert to revision cache on write if configured to do so
+		if db.dbCtx.Options.RevisionCacheOptions != nil && db.dbCtx.Options.RevisionCacheOptions.InsertOnWrite {
+			if updateRevCache {
+				if createNewRevIDSkipped {
+					db.revisionCache.Upsert(ctx, documentRevision)
+				} else {
+					db.revisionCache.Put(ctx, documentRevision)
+				}
 			}
 		}
 
