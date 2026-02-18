@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/rosmar"
+	"github.com/google/uuid"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1946,6 +1948,4887 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", "jacques")
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, changes.Results[1].Deleted, false)
+}
+
+var exampleDoc string = `{
+  "_id": "jdoe.activity.%s",
+  "type": "activity",
+  "createdAt": "2025-06-15T08:00:00.000Z",
+  "updatedAt": "2025-06-15T12:30:00.000Z",
+  "owner": "jdoe",
+  "name": "Morning Century Ride",
+  "bikeId": "jdoe.bike_profile.bike001",
+  "client": "karoo3",
+  "activityType": "GRAVEL",
+  "activeTime": 7200000,
+  "duration": {
+    "elapsedTime": 10800000,
+    "startTime": "2025-06-15T08:00:00.000Z",
+    "endTime": "2025-06-15T11:00:00.000Z"
+  },
+  "activityInfo": [
+    {
+      "key": "avgSpeed",
+      "value": {
+        "format": "double",
+        "value": 28.5
+      }
+    },
+    {
+      "key": "maxSpeed",
+      "value": {
+        "format": "double",
+        "value": 55.2
+      }
+    },
+    {
+      "key": "avgPower",
+      "value": {
+        "format": "int",
+        "value": 210
+      }
+    },
+    {
+      "key": "avgCadence",
+      "value": {
+        "format": "float",
+        "value": 85.3
+      }
+    },
+    {
+      "key": "totalDistance",
+      "value": {
+        "format": "long",
+        "value": 100500
+      }
+    },
+    {
+      "key": "avgHr",
+      "value": {
+        "format": "int",
+        "value": 145
+      }
+    },
+    {
+      "key": "maxHr",
+      "value": {
+        "format": "int",
+        "value": 178
+      }
+    },
+    {
+      "key": "totalElevGain",
+      "value": {
+        "format": "float",
+        "value": 1250.5
+      }
+    }
+  ],
+  "polyline": "m~beFnzvuOlAkB~@{AdAcBnBeDhCqE",
+  "laps": [
+    {
+      "lapNumber": 1,
+      "activeTime": 3600000,
+      "duration": {
+        "elapsedTime": 5400000,
+        "startTime": "2025-06-15T08:00:00.000Z",
+        "endTime": "2025-06-15T09:30:00.000Z"
+      },
+      "pauses": [
+        {
+          "elapsedTime": 1800000,
+          "startTime": "2025-06-15T08:45:00.000Z",
+          "endTime": "2025-06-15T09:15:00.000Z"
+        }
+      ],
+      "lapInfo": [
+        {
+          "key": "avgSpeed",
+          "value": {
+            "format": "double",
+            "value": 30.1
+          }
+        },
+        {
+          "key": "avgPower",
+          "value": {
+            "format": "int",
+            "value": 220
+          }
+        }
+      ],
+      "trigger": "DISTANCE",
+      "workout": {
+        "primaryTarget": {
+          "type": "power",
+          "value": 200,
+          "output": 215,
+          "minValue": 180,
+          "maxValue": 220,
+          "rampType": "linear"
+        },
+        "secondaryTarget": {
+          "type": "cadence",
+          "value": 90,
+          "output": 87,
+          "minValue": 80,
+          "maxValue": 100
+        }
+      }
+    },
+    {
+      "lapNumber": 2,
+      "activeTime": 3600000,
+      "duration": {
+        "elapsedTime": 5400000,
+        "startTime": "2025-06-15T09:30:00.000Z",
+        "endTime": "2025-06-15T11:00:00.000Z"
+      },
+      "pauses": [
+        {
+          "elapsedTime": 900000,
+          "startTime": "2025-06-15T10:00:00.000Z",
+          "endTime": "2025-06-15T10:15:00.000Z"
+        },
+        {
+          "elapsedTime": 900000,
+          "startTime": "2025-06-15T10:30:00.000Z",
+          "endTime": "2025-06-15T10:45:00.000Z"
+        }
+      ],
+      "lapInfo": [
+        {
+          "key": "avgSpeed",
+          "value": {
+            "format": "double",
+            "value": 26.8
+          }
+        }
+      ],
+      "trigger": "MANUAL"
+    }
+  ],
+  "sync": {
+    "description": "Morning gravel ride through the hills",
+    "type": "ride",
+    "tags": [
+      "gravel",
+      "century",
+      "training"
+    ],
+    "synced": true,
+    "partners": [
+      {
+        "partner": "strava",
+        "needsUpload": false,
+        "attempts": 1,
+        "uploadedAt": "2025-06-15T12:05:00.000Z",
+        "externalId": "strava_activity_12345",
+        "externalUrl": "https://www.strava.com/activities/12345"
+      },
+      {
+        "partner": "trainingpeaks",
+        "needsUpload": true,
+        "attempts": 0,
+        "error": "authentication_expired"
+      }
+    ]
+  },
+  "pointsOfInterest": [
+    {
+      "type": "summit",
+      "location": {
+        "lat": 40.7128,
+        "lng": -74.006
+      },
+      "name": "Hilltop View",
+      "description": "Great panoramic view from the top",
+      "bearing": 180.5,
+      "updatedAt": "2025-06-15T09:45:00.000Z",
+      "sourceId": "poi-summit-001"
+    },
+    {
+      "type": "water",
+      "location": {
+        "lat": 40.75,
+        "lng": -73.98
+      },
+      "name": "Refill Station"
+    }
+  ],
+  "climbs": [
+    {
+      "startDistance": 15200,
+      "endDistance": 18500,
+      "distance": 3300
+    },
+    {
+      "startDistance": 45000,
+      "endDistance": 48200,
+      "distance": 3200
+    }
+  ]
+}`
+
+func TestWrite(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn:     syncFunc,
+		AutoImport: base.Ptr(true),
+	})
+	defer rt.Close()
+
+	var hugeAttachment = base.FastRandBytes(t, 500000)
+
+	version := rt.PutDoc("doc", fmt.Sprintf(tesDoc, 1))
+
+	rt.storeAttachment("doc", version, "myAtt", string(hugeAttachment))
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc/myAtt", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+
+}
+
+func TestWriteExampleDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn:     syncFunc,
+		AutoImport: base.Ptr(true),
+	})
+	defer rt.Close()
+
+	postFix := uuid.NewString()
+
+	rt.PutDoc("jdoe.activity."+postFix, fmt.Sprintf(exampleDoc, postFix))
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/jdoe.activity."+postFix, "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+
+	fmt.Println(resp.Body.String())
+}
+
+var syncFunc string = `function synctos(doc, oldDoc) {
+  // Whether the given value is either null or undefined
+  function isValueNullOrUndefined(value) {
+    return typeof(value) === 'undefined' || value === null;
+  }
+
+  // Whether the given document is missing/nonexistant (i.e. null or undefined) or deleted (its "_deleted" property is true)
+  function isDocumentMissingOrDeleted(candidate) {
+    return isValueNullOrUndefined(candidate) || candidate._deleted;
+  }
+
+  // A property validator that is suitable for use on type identifier properties. Ensures the value is a string, is neither null nor
+  // undefined, is not an empty string and cannot be modified.
+  var typeIdValidator = {
+    type: 'string',
+    required: true,
+    mustNotBeEmpty: true,
+    immutable: true
+  };
+
+  // A type filter that matches on the document's type property
+  function simpleTypeFilter(doc, oldDoc, candidateDocType) {
+    if (oldDoc) {
+      if (doc._deleted) {
+        return oldDoc.type === candidateDocType;
+      } else {
+        return doc.type === oldDoc.type && oldDoc.type === candidateDocType;
+      }
+    } else {
+      return doc.type === candidateDocType;
+    }
+  }
+
+  // Retrieves the old doc's effective value. If it is null, undefined or its "_deleted" property is true, returns null. Otherwise, returns
+  // the value of the "oldDoc" parameter.
+  function getEffectiveOldDoc(oldDoc) {
+    return !isDocumentMissingOrDeleted(oldDoc) ? oldDoc : null;
+  }
+
+  // Load the document authorization module
+  var authorizationModule = function() {
+    // A document definition may define its authorizations (channels, roles or users) for each operation type (view, add, replace, delete or
+    // write) as either a string or an array of strings. In either case, add them to the list if they are not already present.
+    function appendToAuthorizationList(allAuthorizations, authorizationsToAdd) {
+      if (!isValueNullOrUndefined(authorizationsToAdd)) {
+        if (authorizationsToAdd instanceof Array) {
+          for (var i = 0; i < authorizationsToAdd.length; i++) {
+            var authorization = authorizationsToAdd[i];
+            if (allAuthorizations.indexOf(authorization) < 0) {
+              allAuthorizations.push(authorization);
+            }
+          }
+        } else if (allAuthorizations.indexOf(authorizationsToAdd) < 0) {
+          allAuthorizations.push(authorizationsToAdd);
+        }
+      }
+    }
+
+    // A document definition may define its authorized channels, roles or users as either a function or an object/hashtable
+    function getAuthorizationMap(doc, oldDoc, authorizationDefinition) {
+      if (typeof(authorizationDefinition) === 'function') {
+        return authorizationDefinition(doc, getEffectiveOldDoc(oldDoc));
+      } else {
+        return authorizationDefinition;
+      }
+    }
+
+    // Retrieves a list of channels the document belongs to based on its specified type
+    function getAllDocChannels(doc, oldDoc, docDefinition) {
+      var docChannelMap = getAuthorizationMap(doc, oldDoc, docDefinition.channels);
+
+      var allChannels = [ ];
+      if (docChannelMap) {
+        appendToAuthorizationList(allChannels, docChannelMap.view);
+        appendToAuthorizationList(allChannels, docChannelMap.write);
+        appendToAuthorizationList(allChannels, docChannelMap.add);
+        appendToAuthorizationList(allChannels, docChannelMap.replace);
+        appendToAuthorizationList(allChannels, docChannelMap.remove);
+      }
+
+      return allChannels;
+    }
+
+    // Retrieves a list of authorizations (e.g. channels, roles, users) for the current document write operation type (add, replace or remove)
+    function getRequiredAuthorizations(doc, oldDoc, authorizationDefinition) {
+      var authorizationMap = getAuthorizationMap(doc, oldDoc, authorizationDefinition);
+
+      if (isValueNullOrUndefined(authorizationMap)) {
+        // This document type does not define any authorizations (channels, roles, users) at all
+        return null;
+      }
+
+      var requiredAuthorizations = [ ];
+      var writeAuthorizationFound = false;
+      if (authorizationMap.write) {
+        writeAuthorizationFound = true;
+        appendToAuthorizationList(requiredAuthorizations, authorizationMap.write);
+      }
+
+      if (doc._deleted) {
+        if (authorizationMap.remove) {
+          writeAuthorizationFound = true;
+          appendToAuthorizationList(requiredAuthorizations, authorizationMap.remove);
+        }
+      } else if (!isDocumentMissingOrDeleted(oldDoc) && authorizationMap.replace) {
+        writeAuthorizationFound = true;
+        appendToAuthorizationList(requiredAuthorizations, authorizationMap.replace);
+      } else if (isDocumentMissingOrDeleted(oldDoc) && authorizationMap.add) {
+        writeAuthorizationFound = true;
+        appendToAuthorizationList(requiredAuthorizations, authorizationMap.add);
+      }
+
+      if (writeAuthorizationFound) {
+        return requiredAuthorizations;
+      } else {
+        // This document type does not define any authorizations (channels, roles, users) that apply to this particular write operation type
+        return null;
+      }
+    }
+
+    // Ensures the user is authorized to create/replace/delete this document
+    function authorize(doc, oldDoc, docDefinition) {
+      var authorizedChannels = getRequiredAuthorizations(doc, oldDoc, docDefinition.channels);
+      var authorizedRoles = getRequiredAuthorizations(doc, oldDoc, docDefinition.authorizedRoles);
+      var authorizedUsers = getRequiredAuthorizations(doc, oldDoc, docDefinition.authorizedUsers);
+
+      var channelMatch = false;
+      if (authorizedChannels) {
+        try {
+          requireAccess(authorizedChannels);
+          channelMatch = true;
+        } catch (ex) {
+          // The user has none of the authorized channels
+          if (!authorizedRoles && !authorizedUsers) {
+            // ... and the document definition does not specify any authorized roles or users
+            throw ex;
+          }
+        }
+      }
+
+      var roleMatch = false;
+      if (authorizedRoles) {
+        try {
+          requireRole(authorizedRoles);
+          roleMatch = true;
+        } catch (ex) {
+          // The user belongs to none of the authorized roles
+          if (!authorizedChannels && !authorizedUsers) {
+            // ... and the document definition does not specify any authorized channels or users
+            throw ex;
+          }
+        }
+      }
+
+      var userMatch = false;
+      if (authorizedUsers) {
+        try {
+          requireUser(authorizedUsers);
+          userMatch = true;
+        } catch (ex) {
+          // The user does not match any of the authorized usernames
+          if (!authorizedChannels && !authorizedRoles) {
+            // ... and the document definition does not specify any authorized channels or roles
+            throw ex;
+          }
+        }
+      }
+
+      if (!authorizedChannels && !authorizedRoles && !authorizedUsers) {
+        // The document type does not define any channels, roles or users that apply to this particular write operation type, so fall back to
+        // Sync Gateway's default behaviour for an empty channel list: 403 Forbidden for requests via the public API and either 200 OK or 201
+        // Created for requests via the admin API. That way, the admin API will always be able to create, replace or remove documents,
+        // regardless of their authorized channels, roles or users, as intended.
+        requireAccess([ ]);
+      } else if (!channelMatch && !roleMatch && !userMatch) {
+        // None of the authorization methods (e.g. channels, roles, users) succeeded
+        throw({ forbidden: 'missing channel access' });
+      }
+
+      return {
+        channels: authorizedChannels,
+        roles: authorizedRoles,
+        users: authorizedUsers
+      };
+    }
+
+    return {
+      authorize: authorize,
+      getAllDocChannels: getAllDocChannels
+    };
+  }();
+
+  // Load the document validation module
+  var validationModule = function() {
+    // Determine if a given value is an integer. Exists as a failsafe because Number.isInteger is not guaranteed to exist in all environments.
+    var isInteger = Number.isInteger || function(value) {
+      return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
+    };
+
+    // Check that a given value is a valid ISO 8601 format date string with optional time and time zone components
+    function isIso8601DateTimeString(value) {
+      var regex = /^(([0-9]{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))([T ]([01][0-9]|2[0-4])(:[0-5][0-9])?(:[0-5][0-9])?([\\.,][0-9]{1,3})?)?([zZ]|([\\+-])([01][0-9]|2[0-3]):?([0-5][0-9])?)?$/;
+
+      return regex.test(value);
+    }
+
+    // Check that a given value is a valid ISO 8601 date string without time and time zone components
+    function isIso8601DateString(value) {
+      var regex = /^(([0-9]{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))$/;
+
+      return regex.test(value);
+    }
+
+    // A regular expression that matches one of the given file extensions
+    function buildSupportedExtensionsRegex(extensions) {
+      // Note that this regex uses double quotes rather than single quotes as a workaround to https://github.com/Kashoo/synctos/issues/116
+      return new RegExp("\\\\.(" + extensions.join("|") + ")$", "i");
+    }
+
+    // Constructs the fully qualified path of the item at the top of the given stack
+    function buildItemPath(itemStack) {
+      var nameComponents = [ ];
+      for (var i = 0; i < itemStack.length; i++) {
+        var itemName = itemStack[i].itemName;
+
+        if (!itemName) {
+          // Skip null or empty names (e.g. the first element is typically the root of the document, which has no name)
+          continue;
+        } else if (nameComponents.length < 1 || itemName.indexOf('[') === 0) {
+          nameComponents.push(itemName);
+        } else {
+          nameComponents.push('.' + itemName);
+        }
+      }
+
+      return nameComponents.join('');
+    }
+
+    function resolveDocConstraint(doc, oldDoc, constraintDefinition) {
+      return (typeof(constraintDefinition) === 'function') ? constraintDefinition(doc, getEffectiveOldDoc(oldDoc)) : constraintDefinition;
+    }
+
+    // Ensures the document structure and content are valid
+    function validateDoc(doc, oldDoc, docDefinition, docType) {
+      var validationErrors = [ ];
+
+      validateDocImmutability(doc, oldDoc, docDefinition, validationErrors);
+
+      // Only validate the document's contents if it's being created or replaced. There's no need if it's being deleted.
+      if (!doc._deleted) {
+        validateDocContents(
+          doc,
+          oldDoc,
+          docDefinition,
+          validationErrors);
+      }
+
+      if (validationErrors.length > 0) {
+        throw { forbidden: 'Invalid ' + docType + ' document: ' + validationErrors.join('; ') };
+      }
+    }
+
+    function validateDocImmutability(doc, oldDoc, docDefinition, validationErrors) {
+      if (!isDocumentMissingOrDeleted(oldDoc)) {
+        if (resolveDocConstraint(doc, oldDoc, docDefinition.immutable)) {
+          validationErrors.push('documents of this type cannot be replaced or deleted');
+        } else if (doc._deleted) {
+          if (resolveDocConstraint(doc, oldDoc, docDefinition.cannotDelete)) {
+            validationErrors.push('documents of this type cannot be deleted');
+          }
+        } else {
+          if (resolveDocConstraint(doc, oldDoc, docDefinition.cannotReplace)) {
+            validationErrors.push('documents of this type cannot be replaced');
+          }
+        }
+      }
+    }
+
+    function validateDocContents(doc, oldDoc, docDefinition, validationErrors) {
+      var attachmentReferenceValidators = { };
+      var itemStack = [
+        {
+          itemValue: doc,
+          oldItemValue: oldDoc,
+          itemName: null
+        }
+      ];
+
+      var resolvedPropertyValidators = resolveDocConstraint(doc, oldDoc, docDefinition.propertyValidators);
+
+      // Ensure that, if the document type uses the simple type filter, it supports the "type" property
+      if (docDefinition.typeFilter === simpleTypeFilter && isValueNullOrUndefined(resolvedPropertyValidators.type)) {
+        resolvedPropertyValidators.type = typeIdValidator;
+      }
+
+      // Execute each of the document's property validators while ignoring the specified whitelisted properties at the root level
+      validateProperties(
+        resolvedPropertyValidators,
+        resolveDocConstraint(doc, oldDoc, docDefinition.allowUnknownProperties),
+        [ '_id', '_rev', '_deleted', '_revisions', '_attachments' ]);
+
+      if (doc._attachments) {
+        validateAttachments();
+      }
+
+      // The following functions are nested within this function so they can share access to the doc, oldDoc and validationErrors params and
+      // the attachmentReferenceValidators and itemStack variables
+      function resolveValidationConstraint(constraintDefinition) {
+        if (typeof(constraintDefinition) === 'function') {
+          var currentItemEntry = itemStack[itemStack.length - 1];
+
+          return constraintDefinition(doc, getEffectiveOldDoc(oldDoc), currentItemEntry.itemValue, currentItemEntry.oldItemValue);
+        } else {
+          return constraintDefinition;
+        }
+      }
+
+      function validateProperties(propertyValidators, allowUnknownProperties, whitelistedProperties) {
+        var currentItemEntry = itemStack[itemStack.length - 1];
+        var objectValue = currentItemEntry.itemValue;
+        var oldObjectValue = currentItemEntry.oldItemValue;
+
+        var supportedProperties = [ ];
+        for (var propertyValidatorName in propertyValidators) {
+          var validator = propertyValidators[propertyValidatorName];
+          if (isValueNullOrUndefined(validator) || isValueNullOrUndefined(resolveValidationConstraint(validator.type))) {
+            // Skip over non-validator fields/properties
+            continue;
+          }
+
+          var propertyValue = objectValue[propertyValidatorName];
+
+          var oldPropertyValue;
+          if (!isValueNullOrUndefined(oldObjectValue)) {
+            oldPropertyValue = oldObjectValue[propertyValidatorName];
+          }
+
+          supportedProperties.push(propertyValidatorName);
+
+          itemStack.push({
+            itemValue: propertyValue,
+            oldItemValue: oldPropertyValue,
+            itemName: propertyValidatorName
+          });
+
+          validateItemValue(validator);
+
+          itemStack.pop();
+        }
+
+        // Verify there are no unsupported properties in the object
+        if (!allowUnknownProperties) {
+          for (var propertyName in objectValue) {
+            if (whitelistedProperties && whitelistedProperties.indexOf(propertyName) >= 0) {
+              // These properties are special cases that should always be allowed - generally only applied at the root level of the document
+              continue;
+            }
+
+            if (supportedProperties.indexOf(propertyName) < 0) {
+              var objectPath = buildItemPath(itemStack);
+              var fullPropertyPath = objectPath ? objectPath + '.' + propertyName : propertyName;
+              validationErrors.push('property "' + fullPropertyPath + '" is not supported');
+            }
+          }
+        }
+      }
+
+      function validateItemValue(validator) {
+        var currentItemEntry = itemStack[itemStack.length - 1];
+        var itemValue = currentItemEntry.itemValue;
+        var validatorType = resolveValidationConstraint(validator.type);
+
+        if (validator.customValidation) {
+          performCustomValidation(validator);
+        }
+
+        if (resolveValidationConstraint(validator.immutable)) {
+          validateImmutable(false);
+        }
+
+        if (resolveValidationConstraint(validator.immutableWhenSet)) {
+          validateImmutable(true);
+        }
+
+        if (!isValueNullOrUndefined(itemValue)) {
+          if (resolveValidationConstraint(validator.mustNotBeEmpty) && itemValue.length < 1) {
+            validationErrors.push('item "' + buildItemPath(itemStack) + '" must not be empty');
+          }
+
+          var minimumValue = resolveValidationConstraint(validator.minimumValue);
+          if (!isValueNullOrUndefined(minimumValue)) {
+            var minComparator = function(left, right) {
+              return left < right;
+            };
+            validateRangeConstraint(minimumValue, validatorType, minComparator, 'less than');
+          }
+
+          var minimumValueExclusive = resolveValidationConstraint(validator.minimumValueExclusive);
+          if (!isValueNullOrUndefined(minimumValueExclusive)) {
+            var minExclusiveComparator = function(left, right) {
+              return left <= right;
+            };
+            validateRangeConstraint(minimumValueExclusive, validatorType, minExclusiveComparator, 'less than or equal to');
+          }
+
+          var maximumValue = resolveValidationConstraint(validator.maximumValue);
+          if (!isValueNullOrUndefined(maximumValue)) {
+            var maxComparator = function(left, right) {
+              return left > right;
+            };
+            validateRangeConstraint(maximumValue, validatorType, maxComparator, 'greater than');
+          }
+
+          var maximumValueExclusive = resolveValidationConstraint(validator.maximumValueExclusive);
+          if (!isValueNullOrUndefined(maximumValueExclusive)) {
+            var maxExclusiveComparator = function(left, right) {
+              return left >= right;
+            };
+            validateRangeConstraint(maximumValueExclusive, validatorType, maxExclusiveComparator, 'greater than or equal to');
+          }
+
+          var minimumLength = resolveValidationConstraint(validator.minimumLength);
+          if (!isValueNullOrUndefined(minimumLength) && itemValue.length < minimumLength) {
+            validationErrors.push('length of item "' + buildItemPath(itemStack) + '" must not be less than ' + minimumLength);
+          }
+
+          var maximumLength = resolveValidationConstraint(validator.maximumLength);
+          if (!isValueNullOrUndefined(maximumLength) && itemValue.length > maximumLength) {
+            validationErrors.push('length of item "' + buildItemPath(itemStack) + '" must not be greater than ' + maximumLength);
+          }
+
+          switch (validatorType) {
+            case 'string':
+              var regexPattern = resolveValidationConstraint(validator.regexPattern);
+              if (typeof itemValue !== 'string') {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be a string');
+              } else if (regexPattern && !(regexPattern.test(itemValue))) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must conform to expected format ' + regexPattern);
+              }
+              break;
+            case 'integer':
+              if (!isInteger(itemValue)) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an integer');
+              }
+              break;
+            case 'float':
+              if (typeof itemValue !== 'number') {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be a floating point or integer number');
+              }
+              break;
+            case 'boolean':
+              if (typeof itemValue !== 'boolean') {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be a boolean');
+              }
+              break;
+            case 'datetime':
+              if (typeof itemValue !== 'string' || !isIso8601DateTimeString(itemValue)) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an ISO 8601 date string with optional time and time zone components');
+              }
+              break;
+            case 'date':
+              if (typeof itemValue !== 'string' || !isIso8601DateString(itemValue)) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an ISO 8601 date string with no time or time zone components');
+              }
+              break;
+            case 'enum':
+              var enumPredefinedValues = resolveValidationConstraint(validator.predefinedValues);
+              if (!(enumPredefinedValues instanceof Array)) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" belongs to an enum that has no predefined values');
+              } else if (enumPredefinedValues.indexOf(itemValue) < 0) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be one of the predefined values: ' + enumPredefinedValues.toString());
+              }
+              break;
+            case 'object':
+              var childPropertyValidators = resolveValidationConstraint(validator.propertyValidators);
+              if (typeof itemValue !== 'object' || itemValue instanceof Array) {
+                validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an object');
+              } else if (childPropertyValidators) {
+                validateProperties(childPropertyValidators, resolveValidationConstraint(validator.allowUnknownProperties));
+              }
+              break;
+            case 'array':
+              validateArray(resolveValidationConstraint(validator.arrayElementsValidator));
+              break;
+            case 'hashtable':
+              validateHashtable(validator);
+              break;
+            case 'attachmentReference':
+              validateAttachmentRef(validator);
+              break;
+            default:
+              // This is not a document validation error; the item validator is configured incorrectly and must be fixed
+              throw({ forbidden: 'No data type defined for validator of item "' + buildItemPath(itemStack) + '"' });
+          }
+        } else if (resolveValidationConstraint(validator.required)) {
+          // The item has no value (either it's null or undefined), but the validator indicates it is required
+          validationErrors.push('required item "' + buildItemPath(itemStack) + '" is missing');
+        }
+      }
+
+      function validateImmutable(onlyEnforceIfHasValue) {
+        if (!isDocumentMissingOrDeleted(oldDoc)) {
+          var currentItemEntry = itemStack[itemStack.length - 1];
+          var itemValue = currentItemEntry.itemValue;
+          var oldItemValue = currentItemEntry.oldItemValue;
+
+          if (onlyEnforceIfHasValue && isValueNullOrUndefined(oldItemValue)) {
+            // No need to continue; the constraint only applies if the old value is neither null nor undefined
+            return;
+          }
+
+          // Only compare the item's value to the old item if the item's parent existed in the old document. For example, if the item in
+          // question is the value of a property in an object that is itself in an array, but the object did not exist in the array in the old
+          // document, then there is nothing to validate.
+          var oldParentItemValue = (itemStack.length >= 2) ? itemStack[itemStack.length - 2].oldItemValue : null;
+          var constraintSatisfied;
+          if (isValueNullOrUndefined(oldParentItemValue)) {
+            constraintSatisfied = true;
+          } else {
+            constraintSatisfied = validateImmutableItem(itemValue, oldItemValue);
+          }
+
+          if (!constraintSatisfied) {
+            validationErrors.push('value of item "' + buildItemPath(itemStack) + '" may not be modified');
+          }
+        }
+      }
+
+      function validateImmutableItem(itemValue, oldItemValue) {
+        var itemMissing = isValueNullOrUndefined(itemValue);
+        var oldItemMissing = isValueNullOrUndefined(oldItemValue);
+        if (oldItemValue === itemValue || (itemMissing && oldItemMissing)) {
+          return true;
+        } else if (itemMissing !== oldItemMissing) {
+          // One value is null or undefined but the other is not, so they cannot be equal
+          return false;
+        } else {
+          if (itemValue instanceof Array || oldItemValue instanceof Array) {
+            return validateImmutableArray(itemValue, oldItemValue);
+          } else if (typeof(itemValue) === 'object' || typeof(oldItemValue) === 'object') {
+            return validateImmutableObject(itemValue, oldItemValue);
+          } else {
+            return false;
+          }
+        }
+      }
+
+      function validateImmutableArray(itemValue, oldItemValue) {
+        if (!(itemValue instanceof Array && oldItemValue instanceof Array)) {
+          return false;
+        } else if (itemValue.length !== oldItemValue.length) {
+          return false;
+        }
+
+        for (var elementIndex = 0; elementIndex < itemValue.length; elementIndex++) {
+          var elementValue = itemValue[elementIndex];
+          var oldElementValue = oldItemValue[elementIndex];
+
+          if (!validateImmutableItem(elementValue, oldElementValue)) {
+            return false;
+          }
+        }
+
+        // If we got here, all elements match
+        return true;
+      }
+
+      function validateImmutableObject(itemValue, oldItemValue) {
+        if (typeof(itemValue) !== 'object' || typeof(oldItemValue) !== 'object') {
+          return false;
+        }
+
+        var itemProperties = [ ];
+        for (var itemProp in itemValue) {
+          itemProperties.push(itemProp);
+        }
+
+        for (var oldItemProp in oldItemValue) {
+          if (itemProperties.indexOf(oldItemProp) < 0) {
+            itemProperties.push(oldItemProp);
+          }
+        }
+
+        for (var propIndex = 0; propIndex < itemProperties.length; propIndex++) {
+          var propertyName = itemProperties[propIndex];
+          var propertyValue = itemValue[propertyName];
+          var oldPropertyValue = oldItemValue[propertyName];
+
+          if (!validateImmutableItem(propertyValue, oldPropertyValue)) {
+            return false;
+          }
+        }
+
+        // If we got here, all properties match
+        return true;
+      }
+
+      function validateRangeConstraint(rangeLimit, validationType, comparator, violationDescription) {
+        var itemValue = itemStack[itemStack.length - 1].itemValue;
+        if (validationType === 'datetime' || rangeLimit instanceof Date) {
+          // Date/times require special handling because their time and time zone components are optional and time zones may differ
+          try {
+            var itemDate = new Date(itemValue);
+            var constraintDate = (rangeLimit instanceof Date) ? rangeLimit : new Date(rangeLimit);
+            if (comparator(itemDate.getTime(), constraintDate.getTime())) {
+              var formattedRangeLimit = (rangeLimit instanceof Date) ? rangeLimit.toISOString() : rangeLimit;
+              addOutOfRangeValidationError(formattedRangeLimit, violationDescription);
+            }
+          } catch (ex) {
+            // The date/time's format may be invalid but it isn't technically in violation of the range constraint
+          }
+        } else if (comparator(itemValue, rangeLimit)) {
+          addOutOfRangeValidationError(rangeLimit, violationDescription);
+        }
+      }
+
+      function addOutOfRangeValidationError(rangeLimit, violationDescription) {
+        validationErrors.push('item "' + buildItemPath(itemStack) + '" must not be ' + violationDescription + ' ' + rangeLimit);
+      }
+
+      function validateArray(elementValidator) {
+        var currentItemEntry = itemStack[itemStack.length - 1];
+        var itemValue = currentItemEntry.itemValue;
+        var oldItemValue = currentItemEntry.oldItemValue;
+
+        if (!(itemValue instanceof Array)) {
+          validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an array');
+        } else if (elementValidator) {
+          // Validate each element in the array
+          for (var elementIndex = 0; elementIndex < itemValue.length; elementIndex++) {
+            var elementName = '[' + elementIndex + ']';
+            var elementValue = itemValue[elementIndex];
+            var oldElementValue =
+              (!isValueNullOrUndefined(oldItemValue) && elementIndex < oldItemValue.length) ? oldItemValue[elementIndex] : null;
+
+            itemStack.push({
+              itemName: elementName,
+              itemValue: elementValue,
+              oldItemValue: oldElementValue
+            });
+
+            validateItemValue(elementValidator);
+
+            itemStack.pop();
+          }
+        }
+      }
+
+      function validateHashtable(validator) {
+        var keyValidator = resolveValidationConstraint(validator.hashtableKeysValidator);
+        var valueValidator = resolveValidationConstraint(validator.hashtableValuesValidator);
+        var currentItemEntry = itemStack[itemStack.length - 1];
+        var itemValue = currentItemEntry.itemValue;
+        var oldItemValue = currentItemEntry.oldItemValue;
+        var hashtablePath = buildItemPath(itemStack);
+
+        if (typeof itemValue !== 'object' || itemValue instanceof Array) {
+          validationErrors.push('item "' + buildItemPath(itemStack) + '" must be an object/hashtable');
+        } else {
+          var size = 0;
+          for (var elementKey in itemValue) {
+            size++;
+            var elementValue = itemValue[elementKey];
+
+            var elementName = '[' + elementKey + ']';
+            if (keyValidator) {
+              var fullKeyPath = hashtablePath ? hashtablePath + elementName : elementName;
+              if (typeof elementKey !== 'string') {
+                validationErrors.push('hashtable key "' + fullKeyPath + '" is not a string');
+              } else {
+                if (resolveValidationConstraint(keyValidator.mustNotBeEmpty) && elementKey.length < 1) {
+                  validationErrors.push('empty hashtable key in item "' + buildItemPath(itemStack) + '" is not allowed');
+                }
+                var regexPattern = resolveValidationConstraint(keyValidator.regexPattern);
+                if (regexPattern && !(regexPattern.test(elementKey))) {
+                  validationErrors.push('hashtable key "' + fullKeyPath + '" does not conform to expected format ' + regexPattern);
+                }
+              }
+            }
+
+            if (valueValidator) {
+              var oldElementValue;
+              if (!isValueNullOrUndefined(oldItemValue)) {
+                oldElementValue = oldItemValue[elementKey];
+              }
+
+              itemStack.push({
+                itemName: elementName,
+                itemValue: elementValue,
+                oldItemValue: oldElementValue
+              });
+
+              validateItemValue(valueValidator);
+
+              itemStack.pop();
+            }
+          }
+
+          var maximumSize = resolveValidationConstraint(validator.maximumSize);
+          if (!isValueNullOrUndefined(maximumSize) && size > maximumSize) {
+            validationErrors.push('hashtable "' + hashtablePath + '" must not be larger than ' + maximumSize + ' elements');
+          }
+
+          var minimumSize = resolveValidationConstraint(validator.minimumSize);
+          if (!isValueNullOrUndefined(minimumSize) && size < minimumSize) {
+            validationErrors.push('hashtable "' + hashtablePath + '" must not be smaller than ' + minimumSize + ' elements');
+          }
+        }
+      }
+
+      function validateAttachmentRef(validator) {
+        var currentItemEntry = itemStack[itemStack.length - 1];
+        var itemValue = currentItemEntry.itemValue;
+
+        if (typeof itemValue !== 'string') {
+          validationErrors.push('attachment reference "' + buildItemPath(itemStack) + '" must be a string');
+        } else {
+          attachmentReferenceValidators[itemValue] = validator;
+
+          var supportedExtensions = resolveValidationConstraint(validator.supportedExtensions);
+          if (supportedExtensions) {
+            var extRegex = buildSupportedExtensionsRegex(supportedExtensions);
+            if (!extRegex.test(itemValue)) {
+              validationErrors.push('attachment reference "' + buildItemPath(itemStack) + '" must have a supported file extension (' + supportedExtensions.join(',') + ')');
+            }
+          }
+
+          // Because the addition of an attachment is typically a separate operation from the creation/update of the associated document, we
+          // can't guarantee that the attachment is present when the attachment reference property is created/updated for it, so only
+          // validate it if it's present. The good news is that, because adding an attachment is a two part operation (create/update the
+          // document and add the attachment), the sync function will be run once for each part, thus ensuring the content is verified once
+          // both parts have been synced.
+          if (doc._attachments && doc._attachments[itemValue]) {
+            var attachment = doc._attachments[itemValue];
+
+            var supportedContentTypes = resolveValidationConstraint(validator.supportedContentTypes);
+            if (supportedContentTypes && supportedContentTypes.indexOf(attachment.content_type) < 0) {
+              validationErrors.push('attachment reference "' + buildItemPath(itemStack) + '" must have a supported content type (' + supportedContentTypes.join(',') + ')');
+            }
+
+            var maximumSize = resolveValidationConstraint(validator.maximumSize);
+            if (!isValueNullOrUndefined(maximumSize) && attachment.length > maximumSize) {
+              validationErrors.push('attachment reference "' + buildItemPath(itemStack) + '" must not be larger than ' + maximumSize + ' bytes');
+            }
+          }
+        }
+      }
+
+      function validateAttachments() {
+        var attachmentConstraints = resolveDocConstraint(doc, oldDoc, docDefinition.attachmentConstraints);
+
+        var maximumAttachmentCount =
+          attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.maximumAttachmentCount) : null;
+        var maximumIndividualAttachmentSize =
+          attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.maximumIndividualSize) : null;
+        var maximumTotalAttachmentSize =
+          attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.maximumTotalSize) : null;
+
+        var supportedExtensions = attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.supportedExtensions) : null;
+        var supportedExtensionsRegex = supportedExtensions ? buildSupportedExtensionsRegex(supportedExtensions) : null;
+
+        var supportedContentTypes =
+          attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.supportedContentTypes) : null;
+
+        var requireAttachmentReferences =
+          attachmentConstraints ? resolveDocConstraint(doc, oldDoc, attachmentConstraints.requireAttachmentReferences) : false;
+
+        var totalSize = 0;
+        var attachmentCount = 0;
+        for (var attachmentName in doc._attachments) {
+          attachmentCount++;
+
+          var attachment = doc._attachments[attachmentName];
+
+          var attachmentSize = attachment.length;
+          totalSize += attachmentSize;
+
+          var attachmentRefValidator = attachmentReferenceValidators[attachmentName];
+
+          if (requireAttachmentReferences && isValueNullOrUndefined(attachmentRefValidator)) {
+            validationErrors.push('attachment ' + attachmentName + ' must have a corresponding attachment reference property');
+          }
+
+          if (isInteger(maximumIndividualAttachmentSize) && attachmentSize > maximumIndividualAttachmentSize) {
+            // If this attachment is owned by an attachment reference property, that property's size constraint (if any) takes precedence
+            if (isValueNullOrUndefined(attachmentRefValidator) || !isInteger(attachmentRefValidator.maximumSize)) {
+              validationErrors.push('attachment ' + attachmentName + ' must not exceed ' + maximumIndividualAttachmentSize + ' bytes');
+            }
+          }
+
+          if (supportedExtensionsRegex && !supportedExtensionsRegex.test(attachmentName)) {
+            // If this attachment is owned by an attachment reference property, that property's extensions constraint (if any) takes
+            // precedence
+            if (isValueNullOrUndefined(attachmentRefValidator) || isValueNullOrUndefined(attachmentRefValidator.supportedExtensions)) {
+              validationErrors.push('attachment "' + attachmentName + '" must have a supported file extension (' + supportedExtensions.join(',') + ')');
+            }
+          }
+
+          if (supportedContentTypes && supportedContentTypes.indexOf(attachment.content_type) < 0) {
+            // If this attachment is owned by an attachment reference property, that property's content types constraint (if any) takes
+            // precedence
+            if (isValueNullOrUndefined(attachmentRefValidator) || isValueNullOrUndefined(attachmentRefValidator.supportedContentTypes)) {
+              validationErrors.push('attachment "' + attachmentName + '" must have a supported content type (' + supportedContentTypes.join(',') + ')');
+            }
+          }
+        }
+
+        if (isInteger(maximumTotalAttachmentSize) && totalSize > maximumTotalAttachmentSize) {
+          validationErrors.push('the total size of all attachments must not exceed ' + maximumTotalAttachmentSize + ' bytes');
+        }
+
+        if (isInteger(maximumAttachmentCount) && attachmentCount > maximumAttachmentCount) {
+          validationErrors.push('the total number of attachments must not exceed ' + maximumAttachmentCount);
+        }
+
+        if (!resolveDocConstraint(doc, oldDoc, docDefinition.allowAttachments) && attachmentCount > 0) {
+          validationErrors.push('document type does not support attachments');
+        }
+      }
+
+      function performCustomValidation(validator) {
+        var currentItemEntry = itemStack[itemStack.length - 1];
+
+        // Copy all but the last/top element so that the item's parent is at the top of the stack for the custom validation function
+        var customValidationItemStack = itemStack.slice(-1);
+
+        var customValidationErrors = validator.customValidation(doc, oldDoc, currentItemEntry, customValidationItemStack);
+
+        if (customValidationErrors instanceof Array) {
+          for (var errorIndex = 0; errorIndex < customValidationErrors.length; errorIndex++) {
+            validationErrors.push(customValidationErrors[errorIndex]);
+          }
+        }
+      }
+    }
+
+    return {
+      validateDoc: validateDoc
+    };
+  }();
+
+  // Load the access assignment module
+  var accessAssignmentModule = function() {
+    // Adds a prefix to the specified item if the prefix is defined
+    function prefixItem(item, prefix) {
+      return (prefix ? prefix + item : item.toString());
+    }
+
+    // Transforms the given item or items into a new list of items with the specified prefix (if any) appended to each element
+    function resolveCollectionItems(originalItems, itemPrefix) {
+      if (isValueNullOrUndefined(originalItems)) {
+        return [ ];
+      } else if (originalItems instanceof Array) {
+        var resultItems = [ ];
+        for (var i = 0; i < originalItems.length; i++) {
+          var item = originalItems[i];
+
+          if (isValueNullOrUndefined(item)) {
+            continue;
+          }
+
+          resultItems.push(prefixItem(item, itemPrefix));
+        }
+
+        return resultItems;
+      } else {
+        // Represents a single item
+        return [ prefixItem(originalItems, itemPrefix) ];
+      }
+    }
+
+    // Transforms the given collection definition, which may have been defined as a single item, a list of items or a function that returns a
+    // list of items into a simple list, where each item has the specified prefix, if any
+    function resolveCollectionDefinition(doc, oldDoc, collectionDefinition, itemPrefix) {
+      if (isValueNullOrUndefined(collectionDefinition)) {
+        return [ ];
+      } else {
+        if (typeof(collectionDefinition) === 'function') {
+          var fnResults = collectionDefinition(doc, oldDoc);
+
+          return resolveCollectionItems(fnResults, itemPrefix);
+        } else {
+          return resolveCollectionItems(collectionDefinition, itemPrefix);
+        }
+      }
+    }
+
+    // Transforms a role collection definition into a simple list and prefixes each element with "role:"
+    function resolveRoleCollectionDefinition(doc, oldDoc, rolesDefinition) {
+      return resolveCollectionDefinition(doc, oldDoc, rolesDefinition, 'role:');
+    }
+
+    // Assigns channel access to users/roles
+    function assignChannelsToUsersAndRoles(doc, oldDoc, accessAssignmentDefinition) {
+      var usersAndRoles = [ ];
+
+      var users = resolveCollectionDefinition(doc, oldDoc, accessAssignmentDefinition.users);
+      for (var userIndex = 0; userIndex < users.length; userIndex++) {
+        usersAndRoles.push(users[userIndex]);
+      }
+
+      var roles = resolveRoleCollectionDefinition(doc, oldDoc, accessAssignmentDefinition.roles);
+      for (var roleIndex = 0; roleIndex < roles.length; roleIndex++) {
+        usersAndRoles.push(roles[roleIndex]);
+      }
+
+      var channels = resolveCollectionDefinition(doc, oldDoc, accessAssignmentDefinition.channels);
+
+      access(usersAndRoles, channels);
+
+      return {
+        type: 'channel',
+        usersAndRoles: usersAndRoles,
+        channels: channels
+      };
+    }
+
+    // Assigns role access to users
+    function assignRolesToUsers(doc, oldDoc, accessAssignmentDefinition) {
+      var users = resolveCollectionDefinition(doc, oldDoc, accessAssignmentDefinition.users);
+      var roles = resolveRoleCollectionDefinition(doc, oldDoc, accessAssignmentDefinition.roles);
+
+      role(users, roles);
+
+      return {
+        type: 'role',
+        users: users,
+        roles: roles
+      };
+    }
+
+    // Assigns role access to users and/or channel access to users/roles according to the given access assignment definitions
+    function assignUserAccess(doc, oldDoc, accessAssignmentDefinitions) {
+      var effectiveOldDoc = getEffectiveOldDoc(oldDoc);
+
+      var effectiveAssignments = [ ];
+      for (var assignmentIndex = 0; assignmentIndex < accessAssignmentDefinitions.length; assignmentIndex++) {
+        var definition = accessAssignmentDefinitions[assignmentIndex];
+
+        if (definition.type === 'role') {
+          effectiveAssignments.push(assignRolesToUsers(doc, effectiveOldDoc, definition));
+        } else if (definition.type === 'channel' || isValueNullOrUndefined(definition.type)) {
+          effectiveAssignments.push(assignChannelsToUsersAndRoles(doc, effectiveOldDoc, definition));
+        }
+      }
+
+      return effectiveAssignments;
+    }
+
+    return {
+      assignUserAccess: assignUserAccess
+    };
+  }();
+
+  var rawDocDefinitions = // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+    function() {
+      var adminRole = 'role:admin';
+      var moderatorRole = 'role:moderator';
+      var analyserRole = 'role:analyser';
+      var userRole = 'role:user';
+
+      function hasPrefix(value, prefix){
+        var pattern = new RegExp('^' + prefix);
+        return pattern.test(value);
+      }
+
+      function isNullOrUndefined(value){
+        return value === null || value === undefined;
+      }
+
+      function isNotANumber(value){
+        return isNaN(value);
+      }
+
+      function isNotPositiveOrZero(value){
+        return isNaN(value) || value < 0;
+      }
+
+      function isGreaterThanOrEqualToZero(value){
+        return value >= 0;
+      }
+
+      function isGreaterThanZero(value){
+        return value > 0;
+      }
+
+      function idShouldPrefixWithOwner(doc, oldDoc, currentItem, validationItemStack) {
+        var owner = doc.owner;
+        var prefix = owner + '.';
+        var id = currentItem.itemValue;
+        var validationErrors = [];
+        if(!hasPrefix(id, prefix)){
+          validationErrors.push('_id must start with owner name');
+        }
+        return validationErrors;
+      }
+
+      function idPrefixValidation(docType) {
+        return function(doc, oldDoc, currentItem, validationItemStack) {
+          var id = currentItem.itemValue;
+          var validationErrors = [];
+          if(!doc.owner || !doc.owner.length){
+            validationErrors.push('_id must be {{owner}}.' + docType + '.uuid');
+          }else {
+            var prefixLength = doc.owner.length + (docType.length + 2);
+            var prefix = id.substring(0, prefixLength);
+            var suffix = id.substring(prefixLength, id.length);
+            if(prefix !== doc.owner + '.' + docType + '.' || suffix.length === 0){
+              validationErrors.push('_id must be {{owner}}.' + docType + '.uuid');
+            }
+          }
+          return validationErrors;
+        };
+      }
+
+      function idPrefixValidationWithUniqueDeviceId(docType) {
+        return function(doc, oldDoc, currentItem, validationItemStack) {
+          var id = currentItem.itemValue;
+          var validationErrors = [];
+          if (!doc.owner || !doc.owner.length) {
+            validationErrors.push('_id must be {{owner}}.' + docType +  '.deviceId' + '.uuid');
+          } else {
+            var prefixLength = doc.owner.length + (docType.length + 2);
+            var splitFields = id.split(".");
+            var owner = splitFields[0];
+            var type = splitFields[1];
+            var deviceId = splitFields[2];
+            var uuid = splitFields[3];
+            if (owner !== doc.owner || type !== docType || deviceId.length === 0 || uuid.length === 0 || splitFields.length !== 4) {
+              validationErrors.push('_id must be {{owner}}.' + docType +  '.deviceId' + '.uuid');
+            }
+          }
+          return validationErrors;
+        };
+      }
+
+      function collectionIdValidation() {
+        return function (doc, oldDoc, currentItem, validationItemStack) {
+          var docType = 'collection'
+            var validationErrors = [];
+          var id = currentItem.itemValue;
+          if (id !== 'favorite' && id !== 'archive') {
+            if (!doc.owner || !doc.owner.length) {
+              validationErrors.push('_id must be {{owner}}.' + docType +  '.collectionId');
+            } else {
+              var splitFields = id.split(".");
+              var owner = splitFields[0];
+              var type = splitFields[1];
+              var collectionId = splitFields[2];
+              if (owner !== doc.owner || type !== docType || collectionId.length === 0 || splitFields.length !== 3) {
+                validationErrors.push('_id must be {{owner}}.' + docType +  '.collectionId');
+              }
+            }
+          }
+          return validationErrors;
+        }
+      }
+
+      function durationValidation(doc, oldDoc, currentItemElement, validationItemStack) {
+        if(doc._deleted){
+          return;
+        }
+
+        var validationErrors = [];
+        var duration = currentItemElement.itemValue;
+        // This is captured by required field
+        if(!duration || !duration.startTime ||
+          !duration.endTime || isNullOrUndefined(duration.elapsedTime)) {
+          return;
+        }
+
+        var startTime = new Date(duration.startTime).getTime();
+        var endTime = new Date(duration.endTime).getTime();
+        if(endTime < startTime){
+          validationErrors.push('endTime should be greater than startTime');
+        }
+        var elapsedTime = endTime - startTime;
+
+        // We are not equating time because of this issue https://github.com/robertkrimen/otto/issues/264
+        if(Math.abs(duration.elapsedTime - elapsedTime) >= 5){
+          validationErrors.push('elapsedTime should be a diff of startTime and endTime');
+        }
+        return validationErrors;
+      }
+
+      function docOwner(doc, oldDoc) {
+        return doc._deleted ? oldDoc.owner : doc.owner;
+      }
+
+      function docType(doc, oldDoc) {
+        return doc._deleted ? oldDoc.type : doc.type;
+      }
+
+      function docChannel(doc, oldDoc) {
+        return doc._id + '-READ'
+      }
+
+      function ownerChannel(doc, oldDoc) {
+        return docOwner(doc, oldDoc) + '_data';
+      }
+
+      function defaultAuthorizedUsers(doc, oldDoc) {
+        var owner = doc._deleted ? oldDoc.owner : doc.owner;
+        return {
+          write: owner
+        };
+      }
+
+      function defaultAuthorizedRoles(doc, oldDoc) {
+        return {
+          write: adminRole
+        };
+      }
+
+      return {
+        user_profile: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              // the id should start with the owner name
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if (!doc || id !== doc.owner + '.' + 'user_profile') {
+                  validationErrors.push('_id must be {{owner}}.user_profile');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            firstName: {
+              type: 'string',
+              mustNotBeEmpty: true
+            },
+            lastName: {
+              type: 'string',
+              mustNotBeEmpty: true
+            },
+            email: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: true
+            },
+            dob: {
+              type: 'date'
+            },
+            weightInKilograms: {
+              type: 'float',
+              minimumValue: 0
+            },
+            hasConfiguredWeight: {
+              type: 'boolean',
+              required: false
+            },
+            heightInCentimetres: {
+              type: 'float',
+              minimumValue: 0
+            },
+            sex: {
+              type: 'enum',
+              predefinedValues: ['MALE', 'FEMALE', 'NOT_DEFINED']
+            },
+            lifetimeAthlete: {
+              type: 'boolean'
+            },
+            lastOnboardingStep: {
+              type: 'string'
+            },
+            preferredUnits: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                distance: {
+                  type: 'enum',
+                  predefinedValues: ['METRIC', 'IMPERIAL'],
+                  required: true
+                },
+                elevation: {
+                  type: 'enum',
+                  predefinedValues: ['METRIC', 'IMPERIAL'],
+                  required: true
+                },
+                temperature: {
+                  type: 'enum',
+                  predefinedValues: ['METRIC', 'IMPERIAL'],
+                  required: true
+                },
+                weight: {
+                  type: 'enum',
+                  predefinedValues: ['METRIC', 'IMPERIAL'],
+                  required: true
+                },
+                pressure: {
+                  type: 'enum',
+                  predefinedValues: ['KPA', 'PSI', 'BAR'],
+                  required: false
+                }
+              }
+            },
+            preferredUnit: {
+              type: 'enum',
+              predefinedValues: ['AUTOMATIC', 'METRIC', 'IMPERIAL'],
+              required: false
+            },
+            locale: {
+              type: 'string',
+              required: false
+            },
+            uploadMode: {
+              type: 'enum',
+              predefinedValues: ['AUTOMATIC', 'MANUAL'],
+              required: false
+            },
+            turnByTurnMode: {
+              type: 'enum',
+              predefinedValues: ['ALWAYS_ON', 'ON_CUE', 'OFF'],
+              required: false
+            },
+            hideKeyButtons: {
+              type: 'boolean',
+              required: false
+            },
+            showKeyButtons: {
+              type: 'boolean',
+              required: false
+            },
+            climbBroMode: {
+              type: 'enum',
+              predefinedValues: ['SMALL', 'MEDIUM', 'LARGE', 'NONE'],
+              required: false
+            },
+            climberSettings: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                mode: {
+                  type: 'enum',
+                  required: true,
+                  predefinedValues: ['OFF', 'ROUTES', 'ALWAYS']
+                },
+                minLevel: {
+                  type: 'enum',
+                  required: true,
+                  predefinedValues: ['SMALL', 'MEDIUM', 'LARGE']
+                }
+              }
+            },
+            maxHr: {
+              type: 'integer',
+              minimumValue: 0,
+              customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                if (doc._deleted) {
+                  return;
+                }
+                if(isNullOrUndefined(doc.maxHr)) {
+                  return;
+                }
+                var MAX_HR = 255;
+                var validationErrors = [];
+                if (doc.maxHr > MAX_HR) {
+                  validationErrors.push("maxHr should be less than or equal to MAX_HR");
+                }
+                if (doc.maxHr < doc.restingHr) {
+                  validationErrors.push("maxHr should be greater than restingHr");
+                }
+                return validationErrors;
+              }
+            },
+            restingHr: {
+              type: 'integer',
+              minimumValue: 0
+            },
+            powerFtp: {
+              type: 'integer',
+              minimumValue: 0
+            },
+            isHrZoneAutomatic: {
+              type: 'boolean'
+            },
+            isPowerZoneAutomatic: {
+              type: 'boolean'
+            },
+            heartRateZones: {
+              type: 'array',
+              minimumLength: 0,
+              customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                if (doc._deleted) {
+                  return;
+                }
+                if(isNullOrUndefined(doc.heartRateZones)) {
+                  return;
+                }
+                var MAX_HR_ZONES_COUNT = 10;
+                var MIN_HR = 0;
+                var MAX_HR = 255;
+                var validationErrors = [];
+                if (doc.heartRateZones.length > MAX_HR_ZONES_COUNT) {
+                  validationErrors.push("HeartRateZones size should be less than or equal to MAX_HR_ZONES_COUNT");
+                }
+                if (doc.heartRateZones.length >= 1) {
+                  for (var i = 0; i < doc.heartRateZones.length; i++) {
+                    if (doc.heartRateZones[i].min > doc.heartRateZones[i].max) {
+                      validationErrors.push("HeartRateZones min cannot be greater than max");
+                    }
+                  }
+                }
+
+                if (doc.heartRateZones.length > 2) {
+                  if (doc.heartRateZones[0].min !== MIN_HR) {
+                    validationErrors.push("First heartRateZone min should start with MIN_HR");
+                  }
+                  if (doc.heartRateZones[doc.heartRateZones.length - 1].max > MAX_HR) {
+                    validationErrors.push("Last heartRateZone max should be less than or equal to MAX_HR");
+                  }
+                  for (var j = 0; j <= doc.heartRateZones.length - 2; j++) {
+                    if (doc.heartRateZones[j].max !== (doc.heartRateZones[j + 1].min - 1)) {
+                      validationErrors.push("Heart rate zones ranges should be sequential");
+                    }
+                  }
+                }
+                return validationErrors;
+              },
+              arrayElementsValidator: {
+                type: 'object',
+                propertyValidators: {
+                  min: {
+                    type: 'integer'
+                  },
+                  max: {
+                    type: 'integer'
+                  },
+                  name: {
+                    type: 'string',
+                    required: false
+                  }
+                }
+              }
+            },
+            powerZones: {
+              type: 'array',
+              minimumLength: 0,
+              customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                if (doc._deleted) {
+                  return;
+                }
+                if(isNullOrUndefined(doc.powerZones)) {
+                  return;
+                }
+                var MAX_POWER_ZONES_COUNT = 10;
+                var MIN_POWER = 0;
+                var MAX_POWER_THRESHOLD = 9999;
+                var validationErrors = [];
+                if (doc.powerZones.length > MAX_POWER_ZONES_COUNT) {
+                  validationErrors.push("PowerZones size should be less than or equal to MAX_POWER_ZONES_COUNT");
+                }
+
+                if (doc.powerZones.length >= 1) {
+                  for (var i = 0; i < doc.powerZones.length; i++) {
+                    if (doc.powerZones[i].min > doc.powerZones[i].max) {
+                      validationErrors.push("PowerZones min cannot be greater than max");
+                    }
+                  }
+                }
+
+                if (doc.powerZones.length > 2) {
+                  if (doc.powerZones[0].min !== MIN_POWER) {
+                    validationErrors.push("First powerZones min should start with MIN_POWER");
+                  }
+                  if (doc.powerZones[doc.powerZones.length - 1].max > MAX_POWER_THRESHOLD) {
+                    validationErrors.push("Last powerZones max should be less than or equal to MAX_POWER_THRESHOLD");
+                  }
+                  for (var j = 0; j <= doc.powerZones.length - 2; j++) {
+                    if (doc.powerZones[j].max !== (doc.powerZones[j + 1].min - 1)) {
+                      validationErrors.push("PowerZone ranges should be sequential");
+                    }
+                  }
+                }
+                return validationErrors;
+              },
+              arrayElementsValidator: {
+                type: 'object',
+                propertyValidators: {
+                  min: {
+                    type: 'integer'
+                  },
+                  max: {
+                    type: 'integer'
+                  },
+                  name: {
+                    type: 'string',
+                    required: false
+                  }
+                }
+              }
+            },
+            autoPause: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                enabled: {
+                  type: 'boolean',
+                  required: true
+                },
+                threshold: {
+                  type: 'float',
+                  required: true
+                },
+                state: {
+                  type: 'string',
+                  required: true
+                }
+              }
+            },
+            autoLap: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                mode: {
+                  type: 'enum',
+                  predefinedValues: ['OFF', 'DISTANCE', 'TIME', 'LOCATION'],
+                  required: true
+                },
+                distance: {
+                  type: 'float',
+                  required: true
+                },
+                time: {
+                  type: 'integer',
+                  required: true
+                },
+                dropPinOnRideStart: {
+                  type: 'boolean',
+                  required: false
+                },
+              }
+            },
+            powerZeroPreference: {
+              type: 'enum',
+              predefinedValues: ['INCLUDE_ZEROS', 'EXCLUDE_ZEROS'],
+              required: false
+            },
+            cadenceZeroPreference: {
+              type: 'enum',
+              predefinedValues: ['INCLUDE_ZEROS', 'EXCLUDE_ZEROS'],
+              required: false
+            },
+            tbtCuesEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            persistentTbtEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            heatmapsEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            pillsEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            dataFieldIconsEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            dataFieldLabelSize: {
+              type: 'enum',
+              predefinedValues: [ 'SMALL', 'LARGE' ],
+              required: false
+            },
+            dataFieldAlignment: {
+              type: 'enum',
+              predefinedValues: [ 'LEFT', 'CENTER', 'RIGHT' ],
+              required: false
+            },
+            radarAlignment: {
+              type: 'enum',
+              predefinedValues: [ 'LEFT', 'RIGHT' ],
+              required: false
+            },
+            autoBrightnessEnabled: {
+              type: 'boolean',
+              required: false
+            },
+            deviceTheme: {
+              type: 'enum',
+              predefinedValues: [ 'DARK', 'LIGHT', 'AUTO' ],
+              required: false
+            },
+            axsBikeSettings: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                enabled: {
+                  type: 'boolean',
+                  required: true
+                },
+                ignoredBikes: {
+                  type: 'array',
+                  required: true,
+                  arrayElementsValidator: {
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  }
+                },
+              }
+            },
+            backgroundUrl: {
+              type: 'string',
+              required: false
+            },
+            enduranceModeSettings: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                screenOffTimeS: {
+                  type: 'integer',
+                  required: true
+                },
+                triggers: {
+                  type: 'object',
+                  required: true
+                },
+                maxBrightness: {
+                  type: 'string',
+                  required: false
+                },
+                slowerProcessing: {
+                  type: 'boolean',
+                  required: false
+                },
+                screenOffEnabled: {
+                  type: 'boolean',
+                  required: false
+                }
+              }
+            },
+            newAudioAlerts: {
+              type: 'boolean',
+              required: false
+            },
+            timeFormat: {
+              type: 'enum',
+              predefinedValues: [ 'HOURS_12', 'HOURS_24' ],
+              required: false
+            },
+            dateFormat: {
+              type: 'enum',
+              predefinedValues: [ 'MONTH_FIRST', 'DAY_FIRST' ],
+              required: false
+            }
+          },
+          channels: function(doc, oldDoc) {
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        email_lookup: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id.substring(0, 7) !=='email::'){
+                  validationErrors.push('_id must start with "email::"');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            ref: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            userId: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            isVerified: {
+              type: 'boolean',
+              required: true,
+            },
+            verificationToken: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            resetPasswordToken: {
+              type : 'string',
+              required: false,
+              mustNotBeEmpty: true,
+            },
+            resetPasswordExpiry: {
+              type : 'datetime',
+              required: false,
+            }
+          },
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        sram_lookup: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id.substring(0, 6) !=='sram::'){
+                  validationErrors.push('_id must start with "sram::"');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            userId: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            imported: {
+              type: 'boolean',
+              required: false
+            },
+          },
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        strava_settings: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              // the id should start with the owner name
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id !== doc.owner + '.' + 'strava_settings'){
+                  validationErrors.push('_id must be {{owner}}.strava_settings');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            accessToken: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            refreshToken: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            },
+            expiresAt: {
+              type: 'integer',
+              required: false,
+              mustNotBeEmpty: false
+            },
+            activityUploadMode: {
+              type: 'enum',
+              predefinedValues: [ 'AUTOMATIC_WITH_REVIEW', 'MANUAL', 'AUTOMATIC' ],
+              required: false
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            preferredPrivateUpload: {
+              type: 'boolean',
+              required: true
+            },
+            premium: {
+              type: 'boolean',
+              required: true
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        bike_profile: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('bike_profile')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            index: {
+              type: 'integer',
+              required: true
+            },
+            wheelCircumference: {
+              type: 'float',
+              required: false
+            },
+            odometer: {
+              type: 'float',
+              required: false
+            },
+            sensors: {
+              type: 'array',
+              minimumLength: 0,
+              required: false,
+              arrayElementsValidator: {
+                type: 'string',
+                mustNotBeEmpty: true,
+                required: true
+              },
+            },
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        route: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('route')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            distance:{
+              type:'float',
+              required: true,
+              minimumValue: 0
+            },
+            elevation:{
+              type: 'object',
+              propertyValidators: {
+                gain: {
+                  type: 'float',
+                  required: true
+                },
+                loss: {
+                  type: 'float',
+                  required: true
+                },
+                min: {
+                  type: 'float',
+                  required: true
+                },
+                max: {
+                  type: 'float',
+                  required: true
+                },
+                polyline: {
+                  type: 'string',
+                  required: true,
+                  mustNotBeEmpty: true
+                },
+                source: {
+                  type: 'string',
+                  required: false
+                }
+              },
+              required: true
+            },
+            oldElevation:{
+              type: 'object',
+              propertyValidators: {
+                gain: {
+                  type: 'float',
+                  required: true
+                },
+                loss: {
+                  type: 'float',
+                  required: true
+                },
+                min: {
+                  type: 'float',
+                  required: true
+                },
+                max: {
+                  type: 'float',
+                  required: true
+                },
+                polyline: {
+                  type: 'string',
+                  required: true,
+                  mustNotBeEmpty: true
+                },
+              },
+              required: false
+            },
+            startLocationName:{
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            endLocationName:{
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            startLocation:{
+              type: 'object',
+              required: true,
+              propertyValidators:{
+                lat:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -90,
+                  maximumValue: 90
+                },
+                lng:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -180,
+                  maximumValue: 180
+                }
+              }
+            },
+            endLocation:{
+              type: 'object',
+              required: true,
+              propertyValidators:{
+                lat:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -90,
+                  maximumValue: 90
+                },
+                lng:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -180,
+                  maximumValue: 180
+                }
+              }
+            },
+            waypoints:{
+              type: 'array',
+              minimumLength: 0,
+              required: true,
+              arrayElementsValidator:{
+                type: 'object',
+                propertyValidators:{
+                  lat:{
+                    type: 'float',
+                    required: true,
+                    minimumValue: -90,
+                    maximumValue: 90
+                  },
+                  lng:{
+                    type: 'float',
+                    required: true,
+                    minimumValue: -180,
+                    maximumValue: 180
+                  },
+                  waypointType:{
+                    type: 'enum',
+                    predefinedValues: [ 'BREAK', 'VIA', 'THROUGH', 'BREAK_THROUGH', 'FREE_HAND' ],
+                    required: false
+                  },
+                  polylineIndex:{
+                    type: 'integer',
+                    minimumValue: 0,
+                    required: false
+                  },
+                  oneway:{
+                    type: 'boolean',
+                    required: false
+                  }
+                }
+              }
+            },
+            pointsOfInterest:{
+              type: 'array',
+              minimumLength: 0,
+              required: false,
+              arrayElementsValidator:{
+                type: 'object',
+                propertyValidators:{
+                  type:{
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  location:{
+                    type: 'object',
+                    required: true,
+                    propertyValidators:{
+                      lat:{
+                        type: 'float',
+                        required: true,
+                        minimumValue: -90,
+                        maximumValue: 90
+                      },
+                      lng:{
+                        type: 'float',
+                        required: true,
+                        minimumValue: -180,
+                        maximumValue: 180
+                      }
+                    }
+                  },
+                  name:{
+                    type: 'string',
+                    required: false
+                  },
+                  description:{
+                    type: 'string',
+                    required: false
+                  },
+                  bearing:{
+                    type: 'float',
+                    required: false,
+                  },
+                  updatedAt: {
+                    type: 'datetime',
+                    required: false
+                  },
+                  sourceId: {
+                    type: 'string',
+                    required: false
+                  }
+                }
+              }
+            },
+            surfaceSummary:{
+              type: 'object',
+              required: false,
+              propertyValidators:{
+                pavedLength:{
+                  type: 'float',
+                  required: false,
+                  minimumValue: 0,
+                },
+                gravelLength:{
+                  type: 'float',
+                  required: false,
+                  minimumValue: 0,
+                },
+                trailLength:{
+                  type: 'float',
+                  required: false,
+                  minimumValue: 0,
+                },
+                unknownLength:{
+                  type: 'float',
+                  required: false,
+                  minimumValue: 0,
+                },
+              }
+            },
+            summaryPolyline:{
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            routePolyline:{
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            isStarred:{
+              type: 'boolean',
+              required: true
+            },
+            source:{
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            sourceId:{
+              type: 'string',
+              mustNotBeEmpty: true,
+              immutableWhenSet: true
+            },
+            routingType:{
+              type: 'enum',
+              predefinedValues: [ 'road', 'gravel', 'mtb' ],
+              required: false
+            },
+            isPublic:{
+              type: 'boolean'
+            },
+            imageVersion:{
+              type: 'string',
+              required: false
+            },
+            isAutoImported:{
+              type: 'boolean',
+              required: false
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: false
+            },
+            collections: {
+              type: 'array',
+              required: false,
+              minimumLength: 0,
+              arrayElementsValidator:{
+                type: 'string',
+                required: true,
+                customValidation: collectionIdValidation,
+              }
+            },
+            bounds:{
+              type: 'array',
+              minimumLength: 2,
+              required: false,
+              arrayElementsValidator:{
+                type: 'object',
+                propertyValidators:{
+                  lat:{
+                    type: 'float',
+                    required: true,
+                    minimumValue: -90,
+                    maximumValue: 90
+                  },
+                  lng:{
+                    type: 'float',
+                    required: true,
+                    minimumValue: -180,
+                    maximumValue: 180
+                  }
+                }
+              }
+            },
+            'image.jpg':{
+              type: 'object',
+              required: false
+            },
+          },
+          allowAttachments: true,
+          attachmentConstraints: {
+            maximumAttachmentCount: 1,
+            supportedExtensions: [ 'jpg' ],
+            supportedContentTypes: [ 'image/jpeg' ]
+          },
+          channels: function(doc, oldDoc){
+            var channels = [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)];
+            if(!doc._deleted && doc.isPublic){
+              channels.push("public_routes-READ");
+            }
+            return {
+              view: channels
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        point_of_interest: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('point_of_interest')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: false
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            poiType: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            location: {
+              type: 'object',
+              required: true,
+              propertyValidators:{
+                lat:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -90,
+                  maximumValue: 90
+                },
+                lng:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: -180,
+                  maximumValue: 180
+                }
+              }
+            },
+            name: {
+              type: 'string',
+              required: false
+            },
+            description: {
+              type: 'string',
+              required: false
+            },
+            bearing: {
+              type: 'float',
+              required: false,
+            },
+            sourceId: {
+              type: 'string',
+              required: false
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        tracking: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('tracking')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            isPublic: {
+              type: 'boolean'
+            },
+            state: {
+              type: 'string',
+              required: true
+            },
+            location: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                lat: {
+                  type: 'float',
+                  required: true,
+                  minimumValue: -90,
+                  maximumValue: 90
+                },
+                lng: {
+                  type: 'float',
+                  required: true,
+                  minimumValue: -180,
+                  maximumValue: 180
+                }
+              }
+            },
+            bearing: {
+              type: 'float',
+              required: false
+            },
+            routeId: {
+              type: 'string',
+              required: false
+            },
+            activityInfo: {
+              type: 'array',
+              required: true,
+              arrayElementsValidator: {
+                type: 'object',
+                required: true,
+                propertyValidators: {
+                  key:{
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  value: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      format: {
+                        type: 'enum',
+                        required: true,
+                        predefinedValues: ['int', 'float', 'double', 'long']
+                      },
+                      value: {
+                        type: 'float',
+                        required: true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            shareCode: {
+              type: 'string',
+              required: false
+            },
+            units: {
+              type: 'enum',
+              predefinedValues: ['METRIC', 'IMPERIAL'],
+              required: false
+            },
+            enabled: {
+              type: 'boolean',
+              required: false
+            },
+            autoShare: {
+              type: 'boolean',
+              required: false
+            },
+            contacts: {
+              type: 'array',
+              required: false,
+              arrayElementsValidator: {
+                type: 'object',
+                required: true,
+                propertyValidators: {
+                  name: {
+                    type: 'string',
+                  },
+                  type: {
+                    type: 'enum',
+                    required: true,
+                    predefinedValues: ['email', 'phone']
+                  },
+                  email: {
+                    type: 'string'
+                  }
+                }
+              }
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        tracking_data: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('tracking_data')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            state: {
+              type: 'string',
+              required: true
+            },
+            location: {
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                lat: {
+                  type: 'float',
+                  required: true,
+                  minimumValue: -90,
+                  maximumValue: 90
+                },
+                lng: {
+                  type: 'float',
+                  required: true,
+                  minimumValue: -180,
+                  maximumValue: 180
+                }
+              }
+            },
+            bearing: {
+              type: 'float',
+              required: false
+            },
+            routeId: {
+              type: 'string',
+              required: false
+            },
+            activityId: {
+              type: 'string',
+              required: false
+            },
+            activityInfo: {
+              type: 'array',
+              required: true,
+              arrayElementsValidator: {
+                type: 'object',
+                required: true,
+                propertyValidators: {
+                  key:{
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  value: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      format: {
+                        type: 'enum',
+                        required: true,
+                        predefinedValues: ['int', 'float', 'double', 'long']
+                      },
+                      value: {
+                        type: 'float',
+                        required: true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            units: {
+              type: 'enum',
+              predefinedValues: ['METRIC', 'IMPERIAL'],
+              required: false
+            },
+            userTrace: {
+              type: 'string',
+              required: false
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        activity: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('activity')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: false
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            bikeId: {
+              type: 'string',
+              required: false
+            },
+            client:{
+              type: 'string',
+              required: true,
+              immutable: true
+            },
+            activityType:{
+              type: 'enum',
+              predefinedValues: [ 'RIDE', 'EBIKE', 'MOUNTAIN_BIKE', 'GRAVEL', 'EMOUNTAIN_BIKE', 'VELOMOBILE' ],
+              required: false,
+              immutable: false
+            },
+            activeTime:{
+              type : 'integer',
+              required: true,
+              minimumValue: 1,
+              immutable: true,
+              customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                if(doc._deleted){
+                  return;
+                }
+
+                // This is captured by required field
+                if(isNullOrUndefined(doc.activeTime) || !doc.laps) {
+                  return;
+                }
+
+                var totalLapsActiveTime = 0;
+                for(var i = 0; i < doc.laps.length; i++){
+                  // This is captured by required field
+                  if(isNullOrUndefined(doc.laps[i].activeTime)){
+                    return;
+                  }
+                  totalLapsActiveTime += doc.laps[i].activeTime;
+                }
+
+                if(currentItemElement.itemValue && currentItemElement.itemValue !== totalLapsActiveTime){
+                  return ['activeTime should be a sum of all lap activeTimes'];
+                }
+                return;
+              }
+            },
+            duration:{
+              type: 'object',
+              required: true,
+              customValidation: durationValidation,
+              propertyValidators:{
+                elapsedTime:{
+                  type: 'integer',
+                  required: true,
+                  immutable: true
+                },
+                startTime:{
+                  type: 'datetime',
+                  required: true,
+                  immutable: true
+                },
+                endTime:{
+                  type: 'datetime',
+                  required: true,
+                  immutable: true,
+                  customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                    if(doc._deleted){
+                      return;
+                    }
+
+                    // This is captured by required field
+                    if(!doc.duration || !doc.duration.endTime || !doc.laps) {
+                      return;
+                    }
+
+                    var endTime = new Date(doc.duration.endTime).getTime();
+                    var lastLap = doc.laps[doc.laps.length - 1];
+                    if(!lastLap.duration || !lastLap.duration.endTime){
+                      return;
+                    }
+                    var lastLapEndTime = new Date(lastLap.duration.endTime).getTime();
+                    if(endTime !== lastLapEndTime){
+                      return ['activity endTime should be same as last lap endTime'];
+                    }
+                    return;
+                  }
+                }
+              }
+            },
+            activityInfo:{
+              type: 'array',
+              required: true,
+              arrayElementsValidator:{
+                type: 'object',
+                required: true,
+                propertyValidators:{
+                  key:{
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  value:{
+                    type: 'object',
+                    required: true,
+                    propertyValidators:{
+                      format: {
+                        type: 'enum',
+                        required: true,
+                        predefinedValues: ['int', 'float', 'double', 'long']
+                      },
+                      value: {
+                        type: 'float',
+                        required: true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            polyline: {
+              type: 'string',
+              required: false
+            },
+            laps:{
+              type: 'array',
+              minimumLength: 1,
+              required: true,
+              customValidation: function(doc, oldDoc, currentItemElement, validationItemStack) {
+                if(doc._deleted){
+                  return;
+                }
+
+                // This is captured by required field
+                if(!doc.duration || !doc.duration.startTime || !doc.duration.endTime || !doc.laps) {
+                  return;
+                }
+
+                var validationErrors = [];
+                for(var i = 0; i < doc.laps.length; i++){
+                  var lap = doc.laps[i];
+                  // lapNumber validation
+
+                  if(lap.lapNumber && lap.lapNumber !== i + 1){
+                    validationErrors.push('lapNumber should be plus one than lap index');
+                  }
+
+                  if(!lap.pauses || !lap.duration || !lap.duration.startTime ||
+                    !lap.duration.endTime || isNullOrUndefined(lap.duration.elapsedTime)){
+                    return;
+                  }
+
+                  // activeTime validation && sequential pause validation
+                  var totalPausedTime = 0;
+                  for(var j = 0; j < lap.pauses.length; j++){
+                    var pause = lap.pauses[j];
+
+                    if(!pause.startTime || !pause.endTime || isNullOrUndefined(pause.elapsedTime)){
+                      return;
+                    }
+
+                    totalPausedTime += pause.elapsedTime;
+
+                    // pause startTime validation
+                    if(j === 0){
+                      if(pause.startTime < lap.duration.startTime){
+                        validationErrors.push('pause startTime should be greater than or equal to lap startTime');
+                      }
+                    }else{
+                      var previousPause = lap.pauses[j - 1];
+                      if(pause.startTime < previousPause.endTime){
+                        validationErrors.push('pause startTime should be greater than or equal to last pause endTime');
+                      }
+                    }
+
+                    // last pause endTime validation
+                    if(j === lap.pauses.length - 1){
+                      if(pause.endTime > lap.duration.endTime){
+                        validationErrors.push('pause endTime should be less than or equal to lap endTime');
+                      }
+                    }
+                  }
+
+                  if(lap.activeTime && lap.activeTime !== lap.duration.elapsedTime - totalPausedTime){
+                    validationErrors.push('lap activeTime should be elapsedTime minus totalPauseTime');
+                  }
+
+                  // sequential duration validation
+                  if(i === 0){
+                    if(lap.duration.startTime !== doc.duration.startTime){
+                      validationErrors.push('first lap startTime should be same as activity startTime');
+                    }
+                  }else{
+                    var lastLap = doc.laps[i - 1];
+                    if(lap.duration.startTime !== lastLap.duration.endTime){
+                      validationErrors.push('lap startTime should be same as last lap endTime');
+                    }
+                  }
+
+                }
+
+                return validationErrors;
+              },
+
+              arrayElementsValidator:{
+                type: 'object',
+                required: true,
+                propertyValidators:{
+                  lapNumber:{
+                    type: 'integer',
+                    required: true,
+                    minimumValue: 1,
+                    immutable: true
+                  },
+                  activeTime:{
+                    type: 'integer',
+                    required: true,
+                    immutable: true,
+                  },
+                  duration:{
+                    type: 'object',
+                    required: true,
+                    immutable: true,
+                    customValidation: durationValidation,
+                    propertyValidators:{
+                      elapsedTime:{
+                        type: 'integer',
+                        required: true,
+                        minimumValue: 0,
+                        immutable: true
+                      },
+                      startTime:{
+                        type: 'datetime',
+                        required: true,
+                        minimumValue: 1,
+                        immutable: true
+                      },
+                      endTime:{
+                        type: 'datetime',
+                        required: true,
+                        minimumValue: 1,
+                        immutable: true
+                      }
+                    }
+                  },
+                  pauses:{
+                    type: 'array',
+                    required: true,
+                    immutable: true,
+                    arrayElementsValidator:{
+                      type: 'object',
+                      required: true,
+                      immutable: true,
+                      customValidation: durationValidation,
+                      propertyValidators:{
+                        elapsedTime:{
+                          type: 'integer',
+                          required: true,
+                          immutable: true
+                        },
+                        startTime:{
+                          type: 'datetime',
+                          required: true,
+                          immutable: true
+                        },
+                        endTime:{
+                          type: 'datetime',
+                          required: true,
+                          immutable: true,
+                        }
+                      }
+                    }
+                  },
+                  lapInfo:{
+                    type: 'array',
+                    required: true,
+                    arrayElementsValidator:{
+                      type: 'object',
+                      required: true,
+                      propertyValidators:{
+                        key:{
+                          type: 'string',
+                          mustNotBeEmpty: true,
+                          required: true
+                        },
+                        value:{
+                          type: 'object',
+                          required: true,
+                          propertyValidators:{
+                            format: {
+                              type: 'enum',
+                              required: true,
+                              predefinedValues: ['int', 'float', 'double', 'long']
+                            },
+                            value: {
+                              type: 'float',
+                              required: true
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  trigger:{
+                    type: 'enum',
+                    predefinedValues: ['MANUAL', 'DISTANCE', 'TIME', 'WORKOUT', 'LOCATION'],
+                    required: false
+                  },
+                  workout:{
+                    type: 'object',
+                    required: false,
+                    propertyValidators:{
+                      primaryTarget:{
+                        type: 'object',
+                        required: true,
+                        propertyValidators: {
+                          type: {
+                            type: 'string',
+                            required: true,
+                            mustNotBeEmpty: true
+                          },
+                          value: {
+                            type: 'float',
+                            required: true
+                          },
+                          output: {
+                            type: 'float',
+                            required: false
+                          },
+                          minValue: {
+                            type: 'float',
+                            required: false
+                          },
+                          maxValue: {
+                            type: 'float',
+                            required: false
+                          },
+                          rampType: {
+                            type: 'string',
+                            required: false
+                          },
+                        }
+                      },
+                      secondaryTarget:{
+                        type: 'object',
+                        required: false,
+                        propertyValidators: {
+                          type: {
+                            type: 'string',
+                            required: true,
+                            mustNotBeEmpty: true
+                          },
+                          value: {
+                            type: 'float',
+                            required: true
+                          },
+                          output: {
+                            type: 'float',
+                            required: false
+                          },
+                          minValue: {
+                            type: 'float',
+                            required: false
+                          },
+                          maxValue: {
+                            type: 'float',
+                            required: false
+                          },
+                          rampType: {
+                            type: 'string',
+                            required: false
+                          },
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            'fitFile.fit':{
+              type: 'object',
+              required: false
+            },
+            sync:{
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                description:{
+                  type: 'string',
+                  required: true
+                },
+                type:{
+                  type: 'string',
+                  required: false
+                },
+                tags:{
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'string',
+                    required: true,
+                    mustNotBeEmpty: true
+                  }
+                },
+                synced:{
+                  type: 'boolean',
+                  required: false
+                },
+                partners:{
+                  type: 'array',
+                  required: true,
+                  arrayElementsValidator:{
+                    type: 'object',
+                    propertyValidators:{
+                      partner:{
+                        type: 'string',
+                        required: true,
+                        mustNotBeEmpty: true
+                      },
+                      needsUpload:{
+                        type: 'boolean',
+                        required: true
+                      },
+                      attempts:{
+                        type: 'integer',
+                        required: false
+                      },
+                      uploadedAt:{
+                        type: 'datetime',
+                        required: false
+                      },
+                      externalId:{
+                        type: 'string',
+                        required: false,
+                        mustNotBeEmpty: true
+                      },
+                      externalUrl:{
+                        type: 'string',
+                        required: false,
+                        mustNotBeEmpty: true
+                      },
+                      error:{
+                        type: 'string',
+                        required: false,
+                        mustNotBeEmpty: true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            pointsOfInterest:{
+              type: 'array',
+              minimumLength: 0,
+              required: false,
+              arrayElementsValidator:{
+                type: 'object',
+                propertyValidators:{
+                  type:{
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  location:{
+                    type: 'object',
+                    required: true,
+                    propertyValidators:{
+                      lat:{
+                        type: 'float',
+                        required: true,
+                        minimumValue: -90,
+                        maximumValue: 90
+                      },
+                      lng:{
+                        type: 'float',
+                        required: true,
+                        minimumValue: -180,
+                        maximumValue: 180
+                      }
+                    }
+                  },
+                  name:{
+                    type: 'string',
+                    required: false
+                  },
+                  description:{
+                    type: 'string',
+                    required: false
+                  },
+                  bearing:{
+                    type: 'float',
+                    required: false,
+                  },
+                  updatedAt: {
+                    type: 'datetime',
+                    required: false
+                  },
+                  sourceId: {
+                    type: 'string',
+                    required: false
+                  }
+                }
+              }
+            },
+            climbs:{
+              type: 'array',
+              minimumLength: 0,
+              required: false,
+              arrayElementsValidator:{
+                type: 'object',
+                propertyValidators:{
+                  startDistance:{
+                    type: 'float',
+                    required: true
+                  },
+                  endDistance:{
+                    type: 'float',
+                    required: true
+                  },
+                  distance:{
+                    type: 'float',
+                    required: true
+                  }
+                }
+              }
+            },
+          },
+          allowAttachments: true,
+          attachmentConstraints: {
+            maximumAttachmentCount: 1,
+            supportedExtensions: [ 'fit' ],
+            supportedContentTypes: [ 'binary' ]
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        fuze_activity: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('fuze_activity')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            serial: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            'fuzeFile.fuze':{
+              type: 'object',
+              required: false
+            },
+          },
+          allowAttachments: true,
+          attachmentConstraints: {
+            maximumAttachmentCount: 1,
+            supportedExtensions: [ 'fuze' ],
+            supportedContentTypes: [ 'binary' ]
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        share: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('share')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            objectType: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            objectId: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            objectContext: {
+              type: 'string',
+              required: false
+            },
+            shareCode: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            shareScope: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        ride_profile: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('ride_profile')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            index: {
+              type: 'integer',
+              minimumValue: 0,
+              required: true,
+            },
+            alerts: {
+              type: 'object',
+              required: false
+            },
+            pages: {
+              type: 'array',
+              minimumLength: 1,
+              required: true,
+              arrayElementsValidator:{
+                type: 'object',
+                required: true,
+                propertyValidators: {
+                  elements: {
+                    type: 'array',
+                    required: true,
+                    arrayElementsValidator:{
+                      type: 'object',
+                      required: true,
+                      propertyValidators: {
+                        elementViewId: {
+                          type: 'integer',
+                          required: false
+                        },
+                        id: {
+                          type: 'string',
+                          mustNotBeEmpty: true,
+                          required: true
+                        },
+                        position: {
+                          type: 'object',
+                          required: false
+                        },
+                        size: {
+                          type: 'object',
+                          required: true
+                        }
+                      }
+                    }
+                  },
+                  enabled: {
+                    type: 'boolean',
+                    required: false
+                  },
+                  grid: {
+                    type: 'object',
+                    required: false
+                  },
+                  name: {
+                    type: 'string',
+                    mustNotBeEmpty: true,
+                    required: true
+                  },
+                  position: {
+                    type: 'integer',
+                    minimumValue: 0,
+                    required: true
+                  },
+                  pageType: {
+                    type: 'integer',
+                    required: false
+                  },
+                  navigationMode: {
+                    type: 'integer',
+                    required: false
+                  },
+                  layoutType: {
+                    type: 'integer',
+                    required: false
+                  },
+                  id: {
+                    type: 'string',
+                    required: false,
+                  }
+                }
+              }
+            },
+            autoPause:{
+              type: 'object',
+              required: false,
+              propertyValidators:{
+                enabled:{
+                  type: 'boolean',
+                  required: true
+                },
+                threshold:{
+                  type: 'float',
+                  required: true,
+                  minimumValue: 0
+                },
+                state:{
+                  type: 'enum',
+                  predefinedValues: [ 'WHEN_STOPPED', 'CUSTOM_SPEED' ],
+                  required: true
+                }
+              }
+            },
+            navigationSettings:{
+              type: 'object',
+              required: false
+            },
+            settings:{
+              type: 'object',
+              required: false,
+              propertyValidators: {
+                profileType: {
+                  type: 'string',
+                  required: true
+                },
+                defaultBikeId: {
+                  type: 'string',
+                  required: false
+                },
+                defaultActivityType: {
+                  type: 'string',
+                  required: false
+                },
+                disabledDevices: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'string',
+                    required: true,
+                    mustNotBeEmpty: true
+                  }
+                },
+                tbtCuesEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                persistentTbtEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                switchToMapEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                poiCuesEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                surfaceCuesEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                reroutingEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                phoneNotificationsEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                phoneNotificationTypes: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'string',
+                    required: true,
+                    mustNotBeEmpty: true
+                  }
+                },
+                workoutTextCuesEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                liveSegmentsEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                climberSettingsMode: {
+                  type: 'string',
+                  required: false
+                },
+                climberSettingsMinLevel: {
+                  type: 'string',
+                  required: false
+                },
+                climberSettingsDrawerElements: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      elementViewId: {
+                        type: 'integer',
+                        required: false
+                      },
+                      id: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      position: {
+                        type: 'object',
+                        required: false
+                      },
+                      size: {
+                        type: 'object',
+                        required: true
+                      }
+                    }
+                  }
+                },
+                autoLapMode: {
+                  type: 'string',
+                  required: false
+                },
+                autoLapDistance: {
+                  type: 'float',
+                  required: false
+                },
+                autoLapTime: {
+                  type: 'integer',
+                  required: false
+                },
+                autoLapDropPinOnStart: {
+                  type: 'boolean',
+                  required: false
+                },
+                lapTabMetric: {
+                  type: 'string',
+                  required: false
+                },
+                autoPause:{
+                  type: 'object',
+                  required: false
+                },
+                audioAlertsEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsTbtEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsWorkoutsEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsRadarEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsSLSEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsPhoneEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsLevEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                audioAlertsRadarSound: {
+                  type: 'string',
+                  required: false
+                },
+                enduranceModeEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                touchLockEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                bikeBellEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                inRideDataFieldEditingEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                routingType:{
+                  type: 'enum',
+                  predefinedValues: [ 'road', 'gravel', 'mtb' ],
+                  required: false
+                },
+                lapDrawerElements: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      id: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      size: {
+                        type: 'object',
+                        required: true
+                      }
+                    }
+                  }
+                },
+                workoutDrawerElements: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      id: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      size: {
+                        type: 'object',
+                        required: true
+                      }
+                    }
+                  }
+                },
+                workoutTargetFieldType: {
+                  type: 'string',
+                  required: false,
+                },
+                workoutPowerSmoothingDataTypeId: {
+                  type: 'string',
+                  required: false,
+                },
+                customAlertsEnabled: {
+                  type: 'boolean',
+                  required: false
+                },
+                customAlerts: {
+                  type: 'array',
+                  required: false,
+                  arrayElementsValidator: {
+                    type: 'object',
+                    required: true,
+                    propertyValidators: {
+                      id: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      message: {
+                        type: 'string',
+                        required: false
+                      },
+                      frequency: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      type: {
+                        type: 'string',
+                        mustNotBeEmpty: true,
+                        required: true
+                      },
+                      interval: {
+                        type: 'float',
+                        required: true
+                      },
+                      eventWhen: {
+                        type: 'object',
+                        required: false
+                      }
+                    }
+                  }
+                },
+                customAlertSnooze: {
+                  type: 'string',
+                  required: false,
+                },
+                version: {
+                  type: 'integer',
+                  required: false
+                }
+              }
+            },
+            version:{
+              type: 'string',
+              required: false
+            }
+          },
+          channels: function(doc, oldDoc) {
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        account_info: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              // the id should start with the owner name
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id !== doc.owner + '.' + 'account_info'){
+                  validationErrors.push('_id must be {{owner}}.account_info');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            isEmailVerified: {
+              type: 'boolean',
+              required: true
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        route_offline_pref: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('route_offline_pref')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            routeId: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            isOfflineRequired: {
+              type: 'boolean',
+              required: true,
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles,
+        },
+        oauth_credentials: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('oauth_credentials')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            partner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            remoteUid: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            accessToken: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            refreshToken: {
+              type: 'string',
+              required: false
+            },
+            tokenExpiresAt: {
+              type: 'datetime',
+              required: false
+            },
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        third_party_connection: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('third_party_connection')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            partner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            grantedScopes: {
+              type: 'array',
+              required: true,
+              arrayElementsValidator:{
+                type: 'string',
+                required: true,
+              }
+            },
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        link_credentials: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('link_credentials')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            partner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            username: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            },
+            password: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            },
+            authToken: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            },
+            userId: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            },
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        facade_credentials: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('facade_credentials'),
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true,
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true,
+            },
+            partner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true,
+            },
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles,
+        },
+        hx_device: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              // the id should start with the owner name
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('hx_device')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            deviceId: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            loginTimeStamp: {
+              type: 'datetime',
+              required: false,
+              immutable: false
+            },
+            logoutTimeStamp: {
+              type: 'datetime',
+              required: false,
+              immutable: false
+            }
+          },
+          channels : function(doc,oldDoc) {
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        workout: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('workout')
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: true
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            description: {
+              type: 'string',
+              required: false
+            },
+            preRideNotes: {
+              type: 'string',
+              required: false
+            },
+            plannedDate: {
+              type: 'date',
+              required: false
+            },
+            plannedTss: {
+              type: 'float',
+              required: false
+            },
+            completedAt: {
+              type: 'datetime',
+              required: false
+            },
+            structure: {
+              type: 'array',
+              minimumLength: 0,
+              required: true,
+              arrayElementsValidator: {
+                type: 'object',
+                propertyValidators: {
+                  type: {
+                    type: 'string',
+                    required: true,
+                    mustNotBeEmpty: true
+                  },
+                  class: {
+                    type: 'string',
+                    required: false,
+                    mustNotBeEmpty: true
+                  },
+                  name: {
+                    type: 'string',
+                    required: false
+                  },
+                  notes: {
+                    type: 'string',
+                    required: false
+                  },
+                  length: {
+                    type: 'float',
+                    required: false
+                  },
+                  lengthType: {
+                    type: 'string',
+                    required: false,
+                    mustNotBeEmpty: true
+                  },
+                  lengthOpen: {
+                    type: 'boolean',
+                    required: false
+                  },
+                  excludeFromSummary: {
+                    type: 'boolean',
+                    required: false
+                  },
+                  primaryTarget: {
+                    type: 'object',
+                    required: false,
+                    propertyValidators: {
+                      type: {
+                        type: 'string',
+                        required: true,
+                        mustNotBeEmpty: true
+                      },
+                      value: {
+                        type: 'float',
+                        required: true
+                      },
+                      minValue: {
+                        type: 'float',
+                        required: false
+                      },
+                      maxValue: {
+                        type: 'float',
+                        required: false
+                      },
+                      rampType: {
+                        type: 'string',
+                        required: false
+                      },
+                    }
+                  },
+                  secondaryTarget: {
+                    type: 'object',
+                    required: false,
+                    propertyValidators: {
+                      type: {
+                        type: 'string',
+                        required: true,
+                        mustNotBeEmpty: true
+                      },
+                      value: {
+                        type: 'float',
+                        required: true
+                      },
+                      minValue: {
+                        type: 'float',
+                        required: false
+                      },
+                      maxValue: {
+                        type: 'float',
+                        required: false
+                      },
+                      rampType: {
+                        type: 'string',
+                        required: false
+                      },
+                    }
+                  },
+                  repeat: {
+                    type: 'integer',
+                    minimumValue: 0,
+                    required: false
+                  },
+                  steps: {
+                    type: 'array',
+                    minimumLength: 1,
+                    required: false,
+                    arrayElementsValidator: {
+                      type: 'object',
+                      propertyValidators: {
+                        type: {
+                          type: 'string',
+                          required: true,
+                          mustNotBeEmpty: true
+                        },
+                        class: {
+                          type: 'string',
+                          required: false,
+                          mustNotBeEmpty: true
+                        },
+                        name: {
+                          type: 'string',
+                          required: false
+                        },
+                        notes: {
+                          type: 'string',
+                          required: false
+                        },
+                        length: {
+                          type: 'float',
+                          required: true
+                        },
+                        lengthType: {
+                          type: 'string',
+                          required: true,
+                          mustNotBeEmpty: true
+                        },
+                        lengthOpen: {
+                          type: 'boolean',
+                          required: false
+                        },
+                        excludeFromSummary: {
+                          type: 'boolean',
+                          required: false
+                        },
+                        primaryTarget: {
+                          type: 'object',
+                          required: false,
+                          propertyValidators: {
+                            type: {
+                              type: 'string',
+                              required: true,
+                              mustNotBeEmpty: true
+                            },
+                            value: {
+                              type: 'float',
+                              required: true
+                            },
+                            minValue: {
+                              type: 'float',
+                              required: false
+                            },
+                            maxValue: {
+                              type: 'float',
+                              required: false
+                            },
+                            rampType: {
+                              type: 'string',
+                              required: false
+                            },
+                          }
+                        },
+                        secondaryTarget: {
+                          type: 'object',
+                          required: false,
+                          propertyValidators: {
+                            type: {
+                              type: 'string',
+                              required: true,
+                              mustNotBeEmpty: true
+                            },
+                            value: {
+                              type: 'float',
+                              required: true
+                            },
+                            minValue: {
+                              type: 'float',
+                              required: false
+                            },
+                            maxValue: {
+                              type: 'float',
+                              required: false
+                            },
+                            rampType: {
+                              type: 'string',
+                              required: false
+                            },
+                          }
+                        },
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            source: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            sourceId: {
+              type: 'string',
+              mustNotBeEmpty: true,
+              immutableWhenSet: true
+            },
+            thresholdHr: {
+              type: 'float',
+              required: false
+            },
+            thresholdSpeed: {
+              type: 'float',
+              required: false
+            },
+          },
+          allowAttachments: true,
+          attachmentConstraints: {
+            maximumAttachmentCount: 1,
+            supportedContentTypes: [ 'application/zwo+xml', 'application/vnd.ant.fit' ]
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        offline_regions: // Copyright (c) 2025 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              // the id should start with the owner name
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function userProfileId(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id !== doc.owner + '.' + 'offline_regions'){
+                  validationErrors.push('_id must be {{owner}}.offline_regions');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: false
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            regionIds: {
+              type: 'array',
+              required: true,
+              arrayElementsValidator:{
+                type: 'string',
+                required: true,
+              }
+            },
+            heatmapIds: {
+              type: 'array',
+              required: false,
+              arrayElementsValidator:{
+                type: 'string',
+                required: true,
+              }
+            },
+            contourIds: {
+              type: 'array',
+              required: false,
+              arrayElementsValidator:{
+                type: 'string',
+                required: true,
+              }
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+        device_auth: // Copyright (c) 2022 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: function deviceAuthid(doc, oldDoc, currentItem, validationItemStack) {
+                var id = currentItem.itemValue;
+                var validationErrors = [];
+                if(id.substring(0, 12) !=='device_auth.') {
+                  validationErrors.push('_id must start with "device_auth."');
+                }
+                return validationErrors;
+              }
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            code: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            secret: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            token: {
+              type: 'object',
+              required: false
+            },
+            visited: {
+              type: 'boolean',
+              required: true,
+            },
+            signedIn: {
+              type: 'boolean',
+              required: true,
+            },
+            seedData: {
+              type: 'object',
+              required: true
+            }
+          }
+        },
+        collection: // Copyright (c) 2024 Hammerhead Navigation Inc.
+
+        {
+          typeFilter: simpleTypeFilter,
+          propertyValidators: {
+            _id: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              customValidation: idPrefixValidation('collection')
+            },
+            owner: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true,
+              immutable: true
+            },
+            createdAt: {
+              type: 'datetime',
+              required: true,
+              immutable: true
+            },
+            updatedAt: {
+              type: 'datetime',
+              required: false
+            },
+            name: {
+              type: 'string',
+              required: true,
+              mustNotBeEmpty: true
+            },
+            description: {
+              type: 'string',
+              required: false,
+              mustNotBeEmpty: false
+            }
+          },
+          channels: function(doc, oldDoc){
+            return {
+              view: [docChannel(doc, oldDoc), ownerChannel(doc, oldDoc)]
+            };
+          },
+          authorizedUsers: defaultAuthorizedUsers,
+          authorizedRoles: defaultAuthorizedRoles
+        },
+      };
+    };
+
+  var docDefinitions;
+  if (typeof rawDocDefinitions === 'function') {
+    docDefinitions = rawDocDefinitions();
+  } else {
+    docDefinitions = rawDocDefinitions;
+  }
+
+  function getDocumentType(doc, oldDoc) {
+    var effectiveOldDoc = getEffectiveOldDoc(oldDoc);
+
+    for (var docType in docDefinitions) {
+      var docDefn = docDefinitions[docType];
+      if (docDefn.typeFilter(doc, effectiveOldDoc, docType)) {
+        return docType;
+      }
+    }
+
+    // The document type does not exist
+    return null;
+  }
+
+  // Now put the pieces together
+  var theDocType = getDocumentType(doc, oldDoc);
+
+  if (isValueNullOrUndefined(theDocType)) {
+    if (isDocumentMissingOrDeleted(oldDoc) && isDocumentMissingOrDeleted(doc)) {
+      // Attempting to delete a document that does not exist. This may occur when bucket access/sharing
+      // (https://developer.couchbase.com/documentation/mobile/current/guides/sync-gateway/shared-bucket-access.html)
+      // is enabled and the document was deleted via the Couchbase SDK. Skip everything else and simply assign the
+      // public channel
+      // (https://developer.couchbase.com/documentation/mobile/current/guides/sync-gateway/channels/index.html#special-channels)
+      // to the document so that users will get a 404 Not Found if they attempt to fetch (i.e. "view") the deleted
+      // document rather than a 403 Forbidden.
+      requireAccess('!');
+      channel('!');
+
+      return;
+    } else {
+      throw({ forbidden: 'Unknown document type' });
+    }
+  }
+
+  var theDocDefinition = docDefinitions[theDocType];
+
+  var customActionMetadata = {
+    documentTypeId: theDocType,
+    documentDefinition: theDocDefinition
+  };
+
+  if (theDocDefinition.customActions && typeof(theDocDefinition.customActions.onTypeIdentificationSucceeded) === 'function') {
+    theDocDefinition.customActions.onTypeIdentificationSucceeded(doc, oldDoc, customActionMetadata);
+  }
+
+  customActionMetadata.authorization = authorizationModule.authorize(doc, oldDoc, theDocDefinition);
+
+  if (theDocDefinition.customActions && typeof(theDocDefinition.customActions.onAuthorizationSucceeded) === 'function') {
+    theDocDefinition.customActions.onAuthorizationSucceeded(doc, oldDoc, customActionMetadata);
+  }
+
+  validationModule.validateDoc(doc, oldDoc, theDocDefinition, theDocType);
+
+  if (theDocDefinition.customActions && typeof(theDocDefinition.customActions.onValidationSucceeded) === 'function') {
+    theDocDefinition.customActions.onValidationSucceeded(doc, oldDoc, customActionMetadata);
+  }
+
+  if (theDocDefinition.accessAssignments && theDocDefinition.accessAssignments.length > 0) {
+    customActionMetadata.accessAssignments = accessAssignmentModule.assignUserAccess(doc, oldDoc, theDocDefinition.accessAssignments);
+
+    if (theDocDefinition.customActions && typeof(theDocDefinition.customActions.onAccessAssignmentsSucceeded) === 'function') {
+      theDocDefinition.customActions.onAccessAssignmentsSucceeded(doc, oldDoc, customActionMetadata);
+    }
+  }
+
+  // Getting here means the document revision is authorized and valid, and the appropriate channel(s) should now be assigned
+  var allDocChannels = authorizationModule.getAllDocChannels(doc, oldDoc, theDocDefinition);
+  channel(allDocChannels);
+  customActionMetadata.documentChannels = allDocChannels;
+
+  if (theDocDefinition.customActions && typeof(theDocDefinition.customActions.onDocumentChannelAssignmentSucceeded) === 'function') {
+    theDocDefinition.customActions.onDocumentChannelAssignmentSucceeded(doc, oldDoc, customActionMetadata);
+  }
+}`
+
+var tesDoc = `{"channels": ["%d"],
+"testDoc": [
+  {
+    "_id": "666acdcd7bc4dbb3289a2b0a",
+    "index": 0,
+    "guid": "d8aca2f5-daac-47aa-8d8d-7f6692d5097e",
+    "isActive": false,
+    "balance": "$1,367.98",
+    "picture": "http://placehold.it/32x32",
+    "age": 26,
+    "eyeColor": "blue",
+    "name": "Aurora Wheeler",
+    "gender": "female",
+    "company": "BEZAL",
+    "email": "aurorawheeler@bezal.com",
+    "phone": "+1 (972) 570-2140",
+    "address": "162 Newel Street, Kula, Georgia, 8484",
+    "about": "Dolore nisi esse sit ullamco tempor do exercitation nisi mollit. Cupidatat incididunt consequat nostrud Lorem Lorem dolore irure. Veniam labore laborum et fugiat officia ad nostrud. Commodo quis qui cillum elit pariatur laborum duis veniam minim aliquip esse do et quis. Aliqua proident velit adipisicing laboris mollit qui enim Lorem ad commodo nostrud irure pariatur. Fugiat incididunt tempor id quis consequat tempor exercitation est eu officia cupidatat consectetur cupidatat cillum. Consectetur duis consequat cupidatat eu ex commodo consectetur duis reprehenderit sunt deserunt sint dolore qui."
+  }
+]}`
+
+func (rt *RestTester) createUsers(num int, wg *sync.WaitGroup) {
+	for i := 0; i < 1000; i++ {
+		name := fmt.Sprintf("user%d", num)
+		rt.CreateUser(name, []string{fmt.Sprint(num)})
+		resp := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", name)
+		RequireStatus(rt.TB(), resp, http.StatusOK)
+		num++
+	}
+	wg.Done()
+}
+
+func (rt *RestTester) doEverything(num int, wg *sync.WaitGroup, b *testing.B) {
+
+	for i := 0; i < 1000; i++ {
+		//id := RandomString(40)
+		id := uuid.NewString()
+		name := fmt.Sprintf("user%d", num)
+		rt.CreateUser(name, []string{"jdoe.activity." + id + "-READ"})
+		response := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", name)
+		RequireStatus(rt.TB(), response, http.StatusOK)
+		//resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(tesDoc, num))
+		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/jdoe.activity."+id, fmt.Sprintf(exampleDoc, id))
+		if resp.Code == http.StatusConflict {
+			// try again
+			//id = RandomString(60)
+			id = uuid.NewString()
+			//resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(tesDoc, num))
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/jdoe.activity."+id, fmt.Sprintf(exampleDoc, id))
+			if resp.Code == http.StatusConflict {
+				continue
+			}
+			continue
+		}
+		rt.WaitForPendingChanges()
+		version := DocVersionFromPutResponse(rt.TB(), resp)
+		rt.storeAttachment("jdoe.activity."+id, version, "myAttachment", string(base.FastRandBytes(rt.TB(), 500000)))
+		resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/jdoe.activity."+id+"/myAttachment", "")
+		RequireStatus(rt.TB(), resp, http.StatusOK)
+		rt.WaitForPendingChanges()
+		//if i == 500 {
+		//	WriteHeapProfile(b, "./heapMidLoop"+fmt.Sprint(num)+".pprof")
+		//}
+		num++
+	}
+	wg.Done()
+
+}
+
+func (rt *RestTester) createDocs(num int, wg *sync.WaitGroup) {
+	for i := 0; i < 1000; i++ {
+		id := RandomString(40)
+		//id := uuid.NewString()
+		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(tesDoc, num))
+		//resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(exampleDoc, id))
+		if resp.Code == http.StatusConflict {
+			// try again
+			id = RandomString(60)
+			//id = uuid.NewString()
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(tesDoc, num))
+			//resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+id, fmt.Sprintf(exampleDoc, id))
+			if resp.Code == http.StatusConflict {
+				continue
+			}
+			continue
+		}
+		rt.WaitForPendingChanges()
+		//version := DocVersionFromPutResponse(rt.TB(), resp)
+		//rt.storeAttachment(id, version, "myAttachment", string(base.FastRandBytes(rt.TB(), 500000)))
+		//resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+id+"/myAttachment", "")
+		//RequireStatus(rt.TB(), resp, http.StatusOK)
+		num++
+	}
+	wg.Done()
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func RandomString(n int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
+}
+
+func BenchmarkCaching(b *testing.B) {
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		out, err := io.ReadAll(r.Body)
+		assert.NoError(b, err)
+		err = r.Body.Close()
+		assert.NoError(b, err)
+
+		fmt.Println(string(out))
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rt := NewRestTester(b, &RestTesterConfig{
+		//SyncFn: channels.DocChannelsSyncFunction,
+		SyncFn:     syncFunc,
+		AutoImport: base.Ptr(true),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+				CacheConfig: &CacheConfig{
+					ChannelCacheConfig: &ChannelCacheConfig{
+						MaxNumber: base.Ptr(300000),
+					},
+				},
+				EventHandlers: &EventHandlerConfig{
+					DocumentChanged: []*EventConfig{
+						{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	count := 0
+
+	_, _ = rt.GetSingleTestDatabaseCollectionWithUser()
+
+	//var startWg sync.WaitGroup
+	var writeWg sync.WaitGroup
+
+	//for i := 0; i < 50; i++ {
+	//	startWg.Add(1)
+	//	go rt.createUsers(count, &startWg)
+	//	count = count + 1000
+	//}
+	//
+	//startWg.Wait()
+	//count = 0
+	//for b.Loop() {
+	//	count = 0
+	//	for i := 0; i < 50; i++ {
+	//		writeWg.Add(1)
+	//		go rt.createDocs(count, &writeWg)
+	//		count = count + 1000
+	//	}
+	//	writeWg.Wait()
+	//}
+
+	for b.Loop() {
+		for i := 0; i < 50; i++ {
+			writeWg.Add(1)
+			go rt.doEverything(count, &writeWg, b)
+			count = count + 1000
+		}
+		writeWg.Wait()
+		fmt.Println("chans", rt.GetDatabase().DbStats.Cache().ChannelCacheNumChannels.Value())
+		WriteHeapProfile(b, "./heapLoopKVPool1.pprof")
+	}
+	WriteHeapProfile(b, "./heapAfterLoopKVPool1.pprof")
+}
+
+func WriteHeapProfile(t *testing.B, name string) {
+	f, err := os.Create(name)
+	if err != nil {
+		t.Fatalf("could not create heap profile: %v", err)
+	}
+	defer f.Close()
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		t.Fatalf("could not write heap profile: %v", err)
+	}
+	t.Logf("heap profile written to %s", name)
 }
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
