@@ -117,7 +117,7 @@ These variables are read by Go test code via `os.Getenv` and work with `go test`
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SG_TEST_BUCKET_POOL_SIZE` | Number of buckets to pre-create in the test pool | `4` |
+| `SG_TEST_BUCKET_POOL_SIZE` | Number of buckets to pre-create in the test pool. Single tests usually only need one or two buckets and will speed up testing. Leave this as default if running more than one test. | `4` |
 
 ## Gotchas
 
