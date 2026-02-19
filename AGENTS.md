@@ -118,7 +118,6 @@ These variables are read by Go test code via `os.Getenv` and work with `go test`
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SG_TEST_BUCKET_POOL_SIZE` | Number of buckets to pre-create in the test pool | `4` |
-| `SG_TEST_BUCKET_QUOTA_MB` | RAM quota per test bucket (MB) | `200` |
 
 ## Gotchas
 
