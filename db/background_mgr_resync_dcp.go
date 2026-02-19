@@ -57,7 +57,7 @@ func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys 
 	}
 }
 
-// Init processes the options to start a resync process and sets them as struct memebers.
+// Init processes the options to start a resync process and sets them as struct members.
 func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	db, ok := options["database"].(*Database)
 	if !ok {
@@ -121,7 +121,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 	resyncCollections, ok := options["collections"].(base.CollectionNames)
 	if !ok {
-		return errors.New("collections option is required and must be of type CollectionNames")
+		return errors.New("collections option is required and must be of type base.CollectionNames")
 	}
 
 	resyncLoggingID := "Resync: " + r.ResyncID
