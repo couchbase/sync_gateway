@@ -37,7 +37,9 @@ pipeline {
                             // bootstrap a go version from go.mod. This requires a new enough version of go to run golang.org/dl/go$ver
                             env.GO_VERSION = 'go' + sh(
                               returnStdout: true,
-                              script: 'cat go.mod | grep "^go" | cut -f2 -d " "'
+                              script: '''
+                                go list -m -f '{{.GoVersion}}'
+                              '''
                             ).trim()
                             sh '''
                               set -eux

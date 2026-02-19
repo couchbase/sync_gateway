@@ -47,14 +47,14 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 # Use Git SSH and define private repos
-git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
+git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
 # Print commit
 SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
-GO_VERSION=go$(cat go.mod | grep "^go" | cut -f2 -d " ")
+GO_VERSION=go$(go list -m -f '{{.GoVersion}}')
 echo "Sync Gateway go.mod version is ${GO_VERSION}"
 go install "golang.org/dl/${GO_VERSION}@latest"
 ~/go/bin/"${GO_VERSION}" download
