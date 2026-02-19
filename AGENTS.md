@@ -5,7 +5,7 @@ Sync Gateway is a horizontally scalable web server that securely manages access 
 ## Build & Test
 
 - Build: `go build -o bin/sync_gateway .`
-- Building or testing EE (requires private repo SSH access) must use the `cb_sg_enterprise` build tag for all Go commands. E.g: `go build -tags cb_sg_enterprise .`
+- Building or testing EE (requires private repo SSH access) must use the `cb_sg_enterprise, cb_sg_devmode` build tags for all Go commands. E.g: `go build -tags cb_sg_enterprise,cb_sg_devmode .`
 - Run all unit tests (Rosmar/in-memory, no Couchbase Server): `go test ./...`
 - Run a single test: `go test -run ^TestFunctionName$ github.com/couchbase/sync_gateway/rest`
 - Run a single package: `go test github.com/couchbase/sync_gateway/rest`
@@ -73,7 +73,7 @@ Never add the `cb_sg_enterprise` tag to test commands unless intentionally testi
 ## Conventions & Patterns
 
 ### Go style
-- Go 1.25+. Tabs for indentation (standard `gofmt`).
+- Use the Go version declared in `go.mod`. Tabs for indentation (standard `goimports`).
 - 120-char soft line limit (`.editorconfig`).
 - Use `github.com/stretchr/testify` for assertions (`require` for fatal, `assert` for non-fatal).
 - Use stdlib and base utilities where possible unless a module is already referenced by `go.mod`.
