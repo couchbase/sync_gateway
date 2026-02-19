@@ -128,7 +128,7 @@ func TestResyncDCPInit(t *testing.T) {
 
 			options := make(map[string]any)
 			options["database"] = db
-			options["collections"] = ResyncCollections{}
+			options["collections"] = base.NewCollectionNames()
 			if testCase.forceReset {
 				options["reset"] = true
 			}
@@ -180,7 +180,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"collections":         base.NewCollectionNames(),
 	}
 
 	err := db.ResyncManager.Start(ctx, options)
@@ -221,7 +221,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]any{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         ResyncCollections{},
+			"collections":         base.NewCollectionNames(),
 		}
 		require.NoError(t, db.ResyncManager.Start(ctx, options))
 		stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
@@ -256,7 +256,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]any{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         ResyncCollections{},
+			"collections":         base.NewCollectionNames(),
 		}
 
 		err := db.ResyncManager.Start(ctx, options)
@@ -295,7 +295,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"collections":         base.NewCollectionNames(),
 	}
 
 	err := db.ResyncManager.Start(ctx, options)
@@ -336,7 +336,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"collections":         base.NewCollectionNames(),
 	}
 
 	err := db.ResyncManager.Start(ctx, options)
@@ -419,11 +419,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections": ResyncCollections{
-			dbCollections[0].ScopeName: []string{
-				dbCollections[0].Name,
-			},
-		},
+		"collections":         base.NewCollectionNames(dbCollections[0].dataStore),
 	}
 
 	err := db.ResyncManager.Start(ctx, options)
@@ -453,12 +449,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	firstDocsChanged := stats.DocsChanged
 
 	require.GreaterOrEqual(t, len(dbCollections), 2)
-	options["collections"] = ResyncCollections{
-		dbCollections[0].ScopeName: []string{
-			dbCollections[0].Name,
-			dbCollections[1].Name,
-		},
-	}
+	options["collections"] = db.collectionNames()
 
 	// Resume process
 	err = db.ResyncManager.Start(ctx, options)
@@ -606,7 +597,7 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 	options := map[string]any{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"collections":         base.NewCollectionNames(),
 	}
 
 	require.NoError(t, db.ResyncManager.Start(ctx, options))

@@ -271,8 +271,7 @@ func TestRequireResync(t *testing.T) {
 	require.Equal(t, true, allDBsSummary[1].RequireResync)
 
 	// Run resync for collection
-	resyncCollections := make(db.ResyncCollections, 0)
-	resyncCollections[scope] = []string{collection1}
+	resyncCollections := base.NewCollectionNames(scopeAndCollection1Name)
 	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
 	require.NoError(t, marshalErr)
 
