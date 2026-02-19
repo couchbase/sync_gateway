@@ -81,9 +81,6 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		return nil, err
 	}
 
-	// Add logging info before passing ctx down
-	ctx = CorrelationIDLogCtx(ctx, DCPImportFeedID)
-
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, scope, collections, numPartitions)
 	if err != nil {
@@ -457,7 +454,7 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 	// CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
 }
 
-// Format of dest key for retrieval of import dest from cbgtDestFactories
+// ImportDestKey is used for retrieval of import dest from cbgtDestFactories
 func ImportDestKey(dbName string, scope string, collections []string) string {
 	sort.Strings(collections)
 	collectionString := ""
