@@ -90,7 +90,8 @@ Never add the `cb_sg_enterprise` tag to test commands unless intentionally testi
 - REST tests use `rest.NewRestTester(t, &RestTesterConfig{...})`.
 - Bucket tests use `base.GetTestBucket(t)`.
 - Tests run with `-shuffle=on` by default.
-- Test timeout defaults to 20 minutes per package.
+- Go tests timeout at 10 minutes per package, but should be increased to 45 minutes if using `SG_TEST_BACKING_STORE=Couchbase`
+- If running more than one test, pipe the test output to a temp file for later analysis and ONLY READ SMALL PARTS OF THIS FILE in the event of a failure, it will be very large! Make sure to clean up the temp log file once you're done with it too.
 
 ### REST API changes
 - When modifying REST handlers, query parameters, or response schemas, update the OpenAPI specs in `docs/api/`.
