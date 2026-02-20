@@ -6,6 +6,8 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
 name: openapi
 permissions:
   contents: read
@@ -50,7 +52,7 @@ jobs:
       - uses: r7kamura/redocly-problem-matchers@v1
       - name: redocly lint
         run: |-
-          npx --yes @redocly/cli@1 lint --format=stylish
+          npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
 
   yamllint:
     name: 'yamllint'
