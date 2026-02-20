@@ -944,7 +944,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		return nil, err
 	}
-	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
@@ -2403,7 +2402,7 @@ func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, db
 func (sc *ServerContext) getBucketCCVSettings() map[string]bool {
 	bucketCCVSettings := make(map[string]bool)
 	for _, _db := range sc._databases {
-		bucketName := _db.BucketSpec.BucketName
+		bucketName := _db.Bucket.GetName()
 		bucketCCVSettings[bucketName] = _db.CachedCCVEnabled.Load()
 	}
 	return bucketCCVSettings

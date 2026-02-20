@@ -2406,12 +2406,6 @@ func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	return sc._isDatabaseSuspended(dbName)
 }
 
-func (sc *ServerContext) getBucketSpec(dbName string) base.BucketSpec {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
-	return sc._databases[dbName].BucketSpec
-}
-
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
