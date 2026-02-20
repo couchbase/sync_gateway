@@ -47,7 +47,7 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 # Use Git SSH and define private repos
-git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
+git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
 # Print commit
