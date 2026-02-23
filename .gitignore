@@ -19,9 +19,9 @@ sync_gateway
 *.pb.gz
 __pycache__
 tools/cache_perf_tool/cache_perf_tool
-cache_perf_tool
+./cache_perf_tool
 tools/stats-definition-exporter/stats-definition-exporter
-stats-definition-exporter
+./stats-definition-exporter
 
 ### Couchbase Plugin ###
 .cbcache/

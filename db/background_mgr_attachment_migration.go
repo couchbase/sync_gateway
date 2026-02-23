@@ -289,7 +289,8 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
-// getMigrationDCPClientOptions returns the options for attachment migration DCP client
+// getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
+// CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
 func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, collectionIDs []uint32) *base.DCPClientOptions {
 	clientOptions := &base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),

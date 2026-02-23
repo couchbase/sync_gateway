@@ -409,7 +409,9 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
-// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
+// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
+// represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
+// used to store DCP checkpoints.
 func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionIDs []uint32) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("resync:%v", resyncID),

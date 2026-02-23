@@ -198,7 +198,6 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Skip("here")
 			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
@@ -218,7 +217,9 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 				tb.GetName(), base.TestsDisableGSI()))
 			RequireStatus(t, resp, http.StatusCreated)
 
-			assert.Equal(t, expectedServer, sc.getBucketSpec("db").Server)
+			bucket, ok := base.AsCouchbaseBucketStore(rt.GetDatabase().Bucket)
+			require.True(t, ok)
+			assert.Equal(t, expectedServer, bucket.GetSpec().Server)
 		})
 	}
 
@@ -265,7 +266,10 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
 			}
-			assert.Equal(t, test.expectedConnStr, sc.getBucketSpec("db").Server)
+			bucket, ok := base.AsCouchbaseBucketStore(rt.GetDatabase().Bucket)
+			require.True(t, ok)
+			assert.Equal(t, test.expectedConnStr, bucket.GetSpec().Server)
+
 		})
 	}
 
