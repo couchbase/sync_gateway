@@ -97,7 +97,6 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 	}
 	options := DCPClientOptions{
 		MetadataStoreType: metadataStoreType,
-		GroupID:           groupID,
 		DbStats:           dbStats,
 		CollectionIDs:     collectionIDs,
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,

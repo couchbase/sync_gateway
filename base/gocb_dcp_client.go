@@ -74,7 +74,6 @@ type DCPClientOptions struct {
 	InitialMetadata            []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
 	CheckpointPersistFrequency *time.Duration            // Overrides metadata persistence frequency - intended for test use
 	MetadataStoreType          DCPMetadataStoreType      // define storage type for DCPMetadata
-	GroupID                    string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
