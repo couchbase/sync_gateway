@@ -1105,6 +1105,12 @@ Database:
                 you may find that the capacity stat (revision_cache_num_items) will climb to the defined rev cache size + 10%.
               type: integer
               default: 5000
+            insert_on_write:
+              description: |-
+                Whether to insert revisions into the revision cache when documents are written to the database.
+                If false, only revisions read from the database will be cached.
+              type: boolean
+              default: false
         channel_cache_expiry:
           description: |-
             **Deprecated, please use the database setting `cache.channel_cache.expiry_seconds` instead**

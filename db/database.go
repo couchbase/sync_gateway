@@ -596,6 +596,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, metaKeys)
 

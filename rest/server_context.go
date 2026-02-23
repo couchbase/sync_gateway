@@ -1232,6 +1232,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
 				revCacheOptions.ShardCount = *config.CacheConfig.RevCacheConfig.ShardCount
 			}
+			if config.CacheConfig.RevCacheConfig.InsertOnWrite != nil {
+				revCacheOptions.InsertOnWrite = *config.CacheConfig.RevCacheConfig.InsertOnWrite
+			}
 		}
 	}
 

@@ -636,3 +636,78 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 		assert.Greater(c, stats.DocsProcessed, count)
 	}, 10*time.Second, 1*time.Millisecond)
 }
+
+func TestResyncCheckpointPrefix(t *testing.T) {
+	base.TestRequiresDCPResync(t)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	resyncID := "1234"
+	testCases := []struct {
+		name          string
+		collectionIDs []uint32
+		groupID       string
+		expected      string
+	}{
+		{
+			name:          "default collection, no group id",
+			collectionIDs: []uint32{base.DefaultCollectionID},
+			groupID:       "",
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "default collection, group id=foo",
+			collectionIDs: []uint32{base.DefaultCollectionID},
+			groupID:       "foo",
+			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "default collection + collection 1, no group id",
+			collectionIDs: []uint32{base.DefaultCollectionID, 1},
+			groupID:       "",
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "default collection + collection 1, group id=foo",
+			collectionIDs: []uint32{base.DefaultCollectionID, 1},
+			groupID:       "foo",
+			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			autoImport := false
+			db, err := NewDatabaseContext(
+				ctx,
+				"db",
+				bucket.NoCloseClone(),
+				autoImport,
+				DatabaseContextOptions{
+					Scopes:  GetScopesOptions(t, bucket, 1),
+					GroupID: test.groupID,
+				},
+			)
+			require.NoError(t, err)
+			defer db.Close(ctx)
+			clientOptions := getResyncDCPClientOptions(
+				test.collectionIDs,
+				db.Options.GroupID,
+				db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
+			)
+
+			dcpFeedKey := GenerateResyncDCPStreamName(resyncID)
+			b, err := base.AsGocbV2Bucket(bucket)
+			require.NoError(t, err)
+			dcpClient, err := base.NewDCPClient(
+				ctx,
+				dcpFeedKey,
+				nil,
+				*clientOptions,
+				b,
+			)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, dcpClient.GetMetadataKeyPrefix())
+		})
+	}
+}

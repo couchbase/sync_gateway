@@ -306,7 +306,9 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	}
 }
 
-func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
+// attachmentCompactSweepPhase will process all v1 attachments and purge any which are marked with the supplied xattr.
+// Returns the number of purged documents, the dcp checkpoint prefix, and any error.
+func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -379,7 +381,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
 
@@ -387,21 +389,21 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
-		return 0, err
+		return 0, "", err
 	}
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
-		return 0, err
+		return 0, dcpClient.GetMetadataKeyPrefix(), err
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
 
@@ -414,20 +416,22 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
-			return purgedAttachmentCount.Value(), err
+			return purgedAttachmentCount.Value(), dcpClient.GetMetadataKeyPrefix(), err
 		}
 
 		err = <-doneChan
 		if err != nil {
-			return purgedAttachmentCount.Value(), err
+			return purgedAttachmentCount.Value(), dcpClient.GetMetadataKeyPrefix(), err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction was terminated. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 	}
 
-	return purgedAttachmentCount.Value(), err
+	return purgedAttachmentCount.Value(), dcpClient.GetMetadataKeyPrefix(), err
 }
 
+// attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with an attachment compaction xattr. Returns
+// the DCP checkpoint prefix and any error encountered.
 func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID

@@ -297,8 +297,9 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			dbcOptions := DatabaseContextOptions{
 				RevisionCacheOptions: &RevisionCacheOptions{
-					MaxBytes:     725,
-					MaxItemCount: 10,
+					MaxBytes:      725,
+					MaxItemCount:  10,
+					InsertOnWrite: true, // for ease of testing, have insert on write enabled
 				},
 			}
 			db, ctx := SetupTestDBWithOptions(t, dbcOptions)
@@ -710,6 +711,9 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1key := "doc1"
 	rev1id, _, err := collection.Put(ctx, rev1key, rev1body)
 	assert.NoError(t, err, "Unexpected error calling collection.Put")
+
+	_, err = collection.getRev(ctx, rev1key, rev1id, 0, nil) // preload rev cache
+	require.NoError(t, err)
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
@@ -1364,29 +1368,29 @@ func TestRevisionCacheRemove(t *testing.T) {
 	docRev, err := collection.revisionCache.GetWithRev(base.TestCtx(t), "doc", rev1id, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	collection.revisionCache.RemoveWithRev(ctx, "doc", rev1id)
 
 	docRev, err = collection.revisionCache.GetWithRev(base.TestCtx(t), "doc", rev1id, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = collection.revisionCache.GetActive(ctx, "doc")
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = collection.GetRev(ctx, "doc", docRev.RevID, true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 
 	docRev, err = collection.GetRev(ctx, "doc", "", true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 }
 
 // TestRevCacheHitMultiCollection:
@@ -1437,8 +1441,21 @@ func TestRevCacheHitMultiCollection(t *testing.T) {
 	}
 
 	// assert that both docs were found in rev cache and no cache misses are being reported
+	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheHits.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
+
+	// Perform a get for the doc in each collection again asserting we get from rev cache this time
+	for i, collection := range collectionList {
+		ctx := collection.AddCollectionContext(ctx)
+		docRev, err := collection.GetRev(ctx, "doc", revList[i], false, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "doc", docRev.DocID)
+		assert.Equal(t, revList[i], docRev.RevID)
+	}
+
+	// assert two hits now recorded
 	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheHits.Value())
-	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 }
 
 // TestRevCacheHitMultiCollectionLoadFromBucket:
@@ -1838,6 +1855,10 @@ func createDocAndReturnSizeAndRev(t *testing.T, ctx context.Context, docID strin
 	for _, v := range chanArray {
 		expectedSize += len([]byte(v))
 	}
+
+	// do fetch ro load into cache
+	_, err = collection.getRev(ctx, docID, rev, 0, nil)
+	require.NoError(t, err)
 
 	return expectedSize, rev, doc.HLV.ExtractCurrentVersionFromHLV()
 }
@@ -2263,8 +2284,9 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	revID1, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
 
+	// rev 1 is not in cache given we don;t write to cache on write
 	_, exists := collection.revisionCache.Peek(ctx, docID, revID1)
-	require.True(t, exists)
+	require.False(t, exists)
 
 	require.NoError(t, collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`)))
 
@@ -2272,9 +2294,9 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Body{"foo": "baz"}, doc.Body(ctx))
 
-	// rev1 still exists in cache but not on server
+	// rev1 still won;t exist in cache
 	_, exists = collection.revisionCache.Peek(ctx, docID, revID1)
-	require.True(t, exists)
+	require.False(t, exists)
 
 	// rev2 is not in cache but is on server
 	_, exists = collection.revisionCache.Peek(ctx, docID, doc.GetRevTreeID())

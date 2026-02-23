@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
 env:
-  GO_VERSION: &go_version 1.25.6
+  GO_VERSION: &go_version 1.25.7
   GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.8.0
 
 jobs:

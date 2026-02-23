@@ -2991,6 +2991,11 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 					RequireStatus(t, resp, http.StatusCreated)
 					version1 := DocVersionFromPutResponse(t, resp)
 
+					if !flushCache {
+						// ensure revision is cached
+						_, _ = rt.GetDoc(docID)
+					}
+
 					// version 2 moves to channel B (alice has no access) with an attachment
 					resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev="+version1.RevTreeID,
 						`{"channels": ["NBC"], "value": "v2", "_attachments": {"attachment.txt": {"data": "YXR0ZGF0YQ=="}}}`)

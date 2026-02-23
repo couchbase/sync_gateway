@@ -111,9 +111,10 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 }
 
 type RevisionCacheOptions struct {
-	MaxItemCount uint32
-	MaxBytes     int64
-	ShardCount   uint16
+	MaxItemCount  uint32
+	MaxBytes      int64
+	ShardCount    uint16
+	InsertOnWrite bool
 }
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {

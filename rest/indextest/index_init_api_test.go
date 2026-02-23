@@ -274,10 +274,12 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
-	rt := rest.NewRestTesterPersistentConfig(t)
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
-	rt.TakeDbOffline()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.Ptr(true)
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	rt.ServerContext().DatabaseInitManager.SetInitializeIndexesFunc(t, getNoopInitializeIndexes())
 
