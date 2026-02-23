@@ -175,7 +175,10 @@ func (db *DatabaseContext) PushSkipped(ctx context.Context, seq uint64) {
 }
 
 func (db *DatabaseContext) RemoveSkipped(seq uint64) {
-	db.changeCache.RemoveSkipped(seq)
+	err := db.changeCache.RemoveSkipped(seq)
+	if err != nil {
+		base.WarnfCtx(context.TODO(), "Error removing skipped sequence %d: %v", seq, err)
+	}
 }
 
 type Scope struct {
