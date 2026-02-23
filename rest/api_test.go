@@ -3747,3 +3747,86 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
 	assert.Nil(t, body[db.BodyCV])
 }
+
+func TestPostDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	cfg := &DatabaseConfig{DbConfig: DbConfig{
+		CacheConfig: &CacheConfig{
+			ChannelCacheConfig: &ChannelCacheConfig{
+				MaxWaitPending: base.Ptr(uint32(100)),
+			},
+		},
+		Unsupported: &db.UnsupportedOptions{
+			RejectWritesWithSkippedSequences: true,
+		},
+	}}
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: cfg,
+	})
+	defer rt.Close()
+
+	dbc := rt.GetDatabase()
+
+	rt2 := addActiveRT(t, dbc.Name, rt.TestBucket, cfg)
+
+	time.Sleep(2 * time.Second)
+
+	rt2.WaitForDatabaseState(dbc.Name, db.RunStateString[db.DBOnline])
+
+	dbc.PushSkipped(t.Context(), 10)
+
+	time.Sleep(4 * time.Second)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/?replicator2=true", `{"_id":"test"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	fmt.Println(resp.Code, resp.Body.String())
+
+	resp = rt2.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/?replicator2=true", `{"_id":"test1"}`)
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	fmt.Println(resp.Code, resp.Body.String())
+
+	dbc.RemoveSkipped(10)
+
+	time.Sleep(5 * time.Second)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/?replicator2=true", `{"_id":"test"}`)
+	RequireStatus(t, resp, http.StatusOK)
+	fmt.Println(resp.Code, resp.Body.String())
+
+	resp = rt2.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/?replicator2=true", `{"_id":"test1"}`)
+	RequireStatus(t, resp, http.StatusOK)
+	fmt.Println(resp.Code, resp.Body.String())
+}
+
+// AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
+func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket, cfg *DatabaseConfig) (activeRT *RestTester) {
+
+	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
+	activeRT = NewRestTester(t,
+		&RestTesterConfig{
+			CustomTestBucket: testBucket.NoCloseClone(),
+			SyncFn:           channels.DocChannelsSyncFunction,
+			DatabaseConfig:   cfg,
+		})
+
+	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
+	// deleted when bucket.Close() is called during DatabaseContext.Close().
+	// Using IgnoreClose in leakyBucket to no-op the close operation.
+	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
+	// set up the leakyBucket wrapper prior to bucket creation.
+	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
+	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
+	if ok {
+		ub := leakyBucket.GetUnderlyingBucket()
+		_, isWalrusBucket := ub.(*rosmar.Bucket)
+		if isWalrusBucket {
+			leakyBucket.SetIgnoreClose(true)
+		}
+	}
+
+	// Trigger the lazy load of bucket for RestTester startup
+	_ = activeRT.Bucket()
+
+	return activeRT
+}

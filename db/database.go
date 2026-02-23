@@ -165,6 +165,17 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+
+	SkippedSeqDocID string // Document ID used to track skipped sequences across a cluster
+	RejectBoolean   atomic.Bool
+}
+
+func (db *DatabaseContext) PushSkipped(ctx context.Context, seq uint64) {
+	db.changeCache.PushSkipped(ctx, seq, seq)
+}
+
+func (db *DatabaseContext) RemoveSkipped(seq uint64) {
+	db.changeCache.RemoveSkipped(seq)
 }
 
 type Scope struct {
@@ -587,6 +598,90 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
+	}
+
+	if dbContext.Options.UnsupportedOptions != nil && dbContext.Options.UnsupportedOptions.RejectWritesWithSkippedSequences {
+		// create doc for skipped sequence status on nodes
+		// add this behind reject writes flag
+		for i := 0; i < 4; i++ {
+			docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+			added, err := metadataStore.Add(docID, 0, []byte(`{"skipped" : false}`))
+			if err != nil {
+				base.WarnfCtx(ctx, "got error adding skipped sequence status doc %s: %v", docID, err)
+				return nil, err
+			}
+			if added {
+				dbContext.SkippedSeqDocID = docID
+				base.InfofCtx(ctx, base.KeyAll, "Added skipped sequence status doc %s", dbContext.SkippedSeqDocID)
+				// exit loop if we successfully added the doc
+				break
+			} else {
+				base.WarnfCtx(ctx, "Skipped sequence status doc %s already exists, not overwriting", docID)
+			}
+		}
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+			broadcastSlowMode := false
+			for {
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					newBroadcastSlowMode := db.BroadcastSlowMode.Load()
+					if broadcastSlowMode != newBroadcastSlowMode {
+						base.InfofCtx(ctx, base.KeyAll, "setting skipped bucket doc %s to %t", db.SkippedSeqDocID, newBroadcastSlowMode)
+						err := db.MetadataStore.SetRaw(db.SkippedSeqDocID, 0, nil, []byte(fmt.Sprintf(`{"skipped": %t}`, newBroadcastSlowMode)))
+						if err != nil {
+							base.WarnfCtx(ctx, "Error updating skipped sequence status: %v", err)
+						}
+						broadcastSlowMode = newBroadcastSlowMode
+					}
+				}
+			}
+		}(dbContext)
+
+		go func(db *DatabaseContext) {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				oneNodeSkipped := false
+				select {
+				case <-db.CancelContext.Done():
+					return
+				case <-ticker.C:
+					for i := 0; i < 4; i++ {
+						docID := fmt.Sprintf("_sync:skipped_sequence_status_%d", i)
+						var body map[string]interface{}
+						val, _, err := db.MetadataStore.GetRaw(docID)
+						if err == nil {
+							if err := base.JSONUnmarshal(val, &body); err != nil {
+								base.WarnfCtx(ctx, "skipped sequence status unmarshal error %s: %v", docID, err)
+								continue
+							}
+							skipped := body["skipped"].(bool)
+							base.InfofCtx(ctx, base.KeyAll, "retrieved skipped sequence status for %s: %v", docID, body)
+							if skipped {
+								oneNodeSkipped = true
+								// if one node has skipped sequences, all nodes will reject writes and we will have set boolean above to true
+								// so exit loop early
+								break
+							}
+						} else {
+							base.WarnfCtx(ctx, "skipped sequence status doc get error for %s: %v", docID, err)
+						}
+					}
+					if oneNodeSkipped {
+						db.RejectBoolean.Store(true)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is true for at least one node, reject value for this node %t", db.RejectBoolean.Load())
+					} else {
+						db.RejectBoolean.Store(false)
+						base.InfofCtx(ctx, base.KeyAll, "skipped sequence status is false for all nodes, reject value for this node %t", db.RejectBoolean.Load())
+					}
+				}
+			}
+		}(dbContext)
 	}
 
 	// Initialize sg-replicate manager
