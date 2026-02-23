@@ -311,7 +311,6 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			defer db.Close(ctx)
 			clientOptions := getMigrationDCPClientOptions(
 				test.collectionIDs,
-				db.Options.GroupID,
 				db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 			)
 
