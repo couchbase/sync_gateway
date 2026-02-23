@@ -2565,7 +2565,7 @@ func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 
 // useShardedDCP returns true if the database supports sharded DCP feeds.
 func (db *DatabaseContext) useShardedDCP() bool {
-	return base.IsEnterpriseEdition() && !db.BucketSpec.IsWalrusBucket()
+	return base.IsEnterpriseEdition() && !db.usingRosmar()
 }
 
 // collectionNames returns the names of the collections on this database.

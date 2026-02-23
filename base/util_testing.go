@@ -857,8 +857,11 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 	cm := cluster.Bucket(bucketSpec.BucketName).Collections()
 
 	for scopeName, collections := range scopes {
-		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
+		// CreateScope will return an ambiguous error if the _default scope already exists, expect it always exists
+		if scopeName != DefaultScope {
+			if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
+				return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
+			}
 		}
 		DebugfCtx(ctx, KeySGTest, "Created scope %s", scopeName)
 		for _, collectionName := range collections {

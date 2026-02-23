@@ -91,7 +91,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		dbContext.Bucket, dbContext.BucketSpec, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		dbContext.Bucket, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
 }
 

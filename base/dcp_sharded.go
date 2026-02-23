@@ -63,7 +63,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
 	minVersion, err := getMinNodeVersion(cfg)
 	if err != nil {
@@ -76,7 +76,12 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		}
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
+	b, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		return nil, fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
+	}
+
+	cbgtContext, err := initCBGTManager(ctx, bucket, b.GetSpec(), cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
