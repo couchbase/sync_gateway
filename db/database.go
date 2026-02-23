@@ -106,7 +106,7 @@ type DatabaseContext struct {
 	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
 	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
 	Bucket                      base.Bucket        // Storage
-	BucketSpec                  base.BucketSpec    // The BucketSpec
+	bucketUsername              string             // name of the connecting user for audit logging
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
@@ -417,6 +417,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
+	bucketUsername := "rosmar_noauth"
+	b, err := base.AsGocbV2Bucket(bucket)
+	if err == nil {
+		bucketUsername, _, _ = b.GetSpec().Auth.GetCredentials()
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
@@ -425,6 +431,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UUID:                 cbgt.NewUUID(),
 		MetadataStore:        metadataStore,
 		Bucket:               bucket,
+		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
 		StartTime:            time.Now(),
@@ -2137,14 +2144,7 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 
 // AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
 func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
-	spec := dbCtx.BucketSpec
-	// Server is empty in testing only
-	if spec.Server == "" || spec.IsWalrusBucket() {
-		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
-	}
-	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
-	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
-
+	return base.UserLogCtx(ctx, dbCtx.bucketUsername, base.UserDomainBuiltin, nil)
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
@@ -2433,7 +2433,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+	if len(db.RequireAttachmentMigration) > 0 && !db.usingRosmar() {
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
@@ -2577,4 +2577,10 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 	default:
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
+}
+
+// usingRosmar returns true if the database is configured to use Rosmar.
+func (db *DatabaseContext) usingRosmar() bool {
+	_, err := base.AsRosmarBucket(db.Bucket)
+	return err == nil
 }

@@ -178,7 +178,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(r.collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getResyncDCPClientOptions(r.collectionIDs, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 
 	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
 	dcpClient, err := base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
@@ -410,13 +410,14 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
-// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
+// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
+// represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
+// used to store DCP checkpoints.
+func getResyncDCPClientOptions(collectionIDs []uint32, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
 		CheckpointPrefix:  prefix,
 	}
