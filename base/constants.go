@@ -25,7 +25,7 @@ const (
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	kTestCouchbaseServerURL = "couchbase://localhost"
+	kTestCouchbaseServerURL = "couchbase://127.0.0.1"
 	kTestWalrusURL          = rosmar.InMemoryURL
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
