@@ -21,6 +21,12 @@ Unauthorized:
     application/json:
       schema:
         $ref: ./schemas.yaml#/HTTP-Error
+Unauthorized-database:
+  description: User does not have access to the database resource, or database resource does not exist
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/HTTP-Error
 Conflict:
   description: Resource already exists under that name
   content:

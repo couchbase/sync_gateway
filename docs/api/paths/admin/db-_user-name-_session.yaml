@@ -22,6 +22,8 @@ delete:
   responses:
     '200':
       description: User now has no sessions
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

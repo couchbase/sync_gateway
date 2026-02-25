@@ -34,8 +34,8 @@ get:
       $ref: ../../components/responses.yaml#/all-docs
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Document
   operationId: get_keyspace-_all_docs
@@ -78,8 +78,8 @@ post:
       $ref: ../../components/responses.yaml#/all-docs
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Document
   operationId: post_keyspace-_all_docs

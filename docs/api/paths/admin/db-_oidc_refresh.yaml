@@ -23,6 +23,8 @@ get:
       $ref: ../../components/responses.yaml#/OIDC-callback
     '400':
       $ref: ../../components/responses.yaml#/OIDC-invalid-provider
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '500':

@@ -23,6 +23,8 @@ get:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Retrieved-replication
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -49,6 +51,8 @@ put:
       $ref: ../../components/responses.yaml#/Replicator-created
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -67,6 +71,8 @@ delete:
       description: Replication successfully deleted
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -76,6 +82,8 @@ head:
   responses:
     '200':
       description: Replication exists
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       description: Replication does not exist
   tags:

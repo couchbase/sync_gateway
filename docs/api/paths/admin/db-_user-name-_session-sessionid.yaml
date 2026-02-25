@@ -21,6 +21,8 @@ delete:
   responses:
     '200':
       description: Session has been successfully removed as the user was associated with the session
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

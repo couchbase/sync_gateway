@@ -22,8 +22,8 @@ get:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Resync-status
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Management
   operationId: get_db-_resync
@@ -87,6 +87,8 @@ post:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Resync-status
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':
       description: Service Unavailable
       content:

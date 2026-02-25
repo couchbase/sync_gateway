@@ -29,8 +29,8 @@ get:
         application/javascript:
           schema:
             type: string
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Configuration
   operationId: get_keyspace-_config-import_filter
@@ -56,8 +56,8 @@ put:
       description: Updated import filter successfully
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
@@ -76,8 +76,8 @@ delete:
   responses:
     '200':
       description: Successfully deleted the import filter
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:

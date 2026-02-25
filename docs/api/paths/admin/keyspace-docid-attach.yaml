@@ -61,6 +61,8 @@ get:
           description: 'The attachment digest. Does not get set when request `meta=true`. '
     '206':
       description: Partial attachment content returned
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '416':
@@ -116,6 +118,8 @@ put:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/New-revision
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
@@ -136,6 +140,8 @@ head:
           schema:
             type: string
           description: The attachment digest.
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -180,6 +186,8 @@ delete:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/New-revision
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':

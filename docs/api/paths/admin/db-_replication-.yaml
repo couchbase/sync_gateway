@@ -24,8 +24,8 @@ get:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/All-replications
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Replication
   operationId: get_db-_replication-
@@ -48,8 +48,8 @@ post:
       $ref: ../../components/responses.yaml#/Replicator-created
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Replication
   operationId: post_db-_replication-
