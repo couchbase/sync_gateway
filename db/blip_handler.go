@@ -864,8 +864,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 		changeIsVector := false
 		if versionVectorProtocol {
-			// TODO: CBG-4812 Use base.IsRevTreeID
-			changeIsVector = strings.Contains(rev, "@")
+			changeIsVector = !base.IsRevTreeID(rev)
 		}
 		if versionVectorProtocol && changeIsVector {
 			proposedVersionStr := ExtractCVFromProposeChangesRev(rev)
@@ -1120,9 +1119,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
-	// TODO: CBG-4812 Use base.IsRevTreeID
-	changeIsVector := strings.Contains(rev, "@")
-	if !bh.useHLV() || !changeIsVector {
+	changeIsRevTree := base.IsRevTreeID(rev)
+	if !bh.useHLV() || changeIsRevTree {
 		newDoc.RevID = rev
 		history = []string{rev}
 		if historyStr != "" {
@@ -1367,7 +1365,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
-	if bh.useHLV() && changeIsVector {
+	if bh.useHLV() && !changeIsRevTree {
 		opts := PutDocOptions{
 			NewDoc:                         newDoc,
 			RevTreeHistory:                 legacyRevList,
