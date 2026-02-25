@@ -86,6 +86,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			DoneChan:         make(chan struct{}),
 			CheckpointPrefix: il.checkpointPrefix,
 			Scopes:           collectionNamesByScope,
+			FeedContent:      sgbucket.FeedContentDefault,
 		}
 
 		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
