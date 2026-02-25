@@ -881,7 +881,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
-        "server":"couchbase://localhost","username":"username","password":"password","bucket":"default",
+        "server":"couchbase://127.0.0.1","username":"username","password":"password","bucket":"default",
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
@@ -944,7 +944,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, "username", db1.BucketConfig.Username)
 	assert.Equal(t, "password", db1.BucketConfig.Password)
 	assert.Equal(t, "default", *db1.BucketConfig.Bucket)
-	assert.Equal(t, "couchbase://localhost", *db1.BucketConfig.Server)
+	assert.Equal(t, "couchbase://127.0.0.1", *db1.BucketConfig.Server)
 	assert.Equal(t, "/etc/ssl/certs/cert.pem", db1.BucketConfig.CertPath)
 	assert.Equal(t, "/etc/ssl/certs/ca.cert", db1.BucketConfig.CACertPath)
 	assert.Equal(t, "/etc/ssl/certs/key.pem", db1.BucketConfig.KeyPath)
@@ -1131,7 +1131,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "$USERNAME",
 				      "password": "${PASSWORD}"
 				    }
@@ -1147,7 +1147,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "Administrator",
 				      "password": "password"
 				    }
@@ -1162,7 +1162,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "${BUCKET:-leaky_bucket}",
-				      "server": "couchbase://localhost"
+				      "server": "couchbase://127.0.0.1"
 				    }
 				  }
 				}
@@ -1172,7 +1172,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost"
+				      "server": "couchbase://127.0.0.1"
 				    }
 				  }
 				}
@@ -1185,7 +1185,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "$$USERNAME",
                       "password": "P@$$$$w0rd",
                       "sync": "function (doc, oldDoc) { if (doc.$$sdk) { channel(doc.$$sdk);}}"
@@ -1201,7 +1201,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "$USERNAME",
                       "password": "P@$$w0rd",
                       "sync": "function (doc, oldDoc) { if (doc.$sdk) { channel(doc.$sdk);}}"
@@ -1217,7 +1217,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "$USERNAME",
 				      "password": "${PASSWORD}"
 				    }
@@ -1229,7 +1229,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "",
 				      "password": ""
 				    }
@@ -1245,7 +1245,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "$USERNAME",
 				      "password": "${PASSWORD}"
 				    }
@@ -1260,7 +1260,7 @@ func TestExpandEnv(t *testing.T) {
 				  "databases": {
 				    "db": {
 				      "bucket": "leaky_bucket",
-				      "server": "couchbase://localhost",
+				      "server": "couchbase://127.0.0.1",
 				      "username": "Administrator",
 				      "password": ""
 				    }
@@ -2204,7 +2204,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					DBStateChanged: []*EventConfig{
 						{
 							HandlerType: "webhook",
-							Url:         "http://localhost:8080/",
+							Url:         "http://127.0.0.1:8080/",
 							Timeout:     base.Ptr(uint64(0)),
 							Filter:      webhookFilter,
 						},

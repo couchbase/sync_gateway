@@ -510,37 +510,37 @@ func TestUseTLSServer(t *testing.T) {
 		{
 			name:          "couchbase: not allowed",
 			useTLSServer:  true,
-			server:        "couchbase://localhost:1212",
+			server:        "couchbase://127.0.0.1:1212",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "http not allowed",
 			useTLSServer:  true,
-			server:        "http://localhost:1212",
+			server:        "http://127.0.0.1:1212",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "http allowed",
 			useTLSServer:  false,
-			server:        "http://localhost:1212",
+			server:        "http://127.0.0.1:1212",
 			expectedError: nil,
 		},
 		{
 			name:          "Https not secure (due to unsupported)",
 			useTLSServer:  true,
-			server:        "https://localhost:1234",
+			server:        "https://127.0.0.1:1234",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "couchbases:",
 			useTLSServer:  true,
-			server:        "couchbases://localhost:1234",
+			server:        "couchbases://127.0.0.1:1234",
 			expectedError: nil,
 		},
 		{
 			name:          "ftps:", // Testing if the S at the end is what makes it secure
 			useTLSServer:  true,
-			server:        "ftps://localhost:1234",
+			server:        "ftps://127.0.0.1:1234",
 			expectedError: &errorMustBeSecure,
 		},
 	}

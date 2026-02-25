@@ -112,7 +112,7 @@ These variables are read by Go test code via `os.Getenv` and work with `go test`
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SG_TEST_BACKING_STORE` | Set to `Couchbase` to test against a real CBS cluster instead of Rosmar | Rosmar (in-memory) |
-| `SG_TEST_COUCHBASE_SERVER_URL` | Couchbase Server URL for integration tests | `couchbase://localhost` |
+| `SG_TEST_COUCHBASE_SERVER_URL` | Couchbase Server URL for integration tests | `couchbase://127.0.0.1` |
 
 **Integration test tuning** (only relevant with `SG_TEST_BACKING_STORE=Couchbase`):
 

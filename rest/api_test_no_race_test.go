@@ -149,7 +149,7 @@ func TestSetupAndValidate(t *testing.T) {
               "bucket": "data_bucket",
               "enable_shared_bucket_access": true,
               "import_docs": true,
-              "server": "couchbase://localhost",
+              "server": "couchbase://127.0.0.1",
               "username": "Administrator",
               "password": "password",
               "use_views": false,
@@ -189,7 +189,7 @@ func TestSetupAndValidate(t *testing.T) {
 		assert.NotNil(t, db.EnableXattrs)
 		assert.True(t, *db.EnableXattrs)
 
-		assert.Equal(t, "couchbase://localhost", *db.Server)
+		assert.Equal(t, "couchbase://127.0.0.1", *db.Server)
 		assert.Equal(t, "Administrator", db.Username)
 
 		assert.Equal(t, "password", db.Password)
@@ -242,7 +242,7 @@ func TestSetupAndValidate(t *testing.T) {
 		  "databases": {
 		    "db": {
 		      "bucket": "leaky_bucket",
-		      "server": "couchbase://localhost",
+		      "server": "couchbase://127.0.0.1",
 		      "username": "Administrator",
 		      "password": "password"
 		    }

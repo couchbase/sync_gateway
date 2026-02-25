@@ -529,16 +529,16 @@ func TestSetURLQueryParam(t *testing.T) {
 		wantError        error
 	}{{
 		name:             "Add provider to callback URL",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  oidcAuthProviderGoogle,
-		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+		wantCallbackURL:  "http://127.0.0.1:4984/default/_oidc_callback?provider=google",
 	}, {
 		name:             "Add provider to callback URL with ? character",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback?",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  oidcAuthProviderGoogle,
-		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+		wantCallbackURL:  "http://127.0.0.1:4984/default/_oidc_callback?provider=google",
 	}, {
 		name:             "Add provider to empty callback URL",
 		inputCallbackURL: "",
@@ -548,44 +548,44 @@ func TestSetURLQueryParam(t *testing.T) {
 		wantError:        ErrSetURLQueryParam,
 	}, {
 		name:             "Add empty provider value to callback URL",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  "",
 		wantCallbackURL:  "",
 		wantError:        ErrSetURLQueryParam,
 	}, {
 		name:             "Add empty provider name to callback URL",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback",
 		inputParamName:   "",
 		inputParamValue:  oidcAuthProviderGoogle,
 		wantCallbackURL:  "",
 		wantError:        ErrSetURLQueryParam,
 	}, {
 		name:             "Update provider in callback URL",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=facebook",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback?provider=facebook",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  oidcAuthProviderGoogle,
-		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+		wantCallbackURL:  "http://127.0.0.1:4984/default/_oidc_callback?provider=google",
 	}, {
 		name:             "Add provider to callback URL with illegal value in query param",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=%%3",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback?provider=%%3",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  oidcAuthProviderGoogle,
 		wantCallbackURL:  "",
 		wantError:        url.EscapeError("%%3"),
 	}, {
 		name:             "Add provider to callback URL with missing protocol scheme",
-		inputCallbackURL: "://localhost:4984/default/_oidc_callback",
+		inputCallbackURL: "://127.0.0.1:4984/default/_oidc_callback",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  oidcAuthProviderGoogle,
 		wantCallbackURL:  "",
-		wantError:        &url.Error{Op: "parse", URL: "://localhost:4984/default/_oidc_callback", Err: errors.New("missing protocol scheme")},
+		wantError:        &url.Error{Op: "parse", URL: "://127.0.0.1:4984/default/_oidc_callback", Err: errors.New("missing protocol scheme")},
 	}, {
 		name:             "Add provider with non-conforming characters to callback URL",
-		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputCallbackURL: "http://127.0.0.1:4984/default/_oidc_callback",
 		inputParamName:   OIDCAuthProvider,
 		inputParamValue:  "test&provider ?",
-		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=test%26provider+%3F",
+		wantCallbackURL:  "http://127.0.0.1:4984/default/_oidc_callback?provider=test%26provider+%3F",
 	}}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

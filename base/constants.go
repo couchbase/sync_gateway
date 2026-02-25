@@ -36,7 +36,7 @@ const (
 	TestEnvTLSSkipVerify     = "SG_TEST_TLS_SKIP_VERIFY"
 	DefaultTestTLSSkipVerify = true
 
-	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
+	// Walrus by default, but can set to "Couchbase" to have it use http://127.0.0.1:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
 	TestEnvBackingStoreWalrus      = "Walrus"
