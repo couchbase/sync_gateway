@@ -337,7 +337,7 @@ func createDCPClient(t *testing.T, ctx context.Context, bucket *base.GocbV2Bucke
 		NumWorkers:        numWorkers,
 	}
 	// fake client that we want to hook into
-	client, err := base.NewDCPClientForTest(ctx, t, "test", callback, options, bucket, uint16(numVBuckets))
+	client, err := base.NewDCPClientForTest(ctx, t, callback, options, bucket, uint16(numVBuckets))
 	if err != nil {
 		return nil, err
 	}

@@ -691,16 +691,15 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			require.NoError(t, err)
 			defer db.Close(ctx)
 			clientOptions := getResyncDCPClientOptions(
+				db,
+				resyncID,
 				test.collectionIDs,
-				db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 			)
 
-			dcpFeedKey := GenerateResyncDCPStreamName(resyncID)
 			b, err := base.AsGocbV2Bucket(bucket)
 			require.NoError(t, err)
 			dcpClient, err := base.NewDCPClient(
 				ctx,
-				dcpFeedKey,
 				nil,
 				*clientOptions,
 				b,
