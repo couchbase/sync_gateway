@@ -86,6 +86,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		DoneChan:         make(chan struct{}),
 		CheckpointPrefix: il.checkpointPrefix,
 		Scopes:           collectionNamesByScope,
+		FeedContent:      sgbucket.FeedContentDefault,
 	}
 
 	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))

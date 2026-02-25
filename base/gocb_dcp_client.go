@@ -65,6 +65,7 @@ type GoCBDCPClient struct {
 	dbStats                    *expvar.Map                    // Stats for database
 	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
+	feedContent                sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
 }
 
 type DCPClientOptions struct {
@@ -79,6 +80,27 @@ type DCPClientOptions struct {
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 	CheckpointPrefix           string
+	FeedContent                sgbucket.FeedContent // FeedContent specifies whether the DCP feed should include values, xattrs, or both
+}
+
+// MemdDcpOpenFlag returns the memd.DcpOpenFlag to use for the given FeedContent option.
+func MemdDcpOpenFlag(ctx context.Context, c sgbucket.FeedContent) memd.DcpOpenFlag {
+	// NoValueWithUnderlyingDatatype is a DCP open flag that requests the server to not send
+	// values in DCP events, but still send the underlying datatype for each event.
+	const NoValueWithUnderlyingDatatype = memd.DcpOpenFlag(0x40)
+	switch c {
+	case sgbucket.FeedContentDefault:
+		return memd.DcpOpenFlagIncludeXattrs
+	case sgbucket.FeedContentKeysOnly:
+		return NoValueWithUnderlyingDatatype
+	case sgbucket.FeedContentBodyOnly:
+		return 0
+	case sgbucket.FeedContentXattrOnly:
+		return memd.DcpOpenFlagIncludeXattrs | NoValueWithUnderlyingDatatype
+	default:
+		AssertfCtx(ctx, "invalid FeedContent value: %d", c)
+		return memd.DcpOpenFlagIncludeXattrs
+	}
 }
 
 func NewDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
@@ -125,6 +147,7 @@ func newDCPClientWithForBuckets(ctx context.Context, callback sgbucket.FeedEvent
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
+		feedContent:         options.FeedContent,
 	}
 
 	// Initialize active vbuckets
@@ -369,7 +392,7 @@ func (dc *GoCBDCPClient) initAgent(spec BucketSpec) error {
 		return err
 	}
 	flags := memd.DcpOpenFlagProducer
-	flags |= memd.DcpOpenFlagIncludeXattrs
+	flags |= MemdDcpOpenFlag(dc.ctx, dc.feedContent)
 	var agentErr error
 	dc.agent, agentErr = gocbcore.CreateDcpAgent(agentConfig, dc.dcpStreamName, flags)
 	if agentErr != nil {

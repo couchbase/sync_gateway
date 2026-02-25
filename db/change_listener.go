@@ -82,10 +82,11 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
-		ID:         base.DCPCachingFeedID,
-		Backfill:   sgbucket.FeedNoBackfill,
-		Terminator: listener.terminator,
-		DoneChan:   make(chan struct{}),
+		ID:          base.DCPCachingFeedID,
+		Backfill:    sgbucket.FeedNoBackfill,
+		Terminator:  listener.terminator,
+		DoneChan:    make(chan struct{}),
+		FeedContent: sgbucket.FeedContentXattrOnly,
 	}
 	if len(scopes) > 0 {
 		// build the set of collections to be requested

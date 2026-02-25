@@ -316,20 +316,25 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	ctx := c.logCtx
 	docID := string(event.Key)
-	docJSON := event.Value
+	dcpValue := event.Value
 	changedChannelsCombined := channels.Set{}
 
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
+
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
 	switch docType {
 	case DocTypeUnknown:
 		return // no-op unknown doc type
 	case DocTypeUser:
-		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
+		if docBody := c.fetchMetadataDocBody(ctx, docID, event.Cas); docBody != nil {
+			c.processPrincipalDoc(ctx, docID, docBody, true, timeReceived)
+		}
 		return
 	case DocTypeRole:
-		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
+		if docBody := c.fetchMetadataDocBody(ctx, docID, event.Cas); docBody != nil {
+			c.processPrincipalDoc(ctx, docID, docBody, false, timeReceived)
+		}
 		return
 	case DocTypeUnusedSeq:
 		c.processUnusedSequence(ctx, docID, timeReceived)
@@ -375,7 +380,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.UserXattrKey(), false)
+	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(dcpValue, event.DataType, collection.UserXattrKey(), false)
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -385,22 +390,23 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
-	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
-	if collection.UseXattrs() {
-		if syncData == nil {
-			return
-		}
-		var rawVV *rawHLV
-		vv := doc.Xattrs[base.VvXattrName]
-		if len(vv) > 0 {
-			rawVV = base.Ptr(rawHLV(vv))
-		}
-		isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
-		if !isSGWrite {
-			return
-		}
+	if syncData == nil {
+		return
 	}
+
+	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
+	// FIXME: CBG-4640 - IsSGWrite check requires the document body (for CRC32 match)
+	// which is not available on the xattr-only caching feed. This check is disabled
+	// until we have an alternative approach.
+	// var rawVV *rawHLV
+	// vv := doc.Xattrs[base.VvXattrName]
+	// if len(vv) > 0 {
+	// 	rawVV = base.Ptr(rawHLV(vv))
+	// }
+	// isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
+	// if !isSGWrite {
+	// 	return
+	// }
 
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 	// before ignoring the mutation.
@@ -709,6 +715,23 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 	}
 
 	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, channels.NewFeedTimestampFromNow())
+}
+
+// fetchMetadataDocBody fetches the full document body via a KV get from the metadata store.
+// This works around the xattr-only caching feed not including document bodies,
+// which are required for metadata doc types (e.g. user/role principal docs).
+// Returns nil if the document cannot be fetched or if the CAS does not match the expected value.
+func (c *changeCache) fetchMetadataDocBody(ctx context.Context, docID string, expectedCas uint64) []byte {
+	docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
+	if err != nil {
+		base.WarnfCtx(ctx, "fetchMetadataDocBody: unable to fetch doc %q from metadata store: %v", base.UD(docID), err)
+		return nil
+	}
+	if cas != expectedCas {
+		base.WarnfCtx(ctx, "fetchMetadataDocBody: CAS mismatch for doc %q - expected %d, got %d", base.UD(docID), expectedCas, cas)
+		return nil
+	}
+	return docBody
 }
 
 func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp) {
