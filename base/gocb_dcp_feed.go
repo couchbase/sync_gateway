@@ -102,6 +102,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		CheckpointPrefix:  args.CheckpointPrefix,
 		FeedID:            args.ID,
+		FeedContent:       args.FeedContent,
 	}
 
 	if args.Backfill == sgbucket.FeedNoBackfill {
