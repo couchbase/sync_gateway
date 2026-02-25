@@ -3677,8 +3677,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 	// previousRev may be revTreeID or version
 	var previousVersion Version
 	previousRevFormat := "version"
-	// TODO: CBG-4812 Use base.IsRevTreeID
-	if !strings.Contains(previousRev, "@") {
+	if base.IsRevTreeID(previousRev) {
 		previousRevFormat = "revTreeID"
 	}
 	if previousRev != "" && previousRevFormat == "version" {
