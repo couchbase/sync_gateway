@@ -553,7 +553,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
-				return nil, err
+				return nil, base.RedactErrorf("Could not connect to %s.%s.%s: %w", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collName), err)
 			}
 			stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
 			if err != nil {
