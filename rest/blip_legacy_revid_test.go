@@ -1045,6 +1045,45 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 	})
 }
 
+func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeySyncMsg, base.KeyCRUD)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // vv specific test
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+		})
+		defer rt.Close()
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer btc.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		// add legacy rev on SGW
+		doc := rt.CreateDocNoHLV(docID, db.Body{"key": "val"})
+		originalSGWVersion := doc.ExtractDocVersion()
+
+		// extract digest
+		_, digest := db.ParseRevID(t.Context(), originalSGWVersion.RevTreeID)
+
+		cblVersion := btcRunner.AddEncodedCVRev(btc.id, docID, digest, EmptyDocVersion(), []byte(`{"key":"val"}`))
+		require.Equal(t, "Revision+Tree+Encoding", cblVersion.CV.SourceID) // we must be saving this rev as legacy encoded cv on client
+
+		btcRunner.StartPush(btc.id)
+
+		// add marker doc
+		markerVersion := btcRunner.AddRev(btc.id, "markerDoc", EmptyDocVersion(), []byte(`{"marker":"doc"}`))
+		rt.WaitForVersion("markerDoc", markerVersion)
+
+		// assert doc on SGW is still original rev added and not saved as new encoded CV from CBL
+		sgwVersion, _ := rt.GetDoc(docID)
+		assert.Equal(t, originalSGWVersion.RevTreeID, sgwVersion.RevTreeID)
+		assert.True(t, sgwVersion.CV.IsEmpty(), "CV should be empty")
+	})
+}
+
 // removeHLV removes _vv and clears _sync.ver and _sync.src from a document. Consider instead using CreateDocNoHLV
 func removeHLV(rt *RestTester, docID string) {
 	ds := rt.GetSingleDataStore()

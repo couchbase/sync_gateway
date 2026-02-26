@@ -1598,11 +1598,12 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 
 // blipTesterUpsertOptions contains options for adding a document to a local BlipTesterCollectionClient
 type blipTesterUpsertOptions struct {
-	parentVersion  *DocVersion
-	body           []byte
-	isDelete       bool
-	legacyRev      bool   // if true, create a legacy revtree revision even if client is using HLV
-	specificDigest string // if specified, use this digest for the revision
+	parentVersion    *DocVersion
+	body             []byte
+	isDelete         bool
+	legacyRev        bool   // if true, create a legacy revtree revision even if client is using HLV
+	specificDigest   string // if specified, use this digest for the revision
+	writeAsEncodedCV bool
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
@@ -1648,7 +1649,13 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 			digest = opts.specificDigest
 		}
 		newRevID := fmt.Sprintf("%d-%s", newGen, digest)
-		docVersion = DocVersion{RevTreeID: newRevID}
+		if opts.writeAsEncodedCV {
+			encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(newRevID)
+			require.NoErrorf(btcc.TB(), err, "Encountered error encoding CV: %v", err)
+			docVersion = DocVersion{CV: encodedCV}
+		} else {
+			docVersion = DocVersion{RevTreeID: newRevID}
+		}
 	}
 
 	newSeq := btcc._nextSequence()
@@ -1685,6 +1692,18 @@ func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocV
 		body:          body,
 		isDelete:      false,
 		legacyRev:     false,
+	})
+	return newRev.version
+}
+
+func (btcc *BlipTesterCollectionClient) AddRevEncodedCVRevision(docID string, digest string, parentVersion *DocVersion, body []byte) DocVersion {
+	newRev := btcc.upsertDoc(docID, blipTesterUpsertOptions{
+		parentVersion:    parentVersion,
+		body:             body,
+		isDelete:         false,
+		legacyRev:        true,
+		writeAsEncodedCV: true,
+		specificDigest:   digest,
 	})
 	return newRev.version
 }
@@ -2076,6 +2095,10 @@ func (btcRunner *BlipTestClientRunner) StartOneshotPull(clientID uint32) {
 // The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, version *DocVersion, body []byte) DocVersion {
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
+}
+
+func (btcRunner *BlipTestClientRunner) AddEncodedCVRev(clientID uint32, docID, digest string, version *DocVersion, body []byte) DocVersion {
+	return btcRunner.SingleCollection(clientID).AddRevEncodedCVRevision(docID, digest, version, body)
 }
 
 // AddRevTreeRev creates a revision on the client in revtree format. This revision can not have any HLV revisions.

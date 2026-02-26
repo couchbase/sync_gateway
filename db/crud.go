@@ -3702,6 +3702,18 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		// New document not found on server
 		return ProposedRev_OK_IsNew, ""
 	} else if previousRevFormat == "revTreeID" && syncData.GetRevTreeID() == previousRev {
+		if proposedVersion.SourceID == encodedRevTreeSourceID {
+			// If we have encoded CV proposed to us and local CV is not encoded, check if proposed encoded CV
+			// is derived from the local current revID. If so we already have this rev.
+			localEncodedCV, encodedErr := LegacyRevToRevTreeEncodedVersion(syncData.GetRevTreeID())
+			if encodedErr != nil {
+				base.DebugfCtx(ctx, base.KeyCRUD, "Failed to parse local revID to encoded CV for doc %q / %q: %v", base.UD(docid), previousRev, err)
+				return ProposedRev_Error, ""
+			}
+			if localEncodedCV.Equal(proposedVersion) {
+				return ProposedRev_Exists, ""
+			}
+		}
 		// Non-conflicting update, client's previous legacy revTreeID is server's currentRev
 		return ProposedRev_OK, ""
 	} else if hlv == nil {
