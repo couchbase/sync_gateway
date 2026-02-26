@@ -57,6 +57,7 @@ func TestRangeScan(t *testing.T) {
 			assert.NotZero(t, item.Cas, "Expected non-zero CAS for key %s", item.ID)
 			assert.False(t, item.IDOnly)
 		}
+		sort.Strings(ids)
 		require.Equal(t, []string{"doc_a", "doc_b", "doc_c", "doc_d", "doc_e"}, ids)
 	})
 
@@ -77,6 +78,7 @@ func TestRangeScan(t *testing.T) {
 			}
 			ids = append(ids, item.ID)
 		}
+		sort.Strings(ids)
 		require.Equal(t, []string{"doc_b", "doc_c"}, ids)
 	})
 
@@ -96,6 +98,7 @@ func TestRangeScan(t *testing.T) {
 			assert.True(t, item.IDOnly)
 			assert.Nil(t, item.Body, "Expected nil body for IDsOnly scan, key %s", item.ID)
 		}
+		sort.Strings(ids)
 		require.Equal(t, []string{"doc_a", "doc_b", "doc_c", "doc_d", "doc_e"}, ids)
 	})
 

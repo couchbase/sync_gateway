@@ -30,7 +30,7 @@ func (c *Collection) Scan(scanType sgbucket.ScanType, opts sgbucket.ScanOptions)
 
 	scanOpts := &gocb.ScanOptions{
 		IDsOnly:    opts.IDsOnly,
-		Transcoder: gocb.NewRawJSONTranscoder(),
+		Transcoder: gocb.NewRawBinaryTranscoder(),
 	}
 
 	result, err := c.Collection.Scan(gocbScanType, scanOpts)
