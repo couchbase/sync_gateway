@@ -13,11 +13,31 @@ package base
 import (
 	"sort"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// collectScanIDs runs a scan and returns the sorted list of document IDs.
+func collectScanIDs(t testing.TB, rss sgbucket.RangeScanStore, scanType sgbucket.ScanType, opts sgbucket.ScanOptions) []string {
+	t.Helper()
+	iter, err := rss.Scan(scanType, opts)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, iter.Close()) }()
+
+	var ids []string
+	for {
+		item := iter.Next()
+		if item == nil {
+			break
+		}
+		ids = append(ids, item.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
 
 func TestRangeScan(t *testing.T) {
 	ctx := TestCtx(t)
@@ -40,6 +60,15 @@ func TestRangeScan(t *testing.T) {
 		require.NoError(t, dataStore.SetRaw(k, 0, nil, v))
 	}
 
+	allDocIDs := []string{"doc_a", "doc_b", "doc_c", "doc_d", "doc_e"}
+
+	// CBS range scan may not immediately reflect recent writes (requires persistence).
+	// Wait for all docs to be visible before running subtests.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		ids := collectScanIDs(t, rss, sgbucket.NewRangeScanForPrefix("doc_"), sgbucket.ScanOptions{IDsOnly: true})
+		assert.Equal(c, allDocIDs, ids)
+	}, 30*time.Second, 100*time.Millisecond)
+
 	t.Run("FullRange", func(t *testing.T) {
 		scan := sgbucket.NewRangeScanForPrefix("doc_")
 		iter, err := rss.Scan(scan, sgbucket.ScanOptions{})
@@ -58,7 +87,7 @@ func TestRangeScan(t *testing.T) {
 			assert.False(t, item.IDOnly)
 		}
 		sort.Strings(ids)
-		require.Equal(t, []string{"doc_a", "doc_b", "doc_c", "doc_d", "doc_e"}, ids)
+		require.Equal(t, allDocIDs, ids)
 	})
 
 	t.Run("PartialRange", func(t *testing.T) {
@@ -66,19 +95,7 @@ func TestRangeScan(t *testing.T) {
 			From: &sgbucket.ScanTerm{Term: "doc_b"},
 			To:   &sgbucket.ScanTerm{Term: "doc_d", Exclusive: true},
 		}
-		iter, err := rss.Scan(scan, sgbucket.ScanOptions{})
-		require.NoError(t, err)
-		defer func() { assert.NoError(t, iter.Close()) }()
-
-		var ids []string
-		for {
-			item := iter.Next()
-			if item == nil {
-				break
-			}
-			ids = append(ids, item.ID)
-		}
-		sort.Strings(ids)
+		ids := collectScanIDs(t, rss, scan, sgbucket.ScanOptions{})
 		require.Equal(t, []string{"doc_b", "doc_c"}, ids)
 	})
 
@@ -99,55 +116,30 @@ func TestRangeScan(t *testing.T) {
 			assert.Nil(t, item.Body, "Expected nil body for IDsOnly scan, key %s", item.ID)
 		}
 		sort.Strings(ids)
-		require.Equal(t, []string{"doc_a", "doc_b", "doc_c", "doc_d", "doc_e"}, ids)
+		require.Equal(t, allDocIDs, ids)
 	})
 
 	t.Run("EmptyRange", func(t *testing.T) {
-		scan := sgbucket.NewRangeScanForPrefix("zzz_nonexistent_")
-		iter, err := rss.Scan(scan, sgbucket.ScanOptions{})
-		require.NoError(t, err)
-		defer func() { assert.NoError(t, iter.Close()) }()
-
-		item := iter.Next()
-		assert.Nil(t, item, "Expected no results for non-existent prefix")
+		ids := collectScanIDs(t, rss, sgbucket.NewRangeScanForPrefix("zzz_nonexistent_"), sgbucket.ScanOptions{})
+		assert.Empty(t, ids)
 	})
 
 	t.Run("PrefixScan", func(t *testing.T) {
-		scan := sgbucket.NewRangeScanForPrefix("doc_c")
-		iter, err := rss.Scan(scan, sgbucket.ScanOptions{})
-		require.NoError(t, err)
-		defer func() { assert.NoError(t, iter.Close()) }()
-
-		var ids []string
-		for {
-			item := iter.Next()
-			if item == nil {
-				break
-			}
-			ids = append(ids, item.ID)
-		}
+		ids := collectScanIDs(t, rss, sgbucket.NewRangeScanForPrefix("doc_c"), sgbucket.ScanOptions{})
 		require.Equal(t, []string{"doc_c"}, ids)
 	})
 
 	t.Run("TombstonesExcluded", func(t *testing.T) {
-		// Delete doc_b to create a tombstone, verify it's excluded from scan results
 		require.NoError(t, dataStore.Delete("doc_b"))
 
-		scan := sgbucket.NewRangeScanForPrefix("doc_")
-		iter, err := rss.Scan(scan, sgbucket.ScanOptions{})
-		require.NoError(t, err)
-		defer func() { assert.NoError(t, iter.Close()) }()
+		// Wait for the tombstone to be reflected in scan results.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			ids := collectScanIDs(t, rss, sgbucket.NewRangeScanForPrefix("doc_"), sgbucket.ScanOptions{IDsOnly: true})
+			assert.NotContains(c, ids, "doc_b", "Tombstoned doc should not appear in scan")
+		}, 30*time.Second, 100*time.Millisecond)
 
-		var ids []string
-		for {
-			item := iter.Next()
-			if item == nil {
-				break
-			}
-			ids = append(ids, item.ID)
-		}
-		sort.Strings(ids)
-		assert.NotContains(t, ids, "doc_b", "Tombstoned doc should not appear in scan")
+		ids := collectScanIDs(t, rss, sgbucket.NewRangeScanForPrefix("doc_"), sgbucket.ScanOptions{})
+		assert.NotContains(t, ids, "doc_b")
 		assert.Contains(t, ids, "doc_a")
 		assert.Contains(t, ids, "doc_c")
 	})
