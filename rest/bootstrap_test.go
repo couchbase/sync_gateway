@@ -222,7 +222,7 @@ func DevTestFetchConfigManual(t *testing.T) {
 	config.API.AdminInterface = "127.0.0.1:4985"
 	config.API.MetricsInterface = "127.0.0.1:4986"
 
-	config.Bootstrap.Server = "couchbase://localhost"
+	config.Bootstrap.Server = "couchbase://127.0.0.1"
 	config.Bootstrap.Username = "configUser"
 	config.Bootstrap.Password = "password"
 	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(true)

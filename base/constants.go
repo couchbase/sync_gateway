@@ -25,7 +25,7 @@ const (
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	kTestCouchbaseServerURL = "couchbase://localhost"
+	kTestCouchbaseServerURL = "couchbase://127.0.0.1"
 	kTestWalrusURL          = rosmar.InMemoryURL
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
@@ -36,7 +36,7 @@ const (
 	TestEnvTLSSkipVerify     = "SG_TEST_TLS_SKIP_VERIFY"
 	DefaultTestTLSSkipVerify = true
 
-	// Walrus by default, but can set to "Couchbase" to have it use http://localhost:8091
+	// Walrus by default, but can set to "Couchbase" to have it use http://127.0.0.1:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
 	TestEnvBackingStoreWalrus      = "Walrus"

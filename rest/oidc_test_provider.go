@@ -94,10 +94,10 @@ const loginHtml = `
   "default_provider":"sync_gateway",
   "providers": {
     "sync_gateway": {
-    	"issuer":"http://localhost:4984/db/_oidc_testing",
-    	"client_id":"sync_gateway",
-    	"validation_key":"R75hfd9lasdwertwerutecw8",
-    	"callback_url":"http://localhost:4984/db/_oidc_callback"
+        "issuer":"http://127.0.0.1:4984/db/_oidc_testing",
+        "client_id":"sync_gateway",
+        "validation_key":"R75hfd9lasdwertwerutecw8",
+        "callback_url":"http://127.0.0.1:4984/db/_oidc_callback"
     }
 },
 "unsupported": {

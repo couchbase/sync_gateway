@@ -34,7 +34,7 @@ func TestConfigOverwritesLegacyFlags(t *testing.T) {
 		"-interface", "1.2.3.4",
 		// Persistent config
 		"-logging.console.log_level", "debug",
-		"-bootstrap.server", "localhost",
+		"-bootstrap.server", "127.0.0.1",
 		"-bootstrap.username", "test",
 
 		"config.json",
@@ -45,7 +45,7 @@ func TestConfigOverwritesLegacyFlags(t *testing.T) {
 	require.NotNil(t, sc)
 	// Overwrote
 	assert.Equal(t, base.Ptr(base.LevelDebug), sc.Logging.Console.LogLevel)
-	assert.Equal(t, "localhost", sc.Bootstrap.Server)
+	assert.Equal(t, "127.0.0.1", sc.Bootstrap.Server)
 	// Not overwrote
 	assert.Equal(t, "1.2.3.4", sc.API.PublicInterface)
 	assert.Equal(t, "test", sc.Bootstrap.Username)
