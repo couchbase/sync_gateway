@@ -115,16 +115,19 @@ func (w *DCPWorker) Start(ctx context.Context, wg *sync.WaitGroup) {
 					// to avoid attempting to restart with a new snapshot and old sequence value
 					w.pendingSnapshot[vbID] = e
 				case mutationEvent:
+					WarnfCtx(ctx, "CBG-4640 DEBUG DCPWorker.mutationEvent: key=%s vbID=%d seq=%d valueLen=%d datatype=%d", UD(string(e.key)), vbID, e.seq, len(e.value), e.datatype)
 					if w.mutationCallback != nil {
 						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case deletionEvent:
+					WarnfCtx(ctx, "CBG-4640 DEBUG DCPWorker.deletionEvent: key=%s vbID=%d seq=%d valueLen=%d datatype=%d", UD(string(e.key)), vbID, e.seq, len(e.value), e.datatype)
 					if w.mutationCallback != nil && !w.ignoreDeletes {
 						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case seqnoAdvancedEvent:
+					WarnfCtx(ctx, "CBG-4640 DEBUG DCPWorker.seqnoAdvancedEvent: vbID=%d seq=%d", vbID, e.seq)
 					w.updateSeq(ctx, nil, vbID, e.seq)
 				case endStreamEvent:
 					w.endStreamCallback(e)
