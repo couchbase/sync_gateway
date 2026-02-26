@@ -10,6 +10,8 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.1/go.mod h1:uwfk06ZBcv
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/KimMachineGun/automemlimit v0.7.5 h1:RkbaC0MwhjL1ZuBKunGDjE/ggwAX43DwZrJqVwyveTk=
 github.com/KimMachineGun/automemlimit v0.7.5/go.mod h1:QZxpHaGOQoYvFhv/r4u3U0JTC2ZcOwbSr11UZF46UBM=
+github.com/bbrks/gocbcore/v10 v10.8.2-0.20260226142925-67512888f72c h1:iZj4NLlX18a6bGXKXrQuC1bil4M06oswHfmX5JPgee8=
+github.com/bbrks/gocbcore/v10 v10.8.2-0.20260226142925-67512888f72c/go.mod h1:OWKfU9R5Nm5V3QZBtfdZl5qCfgxtxTqOgXiNr4pn9/c=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
@@ -42,8 +44,6 @@ github.com/couchbase/go-couchbase v0.1.1 h1:ClFXELcKj/ojyoTYbsY34QUrrYCBi/1G749s
 github.com/couchbase/go-couchbase v0.1.1/go.mod h1:+/bddYDxXsf9qt0xpDUtRR47A2GjaXmGGAqQ/k3GJ8A=
 github.com/couchbase/gocb/v2 v2.11.1 h1:xWDco7Qk/XSvGUjbUWRaXi0V35nsMijJnm4vHXN/rqY=
 github.com/couchbase/gocb/v2 v2.11.1/go.mod h1:aSh1Cmd1sPRpYyiBD5iWPehPWaTVF/oYhrtOAITWb/4=
-github.com/couchbase/gocbcore/v10 v10.8.1 h1:i4SnH0DH9APGC4GS2vS2m+3u08V7oJwviamOXdgAZOQ=
-github.com/couchbase/gocbcore/v10 v10.8.1/go.mod h1:OWKfU9R5Nm5V3QZBtfdZl5qCfgxtxTqOgXiNr4pn9/c=
 github.com/couchbase/gocbcoreps v0.1.4 h1:/iZVHMpuEw3lyNz9mIahMQffJOurl/opXyOGads/JbI=
 github.com/couchbase/gocbcoreps v0.1.4/go.mod h1:hBFpDNPnRno6HH5cRXExhqXYRmTsFJlFHQx7vztcXPk=
 github.com/couchbase/gomemcached v0.2.1 h1:lDONROGbklo8pOt4Sr4eV436PVEaKDr3o9gUlhv9I2U=
