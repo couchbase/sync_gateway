@@ -547,7 +547,16 @@ func (lds *LeakyDataStore) GetIndexes() (indexes []string, err error) {
 	return n1qlStore.GetIndexes()
 }
 
+func (lds *LeakyDataStore) Scan(scanType sgbucket.ScanType, opts sgbucket.ScanOptions) (sgbucket.ScanResultIterator, error) {
+	rss, ok := lds.dataStore.(sgbucket.RangeScanStore)
+	if !ok {
+		return nil, fmt.Errorf("underlying datastore %T does not support range scan", lds.dataStore)
+	}
+	return rss.Scan(scanType, opts)
+}
+
 // Assert interface compliance:
 var (
-	_ sgbucket.DataStore = &LeakyDataStore{}
+	_ sgbucket.DataStore     = &LeakyDataStore{}
+	_ sgbucket.RangeScanStore = &LeakyDataStore{}
 )
