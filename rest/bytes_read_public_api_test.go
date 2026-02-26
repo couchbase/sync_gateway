@@ -433,8 +433,8 @@ func TestPutDBBytesRead(t *testing.T) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole, rt.Bucket().GetName())})
-	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
+	base.MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole, rt.Bucket().GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
 
 	input := fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t,"username": "%s", "password":"%s"}`,

@@ -257,6 +257,8 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return b.IsMinimumVersion(7, 6)
 	case sgbucket.BucketStoreFeatureMobileXDCR:
 		return b.supportsHLV
+	case sgbucket.BucketStoreFeatureRangeScan:
+		return b.IsMinimumVersion(7, 6)
 	default:
 		return false
 	}
@@ -715,6 +717,19 @@ func (b *GocbV2Bucket) DefaultDataStore(_ context.Context) sgbucket.DataStore {
 		Bucket:     b,
 		Collection: b.bucket.DefaultCollection(),
 	}
+}
+
+// GetMatchingDataStore returns a DataStore on this bucket that matches the scope and collection
+// of the given DataStore. Useful when opening a second connection to the same bucket and needing
+// to operate on the same collection as the original.
+func (b *GocbV2Bucket) GetMatchingDataStore(ctx context.Context, other sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+	if other.ScopeName() == DefaultScope && other.CollectionName() == DefaultCollection {
+		return b.DefaultDataStore(ctx), nil
+	}
+	return b.NamedDataStore(ctx, ScopeAndCollectionName{
+		Scope:      other.ScopeName(),
+		Collection: other.CollectionName(),
+	})
 }
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
