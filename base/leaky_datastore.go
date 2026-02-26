@@ -557,6 +557,6 @@ func (lds *LeakyDataStore) Scan(scanType sgbucket.ScanType, opts sgbucket.ScanOp
 
 // Assert interface compliance:
 var (
-	_ sgbucket.DataStore     = &LeakyDataStore{}
+	_ sgbucket.DataStore      = &LeakyDataStore{}
 	_ sgbucket.RangeScanStore = &LeakyDataStore{}
 )
