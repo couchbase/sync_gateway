@@ -1603,7 +1603,7 @@ type blipTesterUpsertOptions struct {
 	isDelete         bool
 	legacyRev        bool   // if true, create a legacy revtree revision even if client is using HLV
 	specificDigest   string // if specified, use this digest for the revision
-	writeAsEncodedCV bool
+	writeAsEncodedCV bool   // if specified, legacy revID will be saved as encoded CV
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
@@ -2097,6 +2097,7 @@ func (btcRunner *BlipTestClientRunner) AddRev(clientID uint32, docID string, ver
 	return btcRunner.SingleCollection(clientID).AddRev(docID, version, body)
 }
 
+// AddEncodedCVRev create a rev on client with CV generated form revID supplied.
 func (btcRunner *BlipTestClientRunner) AddEncodedCVRev(clientID uint32, docID, digest string, version *DocVersion, body []byte) DocVersion {
 	return btcRunner.SingleCollection(clientID).AddRevEncodedCVRevision(docID, digest, version, body)
 }
