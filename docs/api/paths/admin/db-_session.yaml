@@ -13,6 +13,8 @@ get:
   responses:
     '200':
       $ref: ../../components/responses.yaml#/User-session-information
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -67,15 +69,8 @@ post:
                 cookie_name: SyncGatewaySession
     "401":
       $ref: ../../components/responses.yaml#/Unauthorized
-    '404':
-      description: Return if database does not exist
-      content:
-        application/json:
-          schema:
-            $ref: ../../components/schemas.yaml#/HTTP-Error
-          example:
-            error: not_found
-            reason: no such database "invalid-db"
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Session
   operationId: post_db-_session

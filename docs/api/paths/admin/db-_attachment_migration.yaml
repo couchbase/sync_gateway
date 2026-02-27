@@ -38,8 +38,8 @@ post:
       description: Started or stopped compact operation successfully
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':
       description: Cannot start attachment migration due to another migration operation still running.
       content:
@@ -66,8 +66,8 @@ get:
             $ref: ../../components/schemas.yaml#/Attachment-Migration-status
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Management
   operationId: get_db-_attachment_migration

@@ -42,6 +42,8 @@ get:
           example:
             - Administrator
             - Moderator
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -61,8 +63,8 @@ post:
   responses:
     '201':
       description: New role created successfully
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:

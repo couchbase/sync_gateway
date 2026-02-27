@@ -40,8 +40,8 @@ get:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Database
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Configuration
   operationId: get_db-_config
@@ -70,8 +70,8 @@ put:
       $ref: ../../components/responses.yaml#/DB-config-updated
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
@@ -101,8 +101,8 @@ post:
       $ref: ../../components/responses.yaml#/DB-config-updated
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      description: Not Found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:

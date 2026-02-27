@@ -32,6 +32,8 @@ get:
           schema:
             type: string
           example: 'digraph graphname{"1-d4d949b7feafc8c31215684baa45b6cd" -> "2-4f3f24143ea43d85a9a340ac016fdfc4"; }'
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

@@ -33,8 +33,8 @@ get:
             function (doc, oldDoc) {
               channel(doc.channels);
             }
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Configuration
   operationId: get_keyspace-_config-sync
@@ -64,8 +64,8 @@ put:
       description: Updated sync function successfully
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
@@ -91,8 +91,8 @@ delete:
   responses:
     '200':
       description: Successfully reset the sync function
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:

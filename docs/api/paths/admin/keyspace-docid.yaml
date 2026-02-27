@@ -55,6 +55,8 @@ get:
             _cv: 1@src
     '400':
       $ref: ../../components/responses.yaml#/invalid-doc-id
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '501':
@@ -105,6 +107,8 @@ put:
             $ref: ../../components/schemas.yaml#/New-revision
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
@@ -132,6 +136,8 @@ delete:
       $ref: ../../components/responses.yaml#/New-revision
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -143,6 +149,8 @@ head:
       description: Document exists
     '400':
       $ref: ../../components/responses.yaml#/invalid-doc-id
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

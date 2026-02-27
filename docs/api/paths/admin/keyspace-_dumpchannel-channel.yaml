@@ -37,6 +37,8 @@ get:
         text/html:
           schema:
             type: string
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

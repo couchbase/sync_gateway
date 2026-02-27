@@ -40,8 +40,8 @@ post:
   responses:
     '200':
       description: Database will be brought online immediately or with the specified delay
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':
       description: An error occurred
       content:
