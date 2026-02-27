@@ -101,6 +101,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 		CollectionIDs:     collectionIDs,
 		AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		CheckpointPrefix:  args.CheckpointPrefix,
+		FeedID:            args.ID,
 	}
 
 	if args.Backfill == sgbucket.FeedNoBackfill {
@@ -113,7 +114,6 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 
 	dcpClient, err := NewDCPClient(
 		ctx,
-		feedName,
 		callback,
 		options,
 		bucket)

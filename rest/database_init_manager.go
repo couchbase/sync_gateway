@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -33,6 +34,9 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
+	// initializeIndexesFunc is defined for testability only.
+	initializeIndexesFunc InitializeIndexesFunc
+
 	// testCollectionStatusUpdateCallback is defined for testability only.
 	// Invoked after collection initialization is complete for each collection
 	testCollectionStatusUpdateCallback CollectionCallbackFunc
@@ -44,6 +48,8 @@ type DatabaseInitManager struct {
 
 // CollectionCallbackFunc is called when the initialization has completed for each collection on the database.
 type CollectionCallbackFunc func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus)
+
+type InitializeIndexesFunc func(context.Context, base.N1QLStore, db.InitializeIndexOptions) error
 
 // CollectionInitData defines the set of collections being created (by ScopeAneCollectionName), and the set of
 // indexes required for each collection.
@@ -117,8 +123,12 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 		statusCallback = m.testCollectionStatusUpdateCallback
 	}
 
+	initializeIndexesFunc := db.InitializeIndexes
+	if m.initializeIndexesFunc != nil {
+		initializeIndexesFunc = m.initializeIndexesFunc
+	}
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(context.WithoutCancel(ctx), dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback)
+	worker := NewDatabaseInitWorker(context.WithoutCancel(ctx), dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback, initializeIndexesFunc)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -169,6 +179,10 @@ func (m *DatabaseInitManager) buildIndexOptions(dbConfig *DatabaseConfig, useLeg
 func (m *DatabaseInitManager) SetTestCallbacks(collectionCallback CollectionCallbackFunc, databaseComplete func(dbName string)) {
 	m.testCollectionStatusUpdateCallback = collectionCallback
 	m.testDatabaseCompleteCallback = databaseComplete
+}
+
+func (m *DatabaseInitManager) SetInitializeIndexesFunc(_ testing.TB, initializeIndexesFunc InitializeIndexesFunc) {
+	m.initializeIndexesFunc = initializeIndexesFunc
 }
 
 func (m *DatabaseInitManager) Cancel(dbName string, reason string) {
@@ -225,6 +239,8 @@ type DatabaseInitWorker struct {
 	watcherLock sync.Mutex // Mutex for synchronized watchers access
 	completed   bool       // Set to true when processing completes, to handle watcher registration during completion.  Synchronized with watcherLock.
 	lastError   error      // Set for when processing does not complete successfully.  Synchronized with watcherLock
+
+	initializeIndexesFunc InitializeIndexesFunc // function to create indexes, for testability
 }
 
 // DatabaseInitOptions specifies the options used for database initialization
@@ -232,7 +248,7 @@ type DatabaseInitOptions struct {
 	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
-func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc) *DatabaseInitWorker {
+func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc, initializeIndexesFunc InitializeIndexesFunc) *DatabaseInitWorker {
 	cancelCtx, cancelFunc := context.WithCancelCause(ctx)
 	return &DatabaseInitWorker{
 		dbName:                   dbName,
@@ -242,6 +258,7 @@ func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.C
 		collections:              collections,
 		n1qlStore:                n1qlStore,
 		collectionStatusCallback: callback,
+		initializeIndexesFunc:    initializeIndexesFunc,
 	}
 }
 
@@ -272,7 +289,7 @@ func (w *DatabaseInitWorker) Run() {
 		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
 		w.n1qlStore.SetScopeAndCollection(scName)
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())
-		indexErr = db.InitializeIndexes(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
+		indexErr = w.initializeIndexesFunc(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
 		if w.collectionStatusCallback != nil {
 			if indexErr != nil {
 				w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusError)

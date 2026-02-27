@@ -409,11 +409,10 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	stat := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
-	require.Equal(t, db.MarkPhase, stat.Phase)
+	require.Equal(t, string(db.MarkPhase), stat.Phase)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateCompactionDCPStreamName(stat.CompactID, "mark")
-	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
+	checkpointPrefix := db.GetAttachmentCompactionDCPCheckpointPrefix(rt.GetDatabase(), stat.CompactID, "mark")
 
 	meta := base.NewDCPMetadataCS(rt.Context(), dataStore, 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)

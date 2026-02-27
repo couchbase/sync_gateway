@@ -36,12 +36,12 @@ import (
 
 func TestCreateJWTToken(t *testing.T) {
 	subject := "alice"
-	issueURL := "http://localhost:4984/db/_oidc_testing"
+	issueURL := "http://127.0.0.1:4984/db/_oidc_testing"
 	scopes := make(map[string]struct{})
 	scopes["email"] = struct{}{}
 	scopes["profile"] = struct{}{}
 	authState := AuthState{
-		CallbackURL: "http://localhost:4984/db/_oidc_callback",
+		CallbackURL: "http://127.0.0.1:4984/db/_oidc_callback",
 		TokenTTL:    5 * time.Minute,
 		Scopes:      scopes,
 	}

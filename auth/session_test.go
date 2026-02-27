@@ -179,7 +179,7 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 // sessionID against SyncGatewaySession and Now as the expiration value. If the cookie in
 // the request is unknown, Nil would be returned from DeleteSessionForCookie.
 func TestDeleteSessionForCookie(t *testing.T) {
-	const defaultEndpoint = "http://localhost/"
+	const defaultEndpoint = "http://127.0.0.1/"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)

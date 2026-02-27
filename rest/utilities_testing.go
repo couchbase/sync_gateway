@@ -1222,7 +1222,7 @@ func (r TestResponse) GetRestDocument() RestDocument {
 }
 
 func Request(method, resource, body string) *http.Request {
-	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	request, err := http.NewRequest(method, "http://127.0.0.1"+resource, bytes.NewBufferString(body))
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}

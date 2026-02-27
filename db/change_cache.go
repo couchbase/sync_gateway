@@ -364,27 +364,23 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	ctx = collection.AddCollectionContext(ctx)
 
-	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.DebugfCtx(ctx, base.KeyCache, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
+	// If the document has no xattrs, it can not have a _sync xattr
+	if event.DataType&base.MemcachedDataTypeXattr == 0 {
 		return
 	}
 
-	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
-	// are enabled, because walrus doesn't support DataType on feed.
-	if collection.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
+	// If this is a binary document, we can ignore.
+	if event.DataType == base.MemcachedDataTypeRaw {
 		return
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.UserXattrKey(), false)
 	if err != nil {
-		// Avoid log noise related to failed unmarshaling of binary documents.
-		if event.DataType != base.MemcachedDataTypeRaw {
-			base.DebugfCtx(ctx, base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
-		}
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
+		} else {
+			base.DebugfCtx(ctx, base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		return
 	}

@@ -9,6 +9,7 @@
 package indextest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -273,7 +274,6 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
-
 	rt := rest.NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
@@ -281,18 +281,12 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	dbConfig.StartOffline = base.Ptr(true)
 	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
+	rt.ServerContext().DatabaseInitManager.SetInitializeIndexesFunc(t, getNoopInitializeIndexes())
+
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// wait for completion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
-		rest.AssertStatus(t, resp, http.StatusOK)
-		var body db.AsyncIndexInitManagerResponse
-		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-		require.NoError(c, err)
-		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-	}, 1*time.Minute, 1*time.Second)
+	db.RequireBackgroundManagerState(t, rt.GetDatabase().AsyncIndexInitManager, db.BackgroundProcessStateCompleted)
 }
 
 func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
@@ -300,11 +294,10 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
 
-	// requires index init
-
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
+	rt.ServerContext().DatabaseInitManager.SetInitializeIndexesFunc(t, getNoopBlockingInitializeIndexes())
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -321,22 +314,13 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 		assert.Equal(c, db.BackgroundProcessStateStopped, body.State, "body: %#+v", body)
 		require.Equal(c, "", body.LastErrorMessage, "expected no error when stopping, got: %s", body.LastErrorMessage)
 	}, 1*time.Minute, 1*time.Second)
+	rt.ServerContext().DatabaseInitManager.SetInitializeIndexesFunc(t, getNoopInitializeIndexes())
 
 	// restart with new params
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":3}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// wait for completion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
-		rest.AssertStatus(t, resp, http.StatusOK)
-		var body db.AsyncIndexInitManagerResponse
-		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-		require.NoError(c, err)
-		// immediately exit if the state turns to error
-		require.NotEqual(t, db.BackgroundProcessStateError, body.State, "body: %#+v", body)
-		assert.Equal(c, db.BackgroundProcessStateCompleted, body.State, "body: %#+v", body)
-	}, 1*time.Minute, 1*time.Second)
+	db.RequireBackgroundManagerState(t, rt.GetDatabase().AsyncIndexInitManager, db.BackgroundProcessStateCompleted)
 }
 
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
@@ -441,13 +425,21 @@ func runIndexInit(rt *rest.RestTester, body string) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	// wait for completion
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_index_init", "")
-		rest.AssertStatus(t, resp, http.StatusOK)
-		var body db.AsyncIndexInitManagerResponse
-		err := base.JSONUnmarshal(resp.BodyBytes(), &body)
-		require.NoError(c, err)
-		require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-	}, 1*time.Minute, 500*time.Millisecond)
+	db.RequireBackgroundManagerState(t, rt.GetDatabase().AsyncIndexInitManager, db.BackgroundProcessStateCompleted)
+}
+
+// getNoopBlockingInitializeIndexes is a replacement initialize index function that blocks forever. It is cancelled when DatabaseInitManager.Cancel is called. Used to avoid churn on n1ql nodes.
+func getNoopBlockingInitializeIndexes() rest.InitializeIndexesFunc {
+	return func(ctx context.Context, _ base.N1QLStore, _ db.InitializeIndexOptions) error {
+		<-ctx.Done()
+		return nil
+	}
+}
+
+// getNoopInitializeIndexes is a replacement initialize index function that returns immediately. Used to avoid churn on
+// on n1ql nodes.
+func getNoopInitializeIndexes() rest.InitializeIndexesFunc {
+	return func(context.Context, base.N1QLStore, db.InitializeIndexOptions) error {
+		return nil
+	}
 }
