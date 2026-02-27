@@ -723,6 +723,9 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
 	if err != nil {
+		if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
+			return nil, ErrAuthError
+		}
 		return nil, err
 	}
 	return c, nil

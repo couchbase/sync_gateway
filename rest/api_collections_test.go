@@ -616,24 +616,22 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	scopesAndCollections := map[string][]string{
-		"fooScope": {
-			"bar",
-		},
-		"quxScope": {
-			"quux",
-		},
+	collectionNames := []base.ScopeAndCollectionName{
+		base.NewScopeAndCollectionName("fooScope", "bar"),
+		base.NewScopeAndCollectionName("quxScope", "quux"),
 	}
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, scopesAndCollections)
-	require.NoError(t, err)
+
+	for _, col := range collectionNames {
+		require.NoError(t, tb.CreateDataStore(ctx, col))
+	}
 	defer func() {
 		collection, err := base.AsCollection(tb.DefaultDataStore())
 		require.NoError(t, err)
 		cm := collection.Collection.Bucket().Collections()
-		for scope := range scopesAndCollections {
-			assert.NoError(t, cm.DropScope(scope, nil))
+		for _, col := range collectionNames {
+			assert.NoError(t, tb.DropDataStore(col))
+			assert.NoError(t, cm.DropScope(col.ScopeName(), nil))
 		}
-
 	}()
 
 	rt := NewRestTester(t, &RestTesterConfig{
