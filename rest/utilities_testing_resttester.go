@@ -513,6 +513,12 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	return rt.PutDoc(docID, string(newBody))
 }
 
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Fails the
+// test harness if the sequence remains in the skipped list after timeout.
+func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
+	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
+}
+
 type RawDocResponse struct {
 	Xattrs RawDocXattrs `json:"_xattrs"`
 }

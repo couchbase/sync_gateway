@@ -34,6 +34,8 @@ const (
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 	unusedSeqKey                  = "_unusedSeqKey"  // Key used by ChangeWaiter to mark unused sequences
 	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
+
+	defaultWaitForSequence = 30 * time.Second // wait time for sequence to arrive over changes feed after allocation
 )
 
 // DocumentType indicates the type of document being processed in the change cache (e.g. User doc etc).
@@ -1041,27 +1043,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
-// waitForSequence blocks up to maxWaitTime until the given sequence has been received.
-func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
-	startTime := time.Now()
-
-	worker := func() (bool, error, any) {
-		if c.getNextSequence() >= sequence+1 {
-			base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-			return false, nil, nil
-		}
-		// retry
-		return true, nil, nil
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
-	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
-	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
-	cancel()
-	return err
-}
-
-// waitForSequenceNotSkipped blocks up to maxWaitTime until the given sequence has been received or skipped.
+// waitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list.
 func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 

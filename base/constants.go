@@ -86,10 +86,6 @@ const (
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
-	// Until the sporadic integration tests failures in SG #3570 are fixed, should be GTE n1ql query timeout
-	// to make it easier to identify root cause of test failures.
-	DefaultWaitForSequence = time.Second * 30
-
 	// Default the max number of idle connections per host to a relatively high number to avoid
 	// excessive socket churn caused by opening short-lived connections and closing them after, which can cause
 	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since

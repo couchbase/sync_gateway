@@ -1587,8 +1587,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
 
 	// wait for the doc to be received
-	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
-	require.NoError(t, err)
+	db.WaitForSequence(t, doc.Sequence)
 
 	expectedReleasedSequenceCount := otherClusterSequenceOffset
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
@@ -1646,8 +1645,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	_, _, err := collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
-	// wait for changes
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// assert that no sequences were released + a sequence was cached
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1666,8 +1664,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	_, _, err = collection.Put(ctx, conflictDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
-	// wait for changes
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// assert that a sequence was released after the above write error
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
