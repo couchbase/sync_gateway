@@ -165,6 +165,8 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+
+	scopeName string // name of the single scope for the database
 }
 
 type Scope struct {
@@ -534,7 +536,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	syncFunctionsChanged := false
 	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
 	collectionIDToRevCacheBackingStore := make(map[uint32]RevisionCacheBackingStore)
+	if len(options.Scopes) > 1 {
+		return nil, fmt.Errorf("Multiple scopes %v are not supported on a single database", maps.Keys(options.Scopes))
+	}
 	for scopeName, scope := range options.Scopes {
+		dbContext.scopeName = scopeName
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 		}
@@ -547,7 +553,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
-				return nil, err
+				return nil, base.RedactErrorf("Could not connect to %s.%s.%s: %w", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collName), err)
 			}
 			stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
 			if err != nil {
@@ -2555,6 +2561,20 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
+}
+
+// useShardedDCP returns true if the database supports sharded DCP feeds.
+func (db *DatabaseContext) useShardedDCP() bool {
+	return base.IsEnterpriseEdition() && !db.usingRosmar()
+}
+
+// collectionNames returns the names of the collections on this database.
+func (db *DatabaseContext) collectionNames() base.CollectionNames {
+	names := base.NewCollectionNames()
+	for _, col := range db.CollectionByID {
+		names.Add(col.dataStore)
+	}
+	return names
 }
 
 // GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if

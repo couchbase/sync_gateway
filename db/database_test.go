@@ -4300,12 +4300,15 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 1)
 
+	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
+	defer bucket.Close(ctx)
 
-	ds, err := bucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-	require.NotNil(t, ds)
+	customCollection := base.NewScopeAndCollectionName(base.DefaultScope, "customCollection")
+	if !base.UnitTestUrlIsWalrus() {
+		require.NoError(t, bucket.CreateDataStore(ctx, customCollection))
+		defer assert.NoError(t, bucket.DropDataStore(customCollection))
+	}
 
 	testCases := []struct {
 		name       string
@@ -4321,14 +4324,10 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			err:        false,
 			options: DatabaseContextOptions{
 				Scopes: map[string]ScopeOptions{
-					ds.ScopeName(): ScopeOptions{
-						Collections: map[string]CollectionOptions{
-							ds.CollectionName(): {},
-						},
-					},
 					base.DefaultScope: ScopeOptions{
 						Collections: map[string]CollectionOptions{
-							base.DefaultCollection: {},
+							base.DefaultCollection:            {},
+							customCollection.CollectionName(): {},
 						},
 					},
 				},
