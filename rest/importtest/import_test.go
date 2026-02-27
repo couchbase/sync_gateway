@@ -2817,3 +2817,47 @@ func getMou(t *testing.T, mouBytes []byte) db.MetadataOnlyUpdate {
 	require.NoError(t, err)
 	return mou
 }
+
+func BenchmarkImportOnConfigReload(b *testing.B) {
+	base.SetUpTestLogging(b, base.LevelInfo, base.KeyAll)
+	syncFn := channels.DocChannelsSyncFunction
+	bucket := base.GetTestBucket(b)
+	col := bucket.GetSingleDataStore()
+	rt := rest.NewRestTester(b, &rest.RestTesterConfig{
+		PersistentConfig: true,
+		SyncFn:           syncFn,
+		AutoImport:       base.Ptr(true),
+		CustomTestBucket: bucket,
+	})
+	defer rt.Close()
+
+	chanCacheCount := 100
+	dbName := "db"
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = dbName
+	dbConfig.CacheConfig = &rest.CacheConfig{
+		ChannelCacheConfig: &rest.ChannelCacheConfig{
+			MaxNumber: base.Ptr(chanCacheCount),
+		},
+	}
+
+	rest.RequireStatus(b, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+	docID := fmt.Sprintf("doc%d", 0)
+	col.Set(docID, 0, nil, map[string]string{"key": "value"})
+	i:=1
+	rt.WaitForDoc(docID)
+	for b.Loop() {
+			chanCacheCount += 1
+			dbConfig.CacheConfig = &rest.CacheConfig{
+				ChannelCacheConfig: &rest.ChannelCacheConfig{
+					MaxNumber: base.Ptr(chanCacheCount),
+				},
+			}
+			rest.RequireStatus(b, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
+
+			docID = fmt.Sprintf("doc%d", i)
+			i+=1
+			col.Set(docID, 0, nil, map[string]string{"key": "value"})
+			rt.WaitForDoc(docID)
+		}
+}
