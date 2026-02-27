@@ -308,6 +308,47 @@ func TestProcessLegacyRev(t *testing.T) {
 	})
 }
 
+func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		allowConflicts: false,
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	defer bt.Close()
+	rt := bt.restTester
+
+	doc := rt.CreateDocNoHLV(t.Name(), db.Body{"key": "val"})
+	sgwVersion := doc.ExtractDocVersion()
+
+	encodedVersion, err := db.LegacyRevToRevTreeEncodedVersion(sgwVersion.RevTreeID)
+	require.NoError(t, err)
+
+	// convert to transport format
+	cvStr := encodedVersion.String()
+
+	// send unsolicited rev
+	bt.SendRev(
+		t.Name(),
+		cvStr,
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+
+	// send marker rev
+	bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	rt.WaitForVersion("foo", DocVersion{RevTreeID: "1-abc"})
+
+	// assert that rev with cv encoded from same revID server has is not synced
+	docVersion, _ := rt.GetDoc(t.Name())
+	assert.Equal(t, sgwVersion.RevTreeID, docVersion.RevTreeID)
+	assert.True(t, docVersion.CV.IsEmpty())
+}
+
 // TestProcessRevWithLegacyHistory:
 //   - 1. CBL sends rev=1010@CBL1, history=1-abc when SGW has current rev 1-abc (document underwent an update before being pushed to SGW)
 //   - 2. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 1-abc (document underwent multiple p2p updates before being pushed to SGW)
@@ -988,7 +1029,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			defer btcRunner.StopPush(client.id)
 
 			docID := SafeDocumentName(t, t.Name())
-			cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, docID, "abc", EmptyDocVersion(), []byte(`{"action": "create"}`))
+			cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, docID, "1-abc", EmptyDocVersion(), []byte(`{"action": "create"}`))
 			rt.WaitForVersion(docID, cblDocVersion1)
 
 			cblDocVersion2 := btcRunner.AddRev(client.id, docID, &cblDocVersion1, []byte(`{"action": "update"}`))
@@ -1020,9 +1061,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			docID := SafeDocumentName(t, t.Name())
 			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
-			generation, digest := db.ParseRevID(ctx, sgVersion1)
-			require.Equal(t, 1, generation)
-			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, digest, EmptyDocVersion(), []byte(`{"action": "create"}`))
+			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, sgVersion1, EmptyDocVersion(), []byte(`{"action": "create"}`))
 			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
 			sgVersion2, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"_rev": sgVersion1, "action": "update"})
 			btcRunner.StartPull(client.id)
@@ -1032,16 +1071,49 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			docID := SafeDocumentName(t, t.Name())
 			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
-			generation, digest := db.ParseRevID(ctx, sgVersion1)
-			require.Equal(t, 1, generation)
-			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, digest, EmptyDocVersion(), []byte(`{"action": "create"}`))
+			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, sgVersion1, EmptyDocVersion(), []byte(`{"action": "create"}`))
 			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
 
-			cblVersion2 := btcRunner.AddRevTreeRev(client.id, docID, "bcd", &cblVersion1, []byte(`{"action": "update"}`))
+			cblVersion2 := btcRunner.AddRevTreeRev(client.id, docID, "2-bcd", &cblVersion1, []byte(`{"action": "update"}`))
 
 			btcRunner.StartPush(client.id)
 			rt.WaitForVersion(docID, cblVersion2)
 		})
+	})
+}
+
+func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // vv specific test
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+		})
+		defer rt.Close()
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer btc.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		// add legacy rev on SGW
+		doc := rt.CreateDocNoHLV(docID, db.Body{"key": "val"})
+		originalSGWVersion := doc.ExtractDocVersion()
+
+		cblVersion := btcRunner.AddEncodedCVRev(btc.id, docID, originalSGWVersion.RevTreeID, EmptyDocVersion(), []byte(`{"key":"val"}`))
+		require.Equal(t, "Revision+Tree+Encoding", cblVersion.CV.SourceID) // we must be saving this rev as legacy encoded cv on client
+
+		btcRunner.StartPush(btc.id)
+
+		// add marker doc
+		markerVersion := btcRunner.AddRev(btc.id, "markerDoc", EmptyDocVersion(), []byte(`{"marker":"doc"}`))
+		rt.WaitForVersion("markerDoc", markerVersion)
+
+		// assert doc on SGW is still original rev added and not saved as new encoded CV from CBL
+		sgwVersion, _ := rt.GetDoc(docID)
+		assert.Equal(t, originalSGWVersion.RevTreeID, sgwVersion.RevTreeID)
+		assert.True(t, sgwVersion.CV.IsEmpty(), "CV should be empty")
 	})
 }
 
