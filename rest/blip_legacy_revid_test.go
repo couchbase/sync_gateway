@@ -1087,7 +1087,6 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 }
 
 func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeySyncMsg, base.KeyCRUD)
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.SkipSubtest[RevtreeSubtestName] = true // vv specific test
