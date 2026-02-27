@@ -1596,14 +1596,21 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) {
 	btr.storeMessage(msg)
 }
 
+type blipRevType uint8
+
+const (
+	blipRevAutoRevType          blipRevType = iota // create a new revision based on the expected format of blip tester configuration (either revtree or hlv)
+	blipRevLegacyRevType                           // force a 1-abc type rev
+	blipRevTreeEncodedCVRevType                    // force a RTE encoded CV
+)
+
 // blipTesterUpsertOptions contains options for adding a document to a local BlipTesterCollectionClient
 type blipTesterUpsertOptions struct {
-	parentVersion    *DocVersion
-	body             []byte
-	isDelete         bool
-	legacyRev        bool   // if true, create a legacy revtree revision even if client is using HLV
-	specificDigest   string // if specified, use this digest for the revision
-	writeAsEncodedCV bool   // if specified, legacy revID will be saved as encoded CV
+	parentVersion      *DocVersion
+	body               []byte
+	isDelete           bool
+	revType            blipRevType    // legacy, RTE or normal HLV
+	specificNewVersion *db.DocVersion // if specified, use this digest for the revision
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
@@ -1628,7 +1635,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 		latestRev := doc._latestRev(btcc.TB())
 		latestVersion := latestRev.version
 		require.True(btcc.TB(), opts.parentVersion.CV == latestVersion.CV || opts.parentVersion.RevTreeID == latestVersion.RevTreeID, "latest version for docID: %v is %v, expected parentVersion: %v", docID, latestVersion, opts.parentVersion)
-		if btcc.UseHLV() && !opts.legacyRev {
+		if btcc.UseHLV() && opts.revType != blipRevLegacyRevType {
 			hlv = latestRev.HLV
 		} else {
 			parentGen, _ := db.ParseRevID(btcc.ctx, opts.parentVersion.RevTreeID)
@@ -1639,23 +1646,24 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 	body := btcc.ProcessInlineAttachments(opts.body, newGen)
 
 	var docVersion DocVersion
-	if btcc.UseHLV() && !opts.legacyRev {
-		newVersion := db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
+	if btcc.UseHLV() && opts.revType != blipRevLegacyRevType {
+		var newVersion db.Version
+		if opts.revType == blipRevTreeEncodedCVRevType {
+			newVersion = opts.specificNewVersion.CV
+		} else {
+			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
+		}
 		require.NoError(btcc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
+	} else if opts.specificNewVersion != nil {
+		require.NotEmpty(btcc.TB(), opts.specificNewVersion.RevTreeID, "specificNewVersion must have RevTreeID set")
+		generation, _ := db.ParseRevID(btcc.ctx, opts.specificNewVersion.RevTreeID)
+		require.GreaterOrEqual(btcc.TB(), generation, newGen, "specificNewVersion generation %q must be greater than or equal to version stored in blip tester: %d", opts.specificNewVersion.RevTreeID, newGen-1)
+		docVersion = *opts.specificNewVersion
 	} else {
 		digest := "abc" // TODO: Generate rev ID digest based on body hash?
-		if opts.specificDigest != "" {
-			digest = opts.specificDigest
-		}
 		newRevID := fmt.Sprintf("%d-%s", newGen, digest)
-		if opts.writeAsEncodedCV {
-			encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(newRevID)
-			require.NoErrorf(btcc.TB(), err, "Encountered error encoding CV: %v", err)
-			docVersion = DocVersion{CV: encodedCV}
-		} else {
-			docVersion = DocVersion{RevTreeID: newRevID}
-		}
+		docVersion = DocVersion{RevTreeID: newRevID}
 	}
 
 	newSeq := btcc._nextSequence()
@@ -1679,7 +1687,6 @@ func (btcc *BlipTesterCollectionClient) Delete(docID string, parentVersion *DocV
 		parentVersion: parentVersion,
 		body:          []byte(`{}`),
 		isDelete:      true,
-		legacyRev:     false,
 	})
 	return newRev.version, &newRev.HLV
 }
@@ -1691,32 +1698,36 @@ func (btcc *BlipTesterCollectionClient) AddRev(docID string, parentVersion *DocV
 		parentVersion: parentVersion,
 		body:          body,
 		isDelete:      false,
-		legacyRev:     false,
 	})
 	return newRev.version
 }
 
-func (btcc *BlipTesterCollectionClient) AddRevEncodedCVRevision(docID string, digest string, parentVersion *DocVersion, body []byte) DocVersion {
+func (btcc *BlipTesterCollectionClient) AddRevEncodedCVRevision(docID string, newRevTreeID string, parentVersion *DocVersion, body []byte) DocVersion {
+	encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(newRevTreeID)
+	require.NoError(btcc.TB(), err)
 	newRev := btcc.upsertDoc(docID, blipTesterUpsertOptions{
-		parentVersion:    parentVersion,
-		body:             body,
-		isDelete:         false,
-		legacyRev:        true,
-		writeAsEncodedCV: true,
-		specificDigest:   digest,
+		parentVersion: parentVersion,
+		body:          body,
+		isDelete:      false,
+		specificNewVersion: &db.DocVersion{
+			CV: encodedCV,
+		},
+		revType: blipRevTreeEncodedCVRevType,
 	})
 	return newRev.version
 }
 
 // AddRevTreeRev creates a revision on the client in legacy revision tree format. This is used to create legacy
 // revisions to push to CBL.
-func (btcc *BlipTesterCollectionClient) AddRevTreeRev(docID string, digest string, parentVersion *DocVersion, body []byte) DocVersion {
+func (btcc *BlipTesterCollectionClient) AddRevTreeRev(docID string, revTreeID string, parentVersion *DocVersion, body []byte) DocVersion {
 	newRev := btcc.upsertDoc(docID, blipTesterUpsertOptions{
-		parentVersion:  parentVersion,
-		body:           body,
-		isDelete:       false,
-		legacyRev:      true, // force legacy revtree even though client is using HLV
-		specificDigest: digest,
+		parentVersion: parentVersion,
+		body:          body,
+		isDelete:      false,
+		specificNewVersion: &db.DocVersion{
+			RevTreeID: revTreeID,
+		},
+		revType: blipRevLegacyRevType, // force legacy revtree even though client is using HLV
 	})
 	return newRev.version
 }
@@ -1727,7 +1738,6 @@ func (btc *BlipTesterCollectionClient) AddHLVRev(docID string, parentVersion *Do
 		parentVersion: parentVersion,
 		body:          body,
 		isDelete:      false,
-		legacyRev:     false,
 	})
 	return newRev.version, &newRev.HLV
 }
