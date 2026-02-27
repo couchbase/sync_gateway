@@ -410,7 +410,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(t.Context()))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
@@ -439,7 +439,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 

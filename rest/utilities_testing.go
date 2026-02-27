@@ -619,16 +619,12 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 
 // WaitForSequence waits for the sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
+	rt.GetDatabase().WaitForSequence(rt.TB(), seq)
 }
 
 // WaitForPendingChanges waits all outstanding changes to be buffered by the channel cache.
 func (rt *RestTester) WaitForPendingChanges() {
-	ctx := rt.Context()
-	for _, collection := range rt.GetDbCollections() {
-		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
-	}
+	rt.GetDatabase().WaitForPendingChanges(rt.TB())
 }
 
 // SetAdminParty toggles the guest user between disabled and enabled.  If enabled, the guest user is given access to the UserStar channel on all collections.

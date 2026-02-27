@@ -1226,28 +1226,6 @@ func (c *DatabaseCollection) GetChangeLog(ctx context.Context, channel channels.
 	return c.changeCache().getChannelCache().GetCachedChanges(ctx, channel)
 }
 
-// WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
-func (c *DatabaseCollection) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
-	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return c.changeCache().waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
-}
-
-// WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
-func (c *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
-	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return c.changeCache().waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
-}
-
-// WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) error {
-	lastSequence, err := c.LastSequence(ctx)
-	if err != nil {
-		return err
-	}
-	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	return c.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
-}
-
 // Late Sequence Feed
 // Manages the changes feed interaction with a channels cache's set of late-arriving entries
 type lateSequenceFeed struct {

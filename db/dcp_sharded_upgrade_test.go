@@ -268,14 +268,14 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 	doc, err := collection.GetDocument(collectionCtx, testDoc1, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 1")
 	require.NotNil(t, doc, "GetDocument 1")
 
 	// Write a doc to the test bucket to check that import still works
 	require.NoError(t, dataStore.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 	doc, err = collection.GetDocument(collectionCtx, testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
 	require.NotNil(t, doc, "GetDocument 2")

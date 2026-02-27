@@ -2582,3 +2582,9 @@ func (db *DatabaseContext) usingRosmar() bool {
 	_, err := base.AsRosmarBucket(db.Bucket)
 	return err == nil
 }
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
+// if the sequence remains in skipped list.
+func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
+	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
+}
