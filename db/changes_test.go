@@ -202,8 +202,6 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 

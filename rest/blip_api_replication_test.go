@@ -23,7 +23,6 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Skipping test that requires xattrs")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
@@ -96,8 +95,6 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 // TestBlipClientPushAndPullReplication sets up a bidi replication for a BlipTesterClient, writes documents on SG and the client and ensures they replicate.
 func TestBlipClientPushAndPullReplication(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{}},

@@ -34,7 +34,6 @@ import (
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -103,7 +102,6 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -169,7 +167,6 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 func TestBlipProveAttachmentV2(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -227,7 +224,6 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 func TestBlipProveAttachmentV2Push(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -613,7 +609,6 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -686,7 +681,6 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 func TestPushDocWithNonRootAttachmentProperty(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
 	}

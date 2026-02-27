@@ -490,7 +490,6 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -659,7 +658,6 @@ func TestSyncSeqRollbackMultiNode(t *testing.T) {
 //   - Trigger new allocation of batch on that node, and assert the _sync:seq document is corrected
 //   - Trigger new batch allocation on node a and assert that batch is unique
 func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)

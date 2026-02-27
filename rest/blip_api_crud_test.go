@@ -1709,7 +1709,6 @@ func TestPutRevV4(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
@@ -2018,7 +2017,6 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2073,7 +2071,6 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 func TestBlipClientSendDelete(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2133,8 +2130,6 @@ func TestActiveOnlyContinuous(t *testing.T) {
 // Test that exercises Sync Gateway's norev handler
 func TestBlipNorev(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2187,7 +2182,6 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2270,7 +2264,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2342,8 +2335,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// TODO: CBG-2653: change this to use NewBlipTester
 	bt := NewBlipTesterDefaultCollection(t)
@@ -2811,7 +2802,6 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 func TestUnsubChanges(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -3533,7 +3523,6 @@ func TestPushHLVOntoLegacyRev(t *testing.T) {
 func TestTombstoneCount(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}

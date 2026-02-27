@@ -610,7 +610,6 @@ func TestAutoImportEnabled(t *testing.T) {
 }
 
 func TestMergeWith(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	defaultInterface := "4984"
 	adminInterface := "127.0.0.1:4985"
 	profileInterface := "127.0.0.1:4985"
@@ -681,7 +680,6 @@ func TestMergeWith(t *testing.T) {
 
 func TestSetupAndValidateLogging(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLogging")
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	sc := &StartupConfig{}
 	err := sc.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err, "Setup and validate logging should be successful")
@@ -690,7 +688,6 @@ func TestSetupAndValidateLogging(t *testing.T) {
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	logFilePath := "/var/log/sync_gateway"
 	sc := &StartupConfig{Logging: base.LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
 	err := sc.SetupAndValidateLogging(base.TestCtx(t))
@@ -717,7 +714,6 @@ func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
 }
 
 func TestServerConfigValidate(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	// unsupported.stats_log_freq_secs
 	statsLogFrequencySecs := uint(9)
 	unsupported := &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
@@ -962,7 +958,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ctx := base.TestCtx(t)
 
 	tb1 := base.GetTestBucket(t)
@@ -1425,7 +1420,6 @@ func deleteTempFile(t *testing.T, file *os.File) {
 
 func TestDefaultLogging(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
@@ -1442,7 +1436,6 @@ func TestDefaultLogging(t *testing.T) {
 }
 
 func TestSetupServerContext(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
@@ -1529,7 +1522,6 @@ func TestConfigGroupIDValidation(t *testing.T) {
 
 // CBG-1599
 func TestClientTLSMissing(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	errorTLSOneMissing := "both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"
 	testCases := []struct {
 		name        string
@@ -3069,7 +3061,6 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 }
 
 func TestRevCacheMemoryLimitConfig(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	if base.TestDisableRevCache() {
 		t.Skip("test is rev cache config related test, should not override the test")
 	}

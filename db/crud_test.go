@@ -69,8 +69,6 @@ func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key strin
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -110,7 +108,6 @@ func TestRevisionCacheLoad(t *testing.T) {
 }
 
 func TestHasAttachmentsFlag(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -188,8 +185,6 @@ func TestHasAttachmentsFlag(t *testing.T) {
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
@@ -1606,7 +1601,6 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Assert we release a sequence for this
 func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	defer SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	var ctx context.Context
 	var db *Database
@@ -1720,7 +1714,6 @@ func TestDocUpdateCorruptSequence(t *testing.T) {
 }
 
 func TestPutResurrection(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

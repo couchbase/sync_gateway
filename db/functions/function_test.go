@@ -175,7 +175,6 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 func TestUserFunctions(t *testing.T) {
 	base.LongRunningTest(t)
 
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
 
@@ -332,7 +331,6 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	dbCtx, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer dbCtx.Close(ctx)
 
@@ -477,7 +475,6 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 
 // Low-level test of channel-name parameter expansion for user query/function auth
 func TestUserFunctionAllow(t *testing.T) {
-	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig)
 	defer db.Close(ctx)
 

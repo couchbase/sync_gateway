@@ -1089,8 +1089,6 @@ func TestRemovingUserXattr(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	testCases := []struct {
 		name          string
 		autoImport    bool
@@ -1201,7 +1199,6 @@ func TestGetUserCollectionAccess(t *testing.T) {
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -1374,7 +1371,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	testBucket := base.GetTestBucket(t)
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)

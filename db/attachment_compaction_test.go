@@ -249,7 +249,6 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since it requires DCP")
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	dbcOptions := DatabaseContextOptions{
 		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
 	}
@@ -961,8 +960,6 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()

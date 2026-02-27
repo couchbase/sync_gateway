@@ -769,7 +769,6 @@ func TestWebhookTimeout(t *testing.T) {
 	terminator := make(chan bool)
 	defer close(terminator)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL

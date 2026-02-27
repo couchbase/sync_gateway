@@ -1901,7 +1901,6 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
 // CBG-2023: Test preventing underscore attachments
 func TestImportInternalPropertiesHandling(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
 		name               string
@@ -2109,7 +2108,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 }
 
 func TestImportOnWriteMigration(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}

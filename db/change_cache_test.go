@@ -2034,7 +2034,6 @@ func BenchmarkDocChanged(b *testing.B) {
 //   - Assert that the length of slice stat is equal to the length of the skipped sequence slice + assert that number of
 //     sequences skipped overall stat is correct
 func TestProcessSkippedEntry(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -2110,7 +2109,6 @@ func TestProcessSkippedEntry(t *testing.T) {
 //   - Push some sequences that are skipped onto the cache and assert that the stats: number of current skipped sequences,
 //     length of slice, cumulative number of skipped sequences and capacity of slice are all updated as expected
 func TestProcessSkippedEntryStats(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -2187,8 +2185,6 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 //   - Assert that the skipped slice eventually ends up with 0 length and the number of abandoned sequences are as expected
 func TestSkippedSequenceCompact(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -3177,8 +3173,6 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 
 func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	opts := DefaultCacheOptions()
 	opts.CachePendingSeqMaxWait = 20 * time.Minute

@@ -35,8 +35,6 @@ func TestReproduce2383(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
@@ -291,8 +289,6 @@ func TestPostChangesUserTiming(t *testing.T) {
 }
 
 func TestPostChangesSinceInteger(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -887,7 +883,6 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 	for _, test := range tests {
 		testName := fmt.Sprintf("%v user:%v manualNotify:%t", test.feedType, test.username, test.manualNotify)
 		t.Run(testName, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			rt := rest.NewRestTester(t, nil)
 			defer rt.Close()
@@ -3289,8 +3284,6 @@ func TestChangesLargeSequences(t *testing.T) {
 }
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()

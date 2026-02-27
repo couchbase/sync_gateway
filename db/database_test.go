@@ -174,8 +174,6 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 
 func TestDatabase(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -302,7 +300,6 @@ func TestDatabase(t *testing.T) {
 
 // TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
 func TestCheckProposedVersion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -429,7 +426,6 @@ func TestCheckProposedVersion(t *testing.T) {
 }
 
 func TestUpsertTestDocVersion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -447,7 +443,6 @@ func TestUpsertTestDocVersion(t *testing.T) {
 
 // TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
 func TestCheckProposedVersionWithHLVRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -846,7 +841,6 @@ func TestGetRemovedAsUser(t *testing.T) {
 }
 
 func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -1031,7 +1025,6 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 }
 
 func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")
@@ -1066,7 +1059,6 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		// enable delta sync other wise CV keyed backup revs won't be stored
 		DeltaSyncOptions: DeltaSyncOptions{
@@ -1111,7 +1103,6 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -3952,7 +3943,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 

@@ -506,8 +506,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		}
 	}`
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: syncFn,

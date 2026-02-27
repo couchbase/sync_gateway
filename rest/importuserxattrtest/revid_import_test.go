@@ -21,7 +21,6 @@ import (
 )
 
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
