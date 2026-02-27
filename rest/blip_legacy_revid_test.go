@@ -308,6 +308,47 @@ func TestProcessLegacyRev(t *testing.T) {
 	})
 }
 
+func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
+	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		allowConflicts: false,
+		GuestEnabled:   true,
+		blipProtocols:  []string{db.CBMobileReplicationV4.SubprotocolString()},
+	})
+	defer bt.Close()
+	rt := bt.restTester
+
+	doc := rt.CreateDocNoHLV(t.Name(), db.Body{"key": "val"})
+	sgwVersion := doc.ExtractDocVersion()
+
+	encodedVersion, err := db.LegacyRevToRevTreeEncodedVersion(sgwVersion.RevTreeID)
+	require.NoError(t, err)
+
+	// convert to transport format
+	cvStr := encodedVersion.String()
+
+	// send unsolicited rev
+	bt.SendRev(
+		t.Name(),
+		cvStr,
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+
+	// send marker rev
+	bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	rt.WaitForVersion("foo", DocVersion{RevTreeID: "1-abc"})
+
+	// assert that rev with cv encoded from same revID server has is not synced
+	docVersion, _ := rt.GetDoc(t.Name())
+	assert.Equal(t, sgwVersion.RevTreeID, docVersion.RevTreeID)
+	assert.True(t, docVersion.CV.IsEmpty())
+}
+
 // TestProcessRevWithLegacyHistory:
 //   - 1. CBL sends rev=1010@CBL1, history=1-abc when SGW has current rev 1-abc (document underwent an update before being pushed to SGW)
 //   - 2. CBL sends rev=1010@CBL1, history=1000@CBL2,1-abc when SGW has current rev 1-abc (document underwent multiple p2p updates before being pushed to SGW)

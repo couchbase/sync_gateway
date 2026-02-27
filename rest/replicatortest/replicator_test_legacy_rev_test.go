@@ -649,6 +649,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	const username = "alice"
 	// NOTE: below diagrams only show active rev tree branches not tombstones branches from the conflict resolution

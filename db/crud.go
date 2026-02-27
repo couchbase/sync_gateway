@@ -1397,6 +1397,18 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				doc.HLV = NewHybridLogicalVector()
 			}
 			doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
+			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev
+			if doc.HLV.SourceID == encodedRevTreeSourceID {
+				// convert our current rev to RTE and compare
+				encodedCV, encodedErr := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
+				if encodedErr != nil {
+					return nil, nil, false, nil, fmt.Errorf("failed to encode rev tree ID for doc %s, %v", base.UD(doc.ID), encodedCV)
+				}
+				if encodedCV.Equal(*doc.HLV.ExtractCurrentVersionFromHLV()) {
+					base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add. Incoming revision tree generated CV %#v is equal to local revID %s", base.UD(opts.NewDoc.ID), doc.HLV, doc.GetRevTreeID())
+					return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
+				}
+			}
 			if opts.ISGRWrite {
 				err := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, opts.ForceAllowConflictingTombstone)
 				if err != nil {
