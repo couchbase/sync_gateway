@@ -104,6 +104,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	rt.CreateUser("user1", []string{"alpha"})
+	rt.WaitForPendingChanges()
 
 	// Create 100 docs
 	for i := range 100 {

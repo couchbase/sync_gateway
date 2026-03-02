@@ -1523,6 +1523,7 @@ func TestReplicatorRevocations(t *testing.T) {
 
 		resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "chanA"}`)
 		RequireStatus(t, resp, http.StatusCreated)
+		rt2.WaitForPendingChanges()
 
 		srv := httptest.NewServer(rt2.TestPublicHandler())
 		defer srv.Close()

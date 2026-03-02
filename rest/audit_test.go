@@ -847,6 +847,7 @@ func TestAuditDocumentRead(t *testing.T) {
 
 	const docID = "doc1"
 	docVersion := rt.CreateTestDoc(docID)
+	rt.WaitForPendingChanges()
 
 	type testCase struct {
 		name                 string

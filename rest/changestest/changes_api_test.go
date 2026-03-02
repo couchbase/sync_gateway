@@ -576,6 +576,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   2. Update abc-3 to remove from channel ABC
 	rt.DeleteDoc(abc2ID, abc2Version)
 	_ = rt.UpdateDoc(abc3ID, abc3Version, `{}`)
+	rt.WaitForPendingChanges()
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -981,13 +982,11 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	rt.WaitForSequence(3)
 
-	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
+	// WaitForSequence doesn't wait for low sequence to be updated on each channel - retry to ensure
 	// low is updated before making the next changes request.
-	time.Sleep(50 * time.Millisecond)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
-	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-	require.Len(t, changes.Results, 3)
+	changes = rt.WaitForChanges(3, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
@@ -1577,6 +1576,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	// Partially removed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	rest.RequireStatus(t, response, 201)
+	rt.WaitForPendingChanges()
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -1847,6 +1847,8 @@ func TestChangesIncludeDocs(t *testing.T) {
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	rest.RequireStatus(t, response, 201)
+	// WaitForPendingChanges is required here to set LowSeq on the sequence of the changes
+	rt.WaitForPendingChanges()
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	rest.RequireStatus(t, response, 200)
 
