@@ -804,7 +804,7 @@ function(doc, oldDoc) {
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Attempt to send the doc again, should succeed if the blip context also received notification
 	bt.SendRev(
@@ -1317,7 +1317,7 @@ func TestReloadUser(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Add a doc in the PBS channel
 	addRevResponse := bt.SendRev(
