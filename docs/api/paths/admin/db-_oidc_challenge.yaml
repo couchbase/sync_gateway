@@ -23,6 +23,8 @@ get:
           schema:
             type: string
           description: The OpenID Connect authentication URL.
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '500':

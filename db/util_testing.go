@@ -1066,8 +1066,8 @@ func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
 	db.changeCache.requireWaitForSequence(t, lastSequence)
 }
 
-// WaitForSequence blocks until the change cache has processed up to the target sequence. Fails the test harness if
-// cache does not catch up.
+// WaitForSequence blocks until the change-cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
 func (db *DatabaseContext) WaitForSequence(t testing.TB, targetSequence uint64) {
 	db.changeCache.requireWaitForSequence(t, targetSequence)
 }

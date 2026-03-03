@@ -21,6 +21,8 @@ get:
   responses:
     '200':
       $ref: ../../components/responses.yaml#/User-session-information
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -38,6 +40,8 @@ delete:
   responses:
     '200':
       description: Successfully removed the user session
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
