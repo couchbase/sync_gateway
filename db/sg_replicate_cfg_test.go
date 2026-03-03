@@ -670,7 +670,6 @@ func TestIsCfgChanged(t *testing.T) {
 
 // Test replicators assigned nodes with different group IDs
 func TestReplicateGroupIDAssignedNodes(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)

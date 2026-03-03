@@ -173,7 +173,6 @@ func TestRequireResync(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &rest.RestTesterConfig{
 		PersistentConfig: true,
 	}

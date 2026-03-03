@@ -268,8 +268,6 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 		t.Skip("This test requires xattrs because it writes directly to the xattr")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
@@ -337,8 +335,6 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs because it writes directly to the xattr")
 	}
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{

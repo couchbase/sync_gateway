@@ -1589,8 +1589,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
-
 	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
 	assert.NotPanicsf(t, func() {
 		rt := rest.NewRestTester(t, nil)
@@ -2634,7 +2632,6 @@ func TestConfigEndpoint(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			base.ResetGlobalTestLogging(t)
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
@@ -2674,7 +2671,7 @@ func TestConfigEndpoint(t *testing.T) {
 }
 
 func TestLoggingDeprecationWarning(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	base.ResetGlobalTestLogging(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2700,7 +2697,6 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 }
 
 func TestInitialStartupConfig(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2736,7 +2732,6 @@ func TestInitialStartupConfig(t *testing.T) {
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()

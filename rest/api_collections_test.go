@@ -282,7 +282,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
@@ -972,7 +971,6 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	base.TestRequiresCollections(t)
 
 	ctx := base.TestCtx(t)
