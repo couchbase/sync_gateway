@@ -247,11 +247,76 @@ func (h *handler) handleDbOnline() error {
 
 	_ = base.JSONUnmarshal(body, &input)
 
+	contextNoCancel := base.NewNonCancelCtx()
+
 	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
-	go func() {
+	// allow db to come online in background in its own goroutine
+	go func(ctx base.NonCancellableContext) {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.server.TakeDbOnline(base.NewNonCancelCtx(), h.db.DatabaseContext)
-	}()
+		var oldConfig DbConfig
+		if !h.server.persistentConfig {
+			currentConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+			oldConfig = currentConfig
+			currentConfig.StartOffline = base.Ptr(false)
+			currentDatabaseCfg := &DatabaseConfig{DbConfig: currentConfig}
+
+			dbCreds, _ := h.server.Config.DatabaseCredentials[h.db.Name]
+			if err := currentDatabaseCfg.setup(h.ctx(), h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+				base.WarnfCtx(ctx.Ctx, "config setup failed taking db online, Err: %v", err)
+			}
+			if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *currentDatabaseCfg); err != nil {
+				base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+			}
+		} else {
+			// persistent config here
+			bucket := h.db.Bucket.GetName()
+			dbName := h.db.Name
+			var updatedDbConfig *DatabaseConfig
+			cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+				}
+				oldConfig = bucketDbConfig.DbConfig
+
+				// set config to offline false to start online processes
+				bucketDbConfig.StartOffline = base.Ptr(false)
+
+				if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
+					return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+				}
+
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+				if err != nil {
+					return nil, err
+				}
+
+				bucketDbConfig.SGVersion = base.ProductVersion.String()
+				updatedDbConfig = bucketDbConfig
+				return bucketDbConfig, nil
+			})
+			if err != nil {
+				base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+				return
+			}
+			updatedDbConfig.cfgCas = cas
+
+			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+			if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+				base.WarnfCtx(ctx.Ctx, "config setup failed taking db online, Err: %v", err)
+				return
+			}
+
+			h.server._databasesLock.Lock()
+			defer h.server._databasesLock.Unlock()
+
+			// TODO: Dynamic update instead of reload
+			if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+				base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+				return
+			}
+		}
+	}(contextNoCancel)
 	base.Audit(h.ctx(), base.AuditIDDatabaseOnline, nil)
 
 	return nil
@@ -260,9 +325,66 @@ func (h *handler) handleDbOnline() error {
 // Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	if err := h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
-		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
-		return err
+
+	var oldConfig DbConfig
+	contextNoCancel := base.NewNonCancelCtx()
+	if !h.server.persistentConfig {
+		currentConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+		oldConfig = currentConfig
+		currentConfig.StartOffline = base.Ptr(true)
+		currentDatabaseCfg := &DatabaseConfig{DbConfig: currentConfig}
+
+		dbCreds, _ := h.server.Config.DatabaseCredentials[h.db.Name]
+		if err := currentDatabaseCfg.setup(h.ctx(), h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+			return err
+		}
+		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *currentDatabaseCfg); err != nil {
+			return err
+		}
+	} else {
+		bucket := h.db.Bucket.GetName()
+		dbName := h.db.Name
+		var updatedDbConfig *DatabaseConfig
+		cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+			}
+			oldConfig = bucketDbConfig.DbConfig
+
+			// set config to offline true
+			bucketDbConfig.StartOffline = base.Ptr(true)
+
+			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
+				return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+			}
+
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+			updatedDbConfig = bucketDbConfig
+			return bucketDbConfig, nil
+		})
+		if err != nil {
+			return err
+		}
+		updatedDbConfig.cfgCas = cas
+
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+			return err
+		}
+
+		h.server._databasesLock.Lock()
+		defer h.server._databasesLock.Unlock()
+
+		// TODO: Dynamic update instead of reload
+		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+			return err
+		}
 	}
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
 	return nil

@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -845,7 +843,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	// ensure doc1 is not imported - since we started the database offline
 	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
-	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
+	rt.TakeDbOnline()
 	require.NotNil(t, rt.GetDatabase().ImportListener)
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
@@ -951,27 +949,29 @@ func TestDatabaseStartupFailure(t *testing.T) {
 		t.Skip("LeakyBucketConfig not supported on CBS")
 	}
 
-	touchErr := errors.New("touch error")
+	tb := base.GetTestBucket(t)
+	defer tb.Close(t.Context())
+
 	rt := NewRestTester(t, &RestTesterConfig{
-		LeakyBucketConfig: &base.LeakyBucketConfig{
-			TouchCallback: func(key string) error {
-				if strings.Contains(key, "heartbeat_timeout") {
-					return touchErr
-				}
-				return nil
-			},
-		},
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 	})
 	defer rt.Close()
+	ctx := rt.Context()
 
-	dbConfig := DatabaseConfig{
-		DbConfig: rt.NewDbConfig(),
+	dbCfg := rt.NewDbConfig()
+	RequireStatus(t, rt.CreateDatabase("db", dbCfg), http.StatusCreated)
+
+	// alter in memory db config to invalid config that will fail online process
+	rt.ServerContext()._dbConfigs["db"].Users = map[string]*auth.PrincipalConfig{
+		"alice": {
+			JWTChannels: base.SetOf("asdf"),
+		},
 	}
 
-	// this call does use the leaky bucket
-	dbContext, err := rt.ServerContext().AddDatabaseFromConfigWithBucket(rt.Context(), t, dbConfig, rt.Bucket())
-	require.ErrorIs(t, err, touchErr)
+	// roald db with invalid config, should fail online process and put db in offline state
+	dbContext, err := rt.ServerContext().ReloadDatabase(ctx, "db", false)
+	require.Error(t, err)
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
 
@@ -986,7 +986,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseOnlineProcessError])
 
 	// assert that you can attempt again to bring db back online again after failure
-	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_online", "")
 	RequireStatus(t, resp, http.StatusOK)
 	rt.WaitForDBOnline()
 }

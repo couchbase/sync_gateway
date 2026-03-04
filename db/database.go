@@ -855,47 +855,6 @@ func (context *DatabaseContext) NotifyTerminatedChanges(ctx context.Context, use
 	context.mutationListener.NotifyCheckForTermination(ctx, base.SetOf(base.UserPrefixRoot+username))
 }
 
-func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
-
-	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
-		// notify all active _changes feeds to close
-		close(dc.ExitChanges)
-
-		// Block until all current calls have returned, including _changes feeds
-		dc.AccessLock.Lock()
-		defer dc.AccessLock.Unlock()
-
-		dc.changeCache.Stop(ctx)
-
-		// set DB state to Offline
-		atomic.StoreUint32(&dc.State, DBOffline)
-
-		if err := dc.EventMgr.RaiseDBStateChangeEvent(ctx, dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
-			base.InfofCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
-		}
-
-		return nil
-	} else {
-		dbState := atomic.LoadUint32(&dc.State)
-		// If the DB is already transitioning to: offline or is offline silently return
-		if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
-			return nil
-		}
-
-		msg := "Unable to take Database offline, database must be in Online state but was " + RunStateString[dbState]
-		if dbState == DBOnline {
-			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
-		}
-
-		base.InfofCtx(ctx, base.KeyCRUD, "%s", msg)
-		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
-	}
-}
-
-func (db *Database) TakeDbOffline(nonContextStruct base.NonCancellableContext, reason string) error {
-	return db.DatabaseContext.TakeDbOffline(nonContextStruct.Ctx, reason)
-}
-
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
 	context.BucketLock.RLock()
 	defer context.BucketLock.RUnlock()
