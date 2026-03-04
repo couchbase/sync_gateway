@@ -100,6 +100,8 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
 
+	// We need to use revisionID loader pathway as not every document in the bucket is yet guaranteed to
+	// have a HLV assigned to it.
 	var hlv *HybridLogicalVector
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.GetRevTreeID())
 	if err != nil {
