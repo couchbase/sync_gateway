@@ -627,7 +627,8 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	// offline call above resets stats to 0, so sync function count will only include resync run started above
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
