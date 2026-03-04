@@ -3256,17 +3256,6 @@ func TestBlipDatabaseClose(t *testing.T) {
 	})
 }
 
-func TestLol(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	_ = rt.GetDatabase()
-
-	dbCfg := rt.NewDbConfig()
-	resp := rt.UpsertDbConfig("db", dbCfg)
-	fmt.Println(resp)
-}
-
 func TestBlipDisconnectOnDbOffline(t *testing.T) {
 	base.LongRunningTest(t)
 

@@ -267,8 +267,3 @@ func ServerIsWalrus(server string) bool {
 		strings.HasPrefix(server, "/") ||
 		strings.HasPrefix(server, ".")
 }
-
-// BucketIsRosmar Returns true of bucket is rosmar bucket
-func BucketIsRosmar(bucket string) bool {
-	return strings.HasPrefix(bucket, "rosmar")
-}
