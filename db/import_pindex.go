@@ -36,9 +36,9 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
-			New:       getNewPIndexImplType(ctx),
-			Open:      OpenImportPIndexImpl,
-			OpenUsing: getOpenImportPIndexImplUsing(ctx),
+			New:    getNewPIndexImplType(ctx),
+			Open:   openPIndexImpl,
+			OpenEx: openExPIndexImpl,
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
 		})
@@ -85,16 +85,17 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 	return newImportPIndexImpl
 }
 
-// OpenImportPIndexImpl is required to have an implementation from cbgt.PIndexImplType.Open. When this function fails, PIndexImplType will fall back to using PIndexImplType.OpenUsing
-func OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+// openPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, which always creates new pindexes.
+//
+// This callback is used by cbft to read pindex definitions from disk.
+func openPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
 
-func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-
-	openImportPIndexImplUsing := func(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-		importDest, err := getListenerImportDest(ctx, indexParams, restart)
-		return nil, importDest, err
-	}
-	return openImportPIndexImplUsing
+// getOpenExPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, which always creates new
+// pindexes.
+//
+// This callback is used by cbft to read pindex definitions from disk.
+func openExPIndexImpl(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	return nil, nil, fmt.Errorf("PIndexImplType.OpenEx not supported for Sync Gateway.")
 }
