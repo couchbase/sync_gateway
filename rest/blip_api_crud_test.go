@@ -3256,6 +3256,77 @@ func TestBlipDatabaseClose(t *testing.T) {
 	})
 }
 
+func TestLol(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	_ = rt.GetDatabase()
+
+	dbCfg := rt.NewDbConfig()
+	resp := rt.UpsertDbConfig("db", dbCfg)
+	fmt.Println(resp)
+}
+
+func TestBlipDisconnectOnDbOffline(t *testing.T) {
+	base.LongRunningTest(t)
+
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+		{
+			name:             "persistent config",
+			persistentConfig: true,
+		},
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				var rt *RestTester
+				if testCase.persistentConfig {
+					rt = NewRestTesterPersistentConfig(t)
+					defer rt.Close()
+				} else {
+					rt = NewRestTester(t, nil)
+					defer rt.Close()
+				}
+				const alice = "alice"
+				rt.CreateUser(alice, []string{"*"})
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+					&BlipTesterClientOpts{
+						Username: alice,
+					})
+				defer btc.Close()
+
+				var blipPullContextClosed atomic.Bool
+				btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+					log.Printf("on exit callback invoked")
+					blipPullContextClosed.Store(true)
+				}
+				// add some replication activity
+				markerDoc := "markerDoc"
+				markerDocVersion := rt.PutDoc(markerDoc, `{"mark": "doc"}`)
+				rt.WaitForPendingChanges()
+				btcRunner.StartPull(btc.id)
+				btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
+
+				rt.TakeDbOffline()
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, blipPullContextClosed.Load())
+				}, time.Second*10, time.Millisecond*100)
+			})
+		}
+	})
+}
+
 func TestPutRevBlip(t *testing.T) {
 	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
 	defer bt.Close()
