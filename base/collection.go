@@ -701,10 +701,16 @@ func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataSt
 	if err != nil {
 		return err
 	}
-	// Can't use Collection.Exists since we can't get a collection until the collection exists on CBS
-	gocbCollection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
 	return WaitForNoError(ctx, func() error {
-		_, err := gocbCollection.Exists("fakedocid", nil)
+		// NewCollection requires a mgmt request to get CollectionID, ensuring that ns_server and kv agree
+		// collection is ready
+		c, err := NewCollection(
+			b,
+			b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
+		if err != nil {
+			return err
+		}
+		_, err = c.Exists("fakedocid")
 		return err
 	})
 }
@@ -723,9 +729,6 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
 	if err != nil {
-		if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
-			return nil, ErrAuthError
-		}
 		return nil, err
 	}
 	return c, nil
