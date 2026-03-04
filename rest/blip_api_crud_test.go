@@ -1077,9 +1077,10 @@ function(doc, oldDoc) {
 		)
 	}
 
+	timeout := 30 * time.Second * db.GetCachingFeedDelayFactor(t)
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
-	WaitWithTimeout(t, &revsFinishedWg, time.Second*30)
+	WaitWithTimeout(t, &receivedChangesWg, timeout)
+	WaitWithTimeout(t, &revsFinishedWg, timeout)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -3442,6 +3443,7 @@ func TestBlipPullConflict(t *testing.T) {
 		)
 		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.PutDoc(docID, `{"actor": "sg"}`)
+		rt.WaitForPendingChanges()
 
 		opts := &BlipTesterClientOpts{
 			Username: alice,
@@ -3618,8 +3620,8 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
@@ -3723,8 +3725,8 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, expectedVersion)
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
