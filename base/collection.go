@@ -257,6 +257,8 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 		return b.IsMinimumVersion(7, 6)
 	case sgbucket.BucketStoreFeatureMobileXDCR:
 		return b.supportsHLV
+	case sgbucket.BucketStoreFeatureRangeScan:
+		return b.IsMinimumVersion(7, 6)
 	default:
 		return false
 	}

@@ -473,6 +473,12 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
 }
 
+// AsRangeScanStore returns a RangeScanStore if the underlying dataStore implements and supports range scan operations.
+func AsRangeScanStore(ds DataStore) (sgbucket.RangeScanStore, bool) {
+	rss, ok := GetBaseDataStore(ds).(sgbucket.RangeScanStore)
+	return rss, ok && ds.IsSupported(sgbucket.BucketStoreFeatureRangeScan)
+}
+
 // WaitUntilDataStoreReady will try to perform a basic operation in the given DataStore until it can succeed.
 // It's not necessarily the case that a datastore that exists is ready to be used.
 //
