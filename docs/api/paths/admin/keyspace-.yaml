@@ -40,8 +40,8 @@ post:
             $ref: ../../components/schemas.yaml#/New-revision
     '400':
       $ref: ../../components/responses.yaml#/request-problem
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '409':
       $ref: ../../components/responses.yaml#/Conflict
     '415':

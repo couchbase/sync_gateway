@@ -110,7 +110,7 @@ type DatabaseContext struct {
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            changeListener     // Caching feed listener
+	mutationListener            *changeListener    // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
 	sequences                   *sequenceAllocator // Source of new sequence numbers
 	StartTime                   time.Time          // Timestamp when context was instantiated
@@ -524,7 +524,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext)
+	dbContext.mutationListener, err = newChangeListener(bucket.GetName(), options.GroupID, dbContext)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(options.Scopes) == 0 {
 		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
@@ -765,7 +768,12 @@ func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 	context.mutationListener.Stop(ctx)
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context)
+	var err error
+	context.mutationListener, err = newChangeListener(context.Bucket.GetName(), context.Options.GroupID, context)
+	if err != nil {
+		return err
+	}
+	context.mutationListener.OnChangeCallback = context.changeCache.DocChanged
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -2601,4 +2609,10 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 func (db *DatabaseContext) usingRosmar() bool {
 	_, err := base.AsRosmarBucket(db.Bucket)
 	return err == nil
+}
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
+// if the sequence remains in skipped list.
+func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
+	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }

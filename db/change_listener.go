@@ -48,6 +48,7 @@ type changeListener struct {
 	sgCfgPrefix              string             // SG config key prefix
 	started                  base.AtomicBool    // whether the feed has been started
 	metaKeys                 *base.MetadataKeys // Metadata key formatter
+	feedDelay                time.Duration      // testing seam to add an artificial delay to processing of each DCP event in the caching feed
 }
 
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
@@ -58,7 +59,9 @@ const principalDocCollectionIDForChannelID = 0
 
 type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
-func (listener *changeListener) Init(name string, groupID string, db *DatabaseContext) {
+// newChangeListener creates a new changeListener to listen for feed events.
+func newChangeListener(name string, groupID string, db *DatabaseContext) (*changeListener, error) {
+	listener := &changeListener{}
 	listener.bucketName = name
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
@@ -68,9 +71,18 @@ func (listener *changeListener) Init(name string, groupID string, db *DatabaseCo
 	listener.metaKeys = db.MetadataKeys
 	listener.broadcastChangesDoneChan = make(chan struct{})
 	listener.dbCtx = db
+	var err error
+	listener.feedDelay, err = GetCachingFeedDelay()
+	if err != nil {
+		return nil, err
+	}
+	return listener, nil
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType DocumentType) {
+	if listener.feedDelay > 0 {
+		time.Sleep(listener.feedDelay)
+	}
 	// TODO: When principal grants are implemented (CBG-2333), perform collection filtering here
 	listener.OnChangeCallback(event, docType)
 }

@@ -28,8 +28,8 @@ get:
   responses:
     '101':
       description: Upgraded to a web socket connection
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '426':
       description: Cannot upgrade connection to a web socket connection
       content:

@@ -226,7 +226,6 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 }
 
 func TestHandlerRecoverLog(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 	testCases := []struct {
 		name       string
 		panicArg   any

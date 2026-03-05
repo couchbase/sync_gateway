@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -619,16 +620,12 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 
 // WaitForSequence waits for the sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
+	rt.GetDatabase().WaitForSequence(rt.TB(), seq)
 }
 
 // WaitForPendingChanges waits all outstanding changes to be buffered by the channel cache.
 func (rt *RestTester) WaitForPendingChanges() {
-	ctx := rt.Context()
-	for _, collection := range rt.GetDbCollections() {
-		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
-	}
+	rt.GetDatabase().WaitForPendingChanges(rt.TB())
 }
 
 // SetAdminParty toggles the guest user between disabled and enabled.  If enabled, the guest user is given access to the UserStar channel on all collections.
@@ -909,8 +906,10 @@ func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVe
 // WaitForChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
-	if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) {
-		// rosmar will never take a long time, so have faster failures
+	if db.HasCachingFeedDelay(rt.TB()) {
+		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
+	} else if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
+		// local rosmar will never take a long time, but it is sometimes slower in jenkins/github actions
 		waitTime = 1 * time.Second
 	}
 	var changes *ChangesResults

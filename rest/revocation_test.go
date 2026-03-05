@@ -1121,7 +1121,6 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 
 func TestRevocationsWithQueryLimit2Channels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:           false,
@@ -1448,8 +1447,6 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	xattrKey := "channelInfo"
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
@@ -1523,6 +1520,7 @@ func TestReplicatorRevocations(t *testing.T) {
 
 		resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "chanA"}`)
 		RequireStatus(t, resp, http.StatusCreated)
+		rt2.WaitForPendingChanges()
 
 		srv := httptest.NewServer(rt2.TestPublicHandler())
 		defer srv.Close()
@@ -1726,8 +1724,6 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sgrRunner := NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
@@ -2042,8 +2038,6 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
-
 	sgrRunner := NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		// Passive
@@ -2257,8 +2251,6 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
@@ -2429,7 +2421,6 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	btcRunner := NewBlipTesterClientRunner(t)
 	const docID = "doc"
 	const waitMarkerID = "docmarker"
@@ -2513,8 +2504,6 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 func TestBlipRevokeNonExistentRole(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
@@ -2557,8 +2546,6 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	defer db.SuspendSequenceBatching()()
 

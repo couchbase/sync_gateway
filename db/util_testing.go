@@ -166,16 +166,12 @@ func AssertEqualBodies(t *testing.T, expected, actual Body) {
 	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }
 
-func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
-	var isChanged bool
-	for range 100 {
-		isChanged = userWaiter.RefreshUserCount()
-		if isChanged {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return isChanged
+// WaitForUserWaiterChange waits for number of users found to change. Fails test harness if the no users were modified.
+func WaitForUserWaiterChange(t testing.TB, userWaiter *ChangeWaiter) {
+	timeout := 10 * time.Second * GetCachingFeedDelayFactor(t)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, userWaiter.RefreshUserCount(), "Expected the user count for the ChangeWaiter to be updated")
+	}, timeout, 10*time.Millisecond, "Timed out after %d ms waiting for users in ChangeWaiter to be updated", timeout.Milliseconds())
 }
 
 // purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones.
@@ -820,7 +816,7 @@ func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbu
 
 // GetMutationListener retrieves mutation listener form database context, to be used only for testing purposes.
 func (db *DatabaseContext) GetMutationListener(t *testing.T) *changeListener {
-	return &db.mutationListener
+	return db.mutationListener
 }
 
 // InitChannel is a test-only function to initialize a channel in the channel cache.
@@ -1058,4 +1054,52 @@ func SafeDocumentName(t *testing.T, name string) string {
 	}
 	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
 	return docName
+}
+
+// WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database. Fails the
+// test harness if cache does not catch up.
+func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
+	ctx := base.TestCtx(t)
+	lastSequence, err := db.sequences.lastSequence(ctx)
+	require.NoError(t, err, "Error retrieving last sequence")
+	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
+	db.changeCache.requireWaitForSequence(t, lastSequence)
+}
+
+// WaitForSequence blocks until the change-cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
+func (db *DatabaseContext) WaitForSequence(t testing.TB, targetSequence uint64) {
+	db.changeCache.requireWaitForSequence(t, targetSequence)
+}
+
+// requireWaitForSequence blocks until the change cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
+func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64) {
+	ctx := base.TestCtx(t)
+	startTime := time.Now()
+	waitForSequenceTimeout := defaultWaitForSequence
+	require.EventuallyWithT(t, func(cT *assert.CollectT) {
+		assert.GreaterOrEqual(cT, c.getNextSequence(), targetSequence+1)
+	}, waitForSequenceTimeout, 10*time.Millisecond, "Waited for %v for sequence %d to be processed", waitForSequenceTimeout, targetSequence)
+	base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", targetSequence, time.Since(startTime))
+}
+
+// HasCachingFeedDelay returns true if a user has specified
+func HasCachingFeedDelay(t testing.TB) bool {
+	delay, err := GetCachingFeedDelay()
+	require.NoError(t, err, "Error parsing caching feed delay")
+	return delay > 0
+}
+
+// GetCachingFeedDelayFactor returns a multipler for increasing wait times for sequences if the test harness is
+// configured with a delayed caching feed.
+func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
+	cachingDelay, err := GetCachingFeedDelay()
+	require.NoError(t, err)
+	if cachingDelay == 0 {
+		return 1
+	}
+	factor := cachingDelay / (5 * time.Millisecond)
+	require.GreaterOrEqual(t, factor, time.Duration(1), "Caching feed delay factor must be greater than 0, or wait functions will not work. Modify the factor value")
+	return factor
 }

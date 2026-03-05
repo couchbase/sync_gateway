@@ -104,6 +104,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	rt.CreateUser("user1", []string{"alpha"})
+	rt.WaitForPendingChanges()
 
 	// Create 100 docs
 	for i := range 100 {
@@ -268,8 +269,6 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 		t.Skip("This test requires xattrs because it writes directly to the xattr")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
@@ -337,8 +336,6 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs because it writes directly to the xattr")
 	}
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -410,7 +407,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(t.Context()))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
@@ -439,7 +436,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 

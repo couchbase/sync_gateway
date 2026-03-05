@@ -68,8 +68,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				_, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			err = collection.WaitForPendingChanges(base.TestCtx(t))
-			require.NoError(t, err)
+			db.WaitForPendingChanges(t)
 
 			collection.user, err = auth.GetUser("test")
 			require.NoError(t, err)
@@ -121,8 +120,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	_, _, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	err = collection.WaitForPendingChanges(base.TestCtx(t))
-	assert.NoError(t, err)
+	db.WaitForPendingChanges(t)
 
 	// Check the _changes feed:
 	collection.user, err = authenticator.GetUser("naomi")
@@ -201,8 +199,6 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 	}
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -308,7 +304,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
 	require.NoError(t, err)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	db.WaitForPendingChanges(t)
 
 	changes := getChanges(t, collection, base.SetOf("A"), changesOpts)
 	require.NoError(t, err)
@@ -423,8 +419,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	waitErr := collection.WaitForPendingChanges(base.TestCtx(t))
-	assert.NoError(t, waitErr)
+	db.WaitForPendingChanges(t)
 
 	changesOptions := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
@@ -505,8 +500,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	// Put a doc that gets assigned a CV to populate the channel cache with
 	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err)
-	err = collection.WaitForPendingChanges(base.TestCtx(t))
-	require.NoError(t, err)
+	db.WaitForPendingChanges(t)
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	require.NoError(t, err)

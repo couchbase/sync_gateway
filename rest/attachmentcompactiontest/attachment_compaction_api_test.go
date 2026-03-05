@@ -383,7 +383,6 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 	var garbageVBUUID gocbcore.VbUUID = 1234
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
