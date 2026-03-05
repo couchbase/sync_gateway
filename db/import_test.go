@@ -1006,6 +1006,8 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 }
 
 func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
+	base.LongRunningTest(t)
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 	base.SkipImportTestsIfNotEnabled(t)
 
