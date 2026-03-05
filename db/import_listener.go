@@ -53,6 +53,7 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error) {
+	ctx := base.CorrelationIDLogCtx(il.loggingCtx, base.DCPImportFeedID)
 
 	collectionNamesByScope := make(map[string][]string)
 	var scopeName string
@@ -88,13 +89,13 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		Scopes:           collectionNamesByScope,
 	}
 
-	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
+	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(il.loggingCtx, il.importDestKey, getImportDestFactory(
-		il.loggingCtx,
+	base.StoreDestFactory(ctx, il.importDestKey, getImportDestFactory(
+		ctx,
 		il.ProcessFeedEvent,
 		dbContext,
 		il.checkpointPrefix),
