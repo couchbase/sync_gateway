@@ -701,7 +701,6 @@ func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataSt
 	if err != nil {
 		return err
 	}
-	WarnfCtx(ctx, "Collection %s created in scope %s.  Waiting for collection to be ready...", MD(name.CollectionName()), MD(name.ScopeName()))
 	return WaitForNoError(ctx, func() error {
 		// NewCollection requires a mgmt request to get CollectionID, ensuring that ns_server and kv agree
 		// collection is ready
@@ -709,13 +708,9 @@ func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataSt
 			b,
 			b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
 		if err != nil {
-			WarnfCtx(ctx, "Collection %s.%s is not ready, NewCollectionFailed: %w", MD(name.ScopeName()), MD(name.CollectionName()), err)
 			return err
 		}
 		_, err = c.Exists("fakedocid")
-		if err != nil {
-			WarnfCtx(ctx, "Collection %s.%s is not ready, Exists err: %w", MD(name.ScopeName()), MD(name.CollectionName()), err)
-		}
 		return err
 	})
 }
@@ -734,6 +729,9 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
 	if err != nil {
+		if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
+			return nil, ErrAuthError
+		}
 		return nil, err
 	}
 	return c, nil
