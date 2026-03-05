@@ -564,7 +564,7 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 	base.TestRequiresCollections(t)
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a single node
 	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
@@ -931,7 +931,7 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 func TestSyncFuncDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a single node
 	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -1504,7 +1504,7 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 	}
 	base.SkipImportTestsIfNotEnabled(t)
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a single node, so it is safe to disable it here.
 	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
@@ -1705,7 +1705,7 @@ func TestImportFilterDryRun(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a single node.
 	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{

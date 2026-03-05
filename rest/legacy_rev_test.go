@@ -21,7 +21,7 @@ import (
 // TestResyncLegacyRev makes sure that running resync on a legacy rev will send future blip messages as a legacy rev and not as an HLV
 func TestResyncLegacyRev(t *testing.T) {
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a single node
 	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterPersistentConfig(t)

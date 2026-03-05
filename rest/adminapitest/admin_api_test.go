@@ -3295,7 +3295,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	base.LongRunningTest(t)
 	// speed up test by not sleeping for _sync:seq when database reloads
-	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
 	// single node
 	db.DisableSequenceWaitOnDbRestart(t)
 
