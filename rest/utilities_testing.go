@@ -2767,6 +2767,7 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
 		}
 	})
+	serverContextGlobalsInitialized.Store(true)
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
 
@@ -2802,4 +2803,11 @@ func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, exp
 	}
 	// should only have one active leaf
 	require.Equal(t, 1, activeLeafCount)
+}
+
+// ClearServerContextLoggingGlobals clears the global variables related to logging in ServerContext and allows testing initialization of a server context's logging parameters.
+func ClearServerContextLoggingGlobals(t *testing.T) {
+	// the end of the test must clean up global logging
+	base.ResetGlobalTestLogging(t)
+	serverContextGlobalsInitialized.Store(false)
 }
