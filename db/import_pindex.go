@@ -38,7 +38,7 @@ func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 		&cbgt.PIndexImplType{
 			New:    getNewPIndexImplType(ctx),
 			Open:   openPIndexImpl,
-			OpenEx: openExPIndexImpl,
+			OpenEx: getOpenExPIndexImpl(ctx),
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
 		})
@@ -85,17 +85,26 @@ func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path
 	return newImportPIndexImpl
 }
 
-// openPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, which always creates new pindexes.
-//
-// This callback is used by cbft to read pindex definitions from disk.
+// openPIndexImpl is required for cbgt, but this is used by Sync Gateway.
 func openPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	// This callback is used by cbft to read pindex definitions from disk.
 	return nil, nil, errors.New("Open PIndexImpl not supported for SG 3.0 databases - must provide index params")
 }
 
-// getOpenExPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, which always creates new
-// pindexes.
-//
-// This callback is used by cbft to read pindex definitions from disk.
-func openExPIndexImpl(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	return nil, nil, fmt.Errorf("PIndexImplType.OpenEx not supported for Sync Gateway.")
+// getOpenExPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, only uses PIndexImplType.New
+func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	// This callback is used by cbft to read pindex definitions from disk.
+	// Implement usage here in case cbgt changes behavior in the future.
+	return func(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
+		p, ok := options["indexParams"]
+		if !ok {
+			return nil, nil, errors.New("indexParams missing from options for OpenExPIndexImpl")
+		}
+		indexParams, ok := p.(string)
+		if !ok {
+			return nil, nil, errors.New("indexParams in options is not a string for OpenExPIndexImpl")
+		}
+		importDest, err := getListenerImportDest(ctx, indexParams, restart)
+		return nil, importDest, err
+	}
 }
