@@ -2245,6 +2245,33 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		}
 	}()
 
+	// Get current value of _sync:seq
+	initialSequence, seqErr := db.sequences.lastSequence(ctx)
+	if seqErr != nil {
+		return seqErr
+	}
+	initialSequenceTime := time.Now()
+
+	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
+
+	// Create config-based principals
+	// Create default users & roles:
+	if db.Options.ConfigPrincipals != nil {
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
+			return err
+		}
+		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
+			return err
+		}
+
+		if db.Options.ConfigPrincipals.Guest != nil {
+			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
+			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
 		db.mutationListener.Notify(ctx, changedChannels)
@@ -2306,38 +2333,12 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		return err
 	}
 
-	// Get current value of _sync:seq
-	initialSequence, seqErr := db.sequences.lastSequence(ctx)
-	if seqErr != nil {
-		return seqErr
-	}
-	initialSequenceTime := time.Now()
-
-	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
-
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
 	if initialSequence > 0 && !BypassReleasedSequenceWait.Load() {
 		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
-	// Create config-based principals
-	// Create default users & roles:
-	if db.Options.ConfigPrincipals != nil {
-		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
-			return err
-		}
-		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
-			return err
-		}
-
-		if db.Options.ConfigPrincipals.Guest != nil {
-			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
-			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
-				return err
-			}
-		}
-	}
 	if err := db.changeCache.Start(initialSequence); err != nil {
 		return err
 	}
