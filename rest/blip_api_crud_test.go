@@ -3288,7 +3288,6 @@ func TestBlipDisconnectOnDbOffline(t *testing.T) {
 
 				var blipPullContextClosed atomic.Bool
 				btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
-					log.Printf("on exit callback invoked")
 					blipPullContextClosed.Store(true)
 				}
 				// add some replication activity

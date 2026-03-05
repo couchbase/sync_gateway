@@ -129,7 +129,6 @@ type DatabaseContext struct {
 	AttachmentCompactionManager *BackgroundManager
 	AttachmentMigrationManager  *BackgroundManager
 	AsyncIndexInitManager       *BackgroundManager
-	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
@@ -2415,8 +2414,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err
 	}
-
-	db.ExitChanges = make(chan struct{})
 
 	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
 	// are detected and processed by this node.

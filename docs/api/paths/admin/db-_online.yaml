@@ -10,9 +10,7 @@ parameters:
 post:
   summary: Bring the database online
   description: |-
-    This will bring the database online on this node only so the Public and full Admin REST API requests can be served.
-
-    If using persistent config, call [POST /{db}/_config](#operation/post_db-_config) with `{"offline": false}` to set the database to online.
+    If using persistent config this will alter the database config in the bucket to take the database online across all nodes. If you're not using persistent config, this will bring the database online on this node only.
 
     Bringing a database online will:
     * Close the database connection to the backing Couchbase Server bucket.

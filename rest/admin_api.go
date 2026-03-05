@@ -264,18 +264,24 @@ func (h *handler) handleDbOnline() error {
 				currentDatabaseCfg := &DatabaseConfig{DbConfig: currentConfig}
 
 				dbCreds, _ := h.server.Config.DatabaseCredentials[h.db.Name]
-				if err := currentDatabaseCfg.setup(h.ctx(), h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+				if err := currentDatabaseCfg.setup(ctx.Ctx, h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+					// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
+					atomic.StoreUint32(&h.db.State, db.DBOffline)
 					base.WarnfCtx(ctx.Ctx, "config setup failed taking db online, Err: %v", err)
+					return
 				}
 				if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *currentDatabaseCfg); err != nil {
+					// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
+					atomic.StoreUint32(&h.db.State, db.DBOffline)
 					base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+					return
 				}
 			} else {
 				// persistent config here
 				bucket := h.db.Bucket.GetName()
 				dbName := h.db.Name
 				var updatedDbConfig *DatabaseConfig
-				cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				cas, err := h.server.BootstrapContext.UpdateConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 					if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 						return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 					}
@@ -284,11 +290,11 @@ func (h *handler) handleDbOnline() error {
 					// set config to offline false to start online processes
 					bucketDbConfig.StartOffline = base.Ptr(false)
 
-					if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
+					if err := bucketDbConfig.validateConfigUpdate(contextNoCancel.Ctx, oldConfig, false); err != nil {
 						return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 					}
 
-					bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+					bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(ctx.Ctx, bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 					if err != nil {
 						return nil, err
 					}
@@ -299,14 +305,18 @@ func (h *handler) handleDbOnline() error {
 				})
 				if err != nil {
 					base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+					// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
+					atomic.StoreUint32(&h.db.State, db.DBOffline)
 					return
 				}
 				updatedDbConfig.cfgCas = cas
 
 				dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 				bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-				if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+				if err := updatedDbConfig.setup(contextNoCancel.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 					base.WarnfCtx(ctx.Ctx, "config setup failed taking db online, Err: %v", err)
+					// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
+					atomic.StoreUint32(&h.db.State, db.DBOffline)
 					return
 				}
 
@@ -314,8 +324,10 @@ func (h *handler) handleDbOnline() error {
 				defer h.server._databasesLock.Unlock()
 
 				// TODO: Dynamic update instead of reload
-				if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+				if err := h.server._reloadDatabaseWithConfig(contextNoCancel.Ctx, *updatedDbConfig, false, false); err != nil {
 					base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
+					// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
+					atomic.StoreUint32(&h.db.State, db.DBOffline)
 					return
 				}
 			}
@@ -338,79 +350,63 @@ func (h *handler) handleDbOffline() error {
 	h.db.AccessLock.Lock()
 	defer h.db.AccessLock.Unlock()
 
-	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOnline, db.DBStopping) {
-		if !h.server.persistentConfig {
-			currentConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
-			oldConfig = currentConfig
-			currentConfig.StartOffline = base.Ptr(true)
-			currentDatabaseCfg := &DatabaseConfig{DbConfig: currentConfig}
+	if !h.server.persistentConfig {
+		currentConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+		oldConfig = currentConfig
+		currentConfig.StartOffline = base.Ptr(true)
+		currentDatabaseCfg := &DatabaseConfig{DbConfig: currentConfig}
 
-			dbCreds, _ := h.server.Config.DatabaseCredentials[h.db.Name]
-			if err := currentDatabaseCfg.setup(h.ctx(), h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
-				return err
-			}
-			if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *currentDatabaseCfg); err != nil {
-				return err
-			}
-		} else {
-			bucket := h.db.Bucket.GetName()
-			dbName := h.db.Name
-			var updatedDbConfig *DatabaseConfig
-			cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-				if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-				}
-				oldConfig = bucketDbConfig.DbConfig
-
-				// set config to offline true
-				bucketDbConfig.StartOffline = base.Ptr(true)
-
-				if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
-					return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
-				}
-
-				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-				if err != nil {
-					return nil, err
-				}
-
-				bucketDbConfig.SGVersion = base.ProductVersion.String()
-				updatedDbConfig = bucketDbConfig
-				return bucketDbConfig, nil
-			})
-			if err != nil {
-				return err
-			}
-			updatedDbConfig.cfgCas = cas
-
-			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-			if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
-				return err
-			}
-
-			h.server._databasesLock.Lock()
-			defer h.server._databasesLock.Unlock()
-
-			// TODO: Dynamic update instead of reload
-			if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
-				return err
-			}
+		dbCreds, _ := h.server.Config.DatabaseCredentials[h.db.Name]
+		if err := currentDatabaseCfg.setup(h.ctx(), h.db.Name, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+			return err
+		}
+		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *currentDatabaseCfg); err != nil {
+			return err
 		}
 	} else {
-		dbState := atomic.LoadUint32(&h.db.State)
-		// If the DB is already transitioning to: offline or is offline silently return
-		if dbState == db.DBOffline || dbState == db.DBResyncing || dbState == db.DBStopping {
-			return nil
+		bucket := h.db.Bucket.GetName()
+		dbName := h.db.Name
+		var updatedDbConfig *DatabaseConfig
+		cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+			}
+			oldConfig = bucketDbConfig.DbConfig
+
+			// set config to offline true
+			bucketDbConfig.StartOffline = base.Ptr(true)
+
+			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
+				return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+			}
+
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			bucketDbConfig.SGVersion = base.ProductVersion.String()
+			updatedDbConfig = bucketDbConfig
+			return bucketDbConfig, nil
+		})
+		if err != nil {
+			return err
+		}
+		updatedDbConfig.cfgCas = cas
+
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+		if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+			return err
 		}
 
-		msg := "Unable to take Database offline, database must be in Online state but was " + db.RunStateString[dbState]
-		if dbState == db.DBOnline {
-			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
-		}
+		h.server._databasesLock.Lock()
+		defer h.server._databasesLock.Unlock()
 
-		base.InfofCtx(h.ctx(), base.KeyCRUD, "%s", msg)
-		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
+		// TODO: Dynamic update instead of reload
+		if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+			return err
+		}
 	}
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
 	return nil

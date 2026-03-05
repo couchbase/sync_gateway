@@ -969,7 +969,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 		},
 	}
 
-	// roald db with invalid config, should fail online process and put db in offline state
+	// reload db with invalid config, should fail online process and put db in offline state
 	dbContext, err := rt.ServerContext().ReloadDatabase(ctx, "db", false)
 	require.Error(t, err)
 	require.Nil(t, dbContext)
