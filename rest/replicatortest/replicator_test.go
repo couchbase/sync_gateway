@@ -1850,6 +1850,11 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	defer func() {
 		base.SkipPrometheusStatsRegistration = true
 	}()
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
+
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -7174,8 +7179,6 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 }
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{

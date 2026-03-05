@@ -562,9 +562,10 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.TestRequiresCollections(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
 	defer rt.Close()
@@ -929,6 +930,9 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 // Tests the Diagnostic Endpoint to dry run Sync Function
 func TestSyncFuncDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
@@ -1499,6 +1503,9 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 		t.Skipf("Requires EE for some config properties")
 	}
 	base.SkipImportTestsIfNotEnabled(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -1697,6 +1704,9 @@ func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
 func TestImportFilterDryRun(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,

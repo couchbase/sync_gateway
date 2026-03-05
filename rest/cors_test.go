@@ -25,7 +25,9 @@ import (
 const accessControlAllowOrigin = "Access-Control-Allow-Origin"
 
 func TestCORSDynamicSet(t *testing.T) {
-	base.LongRunningTest(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,

@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -724,9 +725,11 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.TestRequiresCollections(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
 	defer rt.Close()

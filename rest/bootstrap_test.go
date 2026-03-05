@@ -29,6 +29,10 @@ import (
 // database created in the first step.
 func TestBootstrapRESTAPISetup(t *testing.T) {
 	base.LongRunningTest(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously. This is testing bootstrap code,
+	// to load the database, and the sleep is not helpful.
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

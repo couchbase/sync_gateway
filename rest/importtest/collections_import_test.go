@@ -27,6 +27,10 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -266,6 +270,10 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -361,6 +369,10 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only uses a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)

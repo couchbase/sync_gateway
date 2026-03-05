@@ -165,8 +165,6 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 // TestBlipProveAttachmentV2 ensures that CBL's proveAttachment for deduplication is working correctly even for v2 attachments which aren't de-duped on the server side.
 func TestBlipProveAttachmentV2(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -222,8 +220,6 @@ func TestBlipProveAttachmentV2(t *testing.T) {
 
 // TestBlipProveAttachmentV2Push ensures that CBL's attachment deduplication is ignored for push replications - resulting in new server-side digests and duplicated attachment data (v2 attachment format).
 func TestBlipProveAttachmentV2Push(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
