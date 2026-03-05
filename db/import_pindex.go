@@ -92,7 +92,7 @@ func openPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cb
 }
 
 // getOpenExPIndexImpl is required for cbgt, but this is not supported for Sync Gateway, only uses PIndexImplType.New
-func getOpenImportPIndexImplUsing(ctx context.Context) func(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
+func getOpenExPIndexImpl(ctx context.Context) func(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	// This callback is used by cbft to read pindex definitions from disk.
 	// Implement usage here in case cbgt changes behavior in the future.
 	return func(indexType, path string, restart func(), options map[string]any) (cbgt.PIndexImpl, cbgt.Dest, error) {
