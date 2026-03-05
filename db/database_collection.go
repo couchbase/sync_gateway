@@ -206,11 +206,6 @@ func (c *DatabaseCollection) eventMgr() *EventManager {
 	return c.dbCtx.EventMgr
 }
 
-// exitChanges will close active _changes feeds on the DB. This is a database level close.
-func (c *DatabaseCollection) exitChanges() chan struct{} {
-	return c.dbCtx.ExitChanges
-}
-
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
 	return c.dataStore.GetCollectionID()

@@ -3492,7 +3492,7 @@ func TestTakeDbOfflineUsingOfflineEndpoint(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusOK)
 			require.NoError(t, json.Unmarshal(resp.BodyBytes(), &preOfflineDBConfig))
 
-			preOfflineDBConfig.UpdatedAt = nil // nill this for comparison later in test
+			preOfflineDBConfig.UpdatedAt = nil // nil this for comparison later in test
 
 			// Take DB offline
 			resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")

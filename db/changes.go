@@ -1634,9 +1634,6 @@ loop:
 		case <-timeout:
 			forceClose = true
 			break loop
-		case <-database.exitChanges():
-			forceClose = true
-			break loop
 		case <-options.ChangesCtx.Done():
 			forceClose = true
 			break loop
