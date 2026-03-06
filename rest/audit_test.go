@@ -781,8 +781,6 @@ func TestRedactConfigAsStr(t *testing.T) {
 }
 
 func TestEffectiveUserID(t *testing.T) {
-	base.LongRunningTest(t)
-
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
@@ -1605,6 +1603,10 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously
+	db.DisableSequenceWaitOnDbRestart(t)
+
 	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
@@ -1808,8 +1810,6 @@ func TestDatabaseAuditChanges(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
-
-	db.DisableSequenceWaitOnDbRestart(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

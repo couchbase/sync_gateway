@@ -2245,6 +2245,15 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		}
 	}()
 
+	// Get current value of _sync:seq
+	initialSequence, seqErr := db.sequences.lastSequence(ctx)
+	if seqErr != nil {
+		return seqErr
+	}
+	initialSequenceTime := time.Now()
+
+	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
+
 	// Create config-based principals
 	// Create default users & roles:
 	if db.Options.ConfigPrincipals != nil {
@@ -2323,15 +2332,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
 		return err
 	}
-
-	// Get current value of _sync:seq
-	initialSequence, seqErr := db.sequences.lastSequence(ctx)
-	if seqErr != nil {
-		return seqErr
-	}
-	initialSequenceTime := time.Now()
-
-	base.InfofCtx(ctx, base.KeyCRUD, "Database has _sync:seq value on startup of %d", initialSequence)
 
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
