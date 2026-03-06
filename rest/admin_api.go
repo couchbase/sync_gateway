@@ -772,8 +772,6 @@ func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, db
 	updatedDbConfig := &DatabaseConfig{}
 	oldDBConfig := h.server.GetDatabaseConfig(dbName).DatabaseConfig.DbConfig
 	updatedDbConfig.DbConfig = oldDBConfig
-	// We have a long-standing behaviour where POST to dbconfig for non-persistent config acts a PUT.
-	// This is behaviour we cannot change at this time, see CBG-4618 for more info
 	if mergeConfig {
 		base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
 		if err := base.ConfigMerge(&updatedDbConfig.DbConfig, dbConfig); err != nil {
