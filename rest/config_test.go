@@ -758,7 +758,8 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	ClearServerContextLoggingGlobals(t)
+
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -875,7 +876,8 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	ClearServerContextLoggingGlobals(t)
+
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{

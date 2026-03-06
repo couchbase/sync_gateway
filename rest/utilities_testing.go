@@ -2810,4 +2810,7 @@ func ClearServerContextLoggingGlobals(t *testing.T) {
 	// the end of the test must clean up global logging
 	base.ResetGlobalTestLogging(t)
 	serverContextGlobalsInitialized.Store(false)
+	t.Cleanup(func() {
+		serverContextGlobalsInitialized.Store(true)
+	})
 }
