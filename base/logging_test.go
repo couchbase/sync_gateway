@@ -238,6 +238,7 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 	SetUpTestLogging(t, LevelInfo, KeyAll) // force logging to be set
 	for i := range levelCount {
 		t.Run("level="+i.String(), func(t *testing.T) {
+			consoleLogger.Load().LogLevel.Set(i)
 			AssertLogContains(t, LongVersionString, func() { LogSyncGatewayVersion(TestCtx(t)) })
 		})
 	}
