@@ -3439,7 +3439,7 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
-func TestTakeDbOfflineUsingOfflineEndpoint(t *testing.T) {
+func TestTakeDbOfflineOnlineUsingOfflineEndpoint(t *testing.T) {
 	testCases := []struct {
 		name             string
 		persistentConfig bool

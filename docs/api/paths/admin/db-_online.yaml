@@ -10,7 +10,9 @@ parameters:
 post:
   summary: Bring the database online
   description: |-
-    If using persistent config this will alter the database config in the bucket to take the database online across all nodes. If you're not using persistent config, this will bring the database online on this node only.
+    Transition the state of the database to online.
+
+    If using persistent config this will affect all Sync Gateway nodes, otherwise this is operation is local to the node.
 
     Bringing a database online will:
     * Close the database connection to the backing Couchbase Server bucket.
