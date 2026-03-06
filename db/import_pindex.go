@@ -20,7 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// registerPindexImplMutex locks access to cbgt.RegisterPindexImpl.
+// registerPindexImplMutex serializes access to cbgt.RegisterPIndexImplType, which uses global state without its own synchronization.
 var registerPindexImplMutex = sync.Mutex{}
 
 // RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
