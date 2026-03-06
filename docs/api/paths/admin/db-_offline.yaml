@@ -10,7 +10,9 @@ parameters:
 post:
   summary: Take the database offline
   description: |-
-    If using persistent config this will alter the database config in the bucket to take the database offline across all nodes. If you're not using persistent config, this will bring the database online on this node only. Actions can be taken without disrupting current operations ungracefully or having the restart the Sync Gateway instance.
+    Transition the state of the database to offline. This database will no longer accept traffic and only maintenance operations can be performed. This operation blocks until all REST traffic is idle.
+
+    If using persistent config this will affect all Sync Gateway nodes, otherwise this is operation is local to the node.
 
     This will not take the backing Couchbase Server bucket offline.
 

@@ -3305,6 +3305,11 @@ func TestContinuousChangesDoesNotBlockIOffline(t *testing.T) {
 
 	// assert that we can take db offline still
 	rt.TakeDbOffline()
+
+	// expect changes to be closed after offline
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
+	}, 0)
 }
 
 func TestPublicAllDocsApiStats(t *testing.T) {
