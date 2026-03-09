@@ -1103,3 +1103,24 @@ func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
 	require.GreaterOrEqual(t, factor, time.Duration(1), "Caching feed delay factor must be greater than 0, or wait functions will not work. Modify the factor value")
 	return factor
 }
+
+// GetAttachmentCompactionManagerStatus retrieves the status of the attachment compaction manager returns as a typed struct.
+func GetAttachmentCompactionManagerStatus(t *testing.T, db *DatabaseContext) AttachmentManagerResponse {
+	ctx := base.TestCtx(t)
+	rawStatus, err := db.AttachmentCompactionManager.GetStatus(ctx)
+	require.NoError(t, err)
+	var status AttachmentManagerResponse
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+	return status
+}
+
+// GetAttachmentMigrationStatus retrieves the status of the attachment migration manager and returns it as a typed
+// struct.
+func GetAttachmentMigrationStatus(t testing.TB, db *DatabaseContext) AttachmentMigrationManagerResponse {
+	ctx := base.TestCtx(t)
+	rawStatus, err := db.AttachmentMigrationManager.GetStatus(ctx)
+	require.NoError(t, err)
+	var resp AttachmentMigrationManagerResponse
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
+	return resp
+}

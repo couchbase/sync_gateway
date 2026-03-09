@@ -111,7 +111,6 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	// This may not be true if a user migrated/XDCR'd an existing _default collection into a named collection,
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
 	dataStore := database.Bucket.DefaultDataStore()
-	collectionID := base.DefaultCollectionID
 	var metadataKeyPrefix string
 
 	persistClusterStatus := func() {
@@ -133,7 +132,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("mark")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			_, a.VBUUIDs, metadataKeyPrefix, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+			_, a.VBUUIDs, metadataKeyPrefix, err = attachmentCompactMarkPhase(ctx, dataStore, database, a.CompactID, terminator, &a.MarkedAttachments)
 			if err != nil {
 				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, metadataKeyPrefix)
 			}
@@ -152,7 +151,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -161,7 +160,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, database, a.CompactID, a.VBUUIDs, terminator)
 			if err != nil {
 				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
 			}

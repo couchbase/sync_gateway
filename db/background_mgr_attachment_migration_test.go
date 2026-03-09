@@ -48,31 +48,19 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
 	}
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err := attachMigrationMgr.Start(ctx, nil)
+	err := db.AttachmentCompactionManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	stats := waitForAttachmentMigrationState(t, db, BackgroundProcessStateCompleted)
 
 	// assert that the subset (5) of the docs were changed, all created docs were processed (10)
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 	assert.Equal(t, int64(10), stats.DocsProcessed)
 	assert.Equal(t, int64(5), stats.DocsChanged)
 
 	// assert that the sync info metadata version doc has been written to the database collection
 	AssertSyncInfoMetaVersion(t, collection.dataStore)
 
-}
-
-func getAttachmentMigrationStats(t *testing.T, migrationManager BackgroundManagerProcessI) AttachmentMigrationManagerResponse {
-	var resp AttachmentMigrationManagerResponse
-	rawStatus, _, err := migrationManager.GetProcessStatus(BackgroundManagerStatus{})
-	require.NoError(t, err)
-	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
-	return resp
 }
 
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
@@ -96,10 +84,8 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, doc.Attachments())
 	}
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
 
-	err := attachMigrationMgr.Start(ctx, nil)
+	err := db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// Attempt to Stop Process
@@ -108,9 +94,10 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for {
-			stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+			stats := GetAttachmentMigrationStatus(t, db.DatabaseContext)
+
 			if stats.DocsProcessed >= 200 {
-				err = attachMigrationMgr.Stop()
+				err = db.AttachmentMigrationManager.Stop()
 				require.NoError(t, err)
 				break
 			}
@@ -118,9 +105,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		}
 	}()
 
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateStopped)
-
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats := waitForAttachmentMigrationState(t, db, BackgroundProcessStateStopped)
 	require.Less(t, stats.DocsProcessed, int64(4000))
 
 	// assert that the sync info metadata version is not present
@@ -129,12 +114,10 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	require.Error(t, err)
 
 	// Resume process
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
-
-	stats = getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats = waitForAttachmentMigrationState(t, db, BackgroundProcessStateCompleted)
 	require.GreaterOrEqual(t, stats.DocsProcessed, int64(4000))
 
 	// assert that the sync info metadata version doc has been written to the database collection
@@ -162,17 +145,12 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 	_, err = collection.dataStore.Add(key, 0, []byte(`{"test":"doc"}`))
 	require.NoError(t, err)
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentCompactionManager.Start(ctx, nil)
 	require.NoError(t, err)
 
-	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	stats := waitForAttachmentMigrationState(t, db, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 	// no docs should be changed, only one has xattr defined thus should only have one of the two docs processed
 	assert.Equal(t, int64(1), stats.DocsProcessed)
 	assert.Equal(t, int64(0), stats.DocsChanged)
@@ -220,17 +198,12 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, updateXattrs, DefaultMutateInOpts())
 	require.NoError(t, err)
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
-	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	stats := waitForAttachmentMigrationState(t, db, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 	assert.Equal(t, int64(1), stats.DocsProcessed)
 	assert.Equal(t, int64(1), stats.DocsChanged)
 
@@ -327,4 +300,11 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			require.Equal(t, test.expected, dcpClient.GetMetadataKeyPrefix())
 		})
 	}
+}
+
+// waitForAttachmentMigrationState waits for the attachment migration manager to reach the expected state, and returns
+// the latest stats for the process. Fails the test harness if the expectedState is not reached.
+func waitForAttachmentMigrationState(t *testing.T, db *Database, expectedState BackgroundProcessState) AttachmentMigrationManagerResponse {
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, expectedState)
+	return GetAttachmentMigrationStatus(t, db.DatabaseContext)
 }

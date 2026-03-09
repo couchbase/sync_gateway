@@ -31,7 +31,7 @@ const (
 	CleanupPhase    attachmentCompactionPhase = "cleanup"
 )
 
-func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, checkpointPrefix string, err error) {
+func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, db *Database, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, vbUUIDs []uint64, checkpointPrefix string, err error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
@@ -136,7 +136,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	clientOptions := getCompactionDCPClientOptions(
 		db,
 		compactionID,
-		collectionID,
+		dataStore.GetCollectionID(),
 		MarkPhase,
 	)
 
@@ -310,7 +310,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 
 // attachmentCompactSweepPhase will process all v1 attachments and purge any which are marked with the supplied xattr.
 // Returns the number of purged documents, the dcp checkpoint prefix, and any error.
-func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, string, error) {
+func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -384,7 +384,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	clientOptions := getCompactionDCPClientOptions(
 		db,
 		compactionID,
-		collectionID,
+		dataStore.GetCollectionID(),
 		SweepPhase,
 	)
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)
@@ -434,7 +434,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 // attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with an attachment compaction xattr. Returns
 // the DCP checkpoint prefix and any error encountered.
-func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
+func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
@@ -522,7 +522,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	clientOptions := getCompactionDCPClientOptions(
 		db,
 		compactionID,
-		collectionID,
+		dataStore.GetCollectionID(),
 		CleanupPhase,
 	)
 	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(vbUUIDs)

@@ -308,7 +308,7 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	postReloadStatus := getAttachmentMigrationManagerStatus(rt)
+	postReloadStatus := db.GetAttachmentMigrationStatus(rt.TB(), rt.GetDatabase())
 	require.Equal(t, postRunStatus, postReloadStatus)
 	assert.Len(t, dbCtx.RequireAttachmentMigration, 0)
 }
@@ -369,18 +369,9 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	assert.ErrorContains(t, err, "Process already running")
 }
 
-// getAttachmentMigrationManagerStatusMigrationManagerStatus returns the status of the AttachmentMigrationManager for a single database RestTester.
-func getAttachmentMigrationManagerStatus(rt *rest.RestTester) db.AttachmentMigrationManagerResponse {
-	var mgrStatus db.AttachmentMigrationManagerResponse
-	stat, err := rt.GetDatabase().AttachmentMigrationManager.GetStatus(rt.Context())
-	require.NoError(rt.TB(), err)
-	require.NoError(rt.TB(), base.JSONUnmarshal(stat, &mgrStatus))
-	return mgrStatus
-}
-
 // waitForAttachmentMigrationState waits for the AttachmentMigrationManager to reach the expected state and then returns
 // its status.
 func waitForAttachmentMigrationState(rt *rest.RestTester, expectedState db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
 	db.RequireBackgroundManagerState(rt.TB(), rt.GetDatabase().AttachmentMigrationManager, expectedState)
-	return getAttachmentMigrationManagerStatus(rt)
+	return db.GetAttachmentMigrationStatus(rt.TB(), rt.GetDatabase())
 }
