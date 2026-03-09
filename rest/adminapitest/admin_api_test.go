@@ -164,11 +164,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 
 func TestLoggingKeys(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -176,41 +172,36 @@ func TestLoggingKeys(t *testing.T) {
 
 	// Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]any{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var updatedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &updatedLogKeys))
-	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 
 	// Disable Changes logKey which should also disable Changes+
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var deletedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &deletedLogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, deletedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var appendedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &appendedLogKeys))
-	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 
 	// Disable Changes++ (POST modifies logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabledLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabledLogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabledLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -219,9 +210,8 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled2LogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled2LogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled2LogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -230,17 +220,15 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled3LogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled3LogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled3LogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Disable all logKeys by using PUT with an empty channel list
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var noLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &noLogKeys))
-	assert.Equal(t, map[string]any{}, noLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 }
 
 func TestServerlessChangesEndpointLimit(t *testing.T) {
@@ -299,11 +287,8 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 }
 
 func TestLoggingLevels(t *testing.T) {
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	base.ResetGlobalTestLogging(t)
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -311,9 +296,8 @@ func TestLoggingLevels(t *testing.T) {
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]bool
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set log level via logLevel query parameter
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
@@ -337,11 +321,8 @@ func TestLoggingLevels(t *testing.T) {
 }
 
 func TestLoggingCombined(t *testing.T) {
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	base.ResetGlobalTestLogging(t)
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -349,16 +330,15 @@ func TestLoggingCombined(t *testing.T) {
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]bool
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set log keys and log level in a single request
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{"Changes": true, "Cache": true, "HTTP": true}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 }
 
 func TestGetStatus(t *testing.T) {
@@ -2497,6 +2477,7 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 }
 
 func TestConfigEndpoint(t *testing.T) {
+	rest.ClearServerContextLoggingGlobals(t)
 	testCases := []struct {
 		Name              string
 		Config            string
@@ -2697,6 +2678,7 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 }
 
 func TestInitialStartupConfig(t *testing.T) {
+	rest.ClearServerContextLoggingGlobals(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2731,7 +2713,7 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	rest.ClearServerContextLoggingGlobals(t)
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
@@ -2983,7 +2965,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	rest.ClearServerContextLoggingGlobals(t)
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

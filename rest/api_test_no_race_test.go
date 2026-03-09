@@ -138,6 +138,8 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 }
 
 func TestSetupAndValidate(t *testing.T) {
+	ClearServerContextLoggingGlobals(t)
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; it only works on Walrus bucket")
 	}

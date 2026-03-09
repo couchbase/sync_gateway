@@ -203,7 +203,7 @@ func TestBootstrapPingAPI(t *testing.T) {
 
 // Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
 func DevTestFetchConfigManual(t *testing.T) {
-
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error)
