@@ -942,25 +942,9 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 }
 
 func TestDatabaseStartupFailure(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("EE only test, requires heartbeater error")
-	}
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("LeakyBucketConfig not supported on CBS")
-	}
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close(t.Context())
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
-
-	dbCfg := rt.NewDbConfig()
-	RequireStatus(t, rt.CreateDatabase("db", dbCfg), http.StatusCreated)
 
 	// alter in memory db config to invalid config that will fail online process
 	rt.ServerContext()._dbConfigs["db"].Users = map[string]*auth.PrincipalConfig{
@@ -971,7 +955,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 
 	// reload db with invalid config, should fail online process and put db in offline state
 	dbContext, err := rt.ServerContext().ReloadDatabase(ctx, "db", false)
-	require.Error(t, err)
+	require.ErrorContains(t, err, "must either specify all OIDC properties or none")
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
 
