@@ -264,7 +264,7 @@ func (c *DatabaseCollection) localDocExpirySecs() uint32 {
 
 // mutationListener returns mutation level for the database.
 func (c *DatabaseCollection) mutationListener() *changeListener {
-	return &c.dbCtx.mutationListener
+	return c.dbCtx.mutationListener
 }
 
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.

@@ -89,8 +89,8 @@ post:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Document
   operationId: post_keyspace-_purge

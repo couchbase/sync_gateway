@@ -184,7 +184,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(r.collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
+	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs)
 
 	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
 
@@ -495,22 +495,26 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
-// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getResyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
+// getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
+// represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
+// used to store DCP checkpoints.
+func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionIDs []uint32) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
+		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  prefix,
+		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID),
 	}
 }
 
-// GenerateResyncDCPStreamName returns the DCP stream name for a resync.
-func GenerateResyncDCPStreamName(resyncID string) string {
+// GetResyncDCPCheckpointPrefix returns the prefix of the DCP checkpoint documents for resync.
+func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string) string {
 	return fmt.Sprintf(
-		"sg-%v:resync:%v",
+		"%s:sg-%v:resync:%v",
+		db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 		base.ProductAPIVersion,
-		resyncID)
+		resyncID,
+	)
 }

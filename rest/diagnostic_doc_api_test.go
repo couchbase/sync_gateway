@@ -929,7 +929,6 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 // Tests the Diagnostic Endpoint to dry run Sync Function
 func TestSyncFuncDryRun(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
@@ -1698,7 +1697,6 @@ func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
 func TestImportFilterDryRun(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,

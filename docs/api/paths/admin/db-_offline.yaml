@@ -30,8 +30,8 @@ post:
   responses:
     '200':
       description: Database has been taken offline successfully
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':
       description: An error occurred while trying to take the database offline
       content:

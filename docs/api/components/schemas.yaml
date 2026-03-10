@@ -1105,6 +1105,12 @@ Database:
                 you may find that the capacity stat (revision_cache_num_items) will climb to the defined rev cache size + 10%.
               type: integer
               default: 5000
+            insert_on_write:
+              description: |-
+                Whether to insert revisions into the revision cache when documents are written to the database.
+                If false, only revisions read from the database will be cached.
+              type: boolean
+              default: false
         channel_cache_expiry:
           description: |-
             **Deprecated, please use the database setting `cache.channel_cache.expiry_seconds` instead**
@@ -1437,7 +1443,7 @@ Database:
               type: array
               items:
                 type: number
-                example: [1234, 5678]
+              example: [1234, 5678]
         console:
           description: Console logging configuration.
           type: object
@@ -2802,7 +2808,7 @@ Console-logging-keys-level:
           "WS": "Websocket replication log messages."
           "WSFrame": "Additional logging on top of `WS` key."
           "gocb": "All logging emitted by the gocb SDK"
-        example: ["CRUD", "HTTP", "Query"]
+      example: ["CRUD", "HTTP", "Query"]
 Console-logging-config:
   title: Configuration for console logging.
   allOf:
@@ -2886,7 +2892,7 @@ Vendor:
         API version.
         Omitted if `api.hide_product_version=true`
       type: string
-      example: 3.1
+      example: "3.1"
   required:
     - name
   title: Vendor
@@ -2995,7 +3001,7 @@ CollectionNames:
   type: array
   items:
     type: string
-    example: ["collection1", "collection2"]
+  example: ["collection1", "collection2"]
 "All DBs":
   title: Simple
   description: "The names of all databases."

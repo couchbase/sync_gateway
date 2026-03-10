@@ -389,30 +389,30 @@ func TestSanitizeRequestURL(t *testing.T) {
 			"", "",
 		},
 		{
-			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E",
-			"http://localhost:4985/default/_oidc_callback?code=******",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=******",
 		},
 		{
-			"http://localhost:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s",
-			"http://localhost:4985/default/_oidc_refresh?refresh_token=******",
+			"http://127.0.0.1:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s",
+			"http://127.0.0.1:4985/default/_oidc_refresh?refresh_token=******",
 		},
 		{
 			// Ensure non-matching parameters aren't getting sanitized
-			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456",
-			"http://localhost:4985/default/_oidc_callback?code=******&state=123456",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=******&state=123456",
 		},
 		{
-			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
-			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
+			"http://127.0.0.1:4985/default/_changes?since=5&feed=longpoll",
+			"http://127.0.0.1:4985/default/_changes?since=5&feed=longpoll",
 		},
 		{
 			// Ensure matching non-parameters aren't getting sanitized
-			"http://localhost:4985/default/doctokencode",
-			"http://localhost:4985/default/doctokencode",
+			"http://127.0.0.1:4985/default/doctokencode",
+			"http://127.0.0.1:4985/default/doctokencode",
 		},
 		{
-			"http://localhost:4985/default/doctoken=code=",
-			"http://localhost:4985/default/doctoken=code=",
+			"http://127.0.0.1:4985/default/doctoken=code=",
+			"http://127.0.0.1:4985/default/doctoken=code=",
 		},
 	}
 
@@ -434,44 +434,44 @@ func TestSanitizeRequestURLRedaction(t *testing.T) {
 	}{
 		{
 			// channels should be tagged as UserData
-			"http://localhost:4985/default/_changes?channels=A",
-			"http://localhost:4985/default/_changes?channels=A",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A",
+			"http://127.0.0.1:4985/default/_changes?channels=A",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>",
 		},
 		{
 			// Multiple tagged params
-			"http://localhost:4985/default/_changes?channels=A&startkey=B",
-			"http://localhost:4985/default/_changes?channels=A&startkey=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&startkey=<ud>B</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A&startkey=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&startkey=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&startkey=<ud>B</ud>",
 		},
 		{
 			// What about multiple channels?
-			"http://localhost:4985/default/_changes?channels=A&channels=B",
-			"http://localhost:4985/default/_changes?channels=A&channels=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&channels=<ud>B</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A&channels=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&channels=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&channels=<ud>B</ud>",
 		},
 		{
 			// Non-matching params?
-			"http://localhost:4985/default/_changes?channels=A&other=B",
-			"http://localhost:4985/default/_changes?channels=A&other=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&other=B",
 		},
 		{
 			// Conflicting values
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>A</ud>&other=A",
 		},
 		{
 			// More conflicting values
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>A</ud>&other=A",
 		},
 		{
-			"http://localhost:4985/A/_changes?channels=🔥",
-			"http://localhost:4985/A/_changes?channels=🔥",
-			"http://localhost:4985/A/_changes?channels=<ud>🔥</ud>",
+			"http://127.0.0.1:4985/A/_changes?channels=🔥",
+			"http://127.0.0.1:4985/A/_changes?channels=🔥",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>🔥</ud>",
 		},
 	}
 

@@ -143,67 +143,67 @@ func TestLegacyServerAddressUpgrade(t *testing.T) {
 	}{
 		{
 			name:             "Keep couchbase ports",
-			server:           "couchbase://localhost:8091,localhosttwo:1234?network=true",
+			server:           "couchbase://127.0.0.1:8091,127.0.0.2:1234?network=true",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost:8091,localhosttwo:1234?network=true",
+			expectedServer:   "couchbase://127.0.0.1:8091,127.0.0.2:1234?network=true",
 			expectedUsername: "",
 			expectedPassword: "",
 		},
 		{
 			name:           "Convert, do not keep trailing comma",
-			server:         "http://localhost:8091,127.0.0.2:8091,",
+			server:         "http://127.0.0.1:8091,127.0.0.2:8091,",
 			expectError:    false,
-			expectedServer: "couchbase://localhost,127.0.0.2",
+			expectedServer: "couchbase://127.0.0.1,127.0.0.2",
 		},
 		{
 			name:           "Do not keep trailing comma, couchbases://",
-			server:         "couchbases://localhost,127.0.0.2,",
+			server:         "couchbases://127.0.0.1,127.0.0.2,",
 			expectError:    false,
-			expectedServer: "couchbases://localhost,127.0.0.2",
+			expectedServer: "couchbases://127.0.0.1,127.0.0.2",
 		},
 		{
 			name:             "Convert, strip ports, parse username and password, keep query params",
-			server:           "http://foo:bar@localhost,127.0.0.2:8091?network=true",
+			server:           "http://foo:bar@127.0.0.1,127.0.0.2:8091?network=true",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost,127.0.0.2?network=true",
+			expectedServer:   "couchbase://127.0.0.1,127.0.0.2?network=true",
 			expectedUsername: "foo",
 			expectedPassword: "bar",
 		},
 		{
 			name:             "Couchbase:// with username and password",
-			server:           "http://foo:bar@localhost:8091",
+			server:           "http://foo:bar@127.0.0.1:8091",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost",
+			expectedServer:   "couchbase://127.0.0.1",
 			expectedUsername: "foo",
 			expectedPassword: "bar",
 		},
 		{
 			name:             "http:// with username but no password (invalid for CBS)",
-			server:           "http://foo@localhost",
+			server:           "http://foo@127.0.0.1",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost",
+			expectedServer:   "couchbase://127.0.0.1",
 			expectedUsername: "",
 			expectedPassword: "",
 		},
 		{
 			name:             "Couchbase:// with password but no username (invalid for CBS)",
-			server:           "http://:foo@localhost:8091",
+			server:           "http://:foo@127.0.0.1:8091",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost",
+			expectedServer:   "couchbase://127.0.0.1",
 			expectedUsername: "",
 			expectedPassword: "",
 		},
 		{
 			name:             "Multi params with & separators, alphabetical order",
-			server:           "http://foo:bar@localhost,127.0.0.2?c=3&a=1&b=2",
+			server:           "http://foo:bar@127.0.0.1,127.0.0.2?c=3&a=1&b=2",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost,127.0.0.2?a=1&b=2&c=3",
+			expectedServer:   "couchbase://127.0.0.1,127.0.0.2?a=1&b=2&c=3",
 			expectedUsername: "foo",
 			expectedPassword: "bar",
 		},
 		{
 			name:        "Error due to unknown port",
-			server:      "http://foo:bar@localhost:8091,127.0.0.2:1234?network=true",
+			server:      "http://foo:bar@127.0.0.1:8091,127.0.0.2:1234?network=true",
 			expectError: true,
 		},
 		{
@@ -483,7 +483,7 @@ func TestLegacyReplicationConfigValidation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set required replication fields to avoid errors
-			test.input["repl"].Remote = "localhost"
+			test.input["repl"].Remote = "127.0.0.1"
 			test.input["repl"].Direction = "pull"
 
 			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{Replications: test.input}}}

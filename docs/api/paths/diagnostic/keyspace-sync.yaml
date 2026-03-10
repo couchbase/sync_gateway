@@ -70,35 +70,34 @@ post:
 
                     To provide the user XATTR, include a property whose name exactly matches the configured `user_xattr_key`.
                   type: object
-                  properties:
-                    additionalProperties:
-                      x-additionalPropertiesName: user_xattr_key
-                      description: The user XATTR JSON value. The property name must exactly match the configured `user_xattr_key`. The value can be any valid JSON type (Object, String, Number, etc.)
-                      oneOf:
-                        - type: object
-                          additionalProperties: true
-                          example:
-                            foo: bar
-                          description: An object value to be used as the user XATTR.
-                        - type: string
-                          example: foo
-                          description: A string value to be used as the user XATTR.
-                        - type: integer
-                          example: 100
-                          description: A number value to be used as the user XATTR.
-                        - type: boolean
-                          example: true
-                          description: A boolean value to be used as the user XATTR.
-                        - type: array
-                          items:
-                            example:
-                              - foo
-                              - bar
-                            description: An array of values to be used as the user XATTR.
-
                   example:
-                    my_user_xattr_key:
+                    user_xattr_key:
                       foo: bar
+                  additionalProperties:
+                    x-additionalPropertiesName: user_xattr_key
+                    description: The user XATTR JSON value. The property name must exactly match the configured `user_xattr_key`. The value can be any valid JSON type (Object, String, Number, etc.)
+                    maxProperties: 1
+                    oneOf:
+                      - type: object
+                        additionalProperties: true
+                        example:
+                          foo: bar
+                        description: An object value to be used as the user XATTR.
+                      - type: string
+                        example: foo
+                        description: A string value to be used as the user XATTR.
+                      - type: integer
+                        example: 100
+                        description: A number value to be used as the user XATTR.
+                      - type: boolean
+                        example: true
+                        description: A boolean value to be used as the user XATTR.
+                      - type: array
+                        items:
+                          example:
+                            - foo
+                            - bar
+                          description: An array of values to be used as the user XATTR.
             userCtx:
               description: |-
                 Optional user context used during evaluation. Can be used to test a document update as a non-admin user. Used by Sync Function utilities `requireUser()`, `requireRole()`, `requireAccess()`, etc.

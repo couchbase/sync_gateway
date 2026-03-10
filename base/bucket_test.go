@@ -43,31 +43,31 @@ func TestGetGoCBConnString(t *testing.T) {
 		{
 			name: "v2 default values",
 			bucketSpec: BucketSpec{
-				Server: "http://localhost:8091",
+				Server: "http://127.0.0.1:8091",
 			},
-			expectedConnStr:    "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://127.0.0.1:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://127.0.0.1:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 no CA cert path",
 			bucketSpec: BucketSpec{
-				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
+				Server:               "http://127.0.0.1:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 			},
-			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://127.0.0.1:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://127.0.0.1:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 all values",
 			bucketSpec: BucketSpec{
-				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
+				Server:               "http://127.0.0.1:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 				Certpath:             "/myCertPath",
 				Keypath:              "/my/key/path",
 				CACertPath:           "./myCACertPath",
 			},
-			expectedConnStr:    "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedDCPConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr:    "http://127.0.0.1:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedDCPConnStr: "http://127.0.0.1:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
 
@@ -279,13 +279,13 @@ func TestGetStatsVbSeqno(t *testing.T) {
 
 func TestIsTLS(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
-	fakeBucketSpec.Server = "http://localhost:8091"
+	fakeBucketSpec.Server = "http://127.0.0.1:8091"
 	assert.False(t, fakeBucketSpec.IsTLS())
-	fakeBucketSpec.Server = "https://localhost:443"
+	fakeBucketSpec.Server = "https://127.0.0.1:443"
 	assert.False(t, fakeBucketSpec.IsTLS())
-	fakeBucketSpec.Server = "couchbase://localhost"
+	fakeBucketSpec.Server = "couchbase://127.0.0.1"
 	assert.False(t, fakeBucketSpec.IsTLS())
-	fakeBucketSpec.Server = "couchbases://localhost"
+	fakeBucketSpec.Server = "couchbases://127.0.0.1"
 	assert.True(t, fakeBucketSpec.IsTLS())
 }
 
@@ -399,7 +399,7 @@ func TestTLSConfig(t *testing.T) {
 
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{
-		Server:     "http://localhost:8091",
+		Server:     "http://127.0.0.1:8091",
 		Certpath:   "/var/lib/couchbase/unknown.client.cert",
 		Keypath:    "/var/lib/couchbase/unknown.client.key",
 		CACertPath: "/var/lib/couchbase/unknown.root.ca.pem",

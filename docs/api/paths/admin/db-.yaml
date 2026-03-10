@@ -69,8 +69,8 @@ get:
               init_in_progress:
                 description: Indicates whether database initialization is in progress.
                 type: boolean
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Management
   operationId: get_db-
@@ -92,8 +92,8 @@ delete:
           schema:
             type: object
             properties: {}
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '500':
       description: Cannot remove database from bucket
       content:
@@ -114,8 +114,8 @@ head:
   responses:
     '200':
       description: Database exists
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Management
   operationId: head_db-

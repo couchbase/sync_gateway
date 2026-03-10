@@ -1959,8 +1959,6 @@ func TestDocIDFilterResurrection(t *testing.T) {
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	})
@@ -2532,7 +2530,6 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))
@@ -2572,7 +2569,6 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))

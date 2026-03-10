@@ -35,8 +35,6 @@ func TestReproduce2383(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
@@ -291,8 +289,6 @@ func TestPostChangesUserTiming(t *testing.T) {
 }
 
 func TestPostChangesSinceInteger(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -576,6 +572,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   2. Update abc-3 to remove from channel ABC
 	rt.DeleteDoc(abc2ID, abc2Version)
 	_ = rt.UpdateDoc(abc3ID, abc3Version, `{}`)
+	rt.WaitForPendingChanges()
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -887,7 +884,6 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 	for _, test := range tests {
 		testName := fmt.Sprintf("%v user:%v manualNotify:%t", test.feedType, test.username, test.manualNotify)
 		t.Run(testName, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			rt := rest.NewRestTester(t, nil)
 			defer rt.Close()
@@ -953,7 +949,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -961,7 +957,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 2)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
+	rt.WaitForSequenceNotSkipped(6)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -981,17 +977,15 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	rt.WaitForSequence(3)
 
-	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
+	// WaitForSequence doesn't wait for low sequence to be updated on each channel - retry to ensure
 	// low is updated before making the next changes request.
-	time.Sleep(50 * time.Millisecond)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
-	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-	require.Len(t, changes.Results, 3)
+	changes = rt.WaitForChanges(3, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 7))
+	rt.WaitForSequenceNotSkipped(7)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1027,7 +1021,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -1036,7 +1030,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -1051,7 +1045,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1063,7 +1057,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1147,7 +1141,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 
 	const user = "alice"
 	rt.CreateUser(user, []string{"PBS"})
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	db.WriteDirect(t, collection, []string{"PBS"}, 1)
@@ -1155,7 +1149,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
+
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
@@ -1169,7 +1164,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1181,7 +1176,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1265,7 +1260,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -1274,7 +1269,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -1289,7 +1284,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1301,7 +1296,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1576,6 +1571,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	// Partially removed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	rest.RequireStatus(t, response, 201)
+	rt.WaitForPendingChanges()
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -1756,8 +1752,7 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
-	t.Skip("pending CBG-4542")
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -1847,6 +1842,8 @@ func TestChangesIncludeDocs(t *testing.T) {
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	rest.RequireStatus(t, response, 201)
+	// WaitForPendingChanges is required here to set LowSeq on the sequence of the changes
+	rt.WaitForPendingChanges()
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	rest.RequireStatus(t, response, 200)
 
@@ -1859,7 +1856,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[2] = `{"seq":4,"id":"doc_multi_rev","doc":{"_id":"doc_multi_rev","_rev":"2-db2cf770921c3764b2d213ee0cbb5f45","channels":["alpha"],"type":"active","v":2},"changes":[{"rev":"2-db2cf770921c3764b2d213ee0cbb5f45"}]}`
 	expectedResults[3] = `{"seq":6,"id":"doc_tombstone","deleted":true,"removed":["alpha"],"doc":{"_deleted":true,"_id":"doc_tombstone","_rev":"2-5bd8eb422f30e8d455940672e9e76549"},"changes":[{"rev":"2-5bd8eb422f30e8d455940672e9e76549"}]}`
 	expectedResults[4] = `{"seq":8,"id":"doc_removed","removed":["alpha"],"doc":{"_id":"doc_removed","_removed":true,"_rev":"2-d15cb77d1dbe1cc06d27310de5b75914"},"changes":[{"rev":"2-d15cb77d1dbe1cc06d27310de5b75914"}]}`
-	expectedResults[5] = `{"seq":12,"id":"doc_pruned","removed":["alpha"],"doc":{"_id":"doc_pruned","_removed":true,"_rev":"2-5afcb73bd3eb50615470e3ba54b80f00"},"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
+	// for doc_pruned 4.0 cannot differentiate between channel removal or missing document - document body will not be returned here
+	expectedResults[5] = `{"seq":12,"id":"doc_pruned","removed":["alpha"],"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
 	expectedResults[6] = `{"seq":18,"id":"doc_attachment","doc":{"_attachments":{"attach1":{"content_type":"text/plain","digest":"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=","length":30,"revpos":2,"stub":true}},"_id":"doc_attachment","_rev":"2-0b0457923508d99ec1929d2316d14cf2","channels":["alpha"],"type":"attachments"},"changes":[{"rev":"2-0b0457923508d99ec1929d2316d14cf2"}]}`
 	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
@@ -3289,8 +3287,6 @@ func TestChangesLargeSequences(t *testing.T) {
 }
 
 func TestIncludeDocsWithPrincipals(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()

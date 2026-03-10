@@ -106,11 +106,11 @@ type DatabaseContext struct {
 	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
 	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
 	Bucket                      base.Bucket        // Storage
-	BucketSpec                  base.BucketSpec    // The BucketSpec
+	bucketUsername              string             // name of the connecting user for audit logging
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            changeListener     // Caching feed listener
+	mutationListener            *changeListener    // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
 	sequences                   *sequenceAllocator // Source of new sequence numbers
 	StartTime                   time.Time          // Timestamp when context was instantiated
@@ -417,6 +417,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
+	bucketUsername := "rosmar_noauth"
+	b, err := base.AsGocbV2Bucket(bucket)
+	if err == nil {
+		bucketUsername, _, _ = b.GetSpec().Auth.GetCredentials()
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterPindexImpl(ctx, options.GroupID)
 
@@ -425,6 +431,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UUID:                 cbgt.NewUUID(),
 		MetadataStore:        metadataStore,
 		Bucket:               bucket,
+		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
 		StartTime:            time.Now(),
@@ -515,7 +522,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext)
+	dbContext.mutationListener, err = newChangeListener(bucket.GetName(), options.GroupID, dbContext)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(options.Scopes) == 0 {
 		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
@@ -596,6 +606,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
 	return dbContext, nil
 }
@@ -751,7 +762,12 @@ func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 	context.mutationListener.Stop(ctx)
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context)
+	var err error
+	context.mutationListener, err = newChangeListener(context.Bucket.GetName(), context.Options.GroupID, context)
+	if err != nil {
+		return err
+	}
+	context.mutationListener.OnChangeCallback = context.changeCache.DocChanged
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -2134,14 +2150,7 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 
 // AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
 func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
-	spec := dbCtx.BucketSpec
-	// Server is empty in testing only
-	if spec.Server == "" || spec.IsWalrusBucket() {
-		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
-	}
-	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
-	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
-
+	return base.UserLogCtx(ctx, dbCtx.bucketUsername, base.UserDomainBuiltin, nil)
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
@@ -2430,7 +2439,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+	if len(db.RequireAttachmentMigration) > 0 && !db.usingRosmar() {
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
@@ -2455,7 +2464,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
-	db.AsyncIndexInitManager = NewAsyncIndexInitManager(db.MetadataStore, db.MetadataKeys)
 
 	db.startReplications(ctx)
 
@@ -2575,6 +2583,18 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 	default:
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
+}
+
+// usingRosmar returns true if the database is configured to use Rosmar.
+func (db *DatabaseContext) usingRosmar() bool {
+	_, err := base.AsRosmarBucket(db.Bucket)
+	return err == nil
+}
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
+// if the sequence remains in skipped list.
+func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
+	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }
 
 func (db *DatabaseContext) useShardedDCP() bool {
