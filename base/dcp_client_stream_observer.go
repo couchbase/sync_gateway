@@ -31,7 +31,6 @@ func (dc *GoCBDCPClient) SnapshotMarker(snapshotMarker gocbcore.DcpSnapshotMarke
 }
 
 func (dc *GoCBDCPClient) Mutation(mutation gocbcore.DcpMutation) {
-	InfofCtx(dc.ctx, KeyDCP, "CBG-4640 DEBUG DCPClient.Mutation: key=%s vbID=%d collectionID=%d datatype=%d valueLen=%d seqNo=%d cas=%d", UD(string(mutation.Key)), mutation.VbID, mutation.CollectionID, mutation.Datatype, len(mutation.Value), mutation.SeqNo, mutation.Cas)
 
 	if dc.filteredKey(mutation.Key) {
 		return
@@ -58,7 +57,6 @@ func (dc *GoCBDCPClient) Mutation(mutation gocbcore.DcpMutation) {
 }
 
 func (dc *GoCBDCPClient) Deletion(deletion gocbcore.DcpDeletion) {
-	InfofCtx(dc.ctx, KeyDCP, "CBG-4640 DEBUG DCPClient.Deletion: key=%s vbID=%d collectionID=%d datatype=%d valueLen=%d seqNo=%d cas=%d", UD(string(deletion.Key)), deletion.VbID, deletion.CollectionID, deletion.Datatype, len(deletion.Value), deletion.SeqNo, deletion.Cas)
 
 	if dc.filteredKey(deletion.Key) {
 		return
@@ -129,7 +127,6 @@ func (dc *GoCBDCPClient) OSOSnapshot(snapshot gocbcore.DcpOSOSnapshot) {
 }
 
 func (dc *GoCBDCPClient) SeqNoAdvanced(seqNoAdvanced gocbcore.DcpSeqNoAdvanced) {
-	InfofCtx(dc.ctx, KeyDCP, "CBG-4640 DEBUG DCPClient.SeqNoAdvanced: vbID=%d seqNo=%d", seqNoAdvanced.VbID, seqNoAdvanced.SeqNo)
 	dc.workerForVbno(seqNoAdvanced.VbID).Send(dc.ctx, seqnoAdvancedEvent{
 		streamEventCommon: streamEventCommon{
 			vbID:     seqNoAdvanced.VbID,

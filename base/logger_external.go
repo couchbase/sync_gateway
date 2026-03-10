@@ -20,7 +20,7 @@ import (
 )
 
 // remapGoCBLogLevels controls whether the gocb and gocbcore log levels are remapped to match the verbosity of SG's log levels.
-const remapGoCBLogLevels = false
+const remapGoCBLogLevels = true
 
 // This file implements wrappers around the loggers of external packages
 // so that all of SG's logging output is consistent
