@@ -186,8 +186,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs)
 
-	dcpFeedKey := GenerateResyncDCPStreamName(r.ResyncID)
-
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
@@ -217,6 +215,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
 		}
 
+		cbStore, _ := base.AsCouchbaseBucketStore(db.Bucket)
+
 		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
 		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
 		if err != nil {
@@ -224,7 +224,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, _, err := base.NewDCPDest(loggingCtx, callback, db.Bucket, db.numVBuckets, true, nil, dcpFeedKey, nil, checkPointPrefix, db.MetadataKeys)
+			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}
@@ -254,7 +254,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		numpartitions := db.Options.ImportOptions.ImportPartitions
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			db.BucketSpec, scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, dcpFeedKey)
+			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
 
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
@@ -265,13 +265,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			resyncHB.Stop(ctx)
 		}()
 	} else {
-		dcpClient, err = base.NewDCPClient(ctx, dcpFeedKey, callback, *clientOptions, bucket)
+		dcpClient, err = base.NewDCPClient(ctx, callback, *clientOptions, bucket)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 			return err
 		}
 
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for resync", resyncLoggingID)
 		doneChan, err = dcpClient.Start()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)

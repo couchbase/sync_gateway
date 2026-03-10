@@ -2598,7 +2598,7 @@ func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, target
 }
 
 func (db *DatabaseContext) useShardedDCP() bool {
-	return base.IsEnterpriseEdition() && !db.BucketSpec.IsWalrusBucket()
+	return base.IsEnterpriseEdition() && !db.usingRosmar()
 }
 
 func (db *DatabaseContext) GetCollectionNamesByScope() (map[string][]string, error) {

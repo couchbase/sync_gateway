@@ -104,7 +104,7 @@ func getOpenExPIndexImpl(ctx context.Context) func(indexType, path string, resta
 		if !ok {
 			return nil, nil, errors.New("indexParams in options is not a string for OpenExPIndexImpl")
 		}
-		importDest, err := getListenerImportDest(ctx, indexParams, restart)
+		importDest, err := getListenerDest(ctx, indexParams, restart)
 		return nil, importDest, err
 	}
 }
