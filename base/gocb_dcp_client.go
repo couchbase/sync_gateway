@@ -67,7 +67,8 @@ type GoCBDCPClient struct {
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 }
 
-type DCPClientOptions struct {
+// GoCBDCPClientOptions contains options specific for starting a DCP client backed by gocb.
+type GoCBDCPClientOptions struct {
 	FeedID                     string // Optional description for a DCP feed
 	NumWorkers                 int
 	OneShot                    bool
@@ -81,7 +82,7 @@ type DCPClientOptions struct {
 	CheckpointPrefix           string
 }
 
-func NewDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
+func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
 
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
@@ -91,7 +92,7 @@ func NewDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
 }
 
-func newDCPClientWithForBuckets(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+func newDCPClientWithForBuckets(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 
 	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -674,7 +675,7 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 }
 
 // NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
-func NewDCPClientForTest(ctx context.Context, t *testing.T, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
+func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
 }
 

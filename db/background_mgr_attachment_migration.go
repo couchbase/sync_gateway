@@ -158,16 +158,11 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
+	scopes, currCollectionIDs, err := getCollectionsForAttachmentMigration(db)
 	if err != nil {
 		return err
 	}
-
-	currCollectionIDs, err := getCollectionIDsForMigration(db)
-	if err != nil {
-		return err
-	}
-	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, currCollectionIDs)
+	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
 
@@ -177,7 +172,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpClient, err := base.NewDCPClient(ctx, callback, *dcpOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
@@ -291,20 +286,20 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 
 // getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
 // CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
-func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, collectionIDs []uint32) *base.DCPClientOptions {
-	clientOptions := &base.DCPClientOptions{
+func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		CollectionIDs:     collectionIDs,
+		CollectionNames:   scopes,
 		CheckpointPrefix: fmt.Sprintf("%s:sg-%v:att_migration:%v",
 			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 			base.ProductAPIVersion,
 			migrationID,
 		),
+		Callback: callback,
 	}
-	return clientOptions
 }
 
 type AttachmentMigrationManagerResponse struct {
@@ -351,25 +346,28 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	return nil
 }
 
-// getCollectionIDsForMigration will get all collection IDs required for DCP client on migration run
-func getCollectionIDsForMigration(db *DatabaseContext) ([]uint32, error) {
+// getCollectionsForAttachmentMigration will get all datastores.
+func getCollectionsForAttachmentMigration(db *DatabaseContext) (scopes base.CollectionNameSet, ids []uint32, err error) {
+	collections := base.NewCollectionNameSet()
 	collectionIDs := make([]uint32, 0)
-
 	// if all collections are included in RequireAttachmentMigration then we need to run against all collections,
 	// if no collections are specified in RequireAttachmentMigration, run against all collections. This is to support job
 	// being triggered by rest api (even after job was previously completed)
 	if len(db.RequireAttachmentMigration) == 0 {
-		// get all collection IDs
-		collectionIDs = db.GetCollectionIDs()
+		for _, collection := range db.CollectionByID {
+			collections.Add(collection.dataStore)
+			collectionIDs = append(collectionIDs, collection.GetCollectionID())
+		}
 	} else {
 		// iterate through and grab collectionIDs we need
 		for _, v := range db.RequireAttachmentMigration {
 			collection, err := db.GetDatabaseCollection(v.ScopeName(), v.CollectionName())
 			if err != nil {
-				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(v.ScopeName()), base.MD(v.CollectionName()))
+				return nil, nil, base.RedactErrorf("failed to find collection %s.%s", base.MD(v.ScopeName()), base.MD(v.CollectionName()))
 			}
+			collections.Add(collection.dataStore)
 			collectionIDs = append(collectionIDs, collection.GetCollectionID())
 		}
 	}
-	return collectionIDs, nil
+	return collections, collectionIDs, nil
 }

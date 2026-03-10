@@ -185,6 +185,9 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 
 }
 func TestLegacyMetadataID(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("fix in CBG-5038")
+	}
 	base.LongRunningTest(t)
 
 	tb1 := base.GetTestBucket(t)
@@ -252,6 +255,9 @@ func TestMetadataIDRenameDatabase(t *testing.T) {
 
 // Verifies that matching metadataIDs are computed if two config groups for the same database are upgraded
 func TestMetadataIDWithConfigGroups(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("fix in CBG-5038")
+	}
 	base.LongRunningTest(t)
 
 	tb1 := base.GetTestBucket(t)

@@ -2445,7 +2445,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.usingRosmar() {
+	if len(db.RequireAttachmentMigration) > 0 {
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
@@ -2550,11 +2550,19 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 }
 
 // PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string) error {
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
-		return err
+		checkpoint := checkpointPrefix + ":" + feedPrefix
+		err := database.MetadataStore.Delete(checkpoint)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return err
+		}
+		if base.IsDocNotFoundError(err) {
+			return nil
+		}
+		return nil
 	}
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
@@ -2585,6 +2593,15 @@ func (db *DatabaseContext) collectionNames() base.CollectionNames {
 	return names
 }
 
+// collectionNameSet returns the names of the collections on this database.
+func (db *DatabaseContext) collectionNameSet() base.CollectionNameSet {
+	names := base.NewCollectionNameSet()
+	for _, col := range db.CollectionByID {
+		names.Add(col.dataStore)
+	}
+	return names
+}
+
 // GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if
 // an invalid string is set.
 func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
@@ -2609,6 +2626,14 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 func (db *DatabaseContext) usingRosmar() bool {
 	_, err := base.AsRosmarBucket(db.Bucket)
 	return err == nil
+}
+
+func (db *DatabaseContext) getCollectionNames() base.CollectionNames {
+	c := make(base.CollectionNames, len(db.CollectionByID))
+	for _, col := range db.CollectionByID {
+		c.Add(col.dataStore)
+	}
+	return c
 }
 
 // WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
