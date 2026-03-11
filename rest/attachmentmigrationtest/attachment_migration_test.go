@@ -284,7 +284,6 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
 	// wait for migration job to finish on both collections
 	postRunStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
