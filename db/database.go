@@ -2628,14 +2628,6 @@ func (db *DatabaseContext) usingRosmar() bool {
 	return err == nil
 }
 
-func (db *DatabaseContext) getCollectionNames() base.CollectionNames {
-	c := make(base.CollectionNames, len(db.CollectionByID))
-	for _, col := range db.CollectionByID {
-		c.Add(col.dataStore)
-	}
-	return c
-}
-
 // WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
 // if the sequence remains in skipped list.
 func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {

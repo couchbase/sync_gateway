@@ -261,18 +261,16 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 		}
 	}
 
-	args := sgbucket.FeedArguments{
+	args := base.DCPClientOptions{
 		ID:         "xdcr-" + r.replicationID,
 		Terminator: r.terminator,
-		DoneChan:   r.doneChan,
 		Scopes:     scopes,
+		callback: func(event sgbucket.FeedEvent) bool {
+			return r.processEvent(ctx, event)
+		},
 	}
 
-	callback := func(event sgbucket.FeedEvent) bool {
-		return r.processEvent(ctx, event)
-	}
-
-	return r.fromBucket.StartDCPFeed(ctx, args, callback, nil)
+	return base.StartDCPFeed(ctx, fromBucket, args)
 }
 
 // Stop terminates the replication.
