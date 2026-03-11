@@ -92,8 +92,10 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (do
 	go func() {
 		select {
 		case err := <-doneChan:
-			WarnfCtx(ctx, "DCP Feed %q for bucket %q closed unexpectedly: %v", feedName, MD(bucketName), err)
-			// FIXME: close dbContext here
+			if !opts.OneShot {
+				WarnfCtx(ctx, "DCP Feed %q for bucket %q closed unexpectedly: %v", feedName, MD(bucketName), err)
+				// FIXME: close dbContext here
+			}
 			break
 		case <-opts.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
