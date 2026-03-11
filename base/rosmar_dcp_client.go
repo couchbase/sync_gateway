@@ -48,7 +48,11 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 	}
 	if dc.opts.FromLatestSequence {
 		feedArgs.Backfill = sgbucket.FeedNoBackfill
+	} else if dc.opts.CheckpointPrefix == "" {
+		// force starting at zero, limitation of rosmar DCP Client
+		feedArgs.Backfill = 0
 	}
+
 	err := dc.bucket.StartDCPFeed(dc.ctx, feedArgs, dc.opts.Callback, nil)
 	if err != nil {
 		close(doneChan)
