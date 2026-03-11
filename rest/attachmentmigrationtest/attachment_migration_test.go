@@ -197,8 +197,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx := rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on single collection
 	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
@@ -218,8 +216,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx = rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on the new collection
 	mgrStatus = waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 

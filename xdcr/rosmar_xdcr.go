@@ -227,7 +227,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	r.terminator = make(chan bool)
 	r.doneChan = make(chan struct{})
 	// set up replication to target all existing collections, and map to other collections
-	scopes := make(map[string][]string)
+	collectionNames := base.NewCollectionNameSet()
 	fromDataStores, err := r.fromBucket.ListDataStores()
 	if err != nil {
 		return fmt.Errorf("Could not list data stores: %w", err)
@@ -256,21 +256,22 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 			}
 			r.toBucketCollections[collectionID] = col
 			r.fromBucketKeyspaces[collectionID] = fromDataStore.GetName()
-			scopes[fromName.ScopeName()] = append(scopes[fromName.ScopeName()], fromName.CollectionName())
+			collectionNames.Add(col)
 			break
 		}
 	}
 
 	args := base.DCPClientOptions{
-		ID:         "xdcr-" + r.replicationID,
-		Terminator: r.terminator,
-		Scopes:     scopes,
-		callback: func(event sgbucket.FeedEvent) bool {
+		FeedID:          "xdcr-" + r.replicationID,
+		Terminator:      r.terminator,
+		CollectionNames: collectionNames,
+		Callback: func(event sgbucket.FeedEvent) bool {
 			return r.processEvent(ctx, event)
 		},
 	}
 
-	return base.StartDCPFeed(ctx, fromBucket, args)
+	_, err = base.StartDCPFeed(ctx, r.fromBucket, args)
+	return err
 }
 
 // Stop terminates the replication.
