@@ -37,7 +37,6 @@ type changeListener struct {
 	bucket                   base.Bucket
 	bucketName               string                 // Used for logging
 	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs                 sgbucket.FeedArguments // The Tap Args (backfill, etc)
 	counter                  uint64                 // Event counter; increments on every doc update
 	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts                map[channels.ID]uint64 // Latest count at which each doc key was updated
