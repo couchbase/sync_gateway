@@ -210,7 +210,9 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 				collectionsRequiringMigration = append(collectionsRequiringMigration, dsName)
 			}
 		}
-		db.RequireAttachmentMigration = collectionsRequiringMigration
+		if db.Bucket != nil {
+			db.RequireAttachmentMigration = collectionsRequiringMigration
+		}
 		msg := fmt.Sprintf("[%s] Finished migrating attachment metadata from sync data to global sync data. %d/%d docs changed", migrationLoggingID, a.docsChanged.Load(), a.docsProcessed.Load())
 		failedDocs := a.docsFailed.Load()
 		if failedDocs > 0 {

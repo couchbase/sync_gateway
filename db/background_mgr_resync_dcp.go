@@ -109,6 +109,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+// SetVBUUIDs updates vbuuids in the manager.
+func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.VBUUIDs = vbuuids
+}
+
 // Run starts a DCP feed to process documents for resync.
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db, ok := options["database"].(*Database)
@@ -203,7 +210,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
 
-	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+	r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 
 	select {
 	case <-doneChan:

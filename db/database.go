@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2446,11 +2447,12 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
 	if len(db.RequireAttachmentMigration) > 0 {
+		cols := slices.Clone(db.RequireAttachmentMigration) // duplicate slice before logging, in case AttachmentMigrationManager runs very fast
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
 		}
-		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", db.RequireAttachmentMigration)
+		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", cols)
 	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
