@@ -25,7 +25,7 @@ type ScopeAndCollectionName = sgbucket.DataStoreNameImpl
 // CollectionNames represent a map of scope names to collection names.
 type CollectionNames map[string][]string
 
-// CollectionNameSet respresents a unique set of collection names.
+// CollectionNameSet represents a unique set of collection names.
 type CollectionNameSet map[string]map[string]struct{}
 
 func DefaultScopeAndCollectionName() ScopeAndCollectionName {

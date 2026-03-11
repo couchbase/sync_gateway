@@ -267,7 +267,7 @@ func (b *GocbV2Bucket) IsMinimumVersion(requiredMajor, requiredMinor uint64) boo
 	return IsMinimumVersion(b.clusterCompatMajorVersion, b.clusterCompatMinorVersion, requiredMajor, requiredMinor)
 }
 
-// StartDCPFeed is not supported anymore and only exists to sastify sgbucket.Bucket interface. Use NewDCPClient
+// StartDCPFeed is not supported anymore and only exists to satisfy sgbucket.Bucket interface. Use NewDCPClient.
 func (b *GocbV2Bucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	return errors.New("GocbV2Bucket does not support StartDCPFeed; use NewDCPClient instead")
 }
