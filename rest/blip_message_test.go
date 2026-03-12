@@ -77,6 +77,6 @@ func TestBlipUnknownProfileMessage(t *testing.T) {
 		resp := unknownRequest.Response()
 		require.NotNil(t, resp)
 		assert.Equal(t, blip.ErrorType, resp.Type())
-		assert.Equal(t, "404", resp.Properties["Error-Code"])
+		assert.Equal(t, "404", resp.Properties[db.BlipErrorCode])
 	})
 }
