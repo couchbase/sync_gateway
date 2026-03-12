@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBlipMessageProfiles verifies that BLIP profiles are handled correctly.
-func TestBlipMessageProfiles(t *testing.T) {
+// TestBlipMessagePingProfiles verifies that BLIP profiles used for heartbeats are handled correctly.
+func TestBlipMessagePingProfiles(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync)
 
 	rtConfig := &RestTesterConfig{
@@ -34,15 +34,29 @@ func TestBlipMessageProfiles(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
-		t.Run("PING reply", func(t *testing.T) {
+		// CBL-js 1.0.1 heartbeat message type
+		t.Run("PING noreply", func(t *testing.T) {
+			pingRequest := blip.NewRequest()
+			pingRequest.SetProfile(db.MessagePing)
+			pingRequest.SetNoReply(true)
+
+			// can't AssertLogNotContains since Response() returns immediately for noreply
+			btc.pullReplication.sendMsg(pingRequest)
+			resp := pingRequest.Response()
+			assert.Nil(t, resp)
+		})
+
+		// with reply variant for testing
+		t.Run("PING", func(t *testing.T) {
 			pingRequest := blip.NewRequest()
 			pingRequest.SetProfile(db.MessagePing)
 
+			var resp *blip.Message
 			base.AssertLogNotContains(t, "404 Unknown profile", func() {
 				btc.pullReplication.sendMsg(pingRequest)
+				resp = pingRequest.Response()
 			})
 
-			resp := pingRequest.Response()
 			require.NotNil(t, resp)
 			assert.Equal(t, blip.ResponseType, resp.Type())
 
@@ -51,41 +65,31 @@ func TestBlipMessageProfiles(t *testing.T) {
 			assert.Empty(t, body)
 		})
 
-		t.Run("PING noreply", func(t *testing.T) {
-			pingRequest := blip.NewRequest()
-			pingRequest.SetProfile(db.MessagePing)
-			pingRequest.SetNoReply(true)
+		// test behavior of an unknown profile with noreply (i.e. CBL-js 1.0.1 on an older SG pre-PING support)
+		t.Run("unknown profile noreply", func(t *testing.T) {
+			unknownRequest := blip.NewRequest()
+			unknownRequest.SetProfile("not_a_ping")
+			unknownRequest.SetNoReply(true)
 
-			base.AssertLogNotContains(t, "404 Unknown profile", func() {
-				btc.pullReplication.sendMsg(pingRequest)
-			})
-
-			// With noreply=true, Response() should return nil
-			resp := pingRequest.Response()
+			// can't AssertLogContains since Response() returns immediately for noreply
+			btc.pullReplication.sendMsg(unknownRequest)
+			resp := unknownRequest.Response()
 			assert.Nil(t, resp)
 		})
 
 		t.Run("unknown profile", func(t *testing.T) {
 			unknownRequest := blip.NewRequest()
-			unknownRequest.SetProfile("foo")
+			unknownRequest.SetProfile("not_a_ping")
 
-			btc.pullReplication.sendMsg(unknownRequest)
-			resp := unknownRequest.Response()
+			var resp *blip.Message
+			base.AssertLogContains(t, "404 Unknown profile", func() {
+				btc.pullReplication.sendMsg(unknownRequest)
+				resp = unknownRequest.Response()
+			})
+
 			require.NotNil(t, resp)
 			assert.Equal(t, blip.ErrorType, resp.Type())
 			assert.Equal(t, "404", resp.Properties[db.BlipErrorCode])
-		})
-
-		t.Run("unknown profile noreply", func(t *testing.T) {
-			unknownRequest := blip.NewRequest()
-			unknownRequest.SetProfile("foo")
-			unknownRequest.SetNoReply(true)
-
-			// Even with noreply, the server should handle the message
-			// but won't send a response back
-			btc.pullReplication.sendMsg(unknownRequest)
-			resp := unknownRequest.Response()
-			assert.Nil(t, resp)
 		})
 	})
 }
