@@ -23,9 +23,9 @@ import (
 // registerPindexImplMutex serializes access to cbgt.RegisterPIndexImplType, which uses global state without its own synchronization.
 var registerPindexImplMutex = sync.Mutex{}
 
-// RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
+// RegisterPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
-func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
+func RegisterPindexImpl(ctx context.Context, configGroup string) {
 	registerPindexImplMutex.Lock()
 	defer registerPindexImplMutex.Unlock()
 
