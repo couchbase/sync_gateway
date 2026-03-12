@@ -13,9 +13,7 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"runtime/debug"
-	"sort"
 	"strings"
 
 	"github.com/couchbase/cbgt"
@@ -43,8 +41,9 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 		checkpointPrefix: checkpointPrefix,
 		collections:      make(map[uint32]DatabaseCollectionWithUser),
 		importStats:      dbContext.DbStats.SharedBucketImport(),
-		loggingCtx:       ctx,
-		terminator:       make(chan bool),
+		loggingCtx:       base.CorrelationIDLogCtx(ctx, base.DCPImportFeedID),
+
+		terminator: make(chan bool),
 	}
 
 	return importListener
@@ -55,39 +54,14 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error) {
 	ctx := base.CorrelationIDLogCtx(il.loggingCtx, base.DCPImportFeedID)
 
-	collectionNamesByScope := make(map[string][]string)
-	var scopeName string
-
-	if len(dbContext.Scopes) > 1 {
-		return fmt.Errorf("multiple scopes not supported")
-	}
-	for sn := range dbContext.Scopes {
-		scopeName = sn
-	}
-
 	for collectionID, collection := range dbContext.CollectionByID {
 		il.collections[collectionID] = DatabaseCollectionWithUser{
 			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-		if !dbContext.OnlyDefaultCollection() {
-			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
-		}
 	}
-	sort.Strings(collectionNamesByScope[scopeName])
-	if dbContext.OnlyDefaultCollection() {
-		il.importDestKey = base.DestKey(dbContext.Name, "", []string{}, base.ImportShardedDCPFeedType)
-	} else {
-		il.importDestKey = base.DestKey(dbContext.Name, scopeName, collectionNamesByScope[scopeName], base.ImportShardedDCPFeedType)
-	}
-	feedArgs := sgbucket.FeedArguments{
-		ID:               base.DCPImportFeedID,
-		Backfill:         sgbucket.FeedResume,
-		Terminator:       il.terminator,
-		DoneChan:         make(chan struct{}),
-		CheckpointPrefix: il.checkpointPrefix,
-		Scopes:           collectionNamesByScope,
-	}
+	collectionNamesByScope := dbContext.collectionNames()
+	il.importDestKey = base.DestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], base.ImportShardedDCPFeedType)
 
 	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
@@ -104,24 +78,21 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(dbContext.Bucket.GetName()))
 
-	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseBucketStore(dbContext.Bucket)
-	if !ok {
-		// walrus is not a couchbasestore
+	if !dbContext.useShardedDCP() {
+		feedArgs := sgbucket.FeedArguments{
+			ID:               base.DCPImportFeedID,
+			Backfill:         sgbucket.FeedResume,
+			Terminator:       il.terminator,
+			DoneChan:         make(chan struct{}),
+			CheckpointPrefix: il.checkpointPrefix,
+			Scopes:           collectionNamesByScope,
+		}
+
 		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
-	if !base.IsEnterpriseEdition() {
-		groupID := ""
-		gocbv2Bucket, err := base.AsGocbV2Bucket(dbContext.Bucket)
-		if err != nil {
-			return err
-		}
-		return base.StartGocbDCPFeed(il.loggingCtx, gocbv2Bucket, dbContext.Bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
-	}
-
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		dbContext.Bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG, base.ImportShardedDCPFeedType, base.DCPImportFeedID)
+		dbContext.Bucket, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG, base.ImportShardedDCPFeedType, base.DCPImportFeedID)
 	return err
 }
 

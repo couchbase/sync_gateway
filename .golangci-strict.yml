@@ -125,3 +125,6 @@ formatters:
     - goimports
   exclusions:
     generated: strict
+
+run:
+  allow-parallel-runners: true

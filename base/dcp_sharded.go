@@ -71,7 +71,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg, shardedDCPFeedType ShardedDCPFeedType, feedID string) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg, shardedDCPFeedType ShardedDCPFeedType, feedID string) (*CbgtContext, error) {
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
 	minVersion, err := getMinNodeVersion(cfg)
 	if err != nil {
@@ -79,12 +79,17 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
 		// DefaultScope is allowed by older versions of CBGT as long as no collections are specified.
-		if len(collections) > 0 {
+		if len(collections) > 0 && len(collections) != 1 || collections[0] != DefaultCollection {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
+	b, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		return nil, fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
+	}
+
+	cbgtContext, err := initCBGTManager(ctx, bucket, b.GetSpec(), cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -473,6 +478,8 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
 func DestKey(dbName string, scope string, collections []string, shardedDcpFeedType ShardedDCPFeedType) string {
+	// ImportDestKey is used for retrieval of import dest from cbgtDestFactories
+	//func ImportDestKey(dbName string, scope string, collections []string) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true

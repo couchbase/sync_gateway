@@ -20,12 +20,12 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// registerPindexImplMutex locks access to cbgt.RegisterPindexImpl.
+// registerPindexImplMutex serializes access to cbgt.RegisterPIndexImplType, which uses global state without its own synchronization.
 var registerPindexImplMutex = sync.Mutex{}
 
-// RegisterPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
+// RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
-func RegisterPindexImpl(ctx context.Context, configGroup string) {
+func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
 	registerPindexImplMutex.Lock()
 	defer registerPindexImplMutex.Unlock()
 
@@ -44,8 +44,8 @@ func RegisterPindexImpl(ctx context.Context, configGroup string) {
 		})
 }
 
-// getListenerForIndex looks up the Dest instance for a given set of cbgt index parameters.
-func getListenerDest(ctx context.Context, indexParams string, restart func()) (cbgt.Dest, error) {
+// getCbgtDest looks up a cbgt.Dest based on a name specified in indexParams.
+func getCbgtDest(ctx context.Context, indexParams string, restart func()) (cbgt.Dest, error) {
 
 	var outerParams struct {
 		Params string `json:"params"`
@@ -58,27 +58,26 @@ func getListenerDest(ctx context.Context, indexParams string, restart func()) (c
 	var sgIndexParams base.SGFeedIndexParams
 	err = base.JSONUnmarshal([]byte(outerParams.Params), &sgIndexParams)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling dbname from cbgt index params: %w", err)
+		return nil, fmt.Errorf("error unmarshalling SGFeedIndexParams from cbgt indexParams.params %s: %w", base.MD(outerParams.Params), err)
 	}
 
 	base.DebugfCtx(ctx, base.KeyDCP, "Fetching dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
-		return nil, fmt.Errorf("error retrieving dest for indexParams %v: %v", indexParams, fetchErr)
+		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)
 	}
 	return destFactory(restart)
 }
 
+// getNewPIndexImplType finds the correct cbgt.Dest based on the indexParams provided. Looks up the dest based on a key in params set by Sync Gateway.
 func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	// NewImportPIndexImpl is called when the node is first added to the cbgt cfg.  On a node restart,
-	// OpenImportindexImplUsing is called.
 	newPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 		defer base.FatalPanicHandler()
 
-		dest, err := getListenerDest(ctx, indexParams, restart)
+		dest, err := getCbgtDest(ctx, indexParams, restart)
 		if err != nil {
 			// This error can occur when a stale index definition hasn't yet been removed from the plan (e.g. on update to db config)
-			base.InfofCtx(ctx, base.KeyDCP, "No dest found for indexParams - usually an obsolete index pending removal. %v", err)
+			base.DebugfCtx(ctx, base.KeyDCP, "No dest found for indexParams - usually an obsolete index pending removal. %v", err)
 		}
 		return nil, dest, err
 	}
@@ -104,7 +103,7 @@ func getOpenExPIndexImpl(ctx context.Context) func(indexType, path string, resta
 		if !ok {
 			return nil, nil, errors.New("indexParams in options is not a string for OpenExPIndexImpl")
 		}
-		importDest, err := getListenerDest(ctx, indexParams, restart)
-		return nil, importDest, err
+		dest, err := getCbgtDest(ctx, indexParams, restart)
+		return nil, dest, err
 	}
 }

@@ -33,7 +33,7 @@ type ResyncManagerDCP struct {
 	ResyncID            string
 	VBUUIDs             []uint64
 	useXattrs           bool
-	ResyncedCollections map[string][]string
+	ResyncedCollections base.CollectionNames
 	resyncCollectionInfo
 	lock        sync.RWMutex
 	Distributed bool
@@ -44,9 +44,6 @@ type resyncCollectionInfo struct {
 	hasAllCollections bool
 	collectionIDs     []uint32
 }
-
-// ResyncCollections contains map of scope names with collection names against which resync needs to run
-type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
@@ -63,9 +60,16 @@ func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys 
 	}
 }
 
+// Init processes the options to start a resync process and sets them as struct memebers.
 func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
-	db := options["database"].(*Database)
-	resyncCollections := options["collections"].(ResyncCollections)
+	db, ok := options["database"].(*Database)
+	if !ok {
+		return errors.New("database option is required and must be of type *Database")
+	}
+	resyncCollections, ok := options["collections"].(base.CollectionNames)
+	if !ok {
+		return errors.New("collections option is required and must be of type base.CollectionNames")
+	}
 
 	// Get collectionIds and store in manager for use in DCP client later
 	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
@@ -108,10 +112,20 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+// Run starts a DCP feed to process documents for resync.
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	db := options["database"].(*Database)
-	regenerateSequences := options["regenerateSequences"].(bool)
-	resyncCollections := options["collections"].(ResyncCollections)
+	db, ok := options["database"].(*Database)
+	if !ok {
+		return errors.New("database option is required and must be of type *Database")
+	}
+	regenerateSequences, ok := options["regenerateSequences"].(bool)
+	if !ok {
+		return errors.New("regenerateSequences option is required and must be of type bool")
+	}
+	resyncCollections, ok := options["collections"].(base.CollectionNames)
+	if !ok {
+		return errors.New("collections option is required and must be of type CollectionNames")
+	}
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -215,7 +229,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
 		}
 
-		cbStore, _ := base.AsCouchbaseBucketStore(db.Bucket)
 
 		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
 		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
@@ -254,7 +267,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		numpartitions := db.Options.ImportOptions.ImportPartitions
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
+			 scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
 
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
@@ -371,40 +384,28 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	return nil
 }
 
-func getCollectionIdsAndNames(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, map[string][]string, error) {
-	collectionIDs := make([]uint32, 0)
-	var hasAllCollections bool
-	scopeAndCollection := make(map[string][]string)
-
+// getCollectionIdsAndNames returns collection names. If no collections are specified, it returns all collections. The
+// ids for all collections are returned.
+func getCollectionIdsAndNames(db *Database, resyncCollections base.CollectionNames) (collectionIDs []uint32, hasAllCollections bool, collectionNames base.CollectionNames, err error) {
 	if len(resyncCollections) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
 		}
-		for scopeName, collectionNames := range db.CollectionNames {
-			var resyncCollectionNames []string
-			for collName := range collectionNames {
-				resyncCollectionNames = append(resyncCollectionNames, collName)
-			}
-			scopeAndCollection[scopeName] = resyncCollectionNames
-		}
-	} else {
-		hasAllCollections = false
+		return collectionIDs, hasAllCollections, db.collectionNames(), nil
+	}
+	hasAllCollections = false
 
-		for scopeName, collectionsName := range resyncCollections {
-			var resyncCollectionNames []string
-			for _, collectionName := range collectionsName {
-				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
-				if err != nil {
-					return nil, hasAllCollections, nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
-				}
-				collectionIDs = append(collectionIDs, collection.GetCollectionID())
-				resyncCollectionNames = append(resyncCollectionNames, collectionName)
+	for scopeName, collectionsName := range resyncCollections {
+		for _, collectionName := range collectionsName {
+			collection, err := db.GetDatabaseCollection(scopeName, collectionName)
+			if err != nil {
+				return nil, hasAllCollections, nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
 			}
-			scopeAndCollection[scopeName] = resyncCollectionNames
+			collectionIDs = append(collectionIDs, collection.GetCollectionID())
 		}
 	}
-	return collectionIDs, hasAllCollections, scopeAndCollection, nil
+	return collectionIDs, hasAllCollections, resyncCollections, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -424,7 +425,8 @@ func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
 	r.DocsProcessed.Set(docProcessed)
 }
 
-func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames map[string][]string) {
+// SetCollectionStatus sets the active collection names being resynced.
+func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames base.CollectionNames) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
