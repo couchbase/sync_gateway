@@ -1001,13 +1001,19 @@ const (
 	TestChanTimeout = 30 * time.Second
 )
 
-// RequireChanSend performs a non-blocking send on a channel, but fails the test if the channel is full.
+// RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
 func RequireChanSend[T any](t testing.TB, ch chan<- T, val T) {
+	t.Helper()
+	RequireChanSendWithTimeout(t, ch, val, TestChanTimeout)
+}
+
+// RequireChanSendWithTimeout performs a blocking send on a channel with a timeout. Fails the test if the send cannot complete in time.
+func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout time.Duration) {
 	t.Helper()
 	select {
 	case ch <- val:
-	default:
-		require.FailNow(t, "send on channel blocked")
+	case <-time.After(timeout):
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
 	}
 }
 
