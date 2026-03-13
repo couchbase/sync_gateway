@@ -43,6 +43,7 @@ var handlersByProfile = map[string]blipHandlerFunc{
 	MessageProposeChanges:  collectionBlipHandler((*blipHandler).handleProposeChanges),
 	MessageGetRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handleGetRev)),
 	MessagePutRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handlePutRev)),
+	MessagePing:            (*blipHandler).handlePing,
 
 	MessageGetCollections: userBlipHandler((*blipHandler).handleGetCollections),
 }
@@ -982,6 +983,11 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	handleChangesResponseCollection.collectionStats.DocReadsBytes.Add(int64(len(revDelta.DeltaBytes)))
 
 	bsc.replicationStats.SendRevDeltaSentCount.Add(1)
+	return nil
+}
+
+// handlePing handles a PING request from cbl-js.
+func (bh *blipHandler) handlePing(rq *blip.Message) error {
 	return nil
 }
 
