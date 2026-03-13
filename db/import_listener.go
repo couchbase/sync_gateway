@@ -65,8 +65,6 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
-	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
-
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
 	base.StoreDestFactory(ctx, il.importDestKey, getImportDestFactory(
 		ctx,
@@ -79,16 +77,17 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(dbContext.Bucket.GetName()))
 
 	if !dbContext.useShardedDCP() {
-		feedArgs := sgbucket.FeedArguments{
-			ID:               base.DCPImportFeedID,
-			Backfill:         sgbucket.FeedResume,
-			Terminator:       il.terminator,
-			DoneChan:         make(chan struct{}),
-			CheckpointPrefix: il.checkpointPrefix,
-			Scopes:           collectionNamesByScope,
+		feedArgs := base.DCPClientOptions{
+			FeedID:            base.DCPImportFeedID,
+			Terminator:        il.terminator,
+			CheckpointPrefix:  il.checkpointPrefix,
+			MetadataStoreType: base.DCPMetadataStoreCS,
+			CollectionNames:   dbContext.collectionNameSet(),
+			Callback:          il.ProcessFeedEvent,
 		}
 
-		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		_, err := base.StartDCPFeed(ctx, dbContext.Bucket, feedArgs)
+		return err
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,

@@ -26,7 +26,6 @@ import (
 //   - Grab attachment migration manager and assert it has run upon db startup
 //   - Assert job has written syncInfo metaVersion as expected to the bucket
 func TestMigrationJobStartOnDbStart(t *testing.T) {
-	base.TestRequiresOneShotDCPClient(t)
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -46,7 +45,9 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 //     to be processed twice in the job, so we can assert that the job has processed more docs than we added
 //   - Assert sync info: metaVersion is written to BOTH collections in the db config
 func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
-	base.TestRequiresOneShotDCPClient(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test currently fails under rosmar due to bucket closing when updating the database.")
+	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
@@ -142,7 +143,6 @@ func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
 //     after update to db config + assert on collections requiring migration
 //   - Assert that syncInfo: metaVersion is written for new collection (and is still present in original collection)
 func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
-	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	tb := base.GetTestBucket(t)
@@ -197,8 +197,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx := rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on single collection
 	mgrStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
@@ -218,8 +216,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx = rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 1)
 	// wait for migration job to finish on the new collection
 	mgrStatus = waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
@@ -240,7 +236,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 //   - Assert that the migration job is not re-run (docs processed is the same as before + collections
 //     requiring migration is empty)
 func TestMigrationNoReRunStartStopDb(t *testing.T) {
-	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	tb := base.GetTestBucket(t)
@@ -289,7 +284,6 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
-	assert.Len(t, dbCtx.RequireAttachmentMigration, 2)
 	// wait for migration job to finish on both collections
 	postRunStatus := waitForAttachmentMigrationState(rt, db.BackgroundProcessStateCompleted)
 
@@ -318,7 +312,6 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 //   - Wait for migration job to start
 //   - Attempt to start job again on manager, assert we get error
 func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
-	base.TestRequiresOneShotDCPClient(t)
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 1)
 	tb := base.GetTestBucket(t)

@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -183,27 +182,20 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	var purgeErrors *base.MultiError
 
-	collections := make(map[uint32]sgbucket.DataStore)
-	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		dataStores, err := bucket.ListDataStores()
+	dataStores, err := bucket.ListDataStores()
+	if err != nil {
+		return err
+	}
+	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
+	collectionNames := base.NewCollectionNameSet()
+	for _, dataStoreName := range dataStores {
+		collection, err := bucket.NamedDataStore(dataStoreName)
 		if err != nil {
 			return err
 		}
-		for _, dataStoreName := range dataStores {
-			collection, err := bucket.NamedDataStore(dataStoreName)
-			if err != nil {
-				return err
-			}
-			collections[collection.GetCollectionID()] = collection
-		}
-	}
+		collectionNames.Add(dataStoreName)
+		collections[collection.GetCollectionID()] = collection
 
-	dcpClientOpts := base.DCPClientOptions{
-		FeedID:            "purgeFeed-" + bucket.GetName(),
-		OneShot:           true,
-		FailOnRollback:    false,
-		CollectionIDs:     slices.Collect(maps.Keys(collections)),
-		MetadataStoreType: base.DCPMetadataStoreInMemory,
 	}
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
@@ -270,15 +262,21 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		}
 		return false
 	}
-	gocbBucket, err := base.AsGocbV2Bucket(bucket)
-	if err != nil {
-		return err
+	dcpClientOpts := base.DCPClientOptions{
+		FeedID:            "purgeFeed",
+		OneShot:           true,
+		FailOnRollback:    false,
+		CollectionNames:   collectionNames,
+		MetadataStoreType: base.DCPMetadataStoreInMemory,
+		Callback:          purgeCallback,
 	}
-	dcpClient, err := base.NewDCPClient(ctx, purgeCallback, dcpClientOpts, gocbBucket)
+
+	dcpClient, err := base.NewDCPClient(ctx, bucket, dcpClientOpts)
 	if err != nil {
 		return err
 	}
 	doneChan, err := dcpClient.Start()
+
 	if err != nil {
 		return fmt.Errorf("error starting purge DCP feed: %w", err)
 	}
@@ -290,11 +288,8 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 			tbp.Logf(ctx, "purgeDCPFeed finished with error: %v", err)
 		}
 	case <-timeout:
+		_ = dcpClient.Close()
 		return fmt.Errorf("timeout waiting for purge DCP feed to complete")
-	}
-	closeErr := dcpClient.Close()
-	if closeErr != nil {
-		tbp.Logf(ctx, "error closing purge DCP feed: %v", closeErr)
 	}
 
 	tbp.Logf(ctx, "Finished purge DCP feed ... Total docs purged: %d", purgedDocCount.Load())
