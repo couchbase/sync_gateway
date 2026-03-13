@@ -33,7 +33,6 @@ concurrency:
 
 env:
   GO_VERSION: &go_version 1.25.8
-  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.8.0
 
 jobs:
   build:
@@ -92,16 +91,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: *go_version
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
-      - name: Annotate Failures
+      - name: Test Summary
         if: always()
-        uses: *go_test_annotations_version
-        with:
-          test-results: test.json
+        shell: bash
+        run: .github/scripts/test-summary.sh
 
   test-race:
     runs-on: ubuntu-latest
@@ -112,14 +112,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: *go_version
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run Tests
-        run: go test -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
-      - name: Annotate Failures
+      - name: Test Summary
         if: always()
-        uses: *go_test_annotations_version
-        with:
-          test-results: test.json
+        shell: bash
+        run: .github/scripts/test-summary.sh
 
   test-default-collection:
     runs-on: ubuntu-latest
@@ -131,14 +132,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: *go_version
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run Tests
-        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
-      - name: Annotate Failures
+      - name: Test Summary
         if: always()
-        uses: *go_test_annotations_version
-        with:
-          test-results: test.json
+        shell: bash
+        run: .github/scripts/test-summary.sh
   test-benchmark-compile:
     runs-on: ubuntu-latest
     env:
@@ -148,14 +150,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: *go_version
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run Tests
-        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -short -bench=. -benchtime=1x -run '!' -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
         shell: bash
-      - name: Annotate Failures
+      - name: Test Summary
         if: always()
-        uses: *go_test_annotations_version
-        with:
-          test-results: test.json
+        shell: bash
+        run: .github/scripts/test-summary.sh
 
 
   test-disable-rev-cache:
@@ -168,14 +171,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: 1.25.6
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run Tests
-        run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
-      - name: Annotate Failures
+      - name: Test Summary
         if: always()
-        uses: guyarb/golang-test-annotations@v0.8.0
-        with:
-          test-results: test.json
+        shell: bash
+        run: .github/scripts/test-summary.sh
 
   python-format:
     runs-on: ubuntu-latest
@@ -218,9 +222,15 @@ jobs:
           go-version: *go_version
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run Tests
-        run: go test -shuffle=on -timeout=5m -count=1 -json -v "./tools/stats-definition-exporter" | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
         shell: bash
+      - name: Test Summary
+        if: always()
+        shell: bash
+        run: .github/scripts/test-summary.sh
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool
