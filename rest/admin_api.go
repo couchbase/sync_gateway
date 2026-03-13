@@ -268,18 +268,18 @@ func (h *handler) handleDbOnline() error {
 		h.db.AccessLock.Lock()
 		defer h.db.AccessLock.Unlock()
 		if !atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
-			base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(h.db.Name))
+			base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.MD(h.db.Name))
 			return
 		}
-		var oldConfig DbConfig
 		if !h.server.persistentConfig {
 			newDbConfig := &DbConfig{StartOffline: base.Ptr(false)}
-			err := h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
+			err = h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
 			if err != nil {
 				base.WarnfCtx(contextNoCancel.Ctx, "database reload failed during db online, Err: %v", err)
 				return
 			}
 		} else {
+			var oldConfig DbConfig
 			// persistent config here
 			bucket := h.db.Bucket.GetName()
 			dbName := h.db.Name
@@ -308,7 +308,7 @@ func (h *handler) handleDbOnline() error {
 				base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
 				return
 			}
-			if err = h.updateConfigAndReloadDatabase(contextNoCancel.Ctx, dbName, bucket, cas, updatedDbConfig); err != nil {
+			if err = h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
 				base.WarnfCtx(ctx.Ctx, "database reload failed during db online, Err: %v", err)
 				return
 			}
@@ -326,46 +326,62 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 
 	var oldConfig DbConfig
-	contextNoCancel := base.NewNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	// Block until all current calls have returned, including _changes feeds
 	h.db.AccessLock.Lock()
 	defer h.db.AccessLock.Unlock()
 
-	if !h.server.persistentConfig {
-		newDbConfig := &DbConfig{StartOffline: base.Ptr(true)}
-		err := h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
-		if err != nil {
-			return err
+	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOnline, db.DBStopping) {
+		if !h.server.persistentConfig {
+			newDbConfig := &DbConfig{StartOffline: base.Ptr(true)}
+			err := h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
+			if err != nil {
+				return err
+			}
+		} else {
+			bucket := h.db.Bucket.GetName()
+			dbName := h.db.Name
+			var updatedDbConfig *DatabaseConfig
+			cas, err := h.server.BootstrapContext.UpdateConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+				oldConfig = bucketDbConfig.DbConfig
+
+				// set config to offline true
+				bucketDbConfig.StartOffline = base.Ptr(true)
+
+				if err := bucketDbConfig.validateConfigUpdate(contextNoCancel.Ctx, oldConfig, false); err != nil {
+					return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+				}
+
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(contextNoCancel.Ctx, bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+				if err != nil {
+					return nil, err
+				}
+
+				bucketDbConfig.SGVersion = base.ProductVersion.String()
+				updatedDbConfig = bucketDbConfig
+				return bucketDbConfig, nil
+			})
+			if err != nil {
+				return err
+			}
+			if err := h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
+				return err
+			}
 		}
 	} else {
-		bucket := h.db.Bucket.GetName()
-		dbName := h.db.Name
-		var updatedDbConfig *DatabaseConfig
-		cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-			oldConfig = bucketDbConfig.DbConfig
-
-			// set config to offline true
-			bucketDbConfig.StartOffline = base.Ptr(true)
-
-			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldConfig, false); err != nil {
-				return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
-			}
-
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(h.ctx(), bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-			updatedDbConfig = bucketDbConfig
-			return bucketDbConfig, nil
-		})
-		if err != nil {
-			return err
+		dbState := atomic.LoadUint32(&h.db.State)
+		// If the DB is already transitioning to: offline or is offline silently return
+		if dbState == db.DBOffline || dbState == db.DBResyncing || dbState == db.DBStopping {
+			return nil
 		}
-		if err := h.updateConfigAndReloadDatabase(h.ctx(), dbName, bucket, cas, updatedDbConfig); err != nil {
-			return err
+
+		msg := "Unable to take Database offline, database must be in Online state but was " + db.RunStateString[dbState]
+		if dbState == db.DBOnline {
+			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
 		}
+
+		base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "%s", msg)
+		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
 	}
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, base.AuditFields{base.AuditFieldPayload: `{"offline": true}`})
 	base.Audit(h.ctx(), base.AuditIDDatabaseOffline, nil)
@@ -749,12 +765,12 @@ func (h *handler) handlePutConfig() error {
 // the CAS on the config, runs setup (credential injection etc.), acquires _databasesLock and reloads
 // the database. ctx must be non-cancellable because it is used inside a goroutine or across long-lived
 // operations.
-func (h *handler) updateConfigAndReloadDatabase(ctx context.Context, dbName, bucket string, cas uint64, updatedDbConfig *DatabaseConfig) error {
+func (h *handler) updateConfigAndReloadDatabase(ctx base.NonCancellableContext, dbName, bucket string, cas uint64, updatedDbConfig *DatabaseConfig) error {
 	updatedDbConfig.cfgCas = cas
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(ctx, dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
 		return err
 	}
 
@@ -762,7 +778,7 @@ func (h *handler) updateConfigAndReloadDatabase(ctx context.Context, dbName, buc
 	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	return h.server._reloadDatabaseWithConfig(ctx, *updatedDbConfig, false, false)
+	return h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false)
 }
 
 func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, dbName string, validateOIDC, validateConfigUpdate, mergeConfig bool, dbConfig *DbConfig) error {
@@ -770,17 +786,17 @@ func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, db
 	oldDBConfig := h.server.GetDatabaseConfig(dbName).DatabaseConfig.DbConfig
 	updatedDbConfig.DbConfig = oldDBConfig
 	if mergeConfig {
-		base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
+		base.TracefCtx(ctx.Ctx, base.KeyConfig, "merging upserted config into bucket config")
 		if err := base.ConfigMerge(&updatedDbConfig.DbConfig, dbConfig); err != nil {
 			return err
 		}
 	} else {
-		base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
+		base.TracefCtx(ctx.Ctx, base.KeyConfig, "using config as-is without merge")
 		updatedDbConfig.DbConfig = *dbConfig
 	}
 	// only validate config update if we need to.
 	if validateConfigUpdate {
-		err := updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
+		err := updatedDbConfig.validateConfigUpdate(ctx.Ctx, oldDBConfig,
 			validateOIDC)
 		if err != nil {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -788,7 +804,7 @@ func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, db
 	}
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 		return err
 	}
 	if err := h.server.ReloadDatabaseWithConfig(ctx, *updatedDbConfig); err != nil {
@@ -1256,6 +1272,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	bucket := h.db.Bucket.GetName()
 	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, h.db.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
@@ -1283,7 +1300,7 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	if err != nil {
 		return err
 	}
-	if err := h.updateConfigAndReloadDatabase(h.ctx(), h.db.Name, bucket, cas, updatedDbConfig); err != nil {
+	if err := h.updateConfigAndReloadDatabase(contextNoCancel, h.db.Name, bucket, cas, updatedDbConfig); err != nil {
 		return err
 	}
 
@@ -1302,6 +1319,8 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	if err != nil {
 		return err
 	}
+
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
@@ -1340,7 +1359,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	if err != nil {
 		return err
 	}
-	if err := h.updateConfigAndReloadDatabase(h.ctx(), dbName, bucket, cas, updatedDbConfig); err != nil {
+	if err := h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
 		return err
 	}
 
@@ -1395,6 +1414,8 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "endpoint only supports persistent config mode")
 	}
 
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
+
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
 
@@ -1428,7 +1449,7 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	if err := h.updateConfigAndReloadDatabase(h.ctx(), dbName, bucket, cas, updatedDbConfig); err != nil {
+	if err := h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
 		return err
 	}
 
@@ -1450,6 +1471,8 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	}
 	bucket := h.db.Bucket.GetName()
 	dbName := h.db.Name
+
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 
 	var updatedConfigStr string
 	var updatedDbConfig *DatabaseConfig
@@ -1486,7 +1509,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	if err := h.updateConfigAndReloadDatabase(h.ctx(), dbName, bucket, cas, updatedDbConfig); err != nil {
+	if err := h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
 		return err
 	}
 

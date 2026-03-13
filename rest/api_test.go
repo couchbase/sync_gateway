@@ -3284,7 +3284,7 @@ func TestBufferFlush(t *testing.T) {
 	assert.True(t, resp.Flushed)
 }
 
-func TestContinuousChangesDoesNotBlockIOffline(t *testing.T) {
+func TestContinuousChangesDoesNotBlockOffline(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
