@@ -1897,7 +1897,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID || changeEntryRevID == version1.CV.String() {
-						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
+						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel)))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
 						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
@@ -1919,7 +1919,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: test.replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
-				version2 := <-updatedVersion
+				version2 := base.RequireChanRecv(t, updatedVersion)
 
 				if test.expectReplacementRev {
 					// version 2 was sent instead
@@ -2760,7 +2760,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				receivedNoRevs := make(chan *blip.Message)
 				btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
 					fmt.Println("Received noRev", msg.Properties)
-					receivedNoRevs <- msg
+					base.RequireChanSend(t, receivedNoRevs, msg)
 				}
 
 				version := rt.PutDoc(docName, `{"foo": "bar"}`)

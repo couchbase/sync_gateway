@@ -1365,7 +1365,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
-						updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 					}
 				}
 
@@ -1398,7 +1398,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				rt.WaitForPendingChanges()
 
 				// block until we've written the update and got the new version to use in assertions
-				version3 := <-updatedVersion
+				version3 := base.RequireChanRecv(t, updatedVersion)
 
 				// we should get the new updated version through replacement rev functionality
 				btcRunner.WaitForVersion(client.id, docID, version3)
@@ -1454,7 +1454,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 		changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 			if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
-				updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+				base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 			}
 		}
 
@@ -1482,7 +1482,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		rt.WaitForPendingChanges()
 
 		// block until we've written the update and got the new version to use in assertions
-		version3 := <-updatedVersion
+		version3 := base.RequireChanRecv(t, updatedVersion)
 
 		// we should get the delta still for version 2
 		btcRunner.WaitForVersion(client.id, docID, version2)
