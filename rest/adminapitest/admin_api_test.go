@@ -627,7 +627,8 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	// offline call above resets stats to 0, so sync function count will only include resync run started above
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
@@ -3141,7 +3142,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Get config values before taking db offline, locally only
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	dbConfigBeforeOffline := resp.Body.String()
+	var dbConfigBeforeOffline rest.DbConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfigBeforeOffline))
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3159,7 +3161,12 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	require.Equal(t, dbConfigBeforeOffline, resp.Body.String())
+	var dbConfigAfterOffline rest.DbConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfigAfterOffline))
+	dbConfigAfterOffline.StartOffline = nil // _offline now alters config, remove this to compare before and after config to ensure nothing else is changed
+	dbConfigAfterOffline.UpdatedAt = nil
+	dbConfigBeforeOffline.UpdatedAt = nil
+	require.Equal(t, dbConfigBeforeOffline, dbConfigAfterOffline)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3430,6 +3437,80 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 		),
 	)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+}
+
+func TestTakeDbOfflineOnlineUsingOfflineEndpoint(t *testing.T) {
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+		{
+			name:             "persistent config",
+			persistentConfig: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: testCase.persistentConfig})
+			defer rt.Close()
+
+			if testCase.persistentConfig {
+				dbCfg := rt.NewDbConfig()
+				rest.RequireStatus(t, rt.CreateDatabase("db", dbCfg), http.StatusCreated)
+			}
+
+			// Grab db config before offline operation
+			var preOfflineDBConfig rest.DbConfig
+			resp := rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, json.Unmarshal(resp.BodyBytes(), &preOfflineDBConfig))
+
+			preOfflineDBConfig.UpdatedAt = nil // nil this for comparison later in test
+
+			// Take DB offline
+			resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+
+			// Verify DB state
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			var dbStatus map[string]any
+			err := json.Unmarshal(resp.BodyBytes(), &dbStatus)
+			require.NoError(t, err)
+			assert.Equal(t, "Offline", dbStatus["state"])
+
+			// Try to put a doc - should fail
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
+			rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+			// Bring DB online
+			resp = rt.SendAdminRequest(http.MethodPost, "/db/_online", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+
+			// Wait for online process to complete
+			rt.WaitForDBOnline()
+
+			// Try to put a doc - should succeed
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			// Grab post online config
+			var postOnlineDbConfig rest.DbConfig
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, json.Unmarshal(resp.BodyBytes(), &postOnlineDbConfig))
+
+			// remove field that didn't exist in original db config
+			postOnlineDbConfig.StartOffline = nil
+			postOnlineDbConfig.Server = nil
+			postOnlineDbConfig.UpdatedAt = nil
+			assert.Equal(t, preOfflineDBConfig, postOnlineDbConfig)
+		})
+	}
 }
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
