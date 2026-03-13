@@ -2266,32 +2266,38 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
+// prepareSyncFnBody prepares a body for the sync function by injecting
+// _id, _rev, _deleted and validating. Returns the mutableBody, metaMap,
+// and the revID used. This is a shared function used by both write paths
+// (via prepareSyncFn) and resync/recalculate paths.
+func (db *DatabaseCollectionWithUser) prepareSyncFnBody(doc *Document, body Body, revID string, deleted bool) (mutableBody Body, metaMap map[string]any, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err = doc.GetMetaMap(db.UserXattrKey())
 	if err != nil {
 		return
 	}
 
+	err = validateNewBody(body)
+	if err != nil {
+		return
+	}
+
+	body[BodyId] = doc.ID
+	body[BodyRev] = revID
+	body[BodyDeleted] = deleted  // Explicitly set to true/false
+
+	return body, metaMap, nil
+}
+
+func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
 	mutableBody, err = newDoc.GetDeepMutableBody()
 	if err != nil {
 		return
 	}
 
-	err = validateNewBody(mutableBody)
-	if err != nil {
-		return
-	}
+	mutableBody, metaMap, err = db.prepareSyncFnBody(doc, mutableBody, newDoc.RevID, newDoc.Deleted)
 
-	newRevID = newDoc.RevID
-
-	mutableBody[BodyId] = doc.ID
-	mutableBody[BodyRev] = newRevID
-	if newDoc.Deleted {
-		mutableBody[BodyDeleted] = true
-	}
-
-	return
+	return mutableBody, metaMap, newDoc.RevID, err
 }
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
@@ -2319,17 +2325,35 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 		return
 	}
 
+	revID := doc.GetRevTreeID()
+	revInfo, ok := doc.History[revID]
+	if !ok {
+		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
+		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+			"on it (err=%v)", base.UD(doc.ID), revID, err)
+		channelSet = nil
+		access = nil
+		roles = nil
+		return
+	}
+
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
-			base.UD(doc.ID), newRevID, doc.GetRevTreeID())
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.GetRevTreeID())
+			base.UD(doc.ID), newRevID, revID)
+		// Prepare the body using the shared function to ensure consistency with write paths
+		mutableBody, metaMap, innerErr := db.prepareSyncFnBody(doc, curBody, revID, revInfo.Deleted)
+		if innerErr != nil {
+			err = innerErr
+			return
+		}
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, mutableBody, metaMap, revID)
 		if err != nil {
 			return
 		}
 	} else {
 		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
 		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-			"on it (err=%v)", base.UD(doc.ID), doc.GetRevTreeID(), err)
+			"on it (err=%v)", base.UD(doc.ID), revID, err)
 		channelSet = nil
 		access = nil
 		roles = nil

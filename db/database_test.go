@@ -4909,5 +4909,53 @@ func TestRevTreeConflictCheck(t *testing.T) {
 			}
 		})
 	}
+}
 
+// TestResyncBodyPreparation validates that the sync function receives properly prepared body
+// during resync operations. Prior to the refactoring, resync and recalculateSyncFnForActiveRev
+// paths passed raw bodies without _id, _rev, and _deleted injected.
+func TestResyncBodyPreparation(t *testing.T) {
+	t.Run("resync_injects_id_and_rev", func(t *testing.T) {
+		db, ctx := setupTestDB(t)
+		defer db.Close(ctx)
+
+		db.Options.EnableXattr = true
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+		// Sync function that requires _id and _rev - will throw if they're undefined/missing
+		syncFn := `function(doc, oldDoc) {
+			var idPrefix = doc._id.substring(0, 1);
+			var genPrefix = doc._rev.substring(0, 1);
+			channel(idPrefix + "-" + genPrefix);
+		}`
+
+		_, err := collection.UpdateSyncFun(ctx, syncFn)
+		require.NoError(t, err)
+
+		docID := "testdoc"
+		body := Body{"value": "test"}
+		_, doc1, err := collection.Put(ctx, docID, body)
+		require.NoError(t, err)
+
+		// Verify write path works
+		_, ok := doc1.Channels["t-1"]
+		assert.True(t, ok, "Write path should inject _id and _rev")
+
+		// Update sync function to use different _id-based channel
+		updatedSyncFn := `function(doc, oldDoc) {
+			channel("prefix-" + doc._id.substring(0, 2));
+		}`
+		_, err = collection.UpdateSyncFun(ctx, updatedSyncFn)
+		require.NoError(t, err)
+
+		// Resync - should work with injected _id
+		bucketDoc := getBucketDocument(t, collection.DatabaseCollection, docID)
+		err = collection.ResyncDocument(ctx, docID, bucketDoc, false)
+		require.NoError(t, err, "Resync should succeed with injected _id")
+
+		resyncedDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+		require.NoError(t, err)
+		_, ok = resyncedDoc.Channels["prefix-te"]
+		assert.True(t, ok, "Resync should use injected _id='testdoc'")
+	})
 }

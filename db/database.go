@@ -1805,18 +1805,25 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 			return
 		}
-		metaMap, err := doc.GetMetaMap(db.UserXattrKey())
+		// Prepare the body using the shared function to ensure consistency with write paths
+		mutableBody, metaMap, err := db.prepareSyncFnBody(doc, body, rev.ID, rev.Deleted)
 		if err != nil {
+			// Probably the validator rejected the doc
+			base.WarnfCtx(ctx, "Error preparing body for sync function on doc %q: %v", base.UD(docid), err)
 			return
 		}
-		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		var returnedChannels base.Set
+		var returnedAccess channels.AccessMap
+		var returnedRoles channels.AccessMap
+		var syncExpiry *uint32
+		returnedChannels, returnedAccess, returnedRoles, syncExpiry, _, err = db.getChannelsAndAccess(ctx, doc, mutableBody, metaMap, rev.ID)
 		if err != nil {
 			// Probably the validator rejected the doc
 			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
-			access = nil
-			channels = nil
+			returnedChannels = nil
+			returnedAccess = nil
 		}
-		rev.Channels = channels
+		rev.Channels = returnedChannels
 
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
@@ -1828,9 +1835,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, _, err := doc.updateChannels(ctx, channels)
-			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
-				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
+			changedChannels, _, err := doc.updateChannels(ctx, returnedChannels)
+			changed = len(doc.Access.updateAccess(ctx, doc, returnedAccess)) +
+				len(doc.RoleAccess.updateAccess(ctx, doc, returnedRoles)) +
 				len(changedChannels)
 			if err != nil {
 				return
