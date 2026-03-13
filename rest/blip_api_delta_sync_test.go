@@ -12,8 +12,10 @@ package rest
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -1482,7 +1484,12 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		rt.WaitForPendingChanges()
 
 		// block until we've written the update and got the new version to use in assertions
-		version3 := <-updatedVersion
+		var version3 DocVersion
+		select {
+		case version3 = <-updatedVersion:
+		case <-time.After(TestChannelTimeout):
+			require.Fail(t, fmt.Sprintf("expected version did not arrive in %v", TestChannelTimeout))
+		}
 
 		// we should get the delta still for version 2
 		btcRunner.WaitForVersion(client.id, docID, version2)
