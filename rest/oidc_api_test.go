@@ -2587,7 +2587,10 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 
 // Checks that we correctly handle the removal of an OIDC provider while it's in use
 func TestOpenIDConnectProviderRemoval(t *testing.T) {
-	base.LongRunningTest(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	const (
 		providerName    = "foo"

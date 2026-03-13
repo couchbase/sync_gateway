@@ -29,8 +29,6 @@ import (
 
 // TestUsersAPI tests pagination of QueryPrincipals
 func TestUsersAPI(t *testing.T) {
-	base.LongRunningTest(t)
-
 	// Create rest tester with low pagination limit
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -80,8 +78,6 @@ func TestUsersAPI(t *testing.T) {
 
 // TestUsersAPIDetails tests users endpoint with name_only=false when using views (unsupported combination, should return 400)
 func TestUsersAPIDetailsViews(t *testing.T) {
-	base.LongRunningTest(t)
-
 	if !base.TestsDisableGSI() {
 		t.Skip("This test only works with UseViews=true")
 	}
@@ -1195,10 +1191,12 @@ func TestRemovingUserXattr(t *testing.T) {
 }
 
 func TestGetUserCollectionAccess(t *testing.T) {
-	base.LongRunningTest(t)
-
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -1368,9 +1366,12 @@ func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.RequireNumTestDataStores(t, 2)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
+
 	testBucket := base.GetTestBucket(t)
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)

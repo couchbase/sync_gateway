@@ -547,8 +547,6 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 // Tests that the users returned in the config endpoint have the correct names
 // Reproduces #2223
 func TestDBGetConfigNamesAndDefaultLogging(t *testing.T) {
-	base.LongRunningTest(t)
-
 	p := "password"
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -2287,8 +2285,6 @@ func TestHandleGetStackTrace(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.Ptr("password")}}}}})
 	defer rt.Close()
 
@@ -2915,10 +2911,12 @@ func TestPutDbConfigChangeName(t *testing.T) {
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only
+	// using a single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -3285,6 +3283,10 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	base.LongRunningTest(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -3335,8 +3337,6 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
-	base.LongRunningTest(t)
-
 	importFilter := "function(doc){ return true; }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
 
