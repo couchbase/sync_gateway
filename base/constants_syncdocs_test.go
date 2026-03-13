@@ -140,6 +140,8 @@ func TestMetadataKeys(t *testing.T) {
 		sessionKey                       string
 		backgroundProcessHeartbeatPrefix string // with backgroundID
 		backgroundProcessStatusPrefix    string // with backgroundID
+		resyncHeatbeatPrefix             string
+		resyncCfgPrefix                  string
 	}{
 		{
 			metadataID:                       "",
@@ -162,6 +164,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
+			resyncHeatbeatPrefix:             "_sync:resync_hb:",
+			resyncCfgPrefix:                  "_sync:resync_cfg:",
 		},
 		{
 			metadataID:                       "",
@@ -184,6 +188,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
+			resyncHeatbeatPrefix:             "_sync:resync_hb:aGroupID",
+			resyncCfgPrefix:                  "_sync:resync_cfg:",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -206,6 +212,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aMetadataID:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:m_aMetadataID:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
+			resyncHeatbeatPrefix:             "_sync:m_aMetadataID:resync_hb:",
+			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -228,6 +236,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aMetadataID:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:m_aMetadataID:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
+			resyncHeatbeatPrefix:             "_sync:m_aMetadataID:resync_hb:aGroupID:",
+			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:aGroupID:",
 		},
 	}
 

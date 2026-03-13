@@ -61,7 +61,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		}
 	}
 	collectionNamesByScope := dbContext.collectionNames()
-	il.importDestKey = base.ImportDestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName])
+	il.importDestKey = base.DestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], base.ImportShardedDCPFeedType)
 
 	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
@@ -92,7 +92,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		dbContext.Bucket, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		dbContext.Bucket, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG, base.ImportShardedDCPFeedType, base.DCPImportFeedID)
 	return err
 }
 

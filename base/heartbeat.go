@@ -45,7 +45,7 @@ type HeartbeatListener interface {
 	Stop()
 }
 
-// couchbaseHeartBeater is a Heartbeater implementation that uses Couchbase document expiry for heartbeat detection.
+// CouchbaseHeartBeater is a Heartbeater implementation that uses Couchbase document expiry for heartbeat detection.
 // Each active node maintains a heartbeat document with expiry = heartbeatExpirySeconds, and performs a touch to refresh
 // the expiry on that document every heartbeatSendInterval.  Heartbeater polls for existence of other nodes' heartbeats
 // every heartbeatPollInterval.  The set of nodes to poll is the union of nodes returned by GetNodes call on all
@@ -64,7 +64,7 @@ type HeartbeatListener interface {
 //	   Number of heartbeat ops/second for a cluster of n nodes - one heartbeat touch per node per heartbeatSendInterval,
 //	   n heartbeat reads per node per heartbeatPollInterval
 //	   e.g  Default for a 4 node cluster: 12 ops/second
-type couchbaseHeartBeater struct {
+type CouchbaseHeartBeater struct {
 	datastore               DataStore
 	nodeUUID                string
 	keyPrefix               string
@@ -84,8 +84,8 @@ type couchbaseHeartBeater struct {
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
-	heartbeater = &couchbaseHeartBeater{
+func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (heartbeater *CouchbaseHeartBeater, err error) {
+	heartbeater = &CouchbaseHeartBeater{
 		datastore:              dataStore,
 		keyPrefix:              keyPrefix,
 		nodeUUID:               nodeUUID,
@@ -102,7 +102,7 @@ func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (h
 
 // Start the heartbeater.  Underlying methods performs the first heartbeat send and check synchronously, then
 // starts scheduled goroutines for ongoing processing.
-func (h *couchbaseHeartBeater) Start(ctx context.Context) error {
+func (h *CouchbaseHeartBeater) Start(ctx context.Context) error {
 
 	if err := h.StartSendingHeartbeats(ctx); err != nil {
 		return err
@@ -120,7 +120,7 @@ func (h *couchbaseHeartBeater) Start(ctx context.Context) error {
 
 // Stop terminates the send and check goroutines, and blocks for up to 1s
 // until goroutines are actually terminated.
-func (h *couchbaseHeartBeater) Stop(ctx context.Context) {
+func (h *CouchbaseHeartBeater) Stop(ctx context.Context) {
 
 	if h == nil {
 		return
@@ -133,7 +133,7 @@ func (h *couchbaseHeartBeater) Stop(ctx context.Context) {
 	for h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
-			WarnfCtx(ctx, "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			WarnfCtx(ctx, "CouchbaseHeartBeater didn't complete Stop() within expected elapsed time")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -142,7 +142,7 @@ func (h *couchbaseHeartBeater) Stop(ctx context.Context) {
 }
 
 // Send initial heartbeat, and start goroutine to schedule sendHeartbeat invocation
-func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error {
+func (h *CouchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error {
 	if err := h.sendHeartbeat(); err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error
 }
 
 // Perform initial heartbeat check, then start goroutine to schedule check for stale heartbeats
-func (h *couchbaseHeartBeater) StartCheckingHeartbeats(ctx context.Context) error {
+func (h *CouchbaseHeartBeater) StartCheckingHeartbeats(ctx context.Context) error {
 
 	if err := h.checkStaleHeartbeats(ctx); err != nil {
 		WarnfCtx(ctx, "Error checking for stale heartbeats: %v", err)
@@ -200,7 +200,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(ctx context.Context) erro
 // Register a new HeartbeatListener.  Listeners must be registered after the heartbeater has been started,
 // to avoid the situation where a new node triggers immediate removal/rebalance because it hasn't started sending
 // heartbeats yet
-func (h *couchbaseHeartBeater) RegisterListener(handler HeartbeatListener) error {
+func (h *CouchbaseHeartBeater) RegisterListener(handler HeartbeatListener) error {
 
 	if !h.sendActive.IsTrue() {
 		return errors.New("Heartbeater must be started before registering listeners, to avoid node removal")
@@ -217,7 +217,7 @@ func (h *couchbaseHeartBeater) RegisterListener(handler HeartbeatListener) error
 }
 
 // Unregister a HeartbeatListener, if a matching listener is found
-func (h *couchbaseHeartBeater) UnregisterListener(handlerName string) {
+func (h *CouchbaseHeartBeater) UnregisterListener(handlerName string) {
 	h.heartbeatListenersMutex.Lock()
 	defer h.heartbeatListenersMutex.Unlock()
 	_, exists := h.heartbeatListeners[handlerName]
@@ -245,7 +245,7 @@ func (l ListenerMap) String() string {
 
 // getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
 // registered for that node
-func (h *couchbaseHeartBeater) getNodeListenerMap(ctx context.Context) ListenerMap {
+func (h *CouchbaseHeartBeater) getNodeListenerMap(ctx context.Context) ListenerMap {
 	nodeToListenerMap := make(ListenerMap)
 	h.heartbeatListenersMutex.RLock()
 	for _, listener := range h.heartbeatListeners {
@@ -265,7 +265,7 @@ func (h *couchbaseHeartBeater) getNodeListenerMap(ctx context.Context) ListenerM
 	return nodeToListenerMap
 }
 
-func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
+func (h *CouchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 
 	// Build set of all nodes
 	nodeListenerMap := h.getNodeListenerMap(ctx)
@@ -304,7 +304,7 @@ func heartbeatTimeoutDocID(nodeUuid, keyPrefix string) string {
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
-func (h *couchbaseHeartBeater) sendHeartbeat() error {
+func (h *CouchbaseHeartBeater) sendHeartbeat() error {
 
 	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
 
@@ -333,7 +333,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 // Accessors to modify heartbeatSendInterval, heartbeatPollInterval, heartbeatExpirySeconds must be invoked prior to Start().
 // No consistency checking is done across values, callers that don't use default values must validate that their
 // combination is valid (e.g. sendInterval is more frequent than expiry)
-func (h *couchbaseHeartBeater) SetSendInterval(duration time.Duration) error {
+func (h *CouchbaseHeartBeater) SetSendInterval(duration time.Duration) error {
 	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		return errors.New("Cannot modify send interval while heartbeater is running - must be set prior to calling Start()")
 	}
@@ -341,7 +341,7 @@ func (h *couchbaseHeartBeater) SetSendInterval(duration time.Duration) error {
 	return nil
 }
 
-func (h *couchbaseHeartBeater) SetPollInterval(duration time.Duration) error {
+func (h *CouchbaseHeartBeater) SetPollInterval(duration time.Duration) error {
 	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		return errors.New("Cannot modify polling interval while heartbeater is running - must be set prior to calling Start()")
 	}
@@ -349,7 +349,7 @@ func (h *couchbaseHeartBeater) SetPollInterval(duration time.Duration) error {
 	return nil
 }
 
-func (h *couchbaseHeartBeater) SetExpirySeconds(expiry uint32) error {
+func (h *CouchbaseHeartBeater) SetExpirySeconds(expiry uint32) error {
 	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		return errors.New("Cannot modify heartbeat expiry value while heartbeater is running - must be set prior to calling Start()")
 	}

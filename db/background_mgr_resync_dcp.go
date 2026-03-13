@@ -12,10 +12,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
@@ -33,7 +35,8 @@ type ResyncManagerDCP struct {
 	useXattrs           bool
 	ResyncedCollections base.CollectionNames
 	resyncCollectionInfo
-	lock sync.RWMutex
+	lock        sync.RWMutex
+	Distributed bool
 }
 
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
@@ -126,6 +129,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
+	var doneChan chan error
+	dcpClient := &base.GoCBDCPClient{}
+
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
 		if err != nil {
@@ -194,22 +200,101 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs)
 
-	dcpClient, err := base.NewDCPClient(ctx, callback, *clientOptions, bucket)
-	if err != nil {
-		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
-		return err
-	}
+	if r.Distributed {
+		var resyncDestKey string
+		var scopeName string
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for resync", resyncLoggingID)
-	doneChan, err := dcpClient.Start()
-	if err != nil {
-		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
-		_ = dcpClient.Close()
-		return err
-	}
-	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
+		// TODO: Handle multiple scopes
 
-	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+		loggingCtx := db.AddBucketUserLogContext(ctx)
+
+		if !db.useShardedDCP() {
+			return fmt.Errorf("running distributed resync is not supported")
+		}
+
+		// Dest creation
+		for sn := range db.Scopes {
+			scopeName = sn
+		}
+
+		collectionNamesByScope, err := db.GetCollectionNamesByScope()
+		if err != nil {
+			return fmt.Errorf("getting collection names by scope failed: %v", err)
+		}
+
+		sort.Strings(collectionNamesByScope[scopeName])
+		if db.OnlyDefaultCollection() {
+			resyncDestKey = base.DestKey(db.Name, "", []string{}, base.ResyncShardedDCPFeedType)
+		} else {
+			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
+		}
+
+
+		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
+		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
+		if err != nil {
+			return fmt.Errorf("Error getting max VB number: %v", err)
+		}
+
+		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
+			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
+			if err != nil {
+				return nil, fmt.Errorf("Error creating resync dest: %v", err)
+			}
+			return resyncDest, nil
+		}
+
+		base.StoreDestFactory(loggingCtx, resyncDestKey, resyncDestFunc)
+
+		base.InfofCtx(loggingCtx, base.KeyJavascript, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
+
+		// Heartbeater creation
+		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix(db.Options.GroupID)
+		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
+		if err != nil {
+			return fmt.Errorf("Error creating resync heartbeater: %v", err)
+		}
+		err = resyncHB.StartSendingHeartbeats(ctx)
+		if err != nil {
+			return fmt.Errorf("Error starting resync heartbeater: %v", err)
+		}
+
+		// CFG creation:
+		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(db.Options.GroupID))
+		if err != nil {
+			return fmt.Errorf("Error creating resync cfg: %v", err)
+		}
+
+		numpartitions := db.Options.ImportOptions.ImportPartitions
+		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
+			 scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
+
+		if err != nil {
+			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
+		}
+		defer resyncCbgtContext.Stop()
+		defer func() {
+			resyncCbgtContext.Stop()
+			resyncHB.Stop(ctx)
+		}()
+	} else {
+		dcpClient, err = base.NewDCPClient(ctx, callback, *clientOptions, bucket)
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
+			return err
+		}
+
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for resync", resyncLoggingID)
+		doneChan, err = dcpClient.Start()
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
+			_ = dcpClient.Close()
+			return err
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
+
+		r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+	}
 
 	select {
 	case <-doneChan:

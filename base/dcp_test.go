@@ -155,6 +155,8 @@ func TestCBGTIndexCreation(t *testing.T) {
 		dbName               string
 		existingLegacyIndex  bool
 		existingCurrentIndex bool
+		feedID               string
+		feedType             ShardedDCPFeedType
 		expectedIndexName    string
 	}{
 		{
@@ -162,27 +164,35 @@ func TestCBGTIndexCreation(t *testing.T) {
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(shortDbName, DCPImportFeedID),
 		},
 		{
 			name:                 "nonUpgradeRestart",
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(shortDbName, DCPImportFeedID),
 		},
 		{
 			name:                 "nonUpgradeUnsafeName",
 			dbName:               longDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(longDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(longDbName, DCPImportFeedID),
 		},
 		{
 			name:                 "upgradeFromSafeLegacy",
 			dbName:               shortDbName,
 			existingLegacyIndex:  true,
 			existingCurrentIndex: false,
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
 			expectedIndexName:    GenerateLegacyIndexName(shortDbName),
 		},
 		{
@@ -190,21 +200,27 @@ func TestCBGTIndexCreation(t *testing.T) {
 			dbName:               longDbName,
 			existingLegacyIndex:  true,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(longDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(longDbName, DCPImportFeedID),
 		},
 		{
 			name:                 "upgradeFromSafeDualIndex",
 			dbName:               shortDbName,
 			existingLegacyIndex:  true,
 			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(shortDbName, DCPImportFeedID),
 		},
 		{
 			name:                 "upgradeFromUnsafeDualIndex",
 			dbName:               longDbName,
 			existingLegacyIndex:  true,
 			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(longDbName),
+			feedID:               DCPImportFeedID,
+			feedType:             ImportShardedDCPFeedType,
+			expectedIndexName:    GenerateIndexName(longDbName, DCPImportFeedID),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -269,7 +285,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 				bucketUUID, _ := bucket.UUID()
 				sourceParams, err := cbgtFeedParams(ctx, "", nil, tc.dbName)
 				require.NoError(t, err)
-				legacyIndexName := GenerateIndexName(tc.dbName)
+				legacyIndexName := GenerateIndexName(tc.dbName, tc.feedID)
 				indexParams := `{"name": "` + tc.dbName + `"}`
 				planParams := cbgt.PlanParams{
 					MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -291,7 +307,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			}
 
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, "", nil, 16)
+			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, "", nil, 16, tc.feedType, tc.feedID)
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
@@ -363,7 +379,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -372,7 +388,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -441,7 +457,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	require.NoError(t, err, "Unable to create legacy-style index")
 
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -450,7 +466,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -459,7 +475,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 	_, ok := indexDefsMap[legacyIndexName]
 	assert.False(t, ok)
-	_, ok = indexDefsMap[GenerateIndexName(unsafeTestDBName)]
+	_, ok = indexDefsMap[GenerateIndexName(unsafeTestDBName, "")]
 	assert.True(t, ok)
 }
 
@@ -507,7 +523,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			// StartManager starts the manager and creates the index
 			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, "", nil, DefaultImportPartitions)
+			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, "", nil, DefaultImportPartitions, ImportShardedDCPFeedType, DCPImportFeedID)
 			assert.NoError(t, startErr)
 			managerWg.Done()
 
