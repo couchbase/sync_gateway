@@ -215,7 +215,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			scopeName = sn
 		}
 
-		collectionNamesByScope, err := db.GetCollectionNamesByScope()
+		collectionNamesByScope := db.collectionNames()
 		if err != nil {
 			return fmt.Errorf("getting collection names by scope failed: %v", err)
 		}
