@@ -46,15 +46,15 @@ func TestDestKey(t *testing.T) {
 		feedType    ShardedDCPFeedType
 	}{
 		{
-			name:   "import no scope or collections",
-			dbName: "foo",
-			key:    "foo_import",
+			name:     "import no scope or collections",
+			dbName:   "foo",
+			key:      "foo_import",
 			feedType: ImportShardedDCPFeedType,
 		},
 		{
-			name:   "resync no scope or collections",
-			dbName: "foo",
-			key:    "foo_resync_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			name:     "resync no scope or collections",
+			dbName:   "foo",
+			key:      "foo_resync_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 			feedType: ResyncShardedDCPFeedType,
 		},
 		{
@@ -62,14 +62,14 @@ func TestDestKey(t *testing.T) {
 			dbName:    "foo",
 			scopeName: DefaultScope,
 			key:       "foo_import",
-			feedType: ImportShardedDCPFeedType,
+			feedType:  ImportShardedDCPFeedType,
 		},
 		{
 			name:      "resync default scope without collections",
 			dbName:    "foo",
 			scopeName: DefaultScope,
 			key:       "foo_resync_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:  ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import custom collection in default scope",
@@ -77,7 +77,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"bar"},
 			key:         "foo_import_02e3c10f452b5d9d5051ae25270ae5714471774097ca7e00424b52bf63de1f6d",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync custom collection in default scope",
@@ -85,7 +85,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"bar"},
 			key:         "foo_resync_02e3c10f452b5d9d5051ae25270ae5714471774097ca7e00424b52bf63de1f6d",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import custom collection in custom scope",
@@ -93,7 +93,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "baz",
 			collections: []string{"bar"},
 			key:         "foo_import_3a4b66f3c8aa40608000c82c417f201de305a1994f3048b7734a33205be5e410",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync custom collection in custom scope",
@@ -101,7 +101,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "baz",
 			collections: []string{"bar"},
 			key:         "foo_resync_3a4b66f3c8aa40608000c82c417f201de305a1994f3048b7734a33205be5e410",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import multiple collections in custom scope",
@@ -109,7 +109,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync multiple collections in custom scope",
@@ -117,7 +117,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import multiple collections across scope",
@@ -125,7 +125,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync multiple collections across scope",
@@ -133,7 +133,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import default scope with multiple collections",
@@ -141,7 +141,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_98ea225323328e1d6ae54575908419f85dcad91b2ee3acb56b3a6491145d87cf",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync default scope with multiple collections",
@@ -149,7 +149,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_98ea225323328e1d6ae54575908419f85dcad91b2ee3acb56b3a6491145d87cf",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 		{
 			name:        "import default scope with default collection",
@@ -157,7 +157,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{DefaultCollection},
 			key:         "foo_import",
-			feedType: ImportShardedDCPFeedType,
+			feedType:    ImportShardedDCPFeedType,
 		},
 		{
 			name:        "resync default scope with default collection",
@@ -165,7 +165,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{DefaultCollection},
 			key:         "foo_resync_03d1187922d96d534d985a0a386ecdf062d369673981c217d07610a7b8ca4a52",
-			feedType: ResyncShardedDCPFeedType,
+			feedType:    ResyncShardedDCPFeedType,
 		},
 	}
 	for _, test := range tests {

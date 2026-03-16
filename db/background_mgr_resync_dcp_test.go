@@ -254,11 +254,11 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			initialStats := getResyncStats(t, db)
 			log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-		options := map[string]any{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         base.NewCollectionNames(),
-		}
+			options := map[string]any{
+				"database":            db,
+				"regenerateSequences": false,
+				"collections":         base.NewCollectionNames(),
+			}
 
 			if distributed {
 				rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
