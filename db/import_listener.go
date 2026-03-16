@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"strings"
 
@@ -91,8 +92,24 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
-	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		dbContext.Bucket, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	indexName, err := base.GenerateImportIndexName(dbContext.Name)
+	if err != nil {
+		return fmt.Errorf("Could not determine index name for import feed: %w", err)
+	}
+	opts := base.ShardedDCPOptions{
+		DBName:            dbContext.Name,
+		UUID:              dbContext.UUID,
+		NumPartitions:     dbContext.Options.ImportOptions.ImportPartitions,
+		Collections:       collectionNamesByScope,
+		Cfg:               dbContext.CfgSG,
+		Heartbeater:       dbContext.Heartbeater,
+		Bucket:            dbContext.Bucket,
+		IndexType:         base.CBGTIndexTypeSyncGatewayImport + dbContext.Options.GroupID,
+		DestKey:           il.importDestKey,
+		IndexName:         indexName,
+		PreviousIndexName: base.GenerateLegacyImportIndexName(dbContext.Name),
+	}
+	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, opts)
 	return err
 }
 
@@ -226,10 +243,11 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	}
 }
 
-func (il *importListener) Stop() {
+// Stop triggers closing the import listener DCP feed and removes the node from shared DCP feed. This function is asynchronous.
+func (il *importListener) Stop(ctx context.Context) {
 	if il != nil {
 		if il.cbgtContext != nil {
-			il.cbgtContext.Stop()
+			il.cbgtContext.Stop(ctx)
 
 			// Remove entry from global listener directory
 			base.RemoveDestFactory(il.importDestKey)

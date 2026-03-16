@@ -65,7 +65,8 @@ func TestDCPNameLength(t *testing.T) {
 
 	for _, dbName := range dbNames {
 		t.Run("cbgt-index-"+dbName, func(t *testing.T) {
-			indexName := GenerateIndexName(dbName)
+			indexName, err := GenerateImportIndexName(dbName)
+			require.NoError(t, err)
 
 			// Verify we pass CBGT's index name validation
 			matched, err := regexp.Match(cbgt.INDEX_NAME_REGEXP, []byte(indexName))
