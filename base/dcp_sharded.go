@@ -478,8 +478,6 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
 func DestKey(dbName string, scope string, collections []string, shardedDcpFeedType ShardedDCPFeedType) string {
-	// ImportDestKey is used for retrieval of import dest from cbgtDestFactories
-	//func ImportDestKey(dbName string, scope string, collections []string) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true
@@ -490,7 +488,7 @@ func DestKey(dbName string, scope string, collections []string, shardedDcpFeedTy
 		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
 	}
 	// format for _default._default
-	if collectionString == "" || (scope == DefaultScope && onlyDefault) {
+	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && shardedDcpFeedType == ImportShardedDCPFeedType {
 		return fmt.Sprintf("%s_%s", dbName, shardedDcpFeedType)
 	}
 	return fmt.Sprintf("%s_%s_%x", dbName, shardedDcpFeedType, sha256.Sum256([]byte(collectionString)))

@@ -245,7 +245,8 @@ func TestCBGTIndexCreation(t *testing.T) {
 			defer context.Manager.Stop()
 
 			// Define index type
-			configGroup := "configGroup" + t.Name()
+			//configGroup := "configGroup" + t.Name()
+			configGroup := ""
 			indexType := CBGTIndexTypeSyncGatewayImport + configGroup
 			cbgt.RegisterPIndexImplType(indexType,
 				&cbgt.PIndexImplType{})

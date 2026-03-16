@@ -204,8 +204,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		var resyncDestKey string
 		var scopeName string
 
-		// TODO: Handle multiple scopes
-
 		loggingCtx := db.AddBucketUserLogContext(ctx)
 
 		if !db.useShardedDCP() {
@@ -223,18 +221,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		sort.Strings(collectionNamesByScope[scopeName])
-		if db.OnlyDefaultCollection() {
-			resyncDestKey = base.DestKey(db.Name, "", []string{}, base.ResyncShardedDCPFeedType)
-		} else {
-			resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
-		}
-
+		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
 
 		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
 		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
-		if err != nil {
-			return fmt.Errorf("Error getting max VB number: %v", err)
-		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
@@ -267,12 +257,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		numpartitions := db.Options.ImportOptions.ImportPartitions
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			 scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
+			scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
 
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
-		defer resyncCbgtContext.Stop()
 		defer func() {
 			resyncCbgtContext.Stop()
 			resyncHB.Stop(ctx)
@@ -366,19 +355,21 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			db.RequireResync = collectionsRequiringResync
 		}
 	case <-terminator.Done():
-		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-		err = dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
+		if !r.Distributed {
+			base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
+			err = dcpClient.Close()
+			if err != nil {
+				base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+				return err
+			}
 
-		err = <-doneChan
-		if err != nil {
-			return err
-		}
+			err = <-doneChan
+			if err != nil {
+				return err
+			}
 
-		base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
+			base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
+		}
 	}
 
 	return nil

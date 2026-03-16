@@ -32,16 +32,18 @@ func RegisterPindexImpl(ctx context.Context, configGroup string) {
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
-	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
-	cbgt.RegisterPIndexImplType(pIndexType,
-		&cbgt.PIndexImplType{
-			New:    getNewPIndexImplType(ctx),
-			Open:   openPIndexImpl,
-			OpenEx: getOpenExPIndexImpl(ctx),
-			Description: "general/syncGateway-import " +
-				" - import processing for shared bucket access",
-		})
+	for _, indexType := range[]string{base.CBGTIndexTypeSyncGatewayImport, base.CBGTIndexTypeSyncGatewayResync} {
+		pIndexType := indexType + configGroup
+		base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+		cbgt.RegisterPIndexImplType(pIndexType,
+			&cbgt.PIndexImplType{
+				New:    getNewPIndexImplType(ctx),
+				Open:   openPIndexImpl,
+				OpenEx: getOpenExPIndexImpl(ctx),
+				Description: "general/syncGateway-import " +
+					" - import processing for shared bucket access",
+			})
+	}
 }
 
 // getCbgtDest looks up a cbgt.Dest based on a name specified in indexParams.

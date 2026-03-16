@@ -2616,17 +2616,3 @@ func (db *DatabaseContext) usingRosmar() bool {
 func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
 	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }
-
-func (db *DatabaseContext) GetCollectionNamesByScope() (map[string][]string, error) {
-	collectionNamesByScope := make(map[string][]string)
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return collectionNamesByScope, err
-	}
-	for _, collection := range db.CollectionByID {
-		if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !db.OnlyDefaultCollection() {
-			collectionNamesByScope[collection.Name] = append(collectionNamesByScope[collection.Name], collection.Name)
-		}
-	}
-	return collectionNamesByScope, nil
-}

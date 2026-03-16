@@ -246,8 +246,8 @@ func (m *MetadataKeys) ResyncHeartbeaterPrefix(groupID string) string {
 
 // ResyncCfgPrefix returns a document prefix to use for resync cfg documents
 //
-//	format: _sync:{m_$}:cfg[groupID:]   (collections)
-//	format: _sync:cfg:[groupID:]   (default)
+//	format: _sync:{m_$}:resync_cfg[groupID:]   (collections)
+//	format: _sync:resync_cfg:[groupID:]   (default)
 func (m *MetadataKeys) ResyncCfgPrefix(groupID string) string {
 	if groupID != "" {
 		return m.resyncCfgPrefix + groupID + ":"
