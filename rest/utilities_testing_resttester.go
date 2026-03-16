@@ -266,42 +266,47 @@ func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocV
 	rt.WaitForTombstone(docID, deleteVersion)
 }
 
-func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
+// WaitForDocNotFound retries a GET for a given document on admin port until it returns 404. Fails the test harness if the request returns anything except 404 after a timeout.
+//
+// Suitable for waiting for a purged document.
+func (rt *RestTester) WaitForDocNotFound(docID string) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+		assert.Equal(c, http.StatusNotFound, resp.Code, "Expected %s to be not found", docID)
+	}, 10*time.Second*10, 50*time.Millisecond)
+}
+
+// WaitForCheckpointLastSequence polls the checkpoint document until the last_sequence exists in the document. Returns that sequence. Fails the test harness if the checkpoint document does not exist or the last_sequence is empty.
+func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) string {
 	var lastSeq string
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
-		if err != nil {
-			rt.TB().Logf("Error getting checkpoint: %v - will retry", err)
-			return false
+		if !assert.NoError(c, err, "Error getting checkpoint document %s", expectedName) {
+			return
 		}
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`
 		}
-		err = json.Unmarshal(val, &config)
-		if err != nil {
-			rt.TB().Logf("Error unmarshalling checkpoint: %v - will retry", err)
-			return false
+		if !assert.NoError(c, json.Unmarshal(val, &config)) {
+			return
 		}
+		assert.NotEmpty(c, config.LastSeq, "checkpoint document contents=%s", string(val))
 		lastSeq = config.LastSeq
-		return lastSeq != ""
-	}
-	return lastSeq, rt.WaitForCondition(successFunc)
+	}, time.Second*10, time.Millisecond*10)
+	return lastSeq
 }
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
-	successFunc := func() bool {
-		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
-		return ar == count
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, count, rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators())
+	}, time.Second*10, time.Millisecond*10, "mismatch on number of active replicators")
 }
 
 func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
-		return bs != nil
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
+		assert.NotNil(c, bs, "blip sender on active replicator not initialized")
+	}, time.Second*10, time.Millisecond*10, "blip sender on active replicator not initialized")
 }
 
 // CreateReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
@@ -339,11 +344,10 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 }
 
 func (rt *RestTester) WaitForAssignedReplications(count int) {
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
-		return len(replicationStatuses) == count
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc))
+		assert.Len(c, replicationStatuses, count, "Mismatch in number of replications assigned to node")
+	}, time.Second*10, time.Millisecond*10)
 }
 
 func (rt *RestTester) GetActiveReplicatorCount() int {
@@ -353,21 +357,17 @@ func (rt *RestTester) GetActiveReplicatorCount() int {
 }
 
 func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
-	var count int
-	successFunc := func() bool {
-		count = rt.GetActiveReplicatorCount()
-		return count == expCount
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		count := rt.GetActiveReplicatorCount()
+		assert.Equal(c, expCount, count, "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
+	}, time.Second*10, time.Millisecond*10)
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
-	var status db.ReplicationStatus
-	successFunc := func() bool {
-		status = rt.GetReplicationStatusForDB(dbName, replicationID)
-		return status.Status == targetStatus
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status := rt.GetReplicationStatusForDB(dbName, replicationID)
+		assert.Equal(c, targetStatus, status.Status)
+	}, 10*time.Second, 20*time.Millisecond)
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
@@ -506,6 +506,20 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 // test harness if the sequence remains in the skipped list after timeout.
 func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
 	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
+}
+
+// WaitForTombstoneCompactionStatus waits for the tombstone compaction status to reach the expected status and returns the final status. Fails the test harness if the expected status is not reached within the timeout.
+func (rt *RestTester) WaitForTombstoneCompactionStatus(state db.BackgroundProcessState) db.TombstoneManagerResponse {
+	var response db.TombstoneManagerResponse
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
+		RequireStatus(rt.TB(), resp, http.StatusOK)
+
+		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response))
+		assert.Equal(c, state, response.State)
+	}, 90*time.Second, 50*time.Millisecond)
+
+	return response
 }
 
 type RawDocResponse struct {

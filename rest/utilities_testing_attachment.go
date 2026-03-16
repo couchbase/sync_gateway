@@ -22,18 +22,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
+// WaitForAttachmentCompactionStatus will poll the attachment compaction status until it matches the expected state and returns the response of the last status. Fails the test harness if it doesn't reach the expected state.
+func (rt *RestTester) WaitForAttachmentCompactionStatus(_ *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
-	err := rt.WaitForConditionWithOptions(func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		RequireStatus(t, resp, http.StatusOK)
+		RequireStatus(rt.TB(), resp, http.StatusOK)
 
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		assert.NoError(t, err)
-
-		return response.State == state
-	}, 90, 1000)
-	assert.NoError(t, err)
+		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response))
+		assert.Equal(c, state, response.State)
+	}, 90*time.Second, 50*time.Millisecond)
 
 	return response
 }

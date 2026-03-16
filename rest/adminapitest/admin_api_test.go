@@ -692,7 +692,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 	base.TestRequiresDCPResync(t)
 
 	testCases := []struct {
-		docsCreated int
+		docsCreated int64
 	}{
 		{
 			docsCreated: 0,
@@ -716,14 +716,11 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			)
 			defer rt.Close()
 
-			for i := 0; i < testCase.docsCreated; i++ {
+			for i := range testCase.docsCreated {
 				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
-			err := rt.WaitForCondition(func() bool {
-				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
-			})
-			assert.NoError(t, err)
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value, testCase.docsCreated)
 			rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1015,12 +1012,11 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 	// bucket name matches rest tester bucket name
 	var dbCtx *db.DatabaseContext
 	// wait for db to be active on the server context
-	err = rt.WaitForConditionWithOptions(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
 		dbCtx, err = rt.ServerContext().GetActiveDatabase("db1")
-		return err == nil
-	}, 200, 1000)
-	require.NoError(t, err)
+		assert.NoError(c, err)
+	}, 10*time.Second, 20*time.Millisecond)
 	assert.NotNil(t, dbCtx)
 	assert.Equal(t, rt.CustomTestBucket.GetName(), dbCtx.Bucket.GetName())
 	rt.ServerContext().RequireInvalidDatabaseConfigNames(t, []string{})
@@ -1065,12 +1061,10 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	}
 	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
 
-	// asser that the config is picked up as invalid config on server context
-	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	// assert that the config is picked up as invalid config on server context
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt.ServerContext().AllInvalidDatabaseNames(t), 1)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	// assert that a request to the database fails with correct error message
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1171,18 +1165,14 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	defer rt3.Close()
 
 	// assert the invalid database is picked up with new rest tester
-	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt3.ServerContext().AllInvalidDatabaseNames(t), 1)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	// assert that there are no valid db configs on the server context
-	err = rt3.WaitForConditionWithOptions(func() bool {
-		databaseNames := rt3.ServerContext().AllDatabaseNames()
-		return len(databaseNames) == 0
-	}, 200, 1000)
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt3.ServerContext().AllDatabaseNames(), 0)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	// assert a request to the db fails with correct error message
 	resp := rt3.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1244,18 +1234,14 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	defer rt3.Close()
 
 	// assert that the invalid config is picked up by the new rest tester
-	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt3.ServerContext().AllInvalidDatabaseNames(t), 1)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	// assert that there is a valid database picked up as the invalid configs have this rest tester backing bucket
-	err = rt3.WaitForConditionWithOptions(func() bool {
-		validDatabase := rt3.ServerContext().AllDatabases()
-		return len(validDatabase) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt3.ServerContext().AllDatabases(), 1)
+	}, 10*time.Second, 20*time.Millisecond)
 }
 
 // TestMultipleBucketWithBadDbConfigScenario3:
@@ -1310,12 +1296,9 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, tb2.GetName())
 
 	// assert the config is picked as invalid db config
-	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
-
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, rt.ServerContext().AllInvalidDatabaseNames(t), 1)
+	}, 10*time.Second, 20*time.Millisecond)
 }
 
 // TestConfigPollingRemoveDatabase:
@@ -1372,29 +1355,27 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			//		}
 			//  - enable the code block below
 			/*
-				base.ForceTimeouts = true
+								base.ForceTimeouts = true
 
-				// Wait to ensure database doesn't disappear
-				err = rt.WaitForConditionWithOptions(func() bool {
-					_, err := rt.ServerContext().GetActiveDatabase(dbName)
-					return errors.Is(err, base.ErrNotFound)
+								// Wait to ensure database doesn't disappear
+								for i := range 200 {
+									_, err := rt.ServerContext().GetActiveDatabase(dbName)
+									require.False(t, errors.Is(err, base.ErrNotFound))
+				time.Sleep(50 * time.Millisecond)
+				}
 
-				}, 200, 50)
-				require.Error(t, err)
 
-				base.ForceTimeouts = false
+								base.ForceTimeouts = false
 			*/
 
 			// Delete the config directly
 			rt.RemoveDbConfigFromBucket("db1", rt.CustomTestBucket.GetName())
 
 			// assert that the database is unloaded
-			err = rt.WaitForConditionWithOptions(func() bool {
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				_, err := rt.ServerContext().GetActiveDatabase(dbName)
-				return errors.Is(err, base.ErrNotFound)
-
-			}, 200, 1000)
-			require.NoError(t, err)
+				assert.ErrorIs(c, err, base.ErrNotFound)
+			}, 10*time.Second, 20*time.Millisecond)
 
 			// assert that a request to the database fails with correct error message
 			resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -3223,18 +3204,13 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, err)
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
-		rest.WaitAndAssertCondition(t, func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			dbc, err := sc.GetDatabase(ctx, dbName)
-			if err != nil {
-				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
-				return false
+			if !assert.NoError(c, err) {
+				return
 			}
-			if dbc.RevsLimit != revsLimit {
-				t.Logf("expected database with RevsLimit=%v but got %v", revsLimit, dbc.RevsLimit)
-				return false
-			}
-			return true
-		}, "expected database with RevsLimit=%v", revsLimit)
+			assert.Equal(c, revsLimit, dbc.RevsLimit, "expected database with RevsLimit=%v but got %v", revsLimit, dbc.RevsLimit)
+		}, 10*time.Second, 10*time.Millisecond)
 	}
 
 	assertRevsLimit(sc, 123)
@@ -3263,10 +3239,9 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	// shouldn't be applied to the already started node (as "5.4.3" is newer)
 	warnsStart := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "5.4.3", 654))
-	rest.WaitAndAssertConditionTimeout(t, time.Second*10, func() bool {
-		warns := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-		return warns-warnsStart > 3
-	}, "expected some warnings from trying to apply newer config")
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greater(c, int64(3), base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()-warnsStart)
+	}, 10*time.Second, 10*time.Millisecond, "expected some warnings from trying to apply newer config")
 	assertRevsLimit(sc, 789)
 
 	// Shut down the first SG node

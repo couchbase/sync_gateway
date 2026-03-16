@@ -9,12 +9,14 @@
 package importtest
 
 import (
-	"log"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestImportPartitionsOnConcurrentStart(t *testing.T) {
@@ -59,7 +61,7 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 		}
 	}()
 
-	rest.WaitAndAssertCondition(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		totalPartitions := uint16(0)
 		balancedPartitions := true
 		currentPartitions := make([]int, len(restTesters))
@@ -71,12 +73,7 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 				balancedPartitions = false
 			}
 		}
-		if totalPartitions == numImportPartitions && balancedPartitions == true {
-			log.Printf("Partitions are balanced.  Current total: %d, distribution: %v", totalPartitions, currentPartitions)
-			return true
-		} else {
-			log.Printf("Waiting for balanced partitions.  Current total: %d, distribution: %v", totalPartitions, currentPartitions)
-			return false
-		}
-	})
+		assert.Equal(c, numImportPartitions, totalPartitions, "Total partitions should equal expected")
+		assert.True(c, balancedPartitions, "Waiting for balanced partitions.  Current total: %d, distribution: %v", totalPartitions, currentPartitions)
+	}, 10*time.Second, 20*time.Millisecond)
 }

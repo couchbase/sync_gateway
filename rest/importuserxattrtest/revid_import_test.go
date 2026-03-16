@@ -9,7 +9,6 @@
 package importuserxattrtest
 
 import (
-	"log"
 	"net/http"
 	"testing"
 
@@ -69,10 +68,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
@@ -93,11 +89,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	err = rt.GetSingleDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		log.Printf("Import count is: %v", rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 2)
 
 	var syncData3 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})

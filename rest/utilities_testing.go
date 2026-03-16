@@ -905,6 +905,11 @@ func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVe
 
 // WaitForChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
+	body := ""
+	return rt.waitForChanges(numChangesExpected, http.MethodGet, changesURL, body, username, useAdminPort)
+}
+
+func (rt *RestTester) waitForChanges(numChangesExpected int, method, changesURL, body, username string, useAdminPort bool) ChangesResults {
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
 	if db.HasCachingFeedDelay(rt.TB()) {
 		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
@@ -917,52 +922,15 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		var response *TestResponse
 		if useAdminPort {
-			response = rt.SendAdminRequest("GET", url, "")
+			response = rt.SendAdminRequest(method, url, body)
 
 		} else {
-			response = rt.Send(RequestByUser("GET", url, "", username))
+			response = rt.Send(RequestByUser(method, url, body, username))
 		}
 		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes", numChangesExpected, len(changes.Results))
+		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes for %s %s for user=%s", numChangesExpected, len(changes.Results), method, changesURL, username)
 	}, waitTime, 10*time.Millisecond)
 	return *changes
-}
-
-// WaitForCondition runs a retry loop that evaluates the provided function, and terminates
-// when the function returns true.
-func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
-	return rt.WaitForConditionWithOptions(successFunc, 200, 100)
-}
-
-func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	return WaitForConditionWithOptions(rt.Context(), successFunc, maxNumAttempts, timeToSleepMs)
-}
-
-func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value any) {
-		if successFunc() {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(ctx, "Wait for condition options", waitForSuccess, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value any), maxNumAttempts, timeToSleepMs int) error {
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
@@ -1922,27 +1890,11 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (r
 //
 //	[[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]any) {
-
-	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
-		currentChanges := bt.GetChanges()
-		if len(currentChanges) >= numChangesExpected {
-			return false, nil, currentChanges
-		}
-
-		// haven't seen numDocsExpected yet, so wait and retry
-		return true, nil, nil
-
-	}
-
-	err, changes := base.RetryLoop(
-		bt.restTester.Context(),
-		"WaitForNumChanges",
-		retryWorker,
-		base.CreateDoublingSleeperFunc(10, 10),
-	)
-	require.NoError(bt.restTester.TB(), err, "WaitForNumChanges failed")
+	require.EventuallyWithT(bt.restTester.TB(), func(c *assert.CollectT) {
+		changes = bt.GetChanges()
+		assert.GreaterOrEqual(c, len(changes), numChangesExpected, "Found %d changes, expected at least %d. Changes: %v", len(changes), numChangesExpected, changes)
+	}, 10*time.Second, 10*time.Millisecond)
 	return changes
-
 }
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
@@ -2298,35 +2250,6 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...any) {
-	t.Helper()
-	t.Log("starting WaitAndAssertCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
-func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...any) {
-	t.Helper()
-	start := time.Now()
-	tick := time.NewTicker(timeout / 20)
-	defer tick.Stop()
-	for range tick.C {
-		if time.Since(start) > timeout {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			return
-		}
-	}
-}
-
 type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
@@ -2536,6 +2459,12 @@ func (rt *RestTester) GetChanges(uri string, username string) ChangesResults {
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(rt.TB(), err, "Error unmarshalling changes response")
 	return changes
+}
+
+// WaitForPostChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
+func (rt *RestTester) WaitForPostChanges(numChangesExpected int, changesURL, body, username string) ChangesResults {
+	useAdminPort := false
+	return rt.waitForChanges(numChangesExpected, http.MethodPost, changesURL, body, username, useAdminPort)
 }
 
 // PostChanges issues a changes POST request for a given user.

@@ -1554,11 +1554,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	// Pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
-	err = rt.WaitForCondition(func() bool {
-		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 5
-	})
-	assert.NoError(t, err)
+	rt.WaitForPostChanges(5, "/{{.keyspace}}/_changes", changesJSON, "bernard")
 
 	// Delete
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/deletedDoc?rev="+deletedRev, "")
@@ -1575,12 +1571,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
-	var changes rest.ChangesResults
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 5
-	})
-	assert.NoError(t, err)
+	changes := rt.WaitForPostChanges(5, "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		if entry.ID == "conflictedDoc" {
@@ -1590,11 +1581,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	// Active only, POST
 	changesJSON = `{"style":"all_docs", "active_only":true}`
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 3
-	})
-	require.NoError(t, err)
+	changes = rt.WaitForPostChanges(3, "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		// validate conflicted handling
@@ -1604,11 +1591,8 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	}
 
 	// Active only, GET
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard")
-		return len(changes.Results) == 3
-	})
 	require.NoError(t, err)
+	changes = rt.WaitForChanges(3, "/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard", false)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 		if entry.ID == "conflictedDoc" {
@@ -3528,10 +3512,7 @@ func TestTombstoneCompaction(t *testing.T) {
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 					rest.RequireStatus(t, resp, http.StatusOK)
-					err := rt.WaitForCondition(func() bool {
-						return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
-					})
-					assert.NoError(t, err)
+					rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())

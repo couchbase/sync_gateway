@@ -48,10 +48,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		nil)
 	require.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
 
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	rest.RequireStatus(t, resp, http.StatusOK)

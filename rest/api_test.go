@@ -3165,16 +3165,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
-		RequireStatus(t, resp, http.StatusOK)
-
-		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
-		assert.NoError(t, err)
-
-		return tombstoneCompactionStatus.State == db.BackgroundProcessStateCompleted
-	})
-	assert.NoError(t, err)
+	rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value() > firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")

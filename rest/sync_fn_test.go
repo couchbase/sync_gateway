@@ -476,10 +476,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
-	err := rt.WaitForCondition(func() bool {
-		return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == 1000
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value, 1000)
 
 	rt.TakeDbOffline()
 

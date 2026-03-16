@@ -740,6 +740,10 @@ func TestReplicationStatusActions(t *testing.T) {
 				_ = rt1.GetReplicationStatus(replicationID)
 			}
 		}()
+		defer func() {
+			close(doneChan)
+			statusWg.Wait()
+		}()
 
 		// wait for document originally written to rt2 to arrive at rt1
 		changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -776,7 +780,7 @@ func TestReplicationStatusActions(t *testing.T) {
 			status := rt1.GetReplicationStatus(replicationID)
 			assert.Equal(c, db.ReplicationStateStopped, status.Status)
 			assert.Equal(c, "", status.LastSeqPull)
-		}, 10*time.Second, 100*time.Millisecond)
+		}, 10*time.Second, 10*time.Millisecond)
 
 		// Restart the replication
 		response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
@@ -784,15 +788,12 @@ func TestReplicationStatusActions(t *testing.T) {
 
 		// Verify replication has restarted from zero. Since docs have already been replicated,
 		// expect no docs read, two docs checked.
-		statError := rt1.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			status := rt1.GetReplicationStatus(replicationID)
-			return status.DocsCheckedPull == 2 && status.DocsRead == 0
-		})
-		assert.NoError(t, statError)
+			assert.Equal(c, int64(2), status.DocsCheckedPull)
+			assert.Equal(c, int64(0), status.DocsRead)
+		}, 10*time.Second, 10*time.Millisecond)
 
-		// Terminate status goroutine
-		close(doneChan)
-		statusWg.Wait()
 	})
 }
 
@@ -894,26 +895,22 @@ func TestReplicationRebalancePull(t *testing.T) {
 		assert.Equal(t, "remoteRT", docDEF2Body2["source"])
 
 		// Validate replication stats across rebalance, on both active nodes
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT.GetReplicationStatus("rep_ABC").DocsRead
-			t.Logf("activeRT rep_ABC DocsRead: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT.GetReplicationStatus("rep_DEF").DocsRead
-			t.Logf("activeRT rep_DEF DocsRead: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT2.GetReplicationStatus("rep_ABC").DocsRead
-			t.Logf("activeRT2 rep_ABC DocsRead: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT2.GetReplicationStatus("rep_DEF").DocsRead
-			t.Logf("activeRT2 rep_DEF DocsRead: %d", actual)
-			return actual == 2
-		})
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			repABCStatus := activeRT.GetReplicationStatus("rep_ABC")
+			assert.Equal(c, int64(2), repABCStatus.DocsRead)
+		}, 10*time.Second, 10*time.Millisecond, "rep_ABC DocsRead did not reach expected value on activeRT")
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			repABCStatus := activeRT.GetReplicationStatus("rep_DEF")
+			assert.Equal(c, int64(2), repABCStatus.DocsRead)
+		}, 10*time.Second, 10*time.Millisecond, "rep_ABC DocsRead did not reach expected value on activeRT")
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			repABCStatus := activeRT2.GetReplicationStatus("rep_ABC")
+			assert.Equal(c, int64(2), repABCStatus.DocsRead)
+		}, 10*time.Second, 10*time.Millisecond, "rep_ABC DocsRead did not reach expected value on activeRT2")
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			repABCStatus := activeRT2.GetReplicationStatus("rep_DEF")
+			assert.Equal(c, int64(2), repABCStatus.DocsRead)
+		}, 10*time.Second, 10*time.Millisecond, "rep_ABC DocsRead did not reach expected value on activeRT2")
 
 		// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 		activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -1002,26 +999,12 @@ func TestReplicationRebalancePush(t *testing.T) {
 		//     4. active node 2 attempts to write document 1, passive already has it.  DocsCheckedPush is incremented, but not DocsWritten
 		// Note that we can't wait for checkpoint persistence prior to rebalance, as the node initiating the rebalance
 		// isn't necessarily the one running the replication.
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush
-			t.Logf("activeRT rep_ABC DocsCheckedPush: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush
-			t.Logf("activeRT rep_DEF DocsCheckedPush: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush
-			t.Logf("activeRT2 rep_ABC DocsCheckedPush: %d", actual)
-			return actual == 2
-		})
-		rest.WaitAndAssertCondition(t, func() bool {
-			actual := activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush
-			t.Logf("activeRT2 rep_DEF DocsCheckedPush: %d", actual)
-			return actual == 2
-		})
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(2), activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush)
+		}, 10*time.Second, 10*time.Millisecond, "rep_ABC DocsCheckedPush did not reach expected value on activeRT")
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(2), activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush)
+		}, 10*time.Second, 10*time.Millisecond, "rep_DEF DocsCheckedPush did not reach expected value on activeRT")
 
 		// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 		activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -1124,31 +1107,22 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		changesResults.RequireDocIDs(t, []string{docAllChannels1, docAllChannels2})
 
 		// wait for both replications to have pushed, and total pushed to equal 2
-		assert.NoError(t, activeRT.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			abcStatus := activeRT.GetReplicationStatus("rep_ABC")
-			if abcStatus.DocsCheckedPush != 2 {
-				t.Logf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
-				t.Logf("abcStatus=%+v", abcStatus)
-				return false
+			if !assert.Equal(c, int64(2), abcStatus.DocsCheckedPush, "DocsCheckedPush is not 2. abcStatus=%v", abcStatus) {
+				return
 			}
 			defStatus := activeRT.GetReplicationStatus("rep_DEF")
-			if defStatus.DocsCheckedPush != 2 {
-				t.Logf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
-				t.Logf("defStatus=%+v", defStatus)
-				return false
+			if !assert.Equal(c, int64(2), defStatus.DocsCheckedPush, "DocsCheckedPush is not 2. defStatus=%v", defStatus) {
+				return
 			}
-
 			// DocsWritten is incremented on a successful write, but ALSO in the race scenario where the remote responds
 			// to the changes message to say it needs the rev, but then receives the rev from another source. This means that
 			// in this test, DocsWritten can be any value between 0 and 2 for each replication, but should be at least 2
 			// for both replications
 			totalDocsWritten := abcStatus.DocsWritten + defStatus.DocsWritten
-			if totalDocsWritten < 2 || totalDocsWritten > 4 {
-				t.Logf("Total docs written is not between 2 and 4, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
-				return false
-			}
-			return true
-		}))
+			assert.False(c, totalDocsWritten < 2 || totalDocsWritten > 4, "Total docs written is not between 2 and 4 inclusive, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
+		}, 10*time.Second, 10*time.Millisecond)
 
 		// Validate doc contents
 		docAll1Body := remoteRT.GetDocBody(docAllChannels1)
@@ -1810,14 +1784,11 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 		// Wait for nodes to add themselves back to cluster
-		err := activeRT.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			clusterDef, err := activeRTMgr.GetSGRCluster()
-			if err != nil {
-				return false
-			}
-			return len(clusterDef.Nodes) == 2
-		})
-		assert.NoError(t, err, "Nodes did not re-register after removal")
+			require.NoError(c, err, "Error getting cluster definition")
+			assert.Len(c, clusterDef.Nodes, 2, "Expected 2 nodes in cluster definition")
+		}, 10*time.Second, 10*time.Millisecond, "Nodes did not re-register after removal")
 
 		// Wait and validate replications are rebalanced
 		activeRT.WaitForAssignedReplications(1)
@@ -1968,6 +1939,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		require.Equal(t, docID, changesResults.Results[0].ID)
 
 		var lastDocID atomic.Value
+		var docVersion rest.DocVersion
 
 		// Wait for the background updates to finish at the end of the test
 		shouldCreateDocs := base.NewAtomicBool(true)
@@ -1982,7 +1954,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		go func() {
 			for i := 0; shouldCreateDocs.IsTrue(); i++ {
 				docID := fmt.Sprintf("%s-doc%d", t.Name(), i)
-				_ = rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
+				docVersion = rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
 				lastDocID.Store(docID)
 			}
 			rt1.WaitForPendingChanges()
@@ -2007,11 +1979,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		require.True(t, ok)
 
 		// wait for the last document written to rt1 to arrive at rt2
-		rest.WaitAndAssertCondition(t, func() bool {
-			collection, ctx := rt2.GetSingleTestDatabaseCollection()
-			_, err := collection.GetDocument(ctx, lastDocIDString, db.DocUnmarshalSync)
-			return err == nil
-		})
+		rt2.WaitForVersion(lastDocIDString, docVersion)
 	})
 }
 
@@ -6522,15 +6490,20 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				rest.RequireStatus(t, response, http.StatusOK)
 
 				// Wait for expected property value on remote to determine replication complete
-				waitErr := remoteRT.WaitForCondition(func() bool {
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					var remoteDoc db.Body
 					rawResponse := remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-					require.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
+					assert.Equal(c, http.StatusOK, rawResponse.Code)
+					assert.NoError(c, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
+					if !assert.Contains(c, remoteDoc, "prop") {
+						return
+					}
 					prop, ok := remoteDoc["prop"].(string)
-					t.Logf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
-					return ok && prop == test.expectedResult.propertyValue
-				})
-				require.NoError(t, waitErr)
+					if !assert.True(t, ok, "Expected property 'prop' to be a string in remote document") {
+						return
+					}
+					assert.Equal(c, test.expectedResult.propertyValue, prop)
+				}, 10*time.Second, 20*time.Millisecond)
 
 				localDoc := activeRT.GetDocBody(docID)
 				localRevID := localDoc.ExtractRev()
@@ -6605,10 +6578,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	response := rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	rest.RequireStatus(t, response, http.StatusCreated)
 
-	err = rt2.WaitForCondition(func() bool {
-		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value, errorCountBefore+1)
 
 	assert.Equal(t, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
 	assert.Equal(t, db.PreHydrogenTargetAllowConflictsError.Error(), ar.GetStatus(ctx1).ErrorMessage)
@@ -7315,8 +7285,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 		// Check checkpoint document was wrote to bucket with correct status
 		// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
 		expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(replicationID)
-		lastSeq, err := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
-		require.NoError(t, err)
+		lastSeq := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
 		assert.Equal(t, seq, lastSeq)
 
 		err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replicationID)

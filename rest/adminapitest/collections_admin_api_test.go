@@ -11,8 +11,8 @@ package adminapitest
 import (
 	"fmt"
 	"net/http"
-	"slices"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -248,13 +248,9 @@ func TestRequireResync(t *testing.T) {
 	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOffline])
 
 	needsResync := []string{scope + "." + collection1}
-	rest.WaitAndAssertCondition(t, func() bool {
-		resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-		dbRootResponse = rest.DatabaseRoot{}
-		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		return slices.Equal(needsResync, dbRootResponse.RequireResync)
-	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.EqualValues(c, needsResync, rt.GetDatabaseRoot(db2Name).RequireResync)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)

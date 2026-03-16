@@ -1156,10 +1156,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Trigger import
 			testCase.importTrigger(t, rt, docKey)
-			err = rt.WaitForCondition(func() bool {
-				return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-			})
-			assert.NoError(t, err)
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
@@ -1177,10 +1174,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Trigger import
 			testCase.importTrigger(t, rt, docKey)
-			err = rt.WaitForCondition(func() bool {
-				return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-			})
-			assert.NoError(t, err)
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 2)
 
 			// Ensure old channel set with user xattr has been removed
 			xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})

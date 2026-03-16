@@ -307,20 +307,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]any{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
 	require.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus(ctx)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 100, 1000)
-	require.NoError(t, err)
+	RequireBackgroundManagerState(t, testDb.AttachmentCompactionManager, BackgroundProcessStateCompleted)
 
 	// assert that the marked attachments have been "cleaned up"
 	for _, docID := range singleMarkedAttIDs {
@@ -446,50 +433,13 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
-
-	var testStatus AttachmentManagerResponse
-	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	require.NoError(t, err)
+	testStatus := waitForAttachmentCompactionStatus(t, testDB2, BackgroundProcessStateStopped)
 	assert.True(t, testStatus.DryRun)
 
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
-
-	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	require.NoError(t, err)
+	testStatus = waitForAttachmentCompactionStatus(t, testDB2, BackgroundProcessStateCompleted)
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
@@ -497,52 +447,15 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
+	RequireBackgroundManagerState(t, testDB1.AttachmentMigrationManager, BackgroundProcessStateStopped)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
-
-	var testDB1Status AttachmentManagerResponse
-	var testDB2Status AttachmentManagerResponse
-
-	testDB1RawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-	assert.NoError(t, err)
-	testDB2RawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-	assert.NoError(t, err)
-
-	err = base.JSONUnmarshal(testDB1RawStatus, &testDB1Status)
-	require.NoError(t, err)
-	err = base.JSONUnmarshal(testDB2RawStatus, &testDB2Status)
-	require.NoError(t, err)
+	testDB1Status := waitForAttachmentCompactionStatus(t, testDB1, BackgroundProcessStateCompleted)
+	testDB2Status := getAttachmentCompactStatus(t, testDB2)
 
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB1Status.State)
 	assert.Equal(t, BackgroundProcessStateCompleted, testDB2Status.State)
@@ -592,50 +505,13 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
-
-	var testStatus AttachmentManagerResponse
-	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	require.NoError(t, err)
+	testStatus := waitForAttachmentCompactionStatus(t, testDB2, BackgroundProcessStateStopped)
 	assert.True(t, testStatus.DryRun)
 
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
-
-	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal(testRawStatus, &testStatus)
-	require.NoError(t, err)
+	testStatus = waitForAttachmentCompactionStatus(t, testDB2, BackgroundProcessStateCompleted)
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
@@ -674,22 +550,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	var status AttachmentManagerResponse
-	err = WaitForConditionWithOptions(t, func() bool {
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
-
-		if status.State == BackgroundProcessStateError {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	require.NoError(t, err)
-
-	assert.Equal(t, status.State, BackgroundProcessStateError)
+	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
@@ -716,23 +577,6 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", base.ProductAPIVersion), checkpointPrefix)
-}
-
-func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value any) {
-		if successFunc() {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(base.TestCtx(t), "Wait for condition options", waitForSuccess, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
@@ -1045,4 +889,29 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	require.Equal(t, count, stat.Value())
 	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
+}
+
+func waitForAttachmentCompactionStatus(t testing.TB, db *Database, expectedState BackgroundProcessState) AttachmentManagerResponse {
+	ctx := base.TestCtx(t)
+	var finalStatus AttachmentManagerResponse
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rawStatus, err := db.AttachmentCompactionManager.GetStatus(ctx)
+		require.NoError(t, err)
+		var status AttachmentManagerResponse
+		require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+		if !assert.Equal(c, expectedState, status.State) {
+			return
+		}
+		finalStatus = status
+	}, 30*time.Second, 20*time.Millisecond)
+	return finalStatus
+}
+
+func getAttachmentCompactStatus(t testing.TB, db *Database) AttachmentManagerResponse {
+	ctx := base.TestCtx(t)
+	var status AttachmentManagerResponse
+	rawStatus, err := db.AttachmentCompactionManager.GetStatus(ctx)
+	require.NoError(t, err)
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+	return status
 }

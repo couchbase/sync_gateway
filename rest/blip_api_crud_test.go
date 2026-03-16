@@ -2835,11 +2835,10 @@ func TestUnsubChanges(t *testing.T) {
 
 		// Confirm no more changes are being sent
 		doc2Version := rt.PutDoc(doc2ID, `{"key": "val1"}`)
-		err := rt.WaitForConditionWithOptions(func() bool {
-			_, found := btcRunner.GetVersion(btc.id, "doc2", doc2Version)
-			return found
-		}, 10, 100)
-		assert.Error(t, err)
+		// sleep to make sure this doesn't arrive
+		time.Sleep(1 * time.Second)
+		_, found := btcRunner.GetVersion(btc.id, doc2ID, doc2Version)
+		require.False(t, found)
 
 		// Confirm no error message is still returned when no subchanges active
 		btcRunner.UnsubPullChanges(btc.id)
