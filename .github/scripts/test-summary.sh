@@ -28,12 +28,15 @@ if ! jq -es 'true' "$JSON_FILE" > /dev/null 2>&1; then
 fi
 
 # Count test-level and package-level results in a single pass
-eval "$(jq -s '
+eval "$(jq -sr '
     { passed:     [.[] | select(.Test != null and .Action == "pass")]  | length,
       failed:     [.[] | select(.Test != null and .Action == "fail")]  | length,
       skipped:    [.[] | select(.Test != null and .Action == "skip")]  | length,
       pkg_failed: [.[] | select(.Test == null  and .Action == "fail")] | length }
-    | "PASSED=\(.passed)\nFAILED=\(.failed)\nSKIPPED=\(.skipped)\nPKG_FAILED=\(.pkg_failed)"
+    | "PASSED=\(.passed)
+FAILED=\(.failed)
+SKIPPED=\(.skipped)
+PKG_FAILED=\(.pkg_failed)"
 ' "$JSON_FILE")"
 
 if [ "$FAILED" -gt 0 ] || [ "$PKG_FAILED" -gt 0 ]; then
