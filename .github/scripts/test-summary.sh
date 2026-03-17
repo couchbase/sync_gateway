@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-MAX_OUTPUT_LINES=500
+MAX_OUTPUT_LINES=10000
 JSON_FILE="${1:-test.json}"
 
 if [ ! -f "$JSON_FILE" ]; then
@@ -64,16 +64,17 @@ jq -s -r '
         echo '```'
     } >> "$GITHUB_STEP_SUMMARY"
 
-    # Collect output for the failed test and all its subtests
-    jq -s -r --arg t "$test" --arg p "$pkg" '
+    # Collect output for the failed test and all its subtests (limit to MAX_OUTPUT_LINES)
+    jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg t "$test" --arg p "$pkg" '
         [.[] | select(
             .Package == $p
             and .Action == "output"
             and .Test != null
             and (.Test == $t or (.Test | startswith($t + "/")))
         )]
+        | .[:$max]
         | .[].Output // empty
-    ' "$JSON_FILE" | head -"$MAX_OUTPUT_LINES" >> "$GITHUB_STEP_SUMMARY"
+    ' "$JSON_FILE" >> "$GITHUB_STEP_SUMMARY"
 
     {
         echo '```'
@@ -97,10 +98,11 @@ if [ "$PKG_FAILED" -gt 0 ]; then
             echo '```'
         } >> "$GITHUB_STEP_SUMMARY"
 
-        jq -s -r --arg p "$pkg" '
+        jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg p "$pkg" '
             [.[] | select(.Package == $p and .Test == null and .Action == "output")]
+            | .[:$max]
             | .[].Output // empty
-        ' "$JSON_FILE" | head -"$MAX_OUTPUT_LINES" >> "$GITHUB_STEP_SUMMARY"
+        ' "$JSON_FILE" >> "$GITHUB_STEP_SUMMARY"
 
         {
             echo '```'
