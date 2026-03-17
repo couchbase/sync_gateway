@@ -22,13 +22,19 @@ if [ ! -f "$JSON_FILE" ]; then
     exit 0
 fi
 
-# Count test-level results (exclude package-level events by requiring .Test)
-PASSED=$(jq -s '[.[] | select(.Test != null and .Action == "pass")] | length' "$JSON_FILE")
-FAILED=$(jq -s '[.[] | select(.Test != null and .Action == "fail")] | length' "$JSON_FILE")
-SKIPPED=$(jq -s '[.[] | select(.Test != null and .Action == "skip")] | length' "$JSON_FILE")
+# Warn if JSON is truncated/malformed (e.g. from OOM or timeout kill)
+if ! jq -es 'true' "$JSON_FILE" > /dev/null 2>&1; then
+    echo "⚠️ Warning: test results ($JSON_FILE) may be truncated — summary may be incomplete" >> "$GITHUB_STEP_SUMMARY"
+fi
 
-# Count package-level failures (e.g. build/compile errors) where .Test is null
-PKG_FAILED=$(jq -s '[.[] | select(.Test == null and .Action == "fail")] | length' "$JSON_FILE")
+# Count test-level and package-level results in a single pass
+eval "$(jq -s '
+    { passed:     [.[] | select(.Test != null and .Action == "pass")]  | length,
+      failed:     [.[] | select(.Test != null and .Action == "fail")]  | length,
+      skipped:    [.[] | select(.Test != null and .Action == "skip")]  | length,
+      pkg_failed: [.[] | select(.Test == null  and .Action == "fail")] | length }
+    | "PASSED=\(.passed)\nFAILED=\(.failed)\nSKIPPED=\(.skipped)\nPKG_FAILED=\(.pkg_failed)"
+' "$JSON_FILE")"
 
 if [ "$FAILED" -gt 0 ] || [ "$PKG_FAILED" -gt 0 ]; then
     echo "## ❌ $FAILED failed, $PASSED passed, $SKIPPED skipped (${PKG_FAILED} package failure(s))" >> "$GITHUB_STEP_SUMMARY"
