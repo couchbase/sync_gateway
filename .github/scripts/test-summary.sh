@@ -27,8 +27,11 @@ PASSED=$(jq -s '[.[] | select(.Test != null and .Action == "pass")] | length' "$
 FAILED=$(jq -s '[.[] | select(.Test != null and .Action == "fail")] | length' "$JSON_FILE")
 SKIPPED=$(jq -s '[.[] | select(.Test != null and .Action == "skip")] | length' "$JSON_FILE")
 
-if [ "$FAILED" -gt 0 ]; then
-    echo "## ❌ $FAILED failed, $PASSED passed, $SKIPPED skipped" >> "$GITHUB_STEP_SUMMARY"
+# Count package-level failures (e.g. build/compile errors) where .Test is null
+PKG_FAILED=$(jq -s '[.[] | select(.Test == null and .Action == "fail")] | length' "$JSON_FILE")
+
+if [ "$FAILED" -gt 0 ] || [ "$PKG_FAILED" -gt 0 ]; then
+    echo "## ❌ $FAILED failed, $PASSED passed, $SKIPPED skipped (${PKG_FAILED} package failure(s))" >> "$GITHUB_STEP_SUMMARY"
 else
     echo "## ✅ $PASSED passed, $SKIPPED skipped" >> "$GITHUB_STEP_SUMMARY"
     exit 0
@@ -69,3 +72,31 @@ jq -s -r '
         echo ""
     } >> "$GITHUB_STEP_SUMMARY"
 done
+
+# Show package-level failures (build/compile errors, init failures)
+if [ "$PKG_FAILED" -gt 0 ]; then
+    jq -s -r '
+        [.[] | select(.Test == null and .Action == "fail")]
+        | unique_by(.Package)
+        | sort_by(.Package)
+        | .[].Package
+    ' "$JSON_FILE" | while read -r pkg; do
+        {
+            echo "<details>"
+            echo "<summary><strong>FAIL: package</strong> — <code>$pkg</code></summary>"
+            echo ""
+            echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        jq -s -r --arg p "$pkg" '
+            [.[] | select(.Package == $p and .Test == null and .Action == "output")]
+            | .[].Output // empty
+        ' "$JSON_FILE" | head -"$MAX_OUTPUT_LINES" >> "$GITHUB_STEP_SUMMARY"
+
+        {
+            echo '```'
+            echo "</details>"
+            echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
+    done
+fi
