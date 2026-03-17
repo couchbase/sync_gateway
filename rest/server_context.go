@@ -1146,7 +1146,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
 	for _, warnLog := range warnings {
-		base.WarnfCtx(ctx, warnLog)
+		base.WarnfCtx(ctx, "%s", warnLog)
 	}
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
@@ -2226,7 +2226,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 						base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
 					}
 					if count > 0 {
-						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %d from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
+						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 					}
 				}
 			}
