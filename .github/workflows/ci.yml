@@ -34,6 +34,7 @@ concurrency:
 env:
   GO_VERSION: &go_version 1.25.8
   GOTESTSUM_VERSION: 1.13.0
+  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.8.0
 
 jobs:
   build:
@@ -103,6 +104,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
 
   test-race:
     runs-on: ubuntu-latest
@@ -122,6 +128,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
 
   test-default-collection:
     runs-on: ubuntu-latest
@@ -142,6 +153,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
   test-benchmark-compile:
     runs-on: ubuntu-latest
     env:
@@ -160,6 +176,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
 
 
   test-disable-rev-cache:
@@ -181,6 +202,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
 
   python-format:
     runs-on: ubuntu-latest
@@ -232,6 +258,11 @@ jobs:
         if: always()
         shell: bash
         run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *go_test_annotations_version
+        with:
+          test-results: test.json
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool
