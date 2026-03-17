@@ -291,7 +291,7 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
-				Scopes: nil,
+				Scopes:       nil,
 				EnableXattrs: base.Ptr(true),
 			},
 			expectedError: "",
