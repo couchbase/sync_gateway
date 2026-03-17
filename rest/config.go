@@ -725,6 +725,10 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig
 // validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
 // are attempted.
 func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
+	// add guardrails to prevent disabling enabled_shared_bucket_access
+	if *old.EnableXattrs && !(*dbConfig.EnableXattrs) {
+		return fmt.Errorf("cannot disable enabled_shared_bucket_access after enabling it")
+	}
 	// allow switching from implicit `_default` to explicit `_default` scope
 	_, newIsDefaultScope := dbConfig.Scopes[base.DefaultScope]
 	if old.Scopes == nil && len(dbConfig.Scopes) == 1 && newIsDefaultScope {
