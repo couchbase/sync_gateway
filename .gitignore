@@ -22,6 +22,8 @@ tools/cache_perf_tool/cache_perf_tool
 ./cache_perf_tool
 tools/stats-definition-exporter/stats-definition-exporter
 ./stats-definition-exporter
+# factory.ai
+.factory
 
 ### Couchbase Plugin ###
 .cbcache/
