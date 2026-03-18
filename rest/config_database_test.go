@@ -264,7 +264,7 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 			oldDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(true),
 			},
-			expectedError: "cannot disable enabled_shared_bucket_access after enabling it",
+			expectedError: "cannot disable enable_shared_bucket_access after enabling it",
 		},
 		{
 			name:        "old xattrs disabled, new xattrs nil - valid",
@@ -312,7 +312,7 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 			oldDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(true),
 			},
-			expectedError: "cannot disable enabled_shared_bucket_access after enabling it",
+			expectedError: "cannot disable enable_shared_bucket_access after enabling it",
 		},
 
 		// Scope validation
