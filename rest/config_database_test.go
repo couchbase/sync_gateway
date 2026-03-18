@@ -237,6 +237,44 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 	}{
 		// XATTR validation
 		{
+			name:          "both xattrs nil - valid",
+			newDbConfig:   DbConfig{},
+			oldDbConfig:   DbConfig{},
+			expectedError: "",
+		},
+		{
+			name: "old xattrs nil, new xattrs enabled - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			oldDbConfig:   DbConfig{},
+			expectedError: "",
+		},
+		{
+			name: "old xattrs nil, new xattrs disabled - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			oldDbConfig:   DbConfig{},
+			expectedError: "",
+		},
+		{
+			name:        "old xattrs enabled, new xattrs nil - error",
+			newDbConfig: DbConfig{},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			expectedError: "cannot disable enabled_shared_bucket_access after enabling it",
+		},
+		{
+			name:        "old xattrs disabled, new xattrs nil - valid",
+			newDbConfig: DbConfig{},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			expectedError: "",
+		},
+		{
 			name: "no changes - valid",
 			newDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(true),
@@ -288,11 +326,9 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
-				Scopes:       nil,
-				EnableXattrs: base.Ptr(true),
+				Scopes: nil,
 			},
 			expectedError: "",
 		},
@@ -306,11 +342,9 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
-				Scopes:       nil,
-				EnableXattrs: base.Ptr(true),
+				Scopes: nil,
 			},
 			expectedError: "cannot change scopes after database creation",
 		},
@@ -329,11 +363,9 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
-				Scopes:       nil,
-				EnableXattrs: base.Ptr(true),
+				Scopes: nil,
 			},
 			expectedError: "cannot change scopes after database creation",
 		},
@@ -352,7 +384,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -362,7 +393,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			expectedError: "cannot change scopes after database creation",
 		},
@@ -376,7 +406,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -391,7 +420,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			expectedError: "cannot change scopes after database creation",
 		},
@@ -410,7 +438,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			oldDbConfig: DbConfig{
 				Scopes: ScopesConfig{
@@ -425,7 +452,6 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 						},
 					},
 				},
-				EnableXattrs: base.Ptr(true),
 			},
 			expectedError: "cannot change scopes after database creation",
 		},
