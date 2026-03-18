@@ -2238,14 +2238,14 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name             string
-		syncData         SyncData
-		cas              uint64
-		isDelete         bool
-		rawUserXattr     []byte
-		cv               cvExtractor
-		expectedSGWrite  bool
-		expectedAmbig    bool
+		name            string
+		syncData        SyncData
+		cas             uint64
+		isDelete        bool
+		rawUserXattr    []byte
+		cv              cvExtractor
+		expectedSGWrite bool
+		expectedAmbig   bool
 	}{
 		{
 			name:            "CAS match",
