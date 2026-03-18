@@ -2217,6 +2217,119 @@ func TestIsSGWrite(t *testing.T) {
 
 }
 
+func TestIsSGWriteXattrOnly(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	const sgCas uint64 = 100
+	const otherCas uint64 = 999
+	sgCasHex := base.CasToString(sgCas)
+
+	matchingCV := rawHLV([]byte(`{"ver":"0x0100000000000000","src":"testSource"}`))
+	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
+
+	baseSyncData := SyncData{
+		Cas:             sgCasHex,
+		Crc32c:          "0xaabbccdd",
+		Crc32cUserXattr: "",
+		RevAndVersion: channels.RevAndVersion{
+			CurrentSource:  "testSource",
+			CurrentVersion: "0x0100000000000000",
+		},
+	}
+
+	testCases := []struct {
+		name             string
+		syncData         SyncData
+		cas              uint64
+		isDelete         bool
+		rawUserXattr     []byte
+		cv               cvExtractor
+		expectedSGWrite  bool
+		expectedAmbig    bool
+	}{
+		{
+			name:            "CAS match",
+			syncData:        baseSyncData,
+			cas:             sgCas,
+			cv:              &matchingCV,
+			expectedSGWrite: true,
+			expectedAmbig:   false,
+		},
+		{
+			name: "deletion with non-SG CRC",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.Crc32c = "0xaabbccdd" // not DeleteCrc32c
+				return s
+			}(),
+			cas:             otherCas,
+			isDelete:        true,
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "user xattr changed",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			rawUserXattr:    []byte(`{"newkey":"newval"}`),
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "CV mismatch",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &mismatchCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name: "deletion with SG CRC and all checks pass",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.Crc32c = base.DeleteCrc32c
+				return s
+			}(),
+			cas:             otherCas,
+			isDelete:        true,
+			cv:              &matchingCV,
+			expectedSGWrite: true,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "non-deletion CAS mismatch xattr and CV match - ambiguous",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   true,
+		},
+		{
+			name: "nil CV with no sync rev - ambiguous",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.RevAndVersion.CurrentSource = ""
+				s.RevAndVersion.CurrentVersion = ""
+				return s
+			}(),
+			cas:             otherCas,
+			cv:              (*rawHLV)(nil),
+			expectedSGWrite: false,
+			expectedAmbig:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			isSGWrite, ambiguous := tc.syncData.IsSGWriteXattrOnly(ctx, tc.cas, tc.isDelete, tc.rawUserXattr, tc.cv)
+			assert.Equal(t, tc.expectedSGWrite, isSGWrite, "isSGWrite mismatch")
+			assert.Equal(t, tc.expectedAmbig, ambiguous, "ambiguous mismatch")
+		})
+	}
+}
+
 func TestSyncDataCVEqual(t *testing.T) {
 	testCases := []struct {
 		name       string

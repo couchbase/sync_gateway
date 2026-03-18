@@ -397,31 +397,33 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
-	// FIXME: CBG-4640 - IsSGWrite check requires the document body (for CRC32 match)
-	// which is not available on the xattr-only caching feed. This check is disabled
-	// until we have an alternative approach.
-	// var rawVV *rawHLV
-	// vv := doc.Xattrs[base.VvXattrName]
-	// if len(vv) > 0 {
-	// 	rawVV = base.Ptr(rawHLV(vv))
-	// }
-	// isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
-	// if !isSGWrite {
-	// 	return
-	// }
+	var rawVV *rawHLV
+	if vv := doc.Xattrs[base.VvXattrName]; len(vv) > 0 {
+		rawVV = base.Ptr(rawHLV(vv))
+	}
+	isDelete := event.Opcode == sgbucket.FeedOpDeletion
+	isSGWrite, ambiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV)
 
-	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
-	// before ignoring the mutation.
-	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := collection.checkForUpgrade(ctx, docID, DocUnmarshalNoHistory)
-		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.InfofCtx(ctx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
-			syncData = &migratedDoc.SyncData
-		} else {
-			base.InfofCtx(ctx, base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
-			collection.dbStats().Cache().NonMobileIgnoredCount.Add(1)
+	if ambiguous {
+		// Body CRC is the only remaining check — fetch from data store
+		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(docID)
+		if err != nil {
+			// Can't fetch body — drop this event. A subsequent mutation
+			// will arrive on the feed if the doc is updated again.
+			base.DebugfCtx(ctx, base.KeyCache, "Unable to fetch doc body for IsSGWrite on %q, dropping: %v", base.UD(docID), err)
 			return
+		} else if cas != event.Cas {
+			// Doc mutated since DCP event — drop this stale event,
+			// the newer mutation will arrive on the feed.
+			base.DebugfCtx(ctx, base.KeyCache, "CAS mismatch on body fetch for IsSGWrite on %q (event=%d, current=%d), dropping stale event", base.UD(docID), event.Cas, cas)
+			return
+		} else {
+			isSGWrite = base.Crc32cHashString(docBody) == syncData.Crc32c
 		}
+	}
+
+	if !isSGWrite {
+		return
 	}
 
 	if syncData.Sequence <= c.initialSequence {
