@@ -31,7 +31,10 @@ func TestIndexName(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("dbName %s -> indexName %s", test.indexName, test.dbName), func(t *testing.T) {
-			require.Equal(t, test.indexName, GenerateIndexName(test.dbName))
+			indexName, err := GenerateImportIndexName(test.dbName)
+			require.NoError(t, err)
+
+			require.Equal(t, test.indexName, indexName)
 		})
 	}
 }

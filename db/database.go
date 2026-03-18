@@ -639,7 +639,7 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	db.mutationListener.Stop(ctx)
 	db.changeCache.Stop(ctx)
 	if db.ImportListener != nil {
-		db.ImportListener.Stop()
+		db.ImportListener.Stop(ctx)
 		db.ImportListener = nil
 	}
 	if db.Heartbeater != nil {
