@@ -14,6 +14,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,7 +106,7 @@ func (opts ShardedDCPOptions) Validate() error {
 	if len(opts.Collections) == 0 {
 		return fmt.Errorf("at least one collection must be specified to start a sharded DCP feed")
 	} else if len(opts.Collections) > 1 {
-		return fmt.Errorf("only one scope is currently supported for ")
+		return RedactErrorf("only one scope is currently supported for sharded DCP feed, found %s", MD(slices.Collect(maps.Keys(opts.Collections))))
 	}
 	return nil
 }
@@ -117,6 +119,7 @@ func (opts ShardedDCPOptions) scopeAndCollections() (string, []string) {
 		scopeName = s
 		collections = c
 	}
+	slices.Sort(collections)
 	return scopeName, collections
 }
 
@@ -223,7 +226,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 
 	// Determine index name and UUID
 	indexName, previousIndexUUID := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
-	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", opts.IndexName, MD(opts.DBName))
+	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(opts.DBName))
 
 	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
 	// same bucket in a config group
@@ -233,7 +236,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 		c.sourceUUID,      // bucket UUID
 		sourceParams,      // sourceParams
 		opts.IndexType,    // indexType
-		opts.IndexName,    // indexName
+		indexName,         // indexName
 		indexParams,       // indexParams
 		planParams,        // planParams
 		previousIndexUUID, // prevIndexUUID
