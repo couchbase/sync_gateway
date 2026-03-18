@@ -27,11 +27,14 @@ func TestBlipMessagePingProfiles(t *testing.T) {
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
 
-	btcRunner.Run(func(t *testing.T) {
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, rtConfig)
 		defer rt.Close()
 
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+			&BlipTesterClientOpts{
+				SupportedBLIPProtocols: SupportedBLIPProtocols,
+			})
 		defer btc.Close()
 
 		// CBL-js 1.0.1 heartbeat message type
