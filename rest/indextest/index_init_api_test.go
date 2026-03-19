@@ -278,7 +278,7 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	// requires index init
 	base.LongRunningTest(t)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	rt.TakeDbOffline()

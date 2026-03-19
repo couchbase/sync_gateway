@@ -573,6 +573,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
 	return dbContext, nil
 }
@@ -2370,7 +2371,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
-	db.AsyncIndexInitManager = NewAsyncIndexInitManager(db.MetadataStore, db.MetadataKeys)
 
 	db.startReplications(ctx)
 
