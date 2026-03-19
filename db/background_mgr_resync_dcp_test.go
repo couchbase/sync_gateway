@@ -358,7 +358,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	docsPerCollection := 5000
+	docsPerCollection := int64(1000)
 	const numCollections = 2
 	totalDocCount := docsPerCollection * numCollections
 
@@ -404,14 +404,14 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	err := db.ResyncManager.Start(ctx, options)
 	require.NoError(t, err)
 
-	// Attempt to Stop Process
+	// Attempt to Stop Process after 1/5 of docs are processed but before it is completed
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for {
 			stats := getResyncStats(t, db)
-			if stats.DocsProcessed >= 2000 {
+			if stats.DocsProcessed >= (docsPerCollection / 5) {
 				err = db.ResyncManager.Stop()
 				require.NoError(t, err)
 				break
