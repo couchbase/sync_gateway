@@ -288,10 +288,10 @@ func (r *rosmarManager) Stop(_ context.Context) error {
 		return ErrReplicationNotRunning
 	}
 	close(r.terminator)
-	<-r.doneChan
+	err := <-r.doneChan
 	r.doneChan = nil
 	r.terminator = nil
-	return nil
+	return err
 }
 
 // opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas, xattrs, and body.

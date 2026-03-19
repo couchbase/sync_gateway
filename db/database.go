@@ -2561,9 +2561,6 @@ func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpo
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
-		if base.IsDocNotFoundError(err) {
-			return nil
-		}
 		return nil
 	}
 	numVbuckets, err := bucket.GetMaxVbno()

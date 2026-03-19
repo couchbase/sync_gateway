@@ -195,7 +195,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 
 	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback)
-	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, *clientOptions)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
@@ -416,8 +416,8 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
-func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) *base.DCPClientOptions {
-	return &base.DCPClientOptions{
+func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,

@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"sync"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -20,6 +21,7 @@ type RosmarDCPClient struct {
 	bucket     Bucket
 	opts       DCPClientOptions
 	doneChan   chan struct{}
+	closeOnce  sync.Once
 	terminator chan bool
 }
 
@@ -68,10 +70,12 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 
 // Close the DCP feed. This is a non blocking operation to allow for use in a callback function.
 func (dc *RosmarDCPClient) Close() error {
-	if dc.terminator != nil {
-		close(dc.terminator)
-		dc.terminator = nil
-	}
+	dc.closeOnce.Do(func() {
+		if dc.terminator != nil {
+			close(dc.terminator)
+			dc.terminator = nil
+		}
+	})
 	return nil
 }
 

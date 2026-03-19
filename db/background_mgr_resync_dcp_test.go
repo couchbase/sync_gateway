@@ -665,7 +665,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			dcpClient, err := base.NewDCPClient(
 				ctx,
 				bucket,
-				*clientOptions,
+				clientOptions,
 			)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, dcpClient.GetMetadataKeyPrefix())
