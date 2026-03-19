@@ -422,8 +422,8 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
 
-	require.Less(t, stats.DocsProcessed, int64(docsPerCollection), "DocsProcessed is equal to docs created. Consider setting docsPerCollection > %d.", docsPerCollection)
-	assert.Less(t, stats.DocsChanged, int64(docsPerCollection))
+	require.Less(t, stats.DocsProcessed, docsPerCollection, "DocsProcessed is equal to docs created. Consider setting docsPerCollection > %d.", docsPerCollection)
+	assert.Less(t, stats.DocsChanged, docsPerCollection)
 
 	firstDocsChanged := stats.DocsChanged
 
@@ -436,10 +436,10 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 	stats = waitForResyncState(t, db, BackgroundProcessStateCompleted)
 
-	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(totalDocCount))
-	assert.Equal(t, int64(totalDocCount), stats.DocsChanged+firstDocsChanged)
+	assert.GreaterOrEqual(t, stats.DocsProcessed, totalDocCount)
+	assert.Equal(t, totalDocCount, stats.DocsChanged+firstDocsChanged)
 
-	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(totalDocCount))
+	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), totalDocCount)
 	wg.Wait()
 }
 

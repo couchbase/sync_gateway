@@ -277,6 +277,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 
 	r.doneChan, err = base.StartDCPFeed(ctx, r.fromBucket, args)
 	if err != nil {
+		r.terminator = nil
 		r.doneChan = nil
 	}
 	return err

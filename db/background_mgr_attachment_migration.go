@@ -164,20 +164,19 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
 
-	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
-	if err != nil {
-		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
-		return err
-	}
-
 	// check for mismatch in collection id's between current collections on the db and prev run
 
-	err = a.resetDCPMetadataIfNeeded(ctx, dcpClient, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
 	if err != nil {
 		return err
 	}
 
 	a.SetCollectionIDs(currCollectionIDs)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
+	if err != nil {
+		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
+		return err
+	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for attachment migration", migrationLoggingID)
 
 	doneChan, err := dcpClient.Start()
@@ -323,21 +322,28 @@ type AttachmentMigrationManagerStatusDoc struct {
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, dcpClient base.DCPClient, collectionIDs []uint32) error {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
 		return nil
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		return dcpClient.PurgeCheckpoints()
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	slices.Sort(collectionIDs)
 	slices.Sort(a.CollectionIDs)
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		return dcpClient.PurgeCheckpoints()
+		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

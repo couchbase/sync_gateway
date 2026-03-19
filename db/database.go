@@ -2551,6 +2551,29 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 	return maps.Keys(db.CollectionByID)
 }
 
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string) error {
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		checkpoint := checkpointPrefix + ":" + feedPrefix
+		err := database.MetadataStore.Delete(checkpoint)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return err
+		}
+		return nil
+	}
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	datastore := database.MetadataStore
+	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
+	metadata.Purge(ctx, base.DefaultNumWorkers)
+	return nil
+}
+
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
 }
