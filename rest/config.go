@@ -76,6 +76,8 @@ const (
 	tapFeedType = "tap"
 )
 
+var errEnableSharedBucketAccessOneWay = errors.New("enable_shared_bucket_access=true is a one-way operation, cannot disable it after previously enabling it")
+
 // serverType indicates which type of HTTP server sync gateway is running
 type serverType string
 
@@ -725,12 +727,13 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig
 // validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
 // are attempted.
 func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
-	// add guardrails to prevent disabling enable_shared_bucket_access.
-	// nil is treated as false (not enabled), so transitioning from explicitly-enabled to nil is also disallowed.
-	oldXattrsEnabled := old.EnableXattrs != nil && *old.EnableXattrs
-	newXattrsEnabled := dbConfig.EnableXattrs != nil && *dbConfig.EnableXattrs
+	// add guardrails to prevent disabling enable_shared_bucket_access if it was already enabled.
+	// In Sync Gateway <3.0 nil == false (not enabled)
+	// In Sync Gateway 3.0+ nil == true (enabled)
+	oldXattrsEnabled := old.EnableXattrs == nil || *old.EnableXattrs
+	newXattrsEnabled := dbConfig.EnableXattrs == nil || *dbConfig.EnableXattrs
 	if oldXattrsEnabled && !newXattrsEnabled {
-		return fmt.Errorf("cannot disable enable_shared_bucket_access after enabling it")
+		return errEnableSharedBucketAccessOneWay
 	}
 	// allow switching from implicit `_default` to explicit `_default` scope
 	_, newIsDefaultScope := dbConfig.Scopes[base.DefaultScope]

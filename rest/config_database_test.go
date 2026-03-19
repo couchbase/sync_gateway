@@ -251,20 +251,20 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name: "old xattrs nil, new xattrs disabled - valid",
+			name: "old xattrs nil, new xattrs disabled - invalid",
 			newDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(false),
 			},
 			oldDbConfig:   DbConfig{},
-			expectedError: "",
+			expectedError: errEnableSharedBucketAccessOneWay.Error(),
 		},
 		{
-			name:        "old xattrs enabled, new xattrs nil - error",
+			name:        "old xattrs enabled, new xattrs nil",
 			newDbConfig: DbConfig{},
 			oldDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(true),
 			},
-			expectedError: "cannot disable enable_shared_bucket_access after enabling it",
+			expectedError: "",
 		},
 		{
 			name:        "old xattrs disabled, new xattrs nil - valid",
@@ -312,9 +312,8 @@ func TestDatabaseConfigValidateChanges(t *testing.T) {
 			oldDbConfig: DbConfig{
 				EnableXattrs: base.Ptr(true),
 			},
-			expectedError: "cannot disable enable_shared_bucket_access after enabling it",
+			expectedError: errEnableSharedBucketAccessOneWay.Error(),
 		},
-
 		// Scope validation
 		{
 			name: "implicit to explicit default scope - valid",

@@ -4004,17 +4004,19 @@ func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, 
 // is applied and that the database behaves as expected when xattrs are disabled.
 func TestDisableXattrs(t *testing.T) {
 	for _, persistent := range []bool{true, false} {
-		rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-			PersistentConfig: persistent,
+		t.Run(fmt.Sprintf("persistentConfig=%t", persistent), func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: persistent,
+			})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.EnableXattrs = base.Ptr(true)
+
+			rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+			dbConfig.EnableXattrs = base.Ptr(false)
+			rest.RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusBadRequest)
 		})
-		defer rt.Close()
-
-		dbConfig := rt.NewDbConfig()
-		dbConfig.EnableXattrs = base.Ptr(true)
-
-		rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
-
-		dbConfig.EnableXattrs = base.Ptr(false)
-		rest.RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusBadRequest)
 	}
 }
