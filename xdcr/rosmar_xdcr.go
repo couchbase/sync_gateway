@@ -48,7 +48,7 @@ func (r replicatedDocLocation) String() string {
 type rosmarManager struct {
 	filterFunc          xdcrFilterFunc
 	terminator          chan bool
-	doneChan            chan struct{}
+	doneChan            <-chan error
 	collectionsLock     sync.RWMutex
 	fromBucketKeyspaces map[uint32]string
 	toBucketCollections map[uint32]*rosmar.Collection
@@ -225,9 +225,11 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	r.collectionsLock.Lock()
 	defer r.collectionsLock.Unlock()
 	r.terminator = make(chan bool)
-	r.doneChan = make(chan struct{})
+	//r.doneChan = make(chan struct{})
+	r.doneChan = make(chan error)
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
+	collections := base.NewCollectionNameSet()
 	fromDataStores, err := r.fromBucket.ListDataStores()
 	if err != nil {
 		return fmt.Errorf("Could not list data stores: %w", err)
@@ -257,22 +259,28 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 			r.toBucketCollections[collectionID] = col
 			r.fromBucketKeyspaces[collectionID] = fromDataStore.GetName()
 			scopes[fromName.ScopeName()] = append(scopes[fromName.ScopeName()], fromName.CollectionName())
+			collections.Add(toDataStore)
 			break
 		}
 	}
-
-	args := sgbucket.FeedArguments{
-		ID:         "xdcr-" + r.replicationID,
-		Terminator: r.terminator,
-		DoneChan:   r.doneChan,
-		Scopes:     scopes,
-	}
-
 	callback := func(event sgbucket.FeedEvent) bool {
 		return r.processEvent(ctx, event)
 	}
 
-	return r.fromBucket.StartDCPFeed(ctx, args, callback, nil)
+	args := base.DCPClientOptions{
+		FeedID:            "xdcr-" + r.replicationID,
+		Terminator:        r.terminator,
+		CollectionNames:   collections,
+		Callback:          callback,
+		MetadataStoreType: base.DCPMetadataStoreInMemory,
+	}
+
+	r.doneChan, err = base.StartDCPFeed(ctx, r.fromBucket, args)
+	if err != nil {
+		r.terminator = nil
+		r.doneChan = nil
+	}
+	return err
 }
 
 // Stop terminates the replication.
@@ -281,10 +289,10 @@ func (r *rosmarManager) Stop(_ context.Context) error {
 		return ErrReplicationNotRunning
 	}
 	close(r.terminator)
-	<-r.doneChan
+	err := <-r.doneChan
 	r.doneChan = nil
 	r.terminator = nil
-	return nil
+	return err
 }
 
 // opWithMeta writes a document to the target datastore given a type of Deletion or Mutation event with a specific cas, xattrs, and body.

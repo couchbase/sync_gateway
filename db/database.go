@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2403,12 +2404,13 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.usingRosmar() {
+	if len(db.RequireAttachmentMigration) > 0 {
+		cols := slices.Clone(db.RequireAttachmentMigration) // duplicate slice before logging, in case AttachmentMigrationManager runs very fast
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
 		}
-		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", db.RequireAttachmentMigration)
+		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", cols)
 	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
@@ -2506,11 +2508,16 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 }
 
 // PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, taskID string) error {
+func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string) error {
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
 	if err != nil {
-		return err
+		checkpoint := checkpointPrefix + ":" + feedPrefix
+		err := database.MetadataStore.Delete(checkpoint)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return err
+		}
+		return nil
 	}
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
@@ -2535,6 +2542,15 @@ func (db *DatabaseContext) useShardedDCP() bool {
 // collectionNames returns the names of the collections on this database.
 func (db *DatabaseContext) collectionNames() base.CollectionNames {
 	names := base.NewCollectionNames()
+	for _, col := range db.CollectionByID {
+		names.Add(col.dataStore)
+	}
+	return names
+}
+
+// collectionNameSet returns the names of the collections on this database.
+func (db *DatabaseContext) collectionNameSet() base.CollectionNameSet {
+	names := base.NewCollectionNameSet()
 	for _, col := range db.CollectionByID {
 		names.Add(col.dataStore)
 	}

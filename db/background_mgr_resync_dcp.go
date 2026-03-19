@@ -109,6 +109,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+// SetVBUUIDs updates vbuuids in the manager.
+func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.VBUUIDs = vbuuids
+}
+
 // Run starts a DCP feed to process documents for resync.
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db, ok := options["database"].(*Database)
@@ -181,20 +188,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		return true
 	}
 
-	bucket, err := base.AsGocbV2Bucket(db.Bucket)
-	if err != nil {
-		return err
-	}
-
 	if r.hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
 	} else {
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs)
-
-	dcpClient, err := base.NewDCPClient(ctx, callback, *clientOptions, bucket)
+	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback)
+	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
@@ -209,7 +210,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
 
-	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+	r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 
 	select {
 	case <-doneChan:
@@ -415,14 +416,15 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
-func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionIDs []uint32) *base.DCPClientOptions {
-	return &base.DCPClientOptions{
+func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
-		CollectionIDs:     collectionIDs,
 		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID),
+		CollectionNames:   collectionNames,
+		Callback:          callback,
 	}
 }
 

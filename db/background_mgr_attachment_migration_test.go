@@ -14,15 +14,13 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -76,10 +74,6 @@ func getAttachmentMigrationStats(t *testing.T, migrationManager BackgroundManage
 }
 
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -142,9 +136,6 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 }
 
 func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -182,9 +173,6 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 }
 
 func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -257,7 +245,6 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 }
 
 func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
-	base.TestRequiresDCPResync(t)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -312,16 +299,17 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			clientOptions := getMigrationDCPClientOptions(
 				db,
 				migrationID,
-				test.collectionIDs,
+				db.collectionNameSet(),
+				func(sgbucket.FeedEvent) bool {
+					require.FailNow(t, "DCP callback should not be called")
+					return false
+				},
 			)
 
-			b, err := base.AsGocbV2Bucket(bucket)
-			require.NoError(t, err)
 			dcpClient, err := base.NewDCPClient(
 				ctx,
-				nil,
-				*clientOptions,
-				b,
+				bucket,
+				clientOptions,
 			)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, dcpClient.GetMetadataKeyPrefix())
