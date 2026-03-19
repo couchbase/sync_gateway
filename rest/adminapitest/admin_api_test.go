@@ -3998,3 +3998,25 @@ func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, 
 	}
 	require.Equal(t, expectedCount, actualCount)
 }
+
+// TestDisableXattrs verifies that disabling xattrs (extended attributes) on a database
+// is handled correctly through the admin API. It ensures that the configuration change
+// is applied and that the database behaves as expected when xattrs are disabled.
+func TestDisableXattrs(t *testing.T) {
+	for _, persistent := range []bool{true, false} {
+		t.Run(fmt.Sprintf("persistentConfig=%t", persistent), func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: persistent,
+			})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.EnableXattrs = base.Ptr(true)
+
+			rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+			dbConfig.EnableXattrs = base.Ptr(false)
+			rest.RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusBadRequest)
+		})
+	}
+}

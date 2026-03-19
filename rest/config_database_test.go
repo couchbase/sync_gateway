@@ -223,3 +223,248 @@ func TestDatabaseConfigValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestDatabaseConfigValidateChanges validates configuration changes allowed during a config update.
+// It specifically checks constraints around enabling shared bucket access XAttrs,
+// transitioning from implicit to explicit scopes, and ensures scope topology remains consistent.
+func TestDatabaseConfigValidateChanges(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		name          string
+		newDbConfig   DbConfig
+		oldDbConfig   DbConfig
+		expectedError string
+	}{
+		// XATTR validation
+		{
+			name:          "both xattrs nil - valid",
+			newDbConfig:   DbConfig{},
+			oldDbConfig:   DbConfig{},
+			expectedError: "",
+		},
+		{
+			name: "old xattrs nil, new xattrs enabled - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			oldDbConfig:   DbConfig{},
+			expectedError: "",
+		},
+		{
+			name: "old xattrs nil, new xattrs disabled - invalid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			oldDbConfig:   DbConfig{},
+			expectedError: errEnableSharedBucketAccessOneWay.Error(),
+		},
+		{
+			name:        "old xattrs enabled, new xattrs nil",
+			newDbConfig: DbConfig{},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			expectedError: "",
+		},
+		{
+			name:        "old xattrs disabled, new xattrs nil - valid",
+			newDbConfig: DbConfig{},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			expectedError: "",
+		},
+		{
+			name: "no changes - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			expectedError: "",
+		},
+		{
+			name: "xattrs remains disabled - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			expectedError: "",
+		},
+		{
+			name: "enabling xattrs when previously disabled - valid",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			expectedError: "",
+		},
+		{
+			name: "disabling xattrs when previously enabled - error",
+			newDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(false),
+			},
+			oldDbConfig: DbConfig{
+				EnableXattrs: base.Ptr(true),
+			},
+			expectedError: errEnableSharedBucketAccessOneWay.Error(),
+		},
+		// Scope validation
+		{
+			name: "implicit to explicit default scope - valid",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: nil,
+			},
+			expectedError: "",
+		},
+		{
+			name: "implicit default scope to named scope - error",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					"scope1": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: nil,
+			},
+			expectedError: "cannot change scopes after database creation",
+		},
+		{
+			name: "implicit default scope to multiple scopes - error",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+					"scope1": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: nil,
+			},
+			expectedError: "cannot change scopes after database creation",
+		},
+		{
+			name: "adding new scope - error",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+					"newscope": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			expectedError: "cannot change scopes after database creation",
+		},
+		{
+			name: "removing scope - error",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+					"oldscope": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			expectedError: "cannot change scopes after database creation",
+		},
+		{
+			name: "different scope names with same count - error",
+			newDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+					"newscope": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			oldDbConfig: DbConfig{
+				Scopes: ScopesConfig{
+					base.DefaultScope: ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+					"oldscope": ScopeConfig{
+						Collections: CollectionsConfig{
+							base.DefaultCollection: &CollectionConfig{},
+						},
+					},
+				},
+			},
+			expectedError: "cannot change scopes after database creation",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.newDbConfig.validateChanges(ctx, tc.oldDbConfig)
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
