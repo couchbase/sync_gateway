@@ -27,6 +27,10 @@ type DCPClient interface {
 	GetMetadata() []DCPMetadata
 	// GetMetadataKeyPrefix returns the key prefix used for storing any persistent data.
 	GetMetadataKeyPrefix() string
+
+	// PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
+	// will not alter the feed nor remove the checkpoint for the future.
+	PurgeCheckpoints() error
 }
 
 // DCPClientOptions are options for creating a DCPClient.

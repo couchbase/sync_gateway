@@ -368,10 +368,10 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	assert.Equal(t, int64(10), attachmentsMarked)
 	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark", base.ProductAPIVersion), checkpointPrefix)
 
-	attachmentsPurged, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, purgeCheckpoints, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep", base.ProductAPIVersion), checkpointPrefix)
+	require.NotNil(t, purgeCheckpoints)
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -712,11 +712,11 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
-	_, checkpointPrefix, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	_, purgeCheckpoints, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	require.Error(t, err)
 	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", base.ProductAPIVersion), checkpointPrefix)
+	require.NotNil(t, purgeCheckpoints)
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {

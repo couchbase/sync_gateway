@@ -88,3 +88,18 @@ func (dc *RosmarDCPClient) GetMetadata() []DCPMetadata {
 func (dc *RosmarDCPClient) GetMetadataKeyPrefix() string {
 	return dc.opts.CheckpointPrefix
 }
+
+func (dc *RosmarDCPClient) metadataStore() sgbucket.DataStore {
+	return dc.bucket.DefaultDataStore()
+}
+
+// PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
+// will not alter the feed nor remove the checkpoint for the future.
+func (dc *RosmarDCPClient) PurgeCheckpoints() error {
+	checkpoint := dc.opts.CheckpointPrefix + ":" + dc.opts.FeedID
+	err := dc.metadataStore().Delete(checkpoint)
+	if err != nil && !IsDocNotFoundError(err) {
+		return err
+	}
+	return nil
+}

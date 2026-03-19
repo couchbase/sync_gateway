@@ -674,6 +674,13 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 	dc.startWorkers(dc.ctx)
 }
 
+// PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
+// will not alter the feed nor remove the checkpoint for the future.
+func (dc *GoCBDCPClient) PurgeCheckpoints() error {
+	dc.metadata.Purge(dc.ctx, len(dc.workers))
+	return nil
+}
+
 // NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
 func NewDCPClientForTest(ctx context.Context, t *testing.T, ID string, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
