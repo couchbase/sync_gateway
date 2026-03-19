@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     name: OpenAPI Validation
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: r7kamura/redocly-problem-matchers@v1
       - name: redocly lint
         run: |-
@@ -58,7 +58,7 @@ jobs:
     name: 'yamllint'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: karancode/yamllint-github-action@master
         with:
           yamllint_file_or_dir: 'docs/api'
