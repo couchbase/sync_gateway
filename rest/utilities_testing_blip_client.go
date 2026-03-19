@@ -1606,7 +1606,7 @@ type blipTesterUpsertOptions struct {
 	body               []byte
 	isDelete           bool
 	revType            blipRevType    // legacy, RTE or normal HLV
-	specificNewVersion *db.DocVersion // if specified, use this digest for the revision
+	specificNewVersion *db.DocVersion // if specified, use this exact version for the revision
 }
 
 // upsertDoc will create or update the doc based on whether parentVersion is passed or not. Enforces MVCC update.
@@ -1645,6 +1645,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 	if btcc.UseHLV() && opts.revType != blipRevLegacyRevType {
 		var newVersion db.Version
 		if opts.revType == blipRevTreeEncodedCVRevType {
+			require.NotNil(btcc.TB(), opts.specificNewVersion, "specificNewVersion must be set when using blipRevTreeEncodedCVRevType")
 			newVersion = opts.specificNewVersion.CV
 		} else {
 			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}

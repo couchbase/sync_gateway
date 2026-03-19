@@ -320,7 +320,8 @@ func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
 	defer bt.Close()
 	rt := bt.restTester
 
-	doc := rt.CreateDocNoHLV(t.Name(), db.Body{"key": "val"})
+	docID := SafeDocumentName(t, t.Name())
+	doc := rt.CreateDocNoHLV(docID, db.Body{"key": "val"})
 	sgwVersion := doc.ExtractDocVersion()
 
 	encodedVersion, err := db.LegacyRevToRevTreeEncodedVersion(sgwVersion.RevTreeID)
@@ -331,7 +332,7 @@ func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
 
 	// send unsolicited rev
 	_, _, _, err = bt.SendRev(
-		t.Name(),
+		docID,
 		cvStr,
 		[]byte(`{"key": "val"}`),
 		blip.Properties{},
@@ -349,7 +350,7 @@ func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
 	rt.WaitForVersion("foo", DocVersion{RevTreeID: "1-abc"})
 
 	// assert that rev with cv encoded from same revID server has is not synced
-	docVersion, _ := rt.GetDoc(t.Name())
+	docVersion, _ := rt.GetDoc(docID)
 	assert.Equal(t, sgwVersion.RevTreeID, docVersion.RevTreeID)
 	assert.True(t, docVersion.CV.IsEmpty())
 }

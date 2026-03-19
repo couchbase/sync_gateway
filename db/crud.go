@@ -1414,9 +1414,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev
 			if doc.HLV.SourceID == encodedRevTreeSourceID {
 				// convert our current rev to RTE and compare
-				encodedCV, encodedErr := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
-				if encodedErr != nil {
-					return nil, nil, false, nil, fmt.Errorf("failed to encode rev tree ID for doc %s, %v", base.UD(doc.ID), encodedCV)
+				encodedCV, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
+				if err != nil {
+					return nil, nil, false, nil, base.RedactErrorf("failed to encode rev tree ID for doc %s, %w", base.UD(doc.ID), err)
 				}
 				if encodedCV.Equal(*doc.HLV.ExtractCurrentVersionFromHLV()) {
 					base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add. Incoming revision tree generated CV %#v is equal to local revID %s", base.UD(opts.NewDoc.ID), doc.HLV, doc.GetRevTreeID())
@@ -3735,8 +3735,8 @@ func (db *DatabaseCollectionWithUser) CheckProposedVersion(ctx context.Context, 
 		if proposedVersion.SourceID == encodedRevTreeSourceID {
 			// If we have encoded CV proposed to us and local CV is not encoded, check if proposed encoded CV
 			// is derived from the local current revID. If so we already have this rev.
-			localEncodedCV, encodedErr := LegacyRevToRevTreeEncodedVersion(syncData.GetRevTreeID())
-			if encodedErr != nil {
+			localEncodedCV, err := LegacyRevToRevTreeEncodedVersion(syncData.GetRevTreeID())
+			if err != nil {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Failed to parse local revID to encoded CV for doc %q / %q: %v", base.UD(docid), previousRev, err)
 				return ProposedRev_Error, ""
 			}
