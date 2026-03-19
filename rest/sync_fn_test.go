@@ -658,7 +658,10 @@ func TestResyncPersistence(t *testing.T) {
 }
 
 func TestExpiryUpdateSyncFunction(t *testing.T) {
-	base.LongRunningTest(t)
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only using a
+	// single node
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()

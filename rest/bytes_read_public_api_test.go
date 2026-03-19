@@ -24,8 +24,6 @@ import (
 )
 
 func TestBytesReadDocOperations(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 

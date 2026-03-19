@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -338,9 +339,10 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	base.LongRunningTest(t)
-
-	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
+	// speed up test by not sleeping for _sync:seq when database reloads
+	// this sleep is used for multiple Sync Gateway nodes starting up simultaneously, but this test is only running on a
+	// single node.
+	db.DisableSequenceWaitOnDbRestart(t)
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1375,8 +1377,6 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
