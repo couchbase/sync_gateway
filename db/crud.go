@@ -1402,7 +1402,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// convert our current rev to RTE and compare
 				encodedCV, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
 				if err != nil {
-					return nil, nil, false, nil, base.RedactErrorf("failed to encode rev tree ID for doc %s, %v", base.UD(doc.ID), err)
+					return nil, nil, false, nil, base.RedactErrorf("failed to encode rev tree ID for doc %s, %w", base.UD(doc.ID), err)
 				}
 				if encodedCV.Equal(*doc.HLV.ExtractCurrentVersionFromHLV()) {
 					base.DebugfCtx(ctx, base.KeyCRUD, "PutExistingCurrentVersion(%q): No new versions to add. Incoming revision tree generated CV %#v is equal to local revID %s", base.UD(opts.NewDoc.ID), doc.HLV, doc.GetRevTreeID())
