@@ -716,16 +716,6 @@ func RawDocWithInlineSyncData(_ testing.TB) string {
 `
 }
 
-// DisableSequenceWaitOnDbStart disables the release sequence wait on db start.  Appropriate for tests
-// that make changes to database config after first startup, and don't assert/require on sequence correctness
-func DisableSequenceWaitOnDbRestart(tb testing.TB) {
-	//
-	BypassReleasedSequenceWait.Store(true)
-	tb.Cleanup(func() {
-		BypassReleasedSequenceWait.Store(false)
-	})
-}
-
 // WriteDirect will write a document named doc-{sequence} with a given set of channels. This is used to simulate out of order sequence writes by bypassing typical Sync Gateway CRUD functions.
 func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64) {
 	key := fmt.Sprintf("doc-%v", sequence)

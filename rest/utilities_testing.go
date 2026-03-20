@@ -2767,6 +2767,7 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
 		}
 	})
+	db.BypassReleasedSequenceWait.Store(true)
 	serverContextGlobalsInitialized.Store(true)
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
