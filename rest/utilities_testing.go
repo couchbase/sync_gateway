@@ -923,7 +923,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 			response = rt.Send(RequestByUser("GET", url, "", username))
 		}
 		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes", numChangesExpected, len(changes.Results))
+		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %s changes", numChangesExpected, changes.Summary())
 	}, waitTime, 10*time.Millisecond)
 	return *changes
 }

@@ -658,8 +658,6 @@ func TestResyncPersistence(t *testing.T) {
 }
 
 func TestExpiryUpdateSyncFunction(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 

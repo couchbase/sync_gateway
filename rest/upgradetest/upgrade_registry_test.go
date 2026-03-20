@@ -185,8 +185,6 @@ func getDbConfigFromLegacyConfig(rt *rest.RestTester) string {
 
 }
 func TestLegacyMetadataID(t *testing.T) {
-	base.LongRunningTest(t)
-
 	tb1 := base.GetTestBucket(t)
 	// Create a non-persistent rest tester.  Standard RestTester
 	// creates a database 'db' targeting the default collection (when !TestUseNamedCollections)
@@ -221,8 +219,6 @@ func TestLegacyMetadataID(t *testing.T) {
 // TestMetadataIDRenameDatabase verifies that resync is not required when deleting and recreating a database (with a
 // different name) targeting only the default collection.
 func TestMetadataIDRenameDatabase(t *testing.T) {
-	base.LongRunningTest(t)
-
 	// Create a persistent rest tester with default collection.
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
