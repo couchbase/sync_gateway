@@ -23,25 +23,32 @@ import (
 // registerPindexImplMutex serializes access to cbgt.RegisterPIndexImplType, which uses global state without its own synchronization.
 var registerPindexImplMutex = sync.Mutex{}
 
-// RegisterImportPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
+// RegisterPindexImpl registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
-func RegisterImportPindexImpl(ctx context.Context, configGroup string) {
+func RegisterPindexImpl(ctx context.Context, configGroup string) {
 	registerPindexImplMutex.Lock()
 	defer registerPindexImplMutex.Unlock()
 
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
-	// config group scoped.  The associated importListener within the context is retrieved based on the
-	// dbname in the index params
-	pIndexType := base.CBGTIndexTypeSyncGatewayImport + configGroup
-	base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
-	cbgt.RegisterPIndexImplType(pIndexType,
-		&cbgt.PIndexImplType{
-			New:    getNewPIndexImplType(ctx),
-			Open:   openPIndexImpl,
-			OpenEx: getOpenExPIndexImpl(ctx),
-			Description: "general/syncGateway-import " +
-				" - import processing for shared bucket access",
-		})
+	// config group scoped, only for import indexes as import can be enabled only for a config group.
+	// Resync Indexes do not require config group, as the resync will be distributed across all nodes and is not config
+	// specific.
+	for _, pIndexType := range []string{base.CBGTIndexTypeSyncGatewayImport + configGroup, base.CBGTIndexTypeSyncGatewayResync} {
+		base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+		var desc string
+		if pIndexType == base.CBGTIndexTypeSyncGatewayResync {
+			desc = "general/syncGateway-resync - distributed resync"
+		} else {
+			desc = "general/syncGateway-import - import processing for shared bucket access"
+		}
+		cbgt.RegisterPIndexImplType(pIndexType,
+			&cbgt.PIndexImplType{
+				New:         getNewPIndexImplType(ctx),
+				Open:        openPIndexImpl,
+				OpenEx:      getOpenExPIndexImpl(ctx),
+				Description: desc,
+			})
+	}
 }
 
 // getCbgtDest looks up a cbgt.Dest based on a name specified in indexParams.
