@@ -13,4 +13,4 @@ Describe your PR here...
 - [ ] Update Go module dependencies when merged
 
 ## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration/build?delay=0sec)
-- [ ] `GSI=true,xattrs=true` https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
+- [ ] `GSI=true` https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
