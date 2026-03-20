@@ -221,7 +221,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		sort.Strings(collectionNamesByScope[scopeName])
-		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ResyncShardedDCPFeedType)
+		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.CBGTIndexTypeSyncGatewayResync)
 
 		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
 		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
@@ -255,15 +255,28 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
-		numpartitions := db.Options.ImportOptions.ImportPartitions
-		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-			scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
+		indexName, err := base.GenerateCBGTIndexName(db.Name, base.CBGTIndexTypeSyncGatewayResync)
+		opts := base.ShardedDCPOptions{
+			DBName:        db.Name,
+			UUID:          db.UUID,
+			NumPartitions: db.Options.ImportOptions.ImportPartitions,
+			Collections:   collectionNamesByScope,
+			Cfg:           resyncCfg,
+			Heartbeater:   resyncHB,
+			Bucket:        bucket,
+			IndexType:     base.CBGTIndexTypeSyncGatewayResync,
+			DestKey:       resyncDestKey,
+			IndexName:     indexName,
+		}
+		//resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
+		//	scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
+		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
 		defer func() {
-			resyncCbgtContext.Stop()
+			resyncCbgtContext.Stop(ctx)
 			resyncHB.Stop(ctx)
 		}()
 	} else {

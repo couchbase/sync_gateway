@@ -140,7 +140,7 @@ func TestMetadataKeys(t *testing.T) {
 		sessionKey                       string
 		backgroundProcessHeartbeatPrefix string // with backgroundID
 		backgroundProcessStatusPrefix    string // with backgroundID
-		resyncHeatbeatPrefix             string
+		resyncHeartbeatPrefix            string
 		resyncCfgPrefix                  string
 	}{
 		{
@@ -164,7 +164,7 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
-			resyncHeatbeatPrefix:             "_sync:resync_hb:",
+			resyncHeartbeatPrefix:            "_sync:resync_hb:",
 			resyncCfgPrefix:                  "_sync:resync_cfg:",
 		},
 		{
@@ -188,8 +188,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
-			resyncHeatbeatPrefix:             "_sync:resync_hb:aGroupID",
-			resyncCfgPrefix:                  "_sync:resync_cfg:",
+			resyncHeartbeatPrefix:            "_sync:resync_hb:aGroupID:",
+			resyncCfgPrefix:                  "_sync:resync_cfg:aGroupID:",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -212,7 +212,7 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aMetadataID:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:m_aMetadataID:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
-			resyncHeatbeatPrefix:             "_sync:m_aMetadataID:resync_hb:",
+			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
 		},
 		{
@@ -236,7 +236,7 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aMetadataID:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:m_aMetadataID:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
-			resyncHeatbeatPrefix:             "_sync:m_aMetadataID:resync_hb:aGroupID:",
+			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:aGroupID:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:aGroupID:",
 		},
 	}
@@ -271,6 +271,8 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.sessionKey, metadataKeys.SessionKey("aSessionID"))
 			require.Equal(t, test.backgroundProcessHeartbeatPrefix, metadataKeys.BackgroundProcessHeartbeatPrefix("backgroundID"))
 			require.Equal(t, test.backgroundProcessStatusPrefix, metadataKeys.BackgroundProcessStatusPrefix("backgroundID"))
+			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix(test.groupID))
+			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix(test.groupID))
 		})
 	}
 }

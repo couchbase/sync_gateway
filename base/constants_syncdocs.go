@@ -40,7 +40,7 @@ const (
 	MetaKeyUserEmailPrefix                                     // "useremail:"
 	MetaKeySessionPrefix                                       // "session:"
 	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
-	MetaKeyResyncCfgPrefix                                     // "resync_cfg
+	MetaKeyResyncCfgPrefix                                     // "resync_cfg:"
 )
 
 var metadataKeyNames = []string{
@@ -160,8 +160,8 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 			rolePrefix:                formatInvertedMetadataKey(metadataID, MetaKeyRolePrefix),
 			userEmailPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyUserEmailPrefix),
 			sessionPrefix:             formatInvertedMetadataKey(metadataID, MetaKeySessionPrefix),
-			resyncHeartbeaterPrefix:   formatInvertedMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
-			resyncCfgPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
+			resyncHeartbeaterPrefix:   formatMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
+			resyncCfgPrefix:           formatMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
 		}
 	}
 }
@@ -246,7 +246,7 @@ func (m *MetadataKeys) ResyncHeartbeaterPrefix(groupID string) string {
 
 // ResyncCfgPrefix returns a document prefix to use for resync cfg documents
 //
-//	format: _sync:{m_$}:resync_cfg[groupID:]   (collections)
+//	format: _sync:{m_$}:resync_cfg:[groupID:]   (collections)
 //	format: _sync:resync_cfg:[groupID:]   (default)
 func (m *MetadataKeys) ResyncCfgPrefix(groupID string) string {
 	if groupID != "" {

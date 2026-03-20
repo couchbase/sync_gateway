@@ -32,8 +32,7 @@ func RegisterPindexImpl(ctx context.Context, configGroup string) {
 	// Since RegisterPIndexImplType is a global var without synchronization, index type needs to be
 	// config group scoped.  The associated importListener within the context is retrieved based on the
 	// dbname in the index params
-	for _, indexType := range []string{base.CBGTIndexTypeSyncGatewayImport, base.CBGTIndexTypeSyncGatewayResync} {
-		pIndexType := indexType + configGroup
+	for _, pIndexType := range []string{base.CBGTIndexTypeSyncGatewayImport + configGroup, base.CBGTIndexTypeSyncGatewayResync} {
 		base.InfofCtx(ctx, base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
 		cbgt.RegisterPIndexImplType(pIndexType,
 			&cbgt.PIndexImplType{

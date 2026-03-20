@@ -241,7 +241,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 	})
 
 	for _, distributed := range []bool{false, true} {
-		t.Run("Resync with updated sync function", func(t *testing.T) {
+		t.Run(fmt.Sprintf("Resync with updated sync function/distributed=%t", distributed), func(t *testing.T) {
 			docsToCreate := 100
 			db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 			defer db.Close(ctx)

@@ -14,6 +14,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +34,7 @@ const (
 	CBGTCfgNodeDefsKnown              = SyncDocPrefix + "cfgnodeDefs-known"
 	CBGTCfgNodeDefsWanted             = SyncDocPrefix + "cfgnodeDefs-wanted"
 	CBGTCfgPlanPIndexes               = SyncDocPrefix + "cfgplanPIndexes"
-	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync-"
+	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
 )
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
@@ -42,13 +44,6 @@ var firstVersionToSupportCollections = &ComparableBuildVersion{
 	minor: 1,
 	patch: 0,
 }
-
-type ShardedDCPFeedType string
-
-const (
-	ImportShardedDCPFeedType ShardedDCPFeedType = "import" // "import"
-	ResyncShardedDCPFeedType ShardedDCPFeedType = "resync" // "resync"
-)
 
 // nodeExtras is the contents of the JSON value of the cbgt.NodeDef.Extras field as used by Sync Gateway.
 type nodeExtras struct {
@@ -63,17 +58,83 @@ type CbgtContext struct {
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
-	ctx               context.Context          // Log context
 	dbName            string                   // Database name
 	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
 	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
+// ShardedDCPOptions contains options for starting a DCP feed for cbgt.
+type ShardedDCPOptions struct {
+	Bucket            Bucket          // bucket to target
+	Cfg               cbgt.Cfg        // cbgt cfg used to coordinate cbgt documents
+	Collections       CollectionNames // collection names to target
+	DBName            string          // database name is used to look up credentials
+	DestKey           string          // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
+	Heartbeater       Heartbeater     // heartbeater to use to find nodes
+	IndexName         string          // cbgt.Manger.IndexName, used to uniquely identify the index
+	IndexType         string          // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
+	NumPartitions     uint16          // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
+	PreviousIndexName string          // previous index name. If specified, marks IndexName as as a replacement for this name.
+	UUID              string          // database uuid, used to uniquely identify nodes
+}
+
+// Validate makes sure that all options are specified.
+func (opts ShardedDCPOptions) Validate() error {
+	if opts.Bucket == nil {
+		return fmt.Errorf("bucket must be provided to start sharded DCP feed")
+	}
+	if opts.Cfg == nil {
+		return fmt.Errorf("cbgt cfg must be provided to start sharded DCP feed")
+	}
+	if opts.Heartbeater == nil {
+		return fmt.Errorf("heartbeater must be provided to start sharded DCP feed")
+	}
+	if opts.IndexName == "" {
+		return fmt.Errorf("index name must be provided to start sharded DCP feed")
+	}
+	if opts.IndexType == "" {
+		return fmt.Errorf("index type must be provided to start sharded DCP feed")
+	}
+	if opts.DBName == "" {
+		return fmt.Errorf("database name must be provided to start sharded DCP feed")
+	}
+	if opts.UUID == "" {
+		return fmt.Errorf("UUID to identify a node must be provided to start sharded DCP feed")
+	}
+	if opts.DestKey == "" {
+		return fmt.Errorf("destKey must be provided to start sharded DCP feed")
+	}
+	if len(opts.Collections) == 0 {
+		return fmt.Errorf("at least one collection must be specified to start a sharded DCP feed")
+	} else if len(opts.Collections) > 1 {
+		return RedactErrorf("only one scope is currently supported for sharded DCP feed, found %s", MD(slices.Collect(maps.Keys(opts.Collections))))
+	}
+	return nil
+}
+
+// scopeAndCollections returns a single scope name and a sorted list of all collections.
+func (opts ShardedDCPOptions) scopeAndCollections() (string, []string) {
+	var scopeName string
+	var collections []string
+	for s, c := range opts.Collections {
+		scopeName = s
+		collections = c
+	}
+	slices.Sort(collections)
+	return scopeName, collections
+}
+
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg, shardedDCPFeedType ShardedDCPFeedType, feedID string) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtContext, error) {
+	err := opts.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	_, collections := opts.scopeAndCollections()
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
-	minVersion, err := getMinNodeVersion(cfg)
+	minVersion, err := getMinNodeVersion(opts.Cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
@@ -84,76 +145,85 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		}
 	}
 
-	b, err := AsGocbV2Bucket(bucket)
+	b, err := AsGocbV2Bucket(opts.Bucket)
 	if err != nil {
 		return nil, fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, bucket, b.GetSpec(), cfg, uuid, dbName)
+	cbgtContext, err := initCBGTManager(ctx, opts.Bucket, b.GetSpec(), opts.Cfg, opts.UUID, opts.DBName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, scope, collections, numPartitions, shardedDCPFeedType, feedID)
+	//err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, scope, collections, numPartitions, shardedDCPFeedType, feedID)
+	err = cbgtContext.StartManager(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	listener, err := registerHeartbeatListener(ctx, heartbeater, cbgtContext)
+	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
 
-	cbgtContext.heartbeater = heartbeater
+	cbgtContext.heartbeater = opts.Heartbeater
 	cbgtContext.heartbeatListener = listener
 
 	return cbgtContext, nil
 }
 
-// Given a dbName, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
-func GenerateIndexName(dbName string, feedID string) string {
+// Given a dbName and feedID, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
+func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
 	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
 	// existing values.
-	if feedID == DCPImportFeedID {
-		return fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
+	var indexName string
+	if feedType == CBGTIndexTypeSyncGatewayImport {
+		indexName = fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
 	} else {
-		return fmt.Sprintf("db0x%x_resync_index_%x", Crc32cHash([]byte(dbName)), Crc32cHash([]byte(feedID)))
+		indexName = fmt.Sprintf("db0x%x_resync_index", Crc32cHash([]byte(dbName)))
 	}
+	if len(indexName) > 200 {
+		return "", fmt.Errorf("generated index name %q is too long for CBGT DCP stream (max 200 characters)", indexName)
+	}
+	return indexName, nil
 }
 
-// Given a dbName, generates a name based on the approach used prior to CBG-626.  Used for upgrade handling
-func GenerateLegacyIndexName(dbName string) string {
+// GenerateLegacyImportIndexName returns the name of a cbgt index from a pre-Sync Gateway 2.8 database. See CBG-626.
+func GenerateLegacyImportIndexName(dbName string) string {
 	return dbName + "_import"
 }
 
-// Creates a CBGT index definition for the specified bucket.  This adds the index definition
-// to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
+// createCBGTIndex adds an a CBGT index definition for the specified bucket to to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
-// will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, scope string, collections []string, numPartitions uint16, shardedDcpFeedType ShardedDCPFeedType, feedID string) error {
+// will receive PIndexImpl callbacks (New) for assigned PIndex to initiate DCP processing.
+func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions) error {
+	// will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
+	//func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, scope string, collections []string, numPartitions uint16, shardedDcpFeedType ShardedDCPFeedType, feedID string) error {
 	sourceType := SOURCE_DCP_SG
 
-	sourceParams, err := cbgtFeedParams(ctx, scope, collections, dbName)
+	sourceParams, err := cbgtFeedParams(ctx, opts.Collections, opts.DBName)
 	if err != nil {
 		return err
 	}
 
-	indexParams, err := cbgtIndexParams(DestKey(dbName, scope, collections, shardedDcpFeedType))
+	indexParams, err := cbgtIndexParams(opts.DestKey)
+	//indexParams, err := cbgtIndexParams(DestKey(dbName, scope, collections, shardedDcpFeedType))
 	if err != nil {
 		return err
 	}
 
-	vbNo, err := bucket.GetMaxVbno()
+	vbNo, err := opts.Bucket.GetMaxVbno()
 	if err != nil {
-		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()).Redact())
+		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(opts.Bucket.GetName()).Redact())
 	}
 
+	numPartitions := opts.NumPartitions
 	// Calculate partitionsPerPIndex required to hit target DefaultImportPartitions
-	if numPartitions == 0 || numPartitions > vbNo {
+	if opts.NumPartitions == 0 || opts.NumPartitions > vbNo {
 		numPartitions = DefaultImportPartitions
 	}
 
@@ -165,23 +235,15 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 	}
 
 	// Determine index name and UUID
-	indexName, previousIndexUUID := dcpSafeIndexName(ctx, c, dbName, shardedDcpFeedType, feedID)
-	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
+	indexName, previousIndexUUID := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
+	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(opts.DBName))
 
-	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
-	// same bucket in a config group
-	var indexType string
-	if shardedDcpFeedType == ResyncShardedDCPFeedType {
-		indexType = CBGTIndexTypeSyncGatewayResync + configGroupID
-	} else {
-		indexType = CBGTIndexTypeSyncGatewayImport + configGroupID
-	}
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
 		c.sourceName,      // bucket name
 		c.sourceUUID,      // bucket UUID
 		sourceParams,      // sourceParams
-		indexType,         // indexType
+		opts.IndexType,    // indexType
 		indexName,         // indexName
 		indexParams,       // indexParams
 		planParams,        // planParams
@@ -194,16 +256,14 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 
 }
 
-// dcpSafeIndexName returns an index name and previousIndexUUID to handle upgrade scenarios from the
-// legacy index name format ("dbname_import") or ("dbname_resync") to the new length-safe format ("db[crc32]_index").
+// getIndexNameAndUUID returns an index name and the uuid of any existing index.
+//
+// Handle upgrade scenarios from an old an legacy index name format ("dbname_import") to the new length-safe format ("db[crc32]_index").
+//
 // Handles removal of legacy index definitions, except for the case where the legacy index is
 // the only index defined, and the name is safe.  In that case, continue using legacy index name
 // to avoid restarting the import processing from zero
-func dcpSafeIndexName(ctx context.Context, c *CbgtContext, dbName string, feedType ShardedDCPFeedType, feedID string) (safeIndexName, previousUUID string) {
-
-	indexName := GenerateIndexName(dbName, feedID)
-	legacyIndexName := GenerateLegacyIndexName(dbName)
-
+func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string, legacyIndexName string) (name string, uuid string) {
 	indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
 	legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)
 
@@ -350,7 +410,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		Manager:       mgr,
 		Cfg:           cfgSG,
 		eventHandlers: eventHandlers,
-		ctx:           ctx,
 		dbName:        dbName,
 		sourceName:    bucket.GetName(),
 		sourceUUID:    bucketUUID,
@@ -380,7 +439,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, scope string, collections []string, numPartitions uint16, shardedDcpFeedType ShardedDCPFeedType, feedID string) (err error) {
+func (c *CbgtContext) StartManager(ctx context.Context, opts ShardedDCPOptions) error {
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
@@ -389,7 +448,7 @@ func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGro
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(ctx, c, dbName, configGroup, bucket, scope, collections, numPartitions, shardedDcpFeedType, feedID)
+	err := createCBGTIndex(ctx, c, opts)
 	if err != nil {
 		if strings.Contains(err.Error(), "an index with the same name already exists") {
 			InfofCtx(ctx, KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
@@ -444,7 +503,7 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 }
 
 // Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
-func (c *CbgtContext) Stop() {
+func (c *CbgtContext) Stop(ctx context.Context) {
 	if c.eventHandlers != nil {
 		c.eventHandlers.ctxCancel()
 	}
@@ -459,7 +518,7 @@ func (c *CbgtContext) Stop() {
 	for _, pIndex := range pindexes {
 		err := c.Manager.ClosePIndex(pIndex)
 		if err != nil {
-			DebugfCtx(c.ctx, KeyDCP, "Error closing pindex: %v", err)
+			DebugfCtx(ctx, KeyDCP, "Error closing pindex: %v", err)
 		}
 	}
 	// ClosePIndex calls are synchronous, so can stop manager once they've completed
@@ -477,7 +536,7 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func DestKey(dbName string, scope string, collections []string, shardedDcpFeedType ShardedDCPFeedType) string {
+func DestKey(dbName string, scope string, collections []string, feedType string) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true
@@ -487,11 +546,17 @@ func DestKey(dbName string, scope string, collections []string, shardedDcpFeedTy
 		}
 		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
 	}
+	var destKey string
 	// format for _default._default
-	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && shardedDcpFeedType == ImportShardedDCPFeedType {
-		return fmt.Sprintf("%s_%s", dbName, shardedDcpFeedType)
+	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == CBGTIndexTypeSyncGatewayImport {
+		destKey = fmt.Sprintf("%s_import", dbName)
+	} else if feedType == CBGTIndexTypeSyncGatewayImport {
+		destKey = fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
+	} else {
+
+		destKey = fmt.Sprintf("%s_resync_%x", dbName, sha256.Sum256([]byte(collectionString)))
 	}
-	return fmt.Sprintf("%s_%s_%x", dbName, shardedDcpFeedType, sha256.Sum256([]byte(collectionString)))
+	return destKey
 }
 
 func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {

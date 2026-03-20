@@ -63,25 +63,30 @@ func TestDCPNameLength(t *testing.T) {
 		"db1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 
-	for _, dbName := range dbNames {
-		t.Run("cbgt-index-"+dbName, func(t *testing.T) {
-			indexName := GenerateIndexName(dbName, DCPImportFeedID)
+	for _, feedType := range []string{CBGTIndexTypeSyncGatewayImport, CBGTIndexTypeSyncGatewayResync} {
+		for _, dbName := range dbNames {
+			t.Run("cbgt-index-"+dbName+feedType, func(t *testing.T) {
+				indexName, err := GenerateCBGTIndexName(dbName, feedType)
+				require.NoError(t, err)
+				//indexName := GenerateIndexName(dbName, DCPImportFeedID)
 
-			// Verify we pass CBGT's index name validation
-			matched, err := regexp.Match(cbgt.INDEX_NAME_REGEXP, []byte(indexName))
-			require.NoError(t, err)
-			assert.True(t, matched, "index name is not a valid cbgt index name")
+				// Verify we pass CBGT's index name validation
+				matched, err := regexp.Match(cbgt.INDEX_NAME_REGEXP, []byte(indexName))
+				require.NoError(t, err)
+				assert.True(t, matched, "index name is not a valid cbgt index name")
 
-			// The format of a cbgt index name is of the following format:
-			// sg:db0xbdcaa3f7_index_167dfc5a122bde31_f47365c5-2e5220ce
-			// where 'sg:db0x..._index' are SG's generated name, and the rest is from CBGT.
-			cbgtIndexDCPName := fmt.Sprintf("%s_167dfc5a122bde31_f47365c5-2e5220ce", indexName)
-			t.Logf("generated name of length %d: %s", len(cbgtIndexDCPName), cbgtIndexDCPName)
+				// The format of a cbgt index name is of the following format:
+				// sg:db0xbdcaa3f7_index_167dfc5a122bde31_f47365c5-2e5220ce
+				// sg:db0xbdcaa3f7_resync_index_167dfc5a122bde31_f47365c5-2e5220ce
+				// where 'sg:db0x..._index'/'sg:db0x..._index' are SG's generated name, and the rest is from CBGT.
+				cbgtIndexDCPName := fmt.Sprintf("%s_167dfc5a122bde31_f47365c5-2e5220ce", indexName)
+				t.Logf("generated name of length %d: %s", len(cbgtIndexDCPName), cbgtIndexDCPName)
 
-			assert.Truef(t, len(cbgtIndexDCPName) <= maxDCPNameLength,
-				"len(cbgtIndexDCPName)=%d is exceeds max allowed %d chars: %s",
-				len(cbgtIndexDCPName), maxDCPNameLength, cbgtIndexDCPName)
-		})
+				assert.Truef(t, len(cbgtIndexDCPName) <= maxDCPNameLength,
+					"len(cbgtIndexDCPName)=%d is exceeds max allowed %d chars: %s",
+					len(cbgtIndexDCPName), maxDCPNameLength, cbgtIndexDCPName)
+			})
+		}
 	}
 }
 
