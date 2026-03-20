@@ -199,8 +199,7 @@ func TestLegacyMetadataID(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Uncomment to repro CBG-5038
-	// legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
@@ -216,7 +215,7 @@ func TestLegacyMetadataID(t *testing.T) {
 
 	// check if database is online
 	dbRoot := persistentRT.GetDatabaseRoot("db")
-	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State, "Database did not come online after upgrade %#+v", dbRoot)
 }
 
 // TestMetadataIDRenameDatabase verifies that resync is not required when deleting and recreating a database (with a
@@ -269,8 +268,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	// Uncomment to repro CBG-5038
-	// legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
 
@@ -300,7 +298,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
 
 	dbRoot = group2RT.GetDatabaseRoot("db")
-	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State, "Database did not come online after upgrade %#+v", dbRoot)
 }
 
 func requireBobUserLocation(rt *rest.RestTester, docName string) {

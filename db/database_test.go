@@ -4699,8 +4699,10 @@ func TestSettingSyncInfo(t *testing.T) {
 	var syncInfo base.SyncInfo
 	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, "1", syncInfo.MetaDataVersion)
-	assert.Equal(t, "someID", syncInfo.MetadataID)
+	require.Equal(t, base.SyncInfo{
+		MetaDataVersion: "1",
+		MetadataID:      base.Ptr("someID"),
+	}, syncInfo)
 
 	// remove sync info to test another permutation
 	require.NoError(t, ds.Delete(base.SGSyncInfo))
@@ -4712,21 +4714,27 @@ func TestSettingSyncInfo(t *testing.T) {
 	syncInfo = base.SyncInfo{}
 	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, "1", syncInfo.MetaDataVersion)
-	assert.Equal(t, "someID", syncInfo.MetadataID)
+	require.Equal(t, base.SyncInfo{
+		MetaDataVersion: "1",
+		MetadataID:      base.Ptr("someID"),
+	}, syncInfo)
 
 	// test updating each element in sync info now both elements are defined
 	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4"))
 	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, "4", syncInfo.MetaDataVersion)
-	assert.Equal(t, "someID", syncInfo.MetadataID)
+	require.Equal(t, base.SyncInfo{
+		MetaDataVersion: "4",
+		MetadataID:      base.Ptr("someID"),
+	}, syncInfo)
 
 	require.NoError(t, base.SetSyncInfoMetadataID(ds, "test"))
 	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
-	assert.Equal(t, "4", syncInfo.MetaDataVersion)
-	assert.Equal(t, "test", syncInfo.MetadataID)
+	require.Equal(t, base.SyncInfo{
+		MetaDataVersion: "4",
+		MetadataID:      base.Ptr("test"),
+	}, syncInfo)
 }
 
 // TestRequireMigration:
@@ -4738,6 +4746,7 @@ func TestRequireMigration(t *testing.T) {
 		initialMetaID    string
 		newMetadataID    string
 		metaVersion      string
+		requireResync    bool
 		requireMigration bool
 	}
 	testCases := []testCase{
@@ -4745,12 +4754,14 @@ func TestRequireMigration(t *testing.T) {
 			name:             "sync info in bucket with metadataID set",
 			initialMetaID:    "someID",
 			requireMigration: true,
+			requireResync:    true,
 		},
 		{
 			name:             "sync info in bucket with metadataID set, set newMetadataID",
 			initialMetaID:    "someID",
 			newMetadataID:    "testID",
 			requireMigration: true,
+			requireResync:    true,
 		},
 		{
 			name:             "correct metaversion already defined, no metadata ID to set",
@@ -4788,12 +4799,17 @@ func TestRequireMigration(t *testing.T) {
 				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
 			}
 
-			_, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
+			requireResync, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
 			require.NoError(t, err)
 			if testcase.requireMigration {
 				assert.True(t, requireMigration)
 			} else {
 				assert.False(t, requireMigration)
+			}
+			if testcase.requireResync {
+				assert.True(t, requireResync)
+			} else {
+				assert.False(t, requireResync)
 			}
 
 			// cleanup bucket
