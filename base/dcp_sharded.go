@@ -175,7 +175,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 }
 
 // GenerateCBGTIndexName creates an index name for cbgt using the database name suitable for the distributed DCP feed.
-// Given a dbName and feedID, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
+// Given a dbName and feedType, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
 func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
 	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
@@ -183,8 +183,10 @@ func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
 	var indexName string
 	if feedType == CBGTIndexTypeSyncGatewayImport {
 		indexName = fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
-	} else {
+	} else if feedType == CBGTIndexTypeSyncGatewayResync {
 		indexName = fmt.Sprintf("db0x%x_resync_index", Crc32cHash([]byte(dbName)))
+	} else {
+		return "", fmt.Errorf("unknown index type %s", feedType)
 	}
 	if len(indexName) > 200 {
 		return "", fmt.Errorf("generated index name %q is too long for CBGT DCP stream (max 200 characters)", indexName)

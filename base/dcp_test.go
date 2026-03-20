@@ -487,7 +487,12 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 		// Define index type for db name
 		configGroup := "configGroup" + t.Name()
-		indexType := CBGTIndexTypeSyncGatewayImport + configGroup
+		var indexType string
+		if feedType == CBGTIndexTypeSyncGatewayImport {
+			indexType = CBGTIndexTypeSyncGatewayImport + configGroup
+		} else {
+			indexType = CBGTIndexTypeSyncGatewayResync
+		}
 		cbgt.RegisterPIndexImplType(indexType,
 			&cbgt.PIndexImplType{})
 

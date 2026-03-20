@@ -269,7 +269,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			require.NoError(t, err)
 
 			if distributed {
-				waitforResyncDocsChanged(t, db, int64(docsToCreate))
+				waitForResyncDocsChanged(t, db, int64(docsToCreate))
 				err := db.ResyncManager.Stop()
 				require.NoError(t, err)
 			} else {
@@ -641,15 +641,15 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Greater(c, stats.DocsProcessed, count)
-	}, 1*time.Minute, 1*time.Millisecond)
+	}, 1*time.Minute, 100*time.Millisecond)
 }
 
-func waitforResyncDocsChanged(t testing.TB, db *Database, count int64) {
+func waitForResyncDocsChanged(t testing.TB, db *Database, count int64) {
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Equal(c, stats.DocsChanged, count)
-	}, 5*time.Minute, 1*time.Millisecond)
+	}, 5*time.Minute, 100*time.Millisecond)
 }
 
 func TestResyncCheckpointPrefix(t *testing.T) {

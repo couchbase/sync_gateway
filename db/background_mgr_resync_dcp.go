@@ -216,15 +216,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		collectionNamesByScope := db.collectionNames()
-		if err != nil {
-			return fmt.Errorf("getting collection names by scope failed: %v", err)
-		}
 
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.CBGTIndexTypeSyncGatewayResync)
 
-		// TODO: Use different checkpoint names, to be fixed part of CBG-5144
-		checkPointPrefix := db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, 0)
+		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID)
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
@@ -235,8 +231,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		base.StoreDestFactory(loggingCtx, resyncDestKey, resyncDestFunc)
+		defer base.RemoveDestFactory(resyncDestKey)
 
-		base.InfofCtx(loggingCtx, base.KeyJavascript, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
+		// TODO: Update logging for distributed resync. CBG-5243
+		base.InfofCtx(loggingCtx, base.KeyAll, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
 
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix(db.Options.GroupID)
@@ -244,7 +242,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error creating resync heartbeater: %v", err)
 		}
-		err = resyncHB.StartSendingHeartbeats(ctx)
+		err = resyncHB.Start(ctx)
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}

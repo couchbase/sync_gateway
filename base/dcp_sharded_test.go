@@ -18,20 +18,43 @@ import (
 func TestIndexName(t *testing.T) {
 	tests := []struct {
 		dbName    string
+		feedType  string
 		indexName string
+		wantErr   bool
 	}{
 		{
 			dbName:    "",
+			feedType:  CBGTIndexTypeSyncGatewayImport,
 			indexName: "db0x0_index",
 		},
 		{
 			dbName:    "foo",
+			feedType:  CBGTIndexTypeSyncGatewayImport,
 			indexName: "db0xcfc4ae1d_index",
+		},
+		{
+			dbName:    "",
+			feedType:  CBGTIndexTypeSyncGatewayResync,
+			indexName: "db0x0_resync_index",
+		},
+		{
+			dbName:    "foo",
+			feedType:  CBGTIndexTypeSyncGatewayResync,
+			indexName: "db0xcfc4ae1d_resync_index",
+		},
+		{
+			dbName:   "foo",
+			feedType: "unknown-feed-type",
+			wantErr:  true,
 		},
 	}
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("dbName %s -> indexName %s", test.indexName, test.dbName), func(t *testing.T) {
-			indexName, err := GenerateCBGTIndexName(test.dbName, CBGTIndexTypeSyncGatewayImport)
+		t.Run(fmt.Sprintf("dbName %q feedType %s", test.dbName, test.feedType), func(t *testing.T) {
+			indexName, err := GenerateCBGTIndexName(test.dbName, test.feedType)
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 
 			require.Equal(t, test.indexName, indexName)
