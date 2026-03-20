@@ -256,6 +256,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		indexName, err := base.GenerateCBGTIndexName(db.Name, base.CBGTIndexTypeSyncGatewayResync)
+		if err != nil {
+			return fmt.Errorf("Error generating CBGT index name: %v", err)
+		}
 		opts := base.ShardedDCPOptions{
 			DBName:        db.Name,
 			UUID:          db.UUID,
@@ -268,8 +271,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			DestKey:       resyncDestKey,
 			IndexName:     indexName,
 		}
-		//resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, db.Name, db.Options.GroupID, db.UUID, resyncHB, bucket,
-		//	scopeName, collectionNamesByScope[scopeName], numpartitions, resyncCfg, base.ResyncShardedDCPFeedType, clientOptions.CheckpointPrefix)
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 
 		if err != nil {
