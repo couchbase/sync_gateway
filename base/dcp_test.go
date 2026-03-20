@@ -360,7 +360,6 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 		IndexName:     legacyIndexName, // use legacy name as the primary name for this test
 	}
 	// Create cbgt index
-	//err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	err = createCBGTIndex(ctx, context, opts)
 	require.NoError(t, err)
 
@@ -371,7 +370,6 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Attempt to recreate index
 	err = createCBGTIndex(ctx, context, opts)
-	//err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16, ImportShardedDCPFeedType, DCPImportFeedID)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
@@ -524,8 +522,6 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 				}
 				startErr := context.StartManager(ctx, opts)
 				require.NoError(t, startErr)
-				//startErr := context.StartManager(ctx, testDBName, configGroup, bucket, "", nil, DefaultImportPartitions, ImportShardedDCPFeedType, DCPImportFeedID)
-				//assert.NoError(t, startErr)
 				managerWg.Done()
 
 				// ensure all goroutines start the manager before we start closing them

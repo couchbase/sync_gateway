@@ -156,7 +156,6 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 	}
 
 	// Start Manager.  Registers this node in the cfg
-	//err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, scope, collections, numPartitions, shardedDCPFeedType, feedID)
 	err = cbgtContext.StartManager(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -175,6 +174,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 	return cbgtContext, nil
 }
 
+// GenerateCBGTIndexName creates an index name for cbgt using the database name suitable for the distributed DCP feed.
 // Given a dbName and feedID, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
 func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
@@ -211,7 +211,6 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 	}
 
 	indexParams, err := cbgtIndexParams(opts.DestKey)
-	//indexParams, err := cbgtIndexParams(DestKey(dbName, scope, collections, shardedDcpFeedType))
 	if err != nil {
 		return err
 	}
@@ -238,6 +237,8 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 	indexName, previousIndexUUID := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
 	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(opts.DBName))
 
+	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
+	// same bucket in a config group
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
 		c.sourceName,      // bucket name

@@ -68,7 +68,6 @@ func TestDCPNameLength(t *testing.T) {
 			t.Run("cbgt-index-"+dbName+feedType, func(t *testing.T) {
 				indexName, err := GenerateCBGTIndexName(dbName, feedType)
 				require.NoError(t, err)
-				//indexName := GenerateIndexName(dbName, DCPImportFeedID)
 
 				// Verify we pass CBGT's index name validation
 				matched, err := regexp.Match(cbgt.INDEX_NAME_REGEXP, []byte(indexName))
