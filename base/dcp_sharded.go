@@ -201,8 +201,6 @@ func GenerateLegacyImportIndexName(dbName string) string {
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions) error {
-	// will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-	//func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, scope string, collections []string, numPartitions uint16, shardedDcpFeedType ShardedDCPFeedType, feedID string) error {
 	sourceType := SOURCE_DCP_SG
 
 	sourceParams, err := cbgtFeedParams(ctx, opts.Collections, opts.DBName)
