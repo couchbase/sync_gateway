@@ -383,8 +383,8 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID      string `json:"metadataID,omitempty"`
-	MetaDataVersion string `json:"metadata_version,omitempty"`
+	MetadataID      *string `json:"metadataID,omitempty"`
+	MetaDataVersion string  `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -400,7 +400,7 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		if metadataID == "" {
 			return false, true, nil
 		}
-		newSyncInfo := &SyncInfo{MetadataID: metadataID}
+		newSyncInfo := &SyncInfo{MetadataID: Ptr(metadataID)}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
 		if IsCasMismatch(addErr) {
 			// attempt new fetch
@@ -414,19 +414,20 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		// successfully added
 		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 		if err != nil {
-			return syncInfo.MetadataID != metadataID, true, err
+			return *syncInfo.MetadataID != metadataID, true, err
 		}
 		return false, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
+	requiresResync = syncInfo.MetadataID != nil && *syncInfo.MetadataID != metadataID
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
 	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 	if err != nil {
-		return syncInfo.MetadataID != metadataID, true, err
+		return requiresResync, true, err
 	}
 
-	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
+	return requiresResync, requiresAttachmentMigration, nil
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
@@ -445,7 +446,7 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 			}
 		}
 		// if we have a metadataID to set, set it preserving the metadata version if present
-		syncInfo.MetadataID = metadataID
+		syncInfo.MetadataID = Ptr(metadataID)
 		bytes, err := JSONMarshal(&syncInfo)
 		return bytes, nil, false, err
 	})
