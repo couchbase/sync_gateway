@@ -113,7 +113,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
-	nodes := make([]*CouchbaseHeartBeater, nodeCount)
+	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	listeners := make([]*documentBackedListener, nodeCount)
 	for i := range nodeCount {
 		nodeUUID := fmt.Sprintf("node%d", i)
@@ -194,7 +194,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
-	nodes := make([]*CouchbaseHeartBeater, nodeCount)
+	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	importListeners := make([]*documentBackedListener, nodeCount)
 	sgrListeners := make([]*documentBackedListener, nodeCount)
 	for i := range nodeCount {
