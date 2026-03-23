@@ -4652,10 +4652,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	}, syncInfo)
 }
 
-// TestRequireMigration:
-//   - Purpose is to test code pathways inside the InitSyncInfo function will return requires attachment migration
-//     as expected.
-func TestRequireMigration(t *testing.T) {
+func TestInitSyncInfo(t *testing.T) {
 	type testCase struct {
 		name             string
 		initialMetaID    string

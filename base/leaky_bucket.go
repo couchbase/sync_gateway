@@ -157,6 +157,9 @@ type LeakyBucketConfig struct {
 	// TouchCallback issues a callback during touch.
 	TouchCallback func(key string) error
 
+	// AddCallback issues a callback during Add.
+	AddCallback func(key string) (bool, error)
+
 	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.
 	IgnoreClose bool
 }
