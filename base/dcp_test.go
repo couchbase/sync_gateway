@@ -147,41 +147,74 @@ func TestCBGTIndexCreation(t *testing.T) {
 	}
 
 	shortDbName := "testDB"
-	shortDbIndexName, err := GenerateImportIndexName(shortDbName)
+	shortDbImportIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayImport)
+	require.NoError(t, err)
+	shortDBResyncIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayResync)
 	require.NoError(t, err)
 	longDbName := "testDB" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789"
-	longDbIndexName, err := GenerateImportIndexName(longDbName)
+	longDbImportIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayImport)
+	require.NoError(t, err)
+	longDBResyncIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayResync)
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		name                 string
 		dbName               string
 		existingLegacyIndex  bool
 		existingCurrentIndex bool
+		feedID               string
+		feedType             string
 		expectedIndexName    string
 	}{
 		{
-			name:                 "nonUpgradeFirstRun",
+			name:                 "nonUpgradeFirstRun-import",
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    shortDbIndexName,
+			expectedIndexName:    shortDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
 		},
 		{
-			name:                 "nonUpgradeRestart",
+			name:                 "nonUpgradeRestart-import",
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
-			expectedIndexName:    shortDbIndexName,
+			expectedIndexName:    shortDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
 		},
 		{
-			name:                 "nonUpgradeUnsafeName",
+			name:                 "nonUpgradeUnsafeName-import",
 			dbName:               longDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    longDbIndexName,
+			expectedIndexName:    longDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
+		},
+		{
+			name:                 "nonUpgradeFirstRun-resync",
+			dbName:               shortDbName,
+			existingLegacyIndex:  false,
+			existingCurrentIndex: false,
+			expectedIndexName:    shortDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
+		},
+		{
+			name:                 "nonUpgradeRestart-resync",
+			dbName:               shortDbName,
+			existingLegacyIndex:  false,
+			existingCurrentIndex: true,
+			expectedIndexName:    shortDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
+		},
+		{
+			name:                 "nonUpgradeUnsafeName-resync",
+			dbName:               longDbName,
+			existingLegacyIndex:  false,
+			existingCurrentIndex: false,
+			expectedIndexName:    longDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,7 +249,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 				bucketUUID, _ := bucket.UUID()
 				sourceParams, err := cbgtFeedParams(ctx, nil, tc.dbName)
 				require.NoError(t, err)
-				legacyIndexName, err := GenerateImportIndexName(tc.dbName)
+				legacyIndexName, err := GenerateCBGTIndexName(tc.dbName, tc.feedType)
 				require.NoError(t, err)
 				indexParams := `{"name": "` + tc.dbName + `"}`
 				planParams := cbgt.PlanParams{
@@ -238,7 +271,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 				require.NoError(t, err, "Unable to create legacy-style index")
 			}
 
-			indexName, err := GenerateImportIndexName(tc.dbName)
+			indexName, err := GenerateCBGTIndexName(tc.dbName, tc.feedType)
 			require.NoError(t, err)
 
 			// Create cbgt index via SG handling
@@ -402,7 +435,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
-	indexName, err := GenerateImportIndexName(unsafeTestDBName)
+	indexName, err := GenerateCBGTIndexName(unsafeTestDBName, CBGTIndexTypeSyncGatewayImport)
 	require.NoError(t, err)
 
 	opts := ShardedDCPOptions{
@@ -446,61 +479,69 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
 
-	// Use a bucket-backed cfg
-	cfg, err := NewCfgSG(ctx, dataStore, "")
-	require.NoError(t, err)
+	for _, feedType := range []string{CBGTIndexTypeSyncGatewayImport, CBGTIndexTypeSyncGatewayResync} {
 
-	// Define index type for db name
-	configGroup := "configGroup" + t.Name()
-	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
-	cbgt.RegisterPIndexImplType(indexType,
-		&cbgt.PIndexImplType{})
+		// Use a bucket-backed cfg
+		cfg, err := NewCfgSG(ctx, dataStore, "")
+		require.NoError(t, err)
 
-	terminator := make(chan struct{})
+		// Define index type for db name
+		configGroup := "configGroup" + t.Name()
+		var indexType string
+		if feedType == CBGTIndexTypeSyncGatewayImport {
+			indexType = CBGTIndexTypeSyncGatewayImport + configGroup
+		} else {
+			indexType = CBGTIndexTypeSyncGatewayResync
+		}
+		cbgt.RegisterPIndexImplType(indexType,
+			&cbgt.PIndexImplType{})
 
-	// Note: Would need to increase partition count if increasing test concurrency beyond 16
-	managerCount := 10
+		terminator := make(chan struct{})
 
-	var managerWg sync.WaitGroup
-	managerWg.Add(managerCount)
+		// Note: Would need to increase partition count if increasing test concurrency beyond 16
+		managerCount := 10
 
-	for i := range managerCount {
-		go func(i int, terminatorChan chan struct{}) {
-			// random sleep to hit race conditions that depend on initial creation
-			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+		var managerWg sync.WaitGroup
+		managerWg.Add(managerCount)
 
-			ctx := TestCtx(t)
-			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
-			assert.NoError(t, err)
+		for i := range managerCount {
+			go func(i int, terminatorChan chan struct{}) {
+				// random sleep to hit race conditions that depend on initial creation
+				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 
-			// StartManager starts the manager and creates the index
-			log.Printf("Starting manager for %s", managerUUID)
-			indexName, err := GenerateImportIndexName(testDBName)
-			require.NoError(t, err)
-			opts := ShardedDCPOptions{
-				DBName:        testDBName,
-				Bucket:        bucket,
-				NumPartitions: DefaultImportPartitions,
-				IndexType:     indexType,
-				IndexName:     indexName,
-			}
-			startErr := context.StartManager(ctx, opts)
-			require.NoError(t, startErr)
-			managerWg.Done()
+				ctx := TestCtx(t)
+				managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
+				context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
+				assert.NoError(t, err)
 
-			// ensure all goroutines start the manager before we start closing them
-			select {
-			case <-terminatorChan:
-				context.Manager.Stop()
-			case <-time.After(20 * time.Second):
-				require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
-			}
+				// StartManager starts the manager and creates the index
+				log.Printf("Starting manager for %s", managerUUID)
+				indexName, err := GenerateCBGTIndexName(testDBName, feedType)
+				require.NoError(t, err)
+				opts := ShardedDCPOptions{
+					DBName:        testDBName,
+					Bucket:        bucket,
+					NumPartitions: DefaultImportPartitions,
+					IndexType:     indexType,
+					IndexName:     indexName,
+				}
+				startErr := context.StartManager(ctx, opts)
+				require.NoError(t, startErr)
+				managerWg.Done()
 
-		}(i, terminator)
+				// ensure all goroutines start the manager before we start closing them
+				select {
+				case <-terminatorChan:
+					context.Manager.Stop()
+				case <-time.After(20 * time.Second):
+					require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
+				}
+
+			}(i, terminator)
+		}
+		managerWg.Wait()
+		close(terminator)
 	}
-	managerWg.Wait()
-	close(terminator)
 }
 
 func TestCBGTKvPoolSize(t *testing.T) {

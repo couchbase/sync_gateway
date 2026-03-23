@@ -34,6 +34,7 @@ const (
 	CBGTCfgNodeDefsKnown              = SyncDocPrefix + "cfgnodeDefs-known"
 	CBGTCfgNodeDefsWanted             = SyncDocPrefix + "cfgnodeDefs-wanted"
 	CBGTCfgPlanPIndexes               = SyncDocPrefix + "cfgplanPIndexes"
+	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
 )
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
@@ -173,16 +174,24 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 	return cbgtContext, nil
 }
 
-// GenerateImportIndexName creates an index name for cbgt using the database name suitable for the import feed.
-func GenerateImportIndexName(dbName string) (string, error) {
+// GenerateCBGTIndexName creates an index name for cbgt using the database name suitable for the distributed DCP feed.
+// Given a dbName and feedType, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
+func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
 	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
 	// existing values.
-	i := fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
-	if len(i) > 200 {
-		return "", fmt.Errorf("generated index name %q is too long for CBGT DCP stream (max 200 characters)", i)
+	var indexName string
+	if feedType == CBGTIndexTypeSyncGatewayImport {
+		indexName = fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
+	} else if feedType == CBGTIndexTypeSyncGatewayResync {
+		indexName = fmt.Sprintf("db0x%x_resync_index", Crc32cHash([]byte(dbName)))
+	} else {
+		return "", fmt.Errorf("unknown index type %s", feedType)
 	}
-	return i, nil
+	if len(indexName) > 200 {
+		return "", fmt.Errorf("generated index name %q is too long for CBGT DCP stream (max 200 characters)", indexName)
+	}
+	return indexName, nil
 }
 
 // GenerateLegacyImportIndexName returns the name of a cbgt index from a pre-Sync Gateway 2.8 database. See CBG-626.
@@ -527,8 +536,8 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 	// CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
 }
 
-// ImportDestKey is used for retrieval of import dest from cbgtDestFactories
-func ImportDestKey(dbName string, scope string, collections []string) string {
+// Format of dest key for retrieval of import dest from cbgtDestFactories
+func DestKey(dbName string, scope string, collections []string, feedType string) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true
@@ -538,11 +547,17 @@ func ImportDestKey(dbName string, scope string, collections []string) string {
 		}
 		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
 	}
+	var destKey string
 	// format for _default._default
-	if collectionString == "" || (scope == DefaultScope && onlyDefault) {
-		return fmt.Sprintf("%s_import", dbName)
+	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == CBGTIndexTypeSyncGatewayImport {
+		destKey = fmt.Sprintf("%s_import", dbName)
+	} else if feedType == CBGTIndexTypeSyncGatewayImport {
+		destKey = fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
+	} else {
+
+		destKey = fmt.Sprintf("%s_resync_%x", dbName, sha256.Sum256([]byte(collectionString)))
 	}
-	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
+	return destKey
 }
 
 func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
