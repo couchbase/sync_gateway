@@ -235,23 +235,17 @@ func (m *MetadataKeys) SGCfgPrefix(groupID string) string {
 
 // ResyncHeartbeaterPrefix returns a document prefix to use for resync heartbeat documents.
 //
-//	format: _sync:{m_$}:resync_hb:[groupID:]   (collections)
-//	format: _sync:resync_hb:[groupID:]   (default)
-func (m *MetadataKeys) ResyncHeartbeaterPrefix(groupID string) string {
-	if groupID != "" {
-		return m.resyncHeartbeaterPrefix + groupID + ":"
-	}
+//	format: _sync:{m_$}:resync_hb:   (collections)
+//	format: _sync:resync_hb:   (default)
+func (m *MetadataKeys) ResyncHeartbeaterPrefix() string {
 	return m.resyncHeartbeaterPrefix
 }
 
 // ResyncCfgPrefix returns a document prefix to use for resync cfg documents
 //
-//	format: _sync:{m_$}:resync_cfg:[groupID:]   (collections)
-//	format: _sync:resync_cfg:[groupID:]   (default)
-func (m *MetadataKeys) ResyncCfgPrefix(groupID string) string {
-	if groupID != "" {
-		return m.resyncCfgPrefix + groupID + ":"
-	}
+//	format: _sync:{m_$}:resync_cfg:   (collections)
+//	format: _sync:resync_cfg:   (default)
+func (m *MetadataKeys) ResyncCfgPrefix() string {
 	return m.resyncCfgPrefix
 }
 

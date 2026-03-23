@@ -271,8 +271,8 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.sessionKey, metadataKeys.SessionKey("aSessionID"))
 			require.Equal(t, test.backgroundProcessHeartbeatPrefix, metadataKeys.BackgroundProcessHeartbeatPrefix("backgroundID"))
 			require.Equal(t, test.backgroundProcessStatusPrefix, metadataKeys.BackgroundProcessStatusPrefix("backgroundID"))
-			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix(test.groupID))
-			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix(test.groupID))
+			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix())
+			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix())
 		})
 	}
 }

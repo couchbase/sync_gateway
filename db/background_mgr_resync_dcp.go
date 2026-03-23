@@ -237,7 +237,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.InfofCtx(loggingCtx, base.KeyAll, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(bucket.GetName()))
 
 		// Heartbeater creation
-		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix(db.Options.GroupID)
+		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix()
 		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
 		if err != nil {
 			return fmt.Errorf("Error creating resync heartbeater: %v", err)
@@ -248,7 +248,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		// CFG creation:
-		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(db.Options.GroupID))
+		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix())
 		if err != nil {
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
