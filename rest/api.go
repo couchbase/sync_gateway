@@ -336,7 +336,7 @@ func (h *handler) handleGetResync() error {
 
 // ResyncPostReqBody represents Resync POST body to run resync for custom collections
 type ResyncPostReqBody struct {
-	Scope               db.ResyncCollections `json:"scopes,omitempty"`
+	Scope               base.CollectionNames `json:"scopes,omitempty"`
 	RegenerateSequences bool                 `json:"regenerate_sequences,omitempty"`
 }
 

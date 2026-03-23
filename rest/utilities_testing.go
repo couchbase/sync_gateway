@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -619,16 +620,12 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 
 // WaitForSequence waits for the sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
+	rt.GetDatabase().WaitForSequence(rt.TB(), seq)
 }
 
 // WaitForPendingChanges waits all outstanding changes to be buffered by the channel cache.
 func (rt *RestTester) WaitForPendingChanges() {
-	ctx := rt.Context()
-	for _, collection := range rt.GetDbCollections() {
-		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
-	}
+	rt.GetDatabase().WaitForPendingChanges(rt.TB())
 }
 
 // SetAdminParty toggles the guest user between disabled and enabled.  If enabled, the guest user is given access to the UserStar channel on all collections.
@@ -909,8 +906,10 @@ func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVe
 // WaitForChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
-	if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) {
-		// rosmar will never take a long time, so have faster failures
+	if db.HasCachingFeedDelay(rt.TB()) {
+		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
+	} else if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
+		// local rosmar will never take a long time, but it is sometimes slower in jenkins/github actions
 		waitTime = 1 * time.Second
 	}
 	var changes *ChangesResults
@@ -1222,7 +1221,7 @@ func (r TestResponse) GetRestDocument() RestDocument {
 }
 
 func Request(method, resource, body string) *http.Request {
-	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
+	request, err := http.NewRequest(method, "http://127.0.0.1"+resource, bytes.NewBufferString(body))
 	if err != nil {
 		panic(fmt.Sprintf("http.NewRequest failed: %v", err))
 	}
@@ -2406,12 +2405,6 @@ func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	return sc._isDatabaseSuspended(dbName)
 }
 
-func (sc *ServerContext) getBucketSpec(dbName string) base.BucketSpec {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
-	return sc._databases[dbName].BucketSpec
-}
-
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
@@ -2774,6 +2767,7 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
 		}
 	})
+	serverContextGlobalsInitialized.Store(true)
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }
 
@@ -2809,4 +2803,14 @@ func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, exp
 	}
 	// should only have one active leaf
 	require.Equal(t, 1, activeLeafCount)
+}
+
+// ClearServerContextLoggingGlobals clears the global variables related to logging in ServerContext and allows testing initialization of a server context's logging parameters.
+func ClearServerContextLoggingGlobals(t *testing.T) {
+	// the end of the test must clean up global logging
+	base.ResetGlobalTestLogging(t)
+	serverContextGlobalsInitialized.Store(false)
+	t.Cleanup(func() {
+		serverContextGlobalsInitialized.Store(true)
+	})
 }

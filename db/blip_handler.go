@@ -43,6 +43,7 @@ var handlersByProfile = map[string]blipHandlerFunc{
 	MessageProposeChanges:  collectionBlipHandler((*blipHandler).handleProposeChanges),
 	MessageGetRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handleGetRev)),
 	MessagePutRev:          userBlipHandler(collectionBlipHandler((*blipHandler).handlePutRev)),
+	MessagePing:            (*blipHandler).handlePing,
 
 	MessageGetCollections: userBlipHandler((*blipHandler).handleGetCollections),
 }
@@ -864,8 +865,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 		changeIsVector := false
 		if versionVectorProtocol {
-			// TODO: CBG-4812 Use base.IsRevTreeID
-			changeIsVector = strings.Contains(rev, "@")
+			changeIsVector = !base.IsRevTreeID(rev)
 		}
 		if versionVectorProtocol && changeIsVector {
 			proposedVersionStr := ExtractCVFromProposeChangesRev(rev)
@@ -983,6 +983,11 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	handleChangesResponseCollection.collectionStats.DocReadsBytes.Add(int64(len(revDelta.DeltaBytes)))
 
 	bsc.replicationStats.SendRevDeltaSentCount.Add(1)
+	return nil
+}
+
+// handlePing handles a PING request from cbl-js.
+func (bh *blipHandler) handlePing(rq *blip.Message) error {
 	return nil
 }
 
@@ -1120,9 +1125,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	var incomingHLV *HybridLogicalVector
 	// Build history/HLV
 	var legacyRevList []string
-	// TODO: CBG-4812 Use base.IsRevTreeID
-	changeIsVector := strings.Contains(rev, "@")
-	if !bh.useHLV() || !changeIsVector {
+	changeIsRevTree := base.IsRevTreeID(rev)
+	if !bh.useHLV() || changeIsRevTree {
 		newDoc.RevID = rev
 		history = []string{rev}
 		if historyStr != "" {
@@ -1367,7 +1371,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
 	forceAllowConflictingTombstone := newDoc.Deleted && (!bh.conflictResolver.IsEmpty() || bh.clientType == BLIPClientTypeSGR2)
-	if bh.useHLV() && changeIsVector {
+	if bh.useHLV() && !changeIsRevTree {
 		opts := PutDocOptions{
 			NewDoc:                         newDoc,
 			RevTreeHistory:                 legacyRevList,

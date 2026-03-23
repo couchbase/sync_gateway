@@ -15,7 +15,6 @@ import (
 )
 
 func TestLoggingMutex(t *testing.T) {
-	SetUpTestLogging(t, LevelTrace, KeyAll)
 
 	tests := []struct {
 		name     string
@@ -50,7 +49,6 @@ func TestLoggingMutex(t *testing.T) {
 }
 
 func TestLoggingRWMutex(t *testing.T) {
-	SetUpTestLogging(t, LevelTrace, KeyAll)
 
 	tests := []struct {
 		name     string

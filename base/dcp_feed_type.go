@@ -167,7 +167,7 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(ctx context.Context, scope string, collections []string, dbName string) (string, error) {
+func cbgtFeedParams(ctx context.Context, collections CollectionNames, dbName string) (string, error) {
 	feedParams := &SGFeedSourceParams{
 		DbName: dbName,
 		DCPFeedParams: cbgt.DCPFeedParams{
@@ -175,10 +175,13 @@ func cbgtFeedParams(ctx context.Context, scope string, collections []string, dbN
 			IncludeXAttrs:              true,
 		},
 	}
-
-	if len(collections) > 0 {
-		feedParams.Scope = scope
-		feedParams.Collections = collections
+	if len(collections) > 1 {
+		return "", RedactErrorf("cbgtFeedParams: multiple scopes not supported, got %v", MD(collections))
+	} else if len(collections) > 0 {
+		for s, c := range collections {
+			feedParams.Scope = s
+			feedParams.Collections = c
+		}
 	}
 
 	paramBytes, err := JSONMarshal(feedParams)

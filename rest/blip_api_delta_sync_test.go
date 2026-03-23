@@ -25,7 +25,6 @@ import (
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -108,7 +107,6 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 // TestDeltaWithAttachmentJsonProperty tests pushing a delta when _attachments is present in either delta or existing doc
 func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
@@ -215,7 +213,6 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 // 5. Update doc in the test client by adding another attachment
 // 6. Have that update pushed using delta sync via the continuous replication started in step 2
 func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -282,8 +279,6 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 // to the temporary "allowedAttachments" map.
 func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -372,8 +367,6 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 func TestBlipDeltaSyncPull(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -447,8 +440,6 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Enterprise-only test for delta sync")
 	}
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -549,8 +540,6 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -614,8 +603,6 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 // └──────────────┘ └───────────────────────────────────┘
 func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := &RestTesterConfig{
@@ -864,8 +851,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		t.Skip("rev cache specific test")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1099,7 +1084,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 func TestBlipNonDeltaSyncPush(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -1156,7 +1140,6 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 func TestSendDeltaWhenDeltaCalculatedFromBackup(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Skipping enterprise-only delta sync test.")
 	}
@@ -1234,7 +1217,6 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 }
 
 func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -1282,7 +1264,6 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 
 // TestDeltaGenerationWithBypassRevCache tests that delta generation works when the rev cache is bypassed.
 func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -1332,7 +1313,6 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 }
 
 func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -1385,7 +1365,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
-						updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 					}
 				}
 
@@ -1418,7 +1398,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				rt.WaitForPendingChanges()
 
 				// block until we've written the update and got the new version to use in assertions
-				version3 := <-updatedVersion
+				version3 := base.RequireChanRecv(t, updatedVersion)
 
 				// we should get the new updated version through replacement rev functionality
 				btcRunner.WaitForVersion(client.id, docID, version3)
@@ -1438,7 +1418,6 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 }
 
 func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -1475,7 +1454,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 		changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 			if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
-				updatedVersion <- rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`)
+				base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 			}
 		}
 
@@ -1503,7 +1482,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		rt.WaitForPendingChanges()
 
 		// block until we've written the update and got the new version to use in assertions
-		version3 := <-updatedVersion
+		version3 := base.RequireChanRecv(t, updatedVersion)
 
 		// we should get the delta still for version 2
 		btcRunner.WaitForVersion(client.id, docID, version2)

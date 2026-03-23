@@ -9,7 +9,6 @@
 package base
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,10 +23,6 @@ import (
 )
 
 func TestRedactedLogFuncs(t *testing.T) {
-	if GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
 	username := UD("alice")
 	ctx := TestCtx(t)
 
@@ -239,26 +234,14 @@ func TestLastComponent(t *testing.T) {
 }
 
 func TestLogSyncGatewayVersion(t *testing.T) {
-	if GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
+	ResetGlobalTestLogging(t)
+	SetUpTestLogging(t, LevelInfo, KeyAll) // force logging to be set
 	for i := range levelCount {
-		t.Run(i.String(), func(t *testing.T) {
+		t.Run("level="+i.String(), func(t *testing.T) {
 			consoleLogger.Load().LogLevel.Set(i)
-			out := CaptureConsolefLogOutput(func() { LogSyncGatewayVersion(TestCtx(t)) })
-			assert.Contains(t, out, LongVersionString)
+			AssertLogContains(t, LongVersionString, func() { LogSyncGatewayVersion(TestCtx(t)) })
 		})
 	}
-	consoleLogger.Load().LogLevel.Set(LevelInfo)
-}
-
-func CaptureConsolefLogOutput(f func()) string {
-	buf := bytes.Buffer{}
-	consoleFOutput = &buf
-	f()
-	consoleFOutput = os.Stderr
-	return buf.String()
 }
 
 func BenchmarkGetCallersName(b *testing.B) {

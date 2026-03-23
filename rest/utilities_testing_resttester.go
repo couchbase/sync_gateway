@@ -466,26 +466,15 @@ func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName stri
 
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
-	if rt.PersistentConfig {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"offline":true}`)
-		RequireStatus(rt.TB(), resp, http.StatusCreated)
-		rt.WaitForDBState(db.RunStateString[db.DBOffline])
-	} else {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
-		RequireStatus(rt.TB(), resp, http.StatusOK)
-	}
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
 	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
 }
 
 // TakeDbOnline takes the database online and waits for online status.
 func (rt *RestTester) TakeDbOnline() {
-	if rt.PersistentConfig {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", `{"offline":false}`)
-		RequireStatus(rt.TB(), resp, http.StatusCreated)
-	} else {
-		resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
-		RequireStatus(rt.TB(), resp, http.StatusOK)
-	}
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
 	rt.WaitForDBOnline()
 }
 
@@ -511,6 +500,12 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	newBody, err := base.JSONMarshal(rawBody)
 	require.NoError(rt.TB(), err)
 	return rt.PutDoc(docID, string(newBody))
+}
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Fails the
+// test harness if the sequence remains in the skipped list after timeout.
+func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
+	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
 }
 
 type RawDocResponse struct {

@@ -22,8 +22,8 @@ post:
   responses:
     '200':
       description: Successfully flushed the bucket
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':
       description: The bucket does not support flush or delete
       content:

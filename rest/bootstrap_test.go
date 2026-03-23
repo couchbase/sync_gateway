@@ -203,7 +203,7 @@ func TestBootstrapPingAPI(t *testing.T) {
 
 // Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
 func DevTestFetchConfigManual(t *testing.T) {
-
+	base.ResetGlobalTestLogging(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error)
@@ -222,7 +222,7 @@ func DevTestFetchConfigManual(t *testing.T) {
 	config.API.AdminInterface = "127.0.0.1:4985"
 	config.API.MetricsInterface = "127.0.0.1:4986"
 
-	config.Bootstrap.Server = "couchbase://localhost"
+	config.Bootstrap.Server = "couchbase://127.0.0.1"
 	config.Bootstrap.Username = "configUser"
 	config.Bootstrap.Password = "password"
 	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(true)

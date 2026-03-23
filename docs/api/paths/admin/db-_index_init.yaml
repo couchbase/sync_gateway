@@ -72,8 +72,8 @@ get:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/IndexInitStatus
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Management
   operationId: get_db-_index_init

@@ -21,6 +21,8 @@ get:
   responses:
     '200':
       $ref: ../../components/responses.yaml#/User
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -42,8 +44,8 @@ put:
       description: Existing user modified successfully
     '201':
       description: New user created
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
   tags:
     - Database Security
   operationId: put_db-_user-name
@@ -59,6 +61,8 @@ delete:
   responses:
     '200':
       description: User deleted successfully
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -68,6 +72,8 @@ head:
   responses:
     '200':
       description: User exists
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       description: Not Found
   tags:

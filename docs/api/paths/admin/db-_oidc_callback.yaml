@@ -26,6 +26,8 @@ get:
       description: A problem occurred when reading the callback request body
     '401':
       description: An error was received from the OpenID Connect provider. This means the error query parameter was filled.
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '500':

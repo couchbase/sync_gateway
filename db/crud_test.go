@@ -69,8 +69,6 @@ func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key strin
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -110,7 +108,6 @@ func TestRevisionCacheLoad(t *testing.T) {
 }
 
 func TestHasAttachmentsFlag(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -188,8 +185,6 @@ func TestHasAttachmentsFlag(t *testing.T) {
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
@@ -1587,8 +1582,7 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 	require.Greaterf(t, doc.Sequence, uint64(otherClusterSequenceOffset), "Expected new doc sequence %d to be greater than other cluster's sequence %d", doc.Sequence, otherClusterSequenceOffset)
 
 	// wait for the doc to be received
-	err = db.changeCache.waitForSequence(ctx, doc.Sequence, time.Second*30)
-	require.NoError(t, err)
+	db.WaitForSequence(t, doc.Sequence)
 
 	expectedReleasedSequenceCount := otherClusterSequenceOffset
 	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
@@ -1606,7 +1600,6 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Assert we release a sequence for this
 func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	defer SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	var ctx context.Context
 	var db *Database
@@ -1646,8 +1639,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	_, _, err := collection.Put(ctx, timeoutDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
-	// wait for changes
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// assert that no sequences were released + a sequence was cached
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1666,8 +1658,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	_, _, err = collection.Put(ctx, conflictDoc, Body{"test": "doc"})
 	require.Error(t, err)
 
-	// wait for changes
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// assert that a sequence was released after the above write error
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1720,7 +1711,6 @@ func TestDocUpdateCorruptSequence(t *testing.T) {
 }
 
 func TestPutResurrection(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

@@ -944,7 +944,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		return nil, err
 	}
-	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
@@ -1232,6 +1231,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
 				revCacheOptions.ShardCount = *config.CacheConfig.RevCacheConfig.ShardCount
 			}
+			if config.CacheConfig.RevCacheConfig.InsertOnWrite != nil {
+				revCacheOptions.InsertOnWrite = *config.CacheConfig.RevCacheConfig.InsertOnWrite
+			}
 		}
 	}
 
@@ -1479,35 +1481,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	return contextOptions, nil
-}
-
-func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContext, database *db.DatabaseContext) {
-
-	// Take a write lock on the Database context, so that we can cycle the underlying Database
-	// without any other call running concurrently
-	database.AccessLock.Lock()
-	defer database.AccessLock.Unlock()
-
-	// We can only transition to Online from Offline state
-	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabase(nonContextStruct.Ctx, database.Name, true)
-		if err != nil {
-			base.ErrorfCtx(nonContextStruct.Ctx, "Error reloading database from config: %v", err)
-			return
-		}
-
-		if len(reloadedDb.RequireResync) > 0 {
-			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require regenerate_sequences resync before it can go online: %v", reloadedDb.RequireResync)
-			return
-		}
-		// Reloaded DB should already be online in most cases, but force state to online to handle cases
-		// where config specifies offline startup
-		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
-
-	} else {
-		base.InfofCtx(nonContextStruct.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
-	}
-
 }
 
 // validateMetadataStore will
@@ -2400,7 +2373,7 @@ func (sc *ServerContext) removeBucketAndRecreateDatabase(ctx context.Context, db
 func (sc *ServerContext) getBucketCCVSettings() map[string]bool {
 	bucketCCVSettings := make(map[string]bool)
 	for _, _db := range sc._databases {
-		bucketName := _db.BucketSpec.BucketName
+		bucketName := _db.Bucket.GetName()
 		bucketCCVSettings[bucketName] = _db.CachedCCVEnabled.Load()
 	}
 	return bucketCCVSettings

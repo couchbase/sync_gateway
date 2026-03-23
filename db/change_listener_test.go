@@ -49,7 +49,7 @@ func TestUserWaiter(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant new channel
 	updatedUser := auth.PrincipalConfig{
@@ -60,8 +60,7 @@ func TestUserWaiter(t *testing.T) {
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
-	require.True(t, WaitForUserWaiterChange(userWaiter))
-
+	WaitForUserWaiterChange(t, userWaiter)
 }
 
 func TestUserWaiterForRoleChange(t *testing.T) {
@@ -99,7 +98,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant role
 	updatedUser := auth.PrincipalConfig{
@@ -110,14 +109,14 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Retrieve the user.  This will trigger a user update to move ExplicitRoles->roles
 	userRefresh, err := authenticator.GetUser(username)
 	require.NoError(t, err, "Error retrieving user")
 
 	// Wait for notify from retrieval
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the waiter with the current user (adds role to waiter.UserKeys)
 	userWaiter.RefreshUserKeys(userRefresh, db.MetadataKeys)
@@ -131,5 +130,5 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 }

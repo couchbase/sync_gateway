@@ -40,8 +40,8 @@ post:
                 type: string
               reason:
                 type: string
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
     '502':
       description: Received invalid response from the Google token verifier
       content:

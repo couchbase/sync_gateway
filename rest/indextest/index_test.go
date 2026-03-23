@@ -316,9 +316,8 @@ func TestAsyncInitWithResync(t *testing.T) {
 
 	// Start resync
 	resyncPayload := rest.ResyncPostReqBody{}
-	resyncPayload.Scope = db.ResyncCollections{
-		docCollection.ScopeName(): []string{docCollection.CollectionName()},
-	}
+	resyncPayload.Scope = base.NewCollectionNames(docCollection)
+
 	payloadBytes, err := json.Marshal(resyncPayload)
 	require.NoError(t, err)
 

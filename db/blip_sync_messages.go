@@ -41,6 +41,8 @@ const (
 	MessagePutRev       = "putRev"       // Connected Client API
 	MessageUnsubChanges = "unsubChanges" // Connected Client API
 	MessageFunction     = "function"     // Connected Client API
+
+	MessagePing = "PING" // PING request (cbl-js heartbeat)
 )
 
 // Message properties

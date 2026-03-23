@@ -1124,7 +1124,6 @@ func TestOpenIDConnectImplicitFlowInitWithKeyspace(t *testing.T) {
 
 // TestOpenIDConnectImplicitFlowReuseToken ensures that requests that use the same token containing channel grants don't end up recomputing or updating the user for each use.
 func TestOpenIDConnectImplicitFlowReuseToken(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 	defer db.SuspendSequenceBatching()() // allows assertions on last sequence of the database to hold true when request plus is used
 
 	testProviders := auth.OIDCProviderMap{
@@ -1285,7 +1284,6 @@ func TestUserAPIReadOnlyFields(t *testing.T) {
 // TestAdminAndJWTChannels validates interaction between admin channels and JWT channels, to ensure each are preserved when
 // the other is changed
 func TestAdminAndJWTChannels(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testProviders := auth.OIDCProviderMap{
 		"foo": mockProviderWith("foo", mockProviderUserPrefix{"foo"}, mockProviderChannelsClaim{"channels"}),
@@ -2371,7 +2369,6 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 	base.LongRunningTest(t)
 
 	// Modified copy of TestOpenIDConnectImplicitFlow
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	unreachableAddr := "http://0.0.0.0"
 	tests := []struct {
 		name                string

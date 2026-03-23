@@ -174,8 +174,6 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 
 func TestDatabase(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -302,7 +300,6 @@ func TestDatabase(t *testing.T) {
 
 // TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
 func TestCheckProposedVersion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -429,7 +426,6 @@ func TestCheckProposedVersion(t *testing.T) {
 }
 
 func TestUpsertTestDocVersion(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -447,7 +443,6 @@ func TestUpsertTestDocVersion(t *testing.T) {
 
 // TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
 func TestCheckProposedVersionWithHLVRev(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -846,7 +841,6 @@ func TestGetRemovedAsUser(t *testing.T) {
 }
 
 func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -1031,7 +1025,6 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 }
 
 func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")
@@ -1066,7 +1059,6 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		// enable delta sync other wise CV keyed backup revs won't be stored
 		DeltaSyncOptions: DeltaSyncOptions{
@@ -1111,7 +1103,6 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -1803,8 +1794,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, 101)
 
 	changeLog, err := collection.GetChangeLog(ctx, channels.NewID("all", collectionID), 0)
 	require.NoError(t, err)
@@ -2707,8 +2697,7 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = collection.Put(ctx, docID2, body)
 	require.NoError(t, err)
-	err = db.changeCache.waitForSequence(ctx, 2, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, 2)
 
 	// grab doc and alter sync data of one to artificially create gap in sequences at cache
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
@@ -2724,8 +2713,8 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that sequence 6 is seen over caching feed
-	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, 6)
+
 	// assert that skipped is filled + stable sequence and high sequence is as expected
 	require.NoError(t, db.changeCache.InsertPendingEntries(ctx)) // empty pending
 	db.UpdateCalculatedStats(ctx)
@@ -2774,8 +2763,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	body := Body{"val": "one"}
 	_, _, err := collection.Put(ctx, docID, body)
 	require.NoError(t, err)
-	err = db.changeCache.waitForSequence(ctx, 1, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, 1)
 
 	// grab doc and alter sync data as if it had been rapidly updated and deduplicated over dcp
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
@@ -2792,8 +2780,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert that sequence 6 is seen over caching feed, no pending changes or skipped changes
-	err = db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, 6)
 	db.UpdateCalculatedStats(ctx)
 	assert.Equal(t, int64(0), db.DbStats.Cache().NumCurrentSeqsSkipped.Value())
 	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
@@ -2839,8 +2826,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, seqTracker)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
@@ -2868,8 +2854,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
-	require.NoError(t, err)
+	db.WaitForSequence(t, seqTracker)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
 	require.NoError(t, err)
 	body[BodyId] = doc.ID
@@ -2898,8 +2883,7 @@ func TestMaintainMinimumRecentSequences(t *testing.T) {
 		allocSeq++
 	}
 	// wait for the latest allocated seq to arrive at cache to move stable seq in place for recent sequence compaction
-	err := db.changeCache.waitForSequence(ctx, allocSeq, base.DefaultWaitForSequence)
-	require.NoError(t, err)
+	db.WaitForSequence(t, allocSeq)
 
 	// assert that we have 20 entries in recent sequences for the above doc updates
 	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
@@ -3782,7 +3766,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	leakyDataStore, ok := base.AsLeakyDataStore(collection.dataStore)
 	require.True(t, ok)
@@ -3952,7 +3936,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
 	defer db.Close(ctx)
 
@@ -3988,8 +3971,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.Greater(t, endSeq, uint64(0))
 
 	require.NoError(t, db.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{sgbucket.DataStoreNameImpl{Scope: collection.ScopeName, Collection: collection.Name}}, endSeq))
-	err = collection.WaitForPendingChanges(ctx)
-	assert.NoError(t, err)
+	db.WaitForPendingChanges(t)
 
 	if base.TestsUseNamedCollections() {
 		dataStoreName := collection.dataStore.GetName()
@@ -4112,8 +4094,7 @@ func Test_resyncDocument(t *testing.T) {
 
 			err = collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false)
 			require.NoError(t, err)
-			err = collection.WaitForPendingChanges(ctx)
-			require.NoError(t, err)
+			db.WaitForPendingChanges(t)
 
 			postResyncDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
 			assert.NoError(t, err)
@@ -4236,7 +4217,7 @@ func TestImportCompactPanic(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = collection.DeleteDoc(ctx, doc.ID, DocVersion{RevTreeID: rev})
 	require.NoError(t, err)
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
 	base.RequireWaitForStat(t, func() int64 {
@@ -4294,72 +4275,6 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 			require.Nil(t, col)
 		})
 	}
-}
-
-func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
-	base.TestRequiresCollections(t)
-	base.RequireNumTestDataStores(t, 1)
-
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(base.TestCtx(t))
-
-	ds, err := bucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-	require.NotNil(t, ds)
-
-	testCases := []struct {
-		name       string
-		scope      string
-		collection string
-		err        bool
-		options    DatabaseContextOptions
-	}{
-		{
-			name:       "_default._default-inconfig",
-			scope:      base.DefaultScope,
-			collection: base.DefaultCollection,
-			err:        false,
-			options: DatabaseContextOptions{
-				Scopes: map[string]ScopeOptions{
-					ds.ScopeName(): ScopeOptions{
-						Collections: map[string]CollectionOptions{
-							ds.CollectionName(): {},
-						},
-					},
-					base.DefaultScope: ScopeOptions{
-						Collections: map[string]CollectionOptions{
-							base.DefaultCollection: {},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-
-			ctx := base.TestCtx(t)
-			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)
-			require.NoError(t, err)
-
-			db, err := GetDatabase(dbCtx, nil)
-			require.NoError(t, err)
-			defer db.Close(ctx)
-			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
-			if testCase.err {
-				require.Error(t, err)
-				require.Nil(t, col)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, col)
-				require.Equal(t, col.ScopeName, testCase.scope)
-				require.Equal(t, col.Name, testCase.collection)
-			}
-
-		})
-	}
-
 }
 
 func TestServerUUID(t *testing.T) {

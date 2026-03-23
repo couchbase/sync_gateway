@@ -277,6 +277,8 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	}
 
 	// Retrieve from or add to rev cache
+	// We need to use revisionID here as not every document in the bucket is yet guaranteed to
+	// have a HLV assigned to it.
 	value := rc.getValue(ctx, docID, bucketDoc.GetRevTreeID(), collectionID, true)
 
 	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)

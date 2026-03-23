@@ -34,6 +34,8 @@ const (
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 	unusedSeqKey                  = "_unusedSeqKey"  // Key used by ChangeWaiter to mark unused sequences
 	unusedSeqCollectionID         = 0                // Collection ID used by ChangeWaiter to mark unused sequences
+
+	defaultWaitForSequence = 30 * time.Second // wait time for sequence to arrive over changes feed after allocation
 )
 
 // DocumentType indicates the type of document being processed in the change cache (e.g. User doc etc).
@@ -364,27 +366,23 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	ctx = collection.AddCollectionContext(ctx)
 
-	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.DebugfCtx(ctx, base.KeyCache, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
+	// If the document has no xattrs, it can not have a _sync xattr
+	if event.DataType&base.MemcachedDataTypeXattr == 0 {
 		return
 	}
 
-	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
-	// are enabled, because walrus doesn't support DataType on feed.
-	if collection.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
+	// If this is a binary document, we can ignore.
+	if event.DataType == base.MemcachedDataTypeRaw {
 		return
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.UserXattrKey(), false)
 	if err != nil {
-		// Avoid log noise related to failed unmarshaling of binary documents.
-		if event.DataType != base.MemcachedDataTypeRaw {
-			base.DebugfCtx(ctx, base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
-		}
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
+		} else {
+			base.DebugfCtx(ctx, base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		return
 	}
@@ -1045,27 +1043,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
-// waitForSequence blocks up to maxWaitTime until the given sequence has been received.
-func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
-	startTime := time.Now()
-
-	worker := func() (bool, error, any) {
-		if c.getNextSequence() >= sequence+1 {
-			base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-			return false, nil, nil
-		}
-		// retry
-		return true, nil, nil
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
-	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
-	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
-	cancel()
-	return err
-}
-
-// waitForSequenceNotSkipped blocks up to maxWaitTime until the given sequence has been received or skipped.
+// waitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list.
 func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 

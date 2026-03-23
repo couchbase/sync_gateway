@@ -164,11 +164,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 
 func TestLoggingKeys(t *testing.T) {
 	base.ResetGlobalTestLogging(t)
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -176,41 +172,36 @@ func TestLoggingKeys(t *testing.T) {
 
 	// Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]any{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var updatedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &updatedLogKeys))
-	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, updatedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 
 	// Disable Changes logKey which should also disable Changes+
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var deletedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &deletedLogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, deletedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var appendedLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &appendedLogKeys))
-	assert.Equal(t, map[string]any{"Changes": true, "Cache": true, "HTTP": true}, appendedLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 
 	// Disable Changes++ (POST modifies logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabledLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabledLogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabledLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -219,9 +210,8 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled2LogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled2LogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled2LogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -230,17 +220,15 @@ func TestLoggingKeys(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var disabled3LogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &disabled3LogKeys))
-	assert.Equal(t, map[string]any{"Cache": true, "HTTP": true}, disabled3LogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "HTTP": true}`, response.BodyString())
 
 	// Disable all logKeys by using PUT with an empty channel list
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	var noLogKeys map[string]any
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &noLogKeys))
-	assert.Equal(t, map[string]any{}, noLogKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 }
 
 func TestServerlessChangesEndpointLimit(t *testing.T) {
@@ -299,11 +287,8 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 }
 
 func TestLoggingLevels(t *testing.T) {
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	base.ResetGlobalTestLogging(t)
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -311,9 +296,8 @@ func TestLoggingLevels(t *testing.T) {
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]bool
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set log level via logLevel query parameter
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
@@ -337,11 +321,8 @@ func TestLoggingLevels(t *testing.T) {
 }
 
 func TestLoggingCombined(t *testing.T) {
-	if base.GlobalTestLoggingSet.IsTrue() {
-		t.Skip("Test does not work when a global test log level is set")
-	}
-
-	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	base.ResetGlobalTestLogging(t)
+	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
 	rt := rest.NewRestTester(t, nil)
@@ -349,16 +330,15 @@ func TestLoggingCombined(t *testing.T) {
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
-	var logKeys map[string]bool
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{}`, response.BodyString())
 
 	// Set log keys and log level in a single request
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &logKeys))
-	assert.Equal(t, map[string]bool{"Changes": true, "Cache": true, "HTTP": true}, logKeys)
+	rest.RequireStatus(t, response, http.StatusOK)
+	require.JSONEq(t, `{"Cache": true, "Changes": true, "HTTP": true}`, response.BodyString())
 }
 
 func TestGetStatus(t *testing.T) {
@@ -647,7 +627,8 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	// offline call above resets stats to 0, so sync function count will only include resync run started above
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
@@ -1589,8 +1570,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
-
 	// CBG-1513: This test is prone to panicing when the walrus bucket was closed and still used
 	assert.NotPanicsf(t, func() {
 		rt := rest.NewRestTester(t, nil)
@@ -2499,6 +2478,7 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 }
 
 func TestConfigEndpoint(t *testing.T) {
+	rest.ClearServerContextLoggingGlobals(t)
 	testCases := []struct {
 		Name              string
 		Config            string
@@ -2634,7 +2614,6 @@ func TestConfigEndpoint(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			base.ResetGlobalTestLogging(t)
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			base.InitializeMemoryLoggers()
 			tempDir := os.TempDir()
@@ -2674,7 +2653,7 @@ func TestConfigEndpoint(t *testing.T) {
 }
 
 func TestLoggingDeprecationWarning(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	base.ResetGlobalTestLogging(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2700,7 +2679,7 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 }
 
 func TestInitialStartupConfig(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rest.ClearServerContextLoggingGlobals(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2735,8 +2714,7 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rest.ClearServerContextLoggingGlobals(t)
 
 	base.InitializeMemoryLoggers()
 	tempDir := os.TempDir()
@@ -2988,7 +2966,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	rest.ClearServerContextLoggingGlobals(t)
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
@@ -3164,7 +3142,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Get config values before taking db offline, locally only
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	dbConfigBeforeOffline := resp.Body.String()
+	var dbConfigBeforeOffline rest.DbConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfigBeforeOffline))
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3182,7 +3161,12 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	// Check offline config matches online config
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	require.Equal(t, dbConfigBeforeOffline, resp.Body.String())
+	var dbConfigAfterOffline rest.DbConfig
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &dbConfigAfterOffline))
+	dbConfigAfterOffline.StartOffline = nil // _offline now alters config, remove this to compare before and after config to ensure nothing else is changed
+	dbConfigAfterOffline.UpdatedAt = nil
+	dbConfigBeforeOffline.UpdatedAt = nil
+	require.Equal(t, dbConfigBeforeOffline, dbConfigAfterOffline)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -3453,6 +3437,80 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 		),
 	)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+}
+
+func TestTakeDbOfflineOnlineUsingOfflineEndpoint(t *testing.T) {
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+		{
+			name:             "persistent config",
+			persistentConfig: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: testCase.persistentConfig})
+			defer rt.Close()
+
+			if testCase.persistentConfig {
+				dbCfg := rt.NewDbConfig()
+				rest.RequireStatus(t, rt.CreateDatabase("db", dbCfg), http.StatusCreated)
+			}
+
+			// Grab db config before offline operation
+			var preOfflineDBConfig rest.DbConfig
+			resp := rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, json.Unmarshal(resp.BodyBytes(), &preOfflineDBConfig))
+
+			preOfflineDBConfig.UpdatedAt = nil // nil this for comparison later in test
+
+			// Take DB offline
+			resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+
+			// Verify DB state
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			var dbStatus map[string]any
+			err := json.Unmarshal(resp.BodyBytes(), &dbStatus)
+			require.NoError(t, err)
+			assert.Equal(t, "Offline", dbStatus["state"])
+
+			// Try to put a doc - should fail
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
+			rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+			// Bring DB online
+			resp = rt.SendAdminRequest(http.MethodPost, "/db/_online", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+
+			// Wait for online process to complete
+			rt.WaitForDBOnline()
+
+			// Try to put a doc - should succeed
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			// Grab post online config
+			var postOnlineDbConfig rest.DbConfig
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.NoError(t, json.Unmarshal(resp.BodyBytes(), &postOnlineDbConfig))
+
+			// remove field that didn't exist in original db config
+			postOnlineDbConfig.StartOffline = nil
+			postOnlineDbConfig.Server = nil
+			postOnlineDbConfig.UpdatedAt = nil
+			assert.Equal(t, preOfflineDBConfig, postOnlineDbConfig)
+		})
+	}
 }
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false

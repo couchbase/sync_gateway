@@ -804,7 +804,7 @@ function(doc, oldDoc) {
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Attempt to send the doc again, should succeed if the blip context also received notification
 	bt.SendRev(
@@ -1077,9 +1077,10 @@ function(doc, oldDoc) {
 		)
 	}
 
+	timeout := 30 * time.Second * db.GetCachingFeedDelayFactor(t)
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
-	WaitWithTimeout(t, &revsFinishedWg, time.Second*30)
+	WaitWithTimeout(t, &receivedChangesWg, timeout)
+	WaitWithTimeout(t, &revsFinishedWg, timeout)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -1317,7 +1318,7 @@ func TestReloadUser(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Add a doc in the PBS channel
 	addRevResponse := bt.SendRev(
@@ -1709,7 +1710,6 @@ func TestPutRevV4(t *testing.T) {
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
@@ -1897,7 +1897,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID || changeEntryRevID == version1.CV.String() {
-						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
+						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel)))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
 						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
@@ -1919,7 +1919,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: test.replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
-				version2 := <-updatedVersion
+				version2 := base.RequireChanRecv(t, updatedVersion)
 
 				if test.expectReplacementRev {
 					// version 2 was sent instead
@@ -2018,7 +2018,6 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2073,7 +2072,6 @@ func TestPullReplicationUpdateOnOtherHLVAwarePeer(t *testing.T) {
 func TestBlipClientSendDelete(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -2133,8 +2131,6 @@ func TestActiveOnlyContinuous(t *testing.T) {
 // Test that exercises Sync Gateway's norev handler
 func TestBlipNorev(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2187,7 +2183,6 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2270,7 +2265,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
@@ -2342,8 +2336,6 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 // sub changes request has completed
 func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// TODO: CBG-2653: change this to use NewBlipTester
 	bt := NewBlipTesterDefaultCollection(t)
@@ -2768,7 +2760,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				receivedNoRevs := make(chan *blip.Message)
 				btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
 					fmt.Println("Received noRev", msg.Properties)
-					receivedNoRevs <- msg
+					base.RequireChanSend(t, receivedNoRevs, msg)
 				}
 
 				version := rt.PutDoc(docName, `{"foo": "bar"}`)
@@ -2811,7 +2803,6 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 func TestUnsubChanges(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &RestTesterConfig{GuestEnabled: true}
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -3256,6 +3247,65 @@ func TestBlipDatabaseClose(t *testing.T) {
 	})
 }
 
+func TestBlipDisconnectOnDbOffline(t *testing.T) {
+	base.LongRunningTest(t)
+
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+		{
+			name:             "persistent config",
+			persistentConfig: true,
+		},
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				var rt *RestTester
+				if testCase.persistentConfig {
+					rt = NewRestTesterPersistentConfig(t)
+					defer rt.Close()
+				} else {
+					rt = NewRestTester(t, nil)
+					defer rt.Close()
+				}
+				const alice = "alice"
+				rt.CreateUser(alice, []string{"*"})
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+					&BlipTesterClientOpts{
+						Username: alice,
+					})
+				defer btc.Close()
+
+				var blipPullContextClosed atomic.Bool
+				btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+					blipPullContextClosed.Store(true)
+				}
+				// add some replication activity
+				markerDoc := "markerDoc"
+				markerDocVersion := rt.PutDoc(markerDoc, `{"mark": "doc"}`)
+				rt.WaitForPendingChanges()
+				btcRunner.StartPull(btc.id)
+				btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
+
+				rt.TakeDbOffline()
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, blipPullContextClosed.Load())
+				}, time.Second*10, time.Millisecond*100)
+			})
+		}
+	})
+}
+
 func TestPutRevBlip(t *testing.T) {
 	bt := NewBlipTesterFromSpec(t, BlipTesterSpec{GuestEnabled: true, blipProtocols: []string{db.CBMobileReplicationV4.SubprotocolString()}})
 	defer bt.Close()
@@ -3452,6 +3502,7 @@ func TestBlipPullConflict(t *testing.T) {
 		)
 		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.PutDoc(docID, `{"actor": "sg"}`)
+		rt.WaitForPendingChanges()
 
 		opts := &BlipTesterClientOpts{
 			Username: alice,
@@ -3533,7 +3584,6 @@ func TestPushHLVOntoLegacyRev(t *testing.T) {
 func TestTombstoneCount(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
@@ -3629,8 +3679,8 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
@@ -3734,8 +3784,8 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, expectedVersion)
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)

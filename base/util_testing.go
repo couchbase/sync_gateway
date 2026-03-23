@@ -13,7 +13,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -34,7 +33,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
@@ -373,7 +371,7 @@ func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 	// DROP INDEX is asynchronous, but generally quick. Wait for all indexes to disappear as part of the test harness.
 	err, _ = RetryLoop(ctx, "Waiting for no indexes on the bucket", func() (shouldRetry bool, err error, _ any) {
 		// Retrieve all indexes on the bucket/collection
-		indexes, err := n1QLStore.GetIndexes()
+		indexes, err = n1QLStore.GetIndexes()
 		if err != nil {
 			return false, err, nil
 		}
@@ -382,7 +380,10 @@ func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 		}
 		return true, nil, nil
 	}, CreateSleeperFunc(500, 100))
-	return err
+	if err != nil {
+		return fmt.Errorf("%w: indexes still exist, but all are expected to be gone: %v", err, indexes)
+	}
+	return nil
 }
 
 // Generates a string of size int
@@ -821,68 +822,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-// CreateBucketScopesAndCollections will create the given scopes and collections within the given BucketSpec.
-func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec, scopes map[string][]string) error {
-	atLeastOneScope := false
-	for _, collections := range scopes {
-		for range collections {
-			atLeastOneScope = true
-			break
-		}
-		break
-	}
-	if !atLeastOneScope {
-		// nothing to do here
-		return nil
-	}
-
-	un, pw, _ := bucketSpec.Auth.GetCredentials()
-	var rootCAs *x509.CertPool
-	if tlsConfig := bucketSpec.TLSConfig(ctx); tlsConfig != nil {
-		rootCAs = tlsConfig.RootCAs
-	}
-	cluster, err := gocb.Connect(bucketSpec.Server, gocb.ClusterOptions{
-		Username: un,
-		Password: pw,
-		SecurityConfig: gocb.SecurityConfig{
-			TLSSkipVerify: bucketSpec.TLSSkipVerify,
-			TLSRootCAs:    rootCAs,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect to cluster: %w", err)
-	}
-	defer func() { _ = cluster.Close(nil) }()
-
-	cm := cluster.Bucket(bucketSpec.BucketName).Collections()
-
-	for scopeName, collections := range scopes {
-		if err := cm.CreateScope(scopeName, nil); err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-			return fmt.Errorf("failed to create scope %s: %w", scopeName, err)
-		}
-		DebugfCtx(ctx, KeySGTest, "Created scope %s", scopeName)
-		for _, collectionName := range collections {
-			if err := cm.CreateCollection(
-				gocb.CollectionSpec{
-					Name:      collectionName,
-					ScopeName: scopeName,
-				}, nil); err != nil && !errors.Is(err, gocb.ErrCollectionExists) {
-				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
-			}
-			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := WaitForNoError(ctx, func() error {
-				_, err := cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName).Exists("WaitForExists", nil)
-				return err
-			}); err != nil {
-				return fmt.Errorf("failed to wait for collection %s.%s to exist: %w", scopeName, collectionName, err)
-			}
-			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
-		}
-	}
-
-	return nil
-}
-
 // RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
 // Usage:
 //
@@ -1055,5 +994,48 @@ func TestRequiresViews(t testing.TB) {
 func TestRequiresDeltaSync(t testing.TB) {
 	if !IsEnterpriseEdition() {
 		t.Skipf("Skipping test - Delta Sync requires EE")
+	}
+}
+
+const (
+	TestChanTimeout = 30 * time.Second
+)
+
+// RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
+func RequireChanSend[T any](t testing.TB, ch chan<- T, val T) {
+	t.Helper()
+	RequireChanSendWithTimeout(t, ch, val, TestChanTimeout)
+}
+
+// RequireChanSendWithTimeout performs a blocking send on a channel with a timeout. Fails the test if the send cannot complete in time.
+func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout time.Duration) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case ch <- val:
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+	}
+}
+
+// RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time.
+func RequireChanRecv[T any](t testing.TB, ch <-chan T) T {
+	t.Helper()
+	return RequireChanRecvWithTimeout(t, ch, TestChanTimeout)
+}
+
+// RequireChanRecvWithTimeout reads from a channel with a timeout. Fails the test if no value arrives in time.
+func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) T {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case val, ok := <-ch:
+		require.True(t, ok, "channel closed without sending a value")
+		return val
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout))
+		return *new(T) // unreachable
 	}
 }

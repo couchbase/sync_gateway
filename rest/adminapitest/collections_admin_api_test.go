@@ -173,7 +173,6 @@ func TestRequireResync(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &rest.RestTesterConfig{
 		PersistentConfig: true,
 	}
@@ -271,8 +270,7 @@ func TestRequireResync(t *testing.T) {
 	require.Equal(t, true, allDBsSummary[1].RequireResync)
 
 	// Run resync for collection
-	resyncCollections := make(db.ResyncCollections, 0)
-	resyncCollections[scope] = []string{collection1}
+	resyncCollections := base.NewCollectionNames(scopeAndCollection1Name)
 	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
 	require.NoError(t, marshalErr)
 

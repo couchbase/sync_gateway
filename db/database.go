@@ -106,11 +106,11 @@ type DatabaseContext struct {
 	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
 	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
 	Bucket                      base.Bucket        // Storage
-	BucketSpec                  base.BucketSpec    // The BucketSpec
+	bucketUsername              string             // name of the connecting user for audit logging
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            changeListener     // Caching feed listener
+	mutationListener            *changeListener    // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
 	sequences                   *sequenceAllocator // Source of new sequence numbers
 	StartTime                   time.Time          // Timestamp when context was instantiated
@@ -129,7 +129,6 @@ type DatabaseContext struct {
 	AttachmentCompactionManager *BackgroundManager
 	AttachmentMigrationManager  *BackgroundManager
 	AsyncIndexInitManager       *BackgroundManager
-	ExitChanges                 chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
@@ -165,6 +164,8 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+
+	scopeName string // name of the single scope for the database
 }
 
 type Scope struct {
@@ -417,6 +418,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
+	bucketUsername := "rosmar_noauth"
+	b, err := base.AsGocbV2Bucket(bucket)
+	if err == nil {
+		bucketUsername, _, _ = b.GetSpec().Auth.GetCredentials()
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
@@ -425,6 +432,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		UUID:                 cbgt.NewUUID(),
 		MetadataStore:        metadataStore,
 		Bucket:               bucket,
+		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
 		StartTime:            time.Now(),
@@ -515,7 +523,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext)
+	dbContext.mutationListener, err = newChangeListener(bucket.GetName(), options.GroupID, dbContext)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(options.Scopes) == 0 {
 		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
@@ -527,7 +538,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	syncFunctionsChanged := false
 	// Create new backing store map to map from collection ID's to their associated rev cache backing stores for rev cache document loads
 	collectionIDToRevCacheBackingStore := make(map[uint32]RevisionCacheBackingStore)
+	if len(options.Scopes) > 1 {
+		return nil, fmt.Errorf("Multiple scopes %v are not supported on a single database", maps.Keys(options.Scopes))
+	}
 	for scopeName, scope := range options.Scopes {
+		dbContext.scopeName = scopeName
 		dbContext.Scopes[scopeName] = Scope{
 			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 		}
@@ -540,7 +555,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
-				return nil, err
+				return nil, base.RedactErrorf("Could not connect to %s.%s.%s: %w", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collName), err)
 			}
 			stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
 			if err != nil {
@@ -596,6 +611,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
 	return dbContext, nil
 }
@@ -623,7 +639,7 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	db.mutationListener.Stop(ctx)
 	db.changeCache.Stop(ctx)
 	if db.ImportListener != nil {
-		db.ImportListener.Stop()
+		db.ImportListener.Stop(ctx)
 		db.ImportListener = nil
 	}
 	if db.Heartbeater != nil {
@@ -751,7 +767,12 @@ func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 	context.mutationListener.Stop(ctx)
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context)
+	var err error
+	context.mutationListener, err = newChangeListener(context.Bucket.GetName(), context.Options.GroupID, context)
+	if err != nil {
+		return err
+	}
+	context.mutationListener.OnChangeCallback = context.changeCache.DocChanged
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -831,47 +852,6 @@ func (dbCtx *DatabaseContext) GetInUseIndexesFromDefs(indexDefs map[SGIndexType]
 //	to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(ctx context.Context, username string) {
 	context.mutationListener.NotifyCheckForTermination(ctx, base.SetOf(base.UserPrefixRoot+username))
-}
-
-func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
-
-	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
-		// notify all active _changes feeds to close
-		close(dc.ExitChanges)
-
-		// Block until all current calls have returned, including _changes feeds
-		dc.AccessLock.Lock()
-		defer dc.AccessLock.Unlock()
-
-		dc.changeCache.Stop(ctx)
-
-		// set DB state to Offline
-		atomic.StoreUint32(&dc.State, DBOffline)
-
-		if err := dc.EventMgr.RaiseDBStateChangeEvent(ctx, dc.Name, "offline", reason, dc.Options.AdminInterface); err != nil {
-			base.InfofCtx(ctx, base.KeyCRUD, "Error raising database state change event: %v", err)
-		}
-
-		return nil
-	} else {
-		dbState := atomic.LoadUint32(&dc.State)
-		// If the DB is already transitioning to: offline or is offline silently return
-		if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
-			return nil
-		}
-
-		msg := "Unable to take Database offline, database must be in Online state but was " + RunStateString[dbState]
-		if dbState == DBOnline {
-			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
-		}
-
-		base.InfofCtx(ctx, base.KeyCRUD, "%s", msg)
-		return base.NewHTTPError(http.StatusServiceUnavailable, msg)
-	}
-}
-
-func (db *Database) TakeDbOffline(nonContextStruct base.NonCancellableContext, reason string) error {
-	return db.DatabaseContext.TakeDbOffline(nonContextStruct.Ctx, reason)
 }
 
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
@@ -2134,14 +2114,7 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 
 // AddBucketUserLogContext adds bucket user to the parent context for logging. This is used to mark actions not caused by a user.
 func (dbCtx *DatabaseContext) AddBucketUserLogContext(ctx context.Context) context.Context {
-	spec := dbCtx.BucketSpec
-	// Server is empty in testing only
-	if spec.Server == "" || spec.IsWalrusBucket() {
-		return base.UserLogCtx(ctx, "rosmar_noauth", base.UserDomainBuiltin, nil)
-	}
-	username, _, _ := dbCtx.BucketSpec.Auth.GetCredentials()
-	return base.UserLogCtx(ctx, username, base.UserDomainBuiltin, nil)
-
+	return base.UserLogCtx(ctx, dbCtx.bucketUsername, base.UserDomainBuiltin, nil)
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
@@ -2430,7 +2403,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.AttachmentMigrationManager = NewAttachmentMigrationManager(db)
 	// if we have collections requiring migration, run the job
-	if len(db.RequireAttachmentMigration) > 0 && !db.BucketSpec.IsWalrusBucket() {
+	if len(db.RequireAttachmentMigration) > 0 && !db.usingRosmar() {
 		err := db.AttachmentMigrationManager.Start(ctx, nil)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
@@ -2441,8 +2414,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
 		return err
 	}
-
-	db.ExitChanges = make(chan struct{})
 
 	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
 	// are detected and processed by this node.
@@ -2455,7 +2426,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
-	db.AsyncIndexInitManager = NewAsyncIndexInitManager(db.MetadataStore, db.MetadataKeys)
 
 	db.startReplications(ctx)
 
@@ -2557,6 +2527,20 @@ func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
 }
 
+// useShardedDCP returns true if the database supports sharded DCP feeds.
+func (db *DatabaseContext) useShardedDCP() bool {
+	return base.IsEnterpriseEdition() && !db.usingRosmar()
+}
+
+// collectionNames returns the names of the collections on this database.
+func (db *DatabaseContext) collectionNames() base.CollectionNames {
+	names := base.NewCollectionNames()
+	for _, col := range db.CollectionByID {
+		names.Add(col.dataStore)
+	}
+	return names
+}
+
 // GetSameSiteCookieMode returns the http.SameSite mode based on the unsupported database options. Returns an error if
 // an invalid string is set.
 func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
@@ -2575,4 +2559,16 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 	default:
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
+}
+
+// usingRosmar returns true if the database is configured to use Rosmar.
+func (db *DatabaseContext) usingRosmar() bool {
+	_, err := base.AsRosmarBucket(db.Bucket)
+	return err == nil
+}
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
+// if the sequence remains in skipped list.
+func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
+	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }

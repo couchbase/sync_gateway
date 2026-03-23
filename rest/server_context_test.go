@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,7 +27,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -210,8 +207,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
 
 	assert.NoError(t, err, "Unexpected error while adding database to server context")
-	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
-	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+	assert.Equal(t, bucketName, dbContext.Bucket.GetName())
 
 	dbConfig = DbConfig{
 		Name:                databaseName,
@@ -237,8 +233,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		})
 
 	assert.NoError(t, err, "No error while trying to get the existing database name")
-	assert.Equal(t, rosmar.InMemoryURL, dbContext.BucketSpec.Server)
-	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+	assert.Equal(t, bucketName, dbContext.Bucket.GetName())
 
 	// config with disallowed allow_conflicts=true
 	dbConfig = DbConfig{
@@ -252,7 +247,6 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 }
 
 func TestStatsLoggerStopped(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	sc := DefaultStartupConfig("")
 
@@ -364,7 +358,6 @@ outerLoop:
 }
 
 func TestStartAndStopHTTPServers(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
@@ -489,7 +482,6 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 
 // CBG-1535 - test Bootstrap.UseTLSServer option
 func TestUseTLSServer(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %v"
 	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %v"
 	testCases := []struct {
@@ -513,37 +505,37 @@ func TestUseTLSServer(t *testing.T) {
 		{
 			name:          "couchbase: not allowed",
 			useTLSServer:  true,
-			server:        "couchbase://localhost:1212",
+			server:        "couchbase://127.0.0.1:1212",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "http not allowed",
 			useTLSServer:  true,
-			server:        "http://localhost:1212",
+			server:        "http://127.0.0.1:1212",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "http allowed",
 			useTLSServer:  false,
-			server:        "http://localhost:1212",
+			server:        "http://127.0.0.1:1212",
 			expectedError: nil,
 		},
 		{
 			name:          "Https not secure (due to unsupported)",
 			useTLSServer:  true,
-			server:        "https://localhost:1234",
+			server:        "https://127.0.0.1:1234",
 			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "couchbases:",
 			useTLSServer:  true,
-			server:        "couchbases://localhost:1234",
+			server:        "couchbases://127.0.0.1:1234",
 			expectedError: nil,
 		},
 		{
 			name:          "ftps:", // Testing if the S at the end is what makes it secure
 			useTLSServer:  true,
-			server:        "ftps://localhost:1234",
+			server:        "ftps://127.0.0.1:1234",
 			expectedError: &errorMustBeSecure,
 		},
 	}
@@ -620,6 +612,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 func TestLogFlush(t *testing.T) {
 	// FIXME: CBG-1869 flaky test
 	t.Skip("CBG-1869: Flaky test")
+	ClearServerContextLoggingGlobals(t)
 
 	testCases := []struct {
 		Name                 string
@@ -670,7 +663,6 @@ func TestLogFlush(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 			// Setup memory logging
 			base.InitializeMemoryLoggers()
@@ -822,8 +814,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
 	}
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -853,7 +843,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	// ensure doc1 is not imported - since we started the database offline
 	assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
-	rt.ServerContext().TakeDbOnline(base.NewNonCancelCtx(), rt.GetDatabase())
+	rt.TakeDbOnline()
 	require.NotNil(t, rt.GetDatabase().ImportListener)
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"type":"doc3"}`)
@@ -952,34 +942,20 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 }
 
 func TestDatabaseStartupFailure(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("EE only test, requires heartbeater error")
-	}
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("LeakyBucketConfig not supported on CBS")
-	}
-
-	touchErr := errors.New("touch error")
-	rt := NewRestTester(t, &RestTesterConfig{
-		LeakyBucketConfig: &base.LeakyBucketConfig{
-			TouchCallback: func(key string) error {
-				if strings.Contains(key, "heartbeat_timeout") {
-					return touchErr
-				}
-				return nil
-			},
-		},
-		PersistentConfig: true,
-	})
+	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
+	ctx := rt.Context()
 
-	dbConfig := DatabaseConfig{
-		DbConfig: rt.NewDbConfig(),
+	// alter in memory db config to invalid config that will fail online process
+	rt.ServerContext()._dbConfigs["db"].Users = map[string]*auth.PrincipalConfig{
+		"alice": {
+			JWTChannels: base.SetOf("asdf"),
+		},
 	}
 
-	// this call does use the leaky bucket
-	dbContext, err := rt.ServerContext().AddDatabaseFromConfigWithBucket(rt.Context(), t, dbConfig, rt.Bucket())
-	require.ErrorIs(t, err, touchErr)
+	// reload db with invalid config, should fail online process and put db in offline state
+	dbContext, err := rt.ServerContext().ReloadDatabase(ctx, "db", false)
+	require.ErrorContains(t, err, "must either specify all OIDC properties or none")
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
 
@@ -994,7 +970,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseOnlineProcessError])
 
 	// assert that you can attempt again to bring db back online again after failure
-	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_online", "")
 	RequireStatus(t, resp, http.StatusOK)
 	rt.WaitForDBOnline()
 }
@@ -1065,7 +1041,6 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 }
 
 func TestCollectStackTraceFile(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	tempPath := t.TempDir()
 	serverConfig := DefaultStartupConfig(tempPath)

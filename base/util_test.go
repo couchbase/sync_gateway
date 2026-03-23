@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -389,30 +390,30 @@ func TestSanitizeRequestURL(t *testing.T) {
 			"", "",
 		},
 		{
-			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E",
-			"http://localhost:4985/default/_oidc_callback?code=******",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=******",
 		},
 		{
-			"http://localhost:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s",
-			"http://localhost:4985/default/_oidc_refresh?refresh_token=******",
+			"http://127.0.0.1:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s",
+			"http://127.0.0.1:4985/default/_oidc_refresh?refresh_token=******",
 		},
 		{
 			// Ensure non-matching parameters aren't getting sanitized
-			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456",
-			"http://localhost:4985/default/_oidc_callback?code=******&state=123456",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456",
+			"http://127.0.0.1:4985/default/_oidc_callback?code=******&state=123456",
 		},
 		{
-			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
-			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
+			"http://127.0.0.1:4985/default/_changes?since=5&feed=longpoll",
+			"http://127.0.0.1:4985/default/_changes?since=5&feed=longpoll",
 		},
 		{
 			// Ensure matching non-parameters aren't getting sanitized
-			"http://localhost:4985/default/doctokencode",
-			"http://localhost:4985/default/doctokencode",
+			"http://127.0.0.1:4985/default/doctokencode",
+			"http://127.0.0.1:4985/default/doctokencode",
 		},
 		{
-			"http://localhost:4985/default/doctoken=code=",
-			"http://localhost:4985/default/doctoken=code=",
+			"http://127.0.0.1:4985/default/doctoken=code=",
+			"http://127.0.0.1:4985/default/doctoken=code=",
 		},
 	}
 
@@ -434,44 +435,44 @@ func TestSanitizeRequestURLRedaction(t *testing.T) {
 	}{
 		{
 			// channels should be tagged as UserData
-			"http://localhost:4985/default/_changes?channels=A",
-			"http://localhost:4985/default/_changes?channels=A",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A",
+			"http://127.0.0.1:4985/default/_changes?channels=A",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>",
 		},
 		{
 			// Multiple tagged params
-			"http://localhost:4985/default/_changes?channels=A&startkey=B",
-			"http://localhost:4985/default/_changes?channels=A&startkey=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&startkey=<ud>B</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A&startkey=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&startkey=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&startkey=<ud>B</ud>",
 		},
 		{
 			// What about multiple channels?
-			"http://localhost:4985/default/_changes?channels=A&channels=B",
-			"http://localhost:4985/default/_changes?channels=A&channels=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&channels=<ud>B</ud>",
+			"http://127.0.0.1:4985/default/_changes?channels=A&channels=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&channels=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&channels=<ud>B</ud>",
 		},
 		{
 			// Non-matching params?
-			"http://localhost:4985/default/_changes?channels=A&other=B",
-			"http://localhost:4985/default/_changes?channels=A&other=B",
-			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=A&other=B",
+			"http://127.0.0.1:4985/default/_changes?channels=<ud>A</ud>&other=B",
 		},
 		{
 			// Conflicting values
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>A</ud>&other=A",
 		},
 		{
 			// More conflicting values
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=A&other=A",
-			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=A&other=A",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>A</ud>&other=A",
 		},
 		{
-			"http://localhost:4985/A/_changes?channels=🔥",
-			"http://localhost:4985/A/_changes?channels=🔥",
-			"http://localhost:4985/A/_changes?channels=<ud>🔥</ud>",
+			"http://127.0.0.1:4985/A/_changes?channels=🔥",
+			"http://127.0.0.1:4985/A/_changes?channels=🔥",
+			"http://127.0.0.1:4985/A/_changes?channels=<ud>🔥</ud>",
 		},
 	}
 
@@ -1904,4 +1905,47 @@ func TestIsRevTreeID(t *testing.T) {
 			assert.Equalf(t, tt.expected, IsRevTreeID(tt.value), "IsRevTreeID(%v)", tt.value)
 		})
 	}
+}
+
+func TestRequireChan(t *testing.T) {
+	t.Run("send to buffered channel with space", func(t *testing.T) {
+		ch := make(chan int, 10)
+		RequireChanSend(t, ch, 1)
+		RequireChanSend(t, ch, 2)
+	})
+
+	t.Run("receive from buffered channel with value", func(t *testing.T) {
+		ch := make(chan int, 1)
+		ch <- 42
+		val := RequireChanRecv(t, ch)
+		assert.Equal(t, 42, val)
+	})
+
+	t.Run("receive from buffered channel with string", func(t *testing.T) {
+		ch := make(chan string, 1)
+		ch <- "hello"
+		val := RequireChanRecv(t, ch)
+		assert.Equal(t, "hello", val)
+	})
+
+	t.Run("send and recv unbuffered channel", func(t *testing.T) {
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		ch := make(chan string)
+		var val string
+
+		go func() {
+			defer wg.Done()
+			RequireChanSend(t, ch, "hello?")
+		}()
+		go func() {
+			defer wg.Done()
+			val = RequireChanRecv(t, ch)
+		}()
+
+		wg.Wait()
+		assert.Equal(t, "hello?", val)
+	})
 }
