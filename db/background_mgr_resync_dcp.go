@@ -517,7 +517,7 @@ func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionI
 // GetResyncDCPCheckpointPrefix returns the prefix of the DCP checkpoint documents for resync.
 func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string) string {
 	return fmt.Sprintf(
-		"%s:sg-%v:resync:%v",
+		"%s:sg-%v:resync-distributed:%v",
 		db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
 		base.ProductAPIVersion,
 		resyncID,

@@ -188,8 +188,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
-			resyncHeartbeatPrefix:            "_sync:resync_hb:aGroupID:",
-			resyncCfgPrefix:                  "_sync:resync_cfg:aGroupID:",
+			resyncHeartbeatPrefix:            "_sync:resync_hb:",
+			resyncCfgPrefix:                  "_sync:resync_cfg:",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -236,8 +236,8 @@ func TestMetadataKeys(t *testing.T) {
 			sessionKey:                       "_sync:session:aMetadataID:aSessionID",
 			backgroundProcessHeartbeatPrefix: "_sync:m_aMetadataID:background_process:heartbeat:backgroundID",
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
-			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:aGroupID:",
-			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:aGroupID:",
+			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
+			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
 		},
 	}
 
