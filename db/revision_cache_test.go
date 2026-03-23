@@ -2690,3 +2690,48 @@ func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
 		})
 	}
 }
+
+// TestMultipleRevCacheItemsForSameDocs:
+// - Tests fetching same doc by revID and CV will create separate entries for the same doc
+func TestMultipleRevCacheItemsForSameDocs(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires rev cache enabled")
+	}
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := SafeDocumentName(t, t.Name())
+	docID2 := SafeDocumentName(t, t.Name()+"_2")
+
+	_, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	doc2Rev, doc2, err := collection.Put(ctx, docID2, Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	// get active docID, get active uses revID so will populate rev cache with revID key
+	_, err = collection.getRev(ctx, docID, "", 0, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheNumItems.Value())
+
+	// get by cv value
+	_, err = collection.getRev(ctx, docID, doc1.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+	// asset that two items are in cache now (both for same docID)
+	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheNumItems.Value())
+
+	// fetch docID2 by revID
+	_, err = collection.getRev(ctx, docID2, doc2Rev, 0, nil)
+	require.NoError(t, err)
+	// asset that three items are in cache now
+	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheNumItems.Value())
+
+	// fetch docID2 by CV
+	_, err = collection.getRev(ctx, docID2, doc2.HLV.GetCurrentVersionString(), 0, nil)
+	require.NoError(t, err)
+	// assert four items now in cache
+	assert.Equal(t, int64(4), db.DbStats.Cache().RevisionCacheNumItems.Value())
+}
