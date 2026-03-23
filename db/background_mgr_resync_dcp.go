@@ -198,8 +198,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs)
-
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
@@ -220,7 +218,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.CBGTIndexTypeSyncGatewayResync)
 
-		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID)
+		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
@@ -279,6 +277,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			resyncHB.Stop(ctx)
 		}()
 	} else {
+
+		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs, false)
 		dcpClient, err = base.NewDCPClient(ctx, callback, *clientOptions, bucket)
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
@@ -503,23 +503,34 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
-func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionIDs []uint32) *base.DCPClientOptions {
+func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionIDs []uint32, distributed bool) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		CollectionIDs:     collectionIDs,
-		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID),
+		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID, distributed),
 	}
 }
 
 // GetResyncDCPCheckpointPrefix returns the prefix of the DCP checkpoint documents for resync.
-func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string) string {
-	return fmt.Sprintf(
-		"%s:sg-%v:resync-distributed:%v",
-		db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
-		base.ProductAPIVersion,
-		resyncID,
-	)
+func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string, distributed bool) string {
+	var checkpointPrefix string
+	if distributed {
+		checkpointPrefix = fmt.Sprintf(
+			"%s:sg-%v:resync-distributed:%v",
+			db.MetadataKeys.DCPCheckpointPrefix(""),
+			base.ProductAPIVersion,
+			resyncID,
+		)
+	} else {
+		checkpointPrefix = fmt.Sprintf(
+			"%s:sg-%v:resync:%v",
+			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
+			base.ProductAPIVersion,
+			resyncID,
+		)
+	}
+	return checkpointPrefix
 }

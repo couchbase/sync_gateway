@@ -663,31 +663,64 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 		name          string
 		collectionIDs []uint32
 		groupID       string
+		distributed   bool
 		expected      string
 	}{
 		{
 			name:          "default collection, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "",
+			distributed:   false,
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
 			name:          "default collection, group id=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
+			distributed:   false,
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
 			name:          "default collection + collection 1, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "",
+			distributed:   false,
 			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
 			name:          "default collection + collection 1, group id=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "foo",
+			distributed:   false,
 			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "distributed, default collection, no group id",
+			collectionIDs: []uint32{base.DefaultCollectionID},
+			groupID:       "",
+			distributed:   true,
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "distributed, default collection, group id=foo",
+			collectionIDs: []uint32{base.DefaultCollectionID},
+			groupID:       "foo",
+			distributed:   true,
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "distributed, default collection + collection 1, no group id",
+			collectionIDs: []uint32{base.DefaultCollectionID, 1},
+			groupID:       "",
+			distributed:   true,
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name:          "distributed, default collection + collection 1, group id=foo",
+			collectionIDs: []uint32{base.DefaultCollectionID, 1},
+			groupID:       "foo",
+			distributed:   true,
+			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
 		},
 	}
 	for _, test := range testCases {
@@ -709,6 +742,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 				db,
 				resyncID,
 				test.collectionIDs,
+				test.distributed,
 			)
 
 			b, err := base.AsGocbV2Bucket(bucket)
