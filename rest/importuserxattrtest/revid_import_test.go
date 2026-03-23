@@ -59,7 +59,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	docRev, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.GetRevTreeID(), false)
+	docRev, err := collection.GetRevisionCacheForTest().GetUsingRevID(ctx, docKey, syncData.GetRevTreeID(), false)
 	assert.NoError(t, err)
 	assert.Len(t, docRev.Channels.ToArray(), 0)
 	assert.Equal(t, syncData.GetRevTreeID(), docRev.RevID)
@@ -81,7 +81,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.Contains(t, xattrs, base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
-	docRev2, err := collection.GetRevisionCacheForTest().GetWithRev(ctx, docKey, syncData.GetRevTreeID(), false)
+	docRev2, err := collection.GetRevisionCacheForTest().GetUsingRevID(ctx, docKey, syncData.GetRevTreeID(), false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.GetRevTreeID(), docRev2.RevID)
 

@@ -31,8 +31,8 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 	}
 }
 
-// GetWithRev fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
+// GetUsingRevID fetches the revision for the given docID and revID immediately from the bucket.
+func (rc *BypassRevisionCache) GetUsingRevID(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
@@ -58,8 +58,8 @@ func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID stri
 	return docRev, nil
 }
 
-// GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (docRev DocumentRevision, err error) {
+// GetUsingCV fetches the Current Version for the given docID and CV immediately from the bucket.
+func (rc *BypassRevisionCache) GetUsingCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (docRev DocumentRevision, err error) {
 
 	docRev = DocumentRevision{
 		CV:                     cv,
@@ -132,19 +132,11 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32) {
+func (rc *BypassRevisionCache) RemoveUsingRevID(ctx context.Context, docID, revID string, collectionID uint32) {
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
-	// no-op
-}
-
-func (rc *BypassRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
-	// no-op
-}
-
-func (rc *BypassRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+func (rc *BypassRevisionCache) RemoveUsingCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
 	// no-op
 }
 

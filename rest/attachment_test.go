@@ -2971,6 +2971,8 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 
 	rt.CreateUser("alice", []string{"ABC"})
 
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
 	for _, revType := range []string{"RevTreeID", "CV"} {
 		t.Run(revType, func(t *testing.T) {
 			for _, flushCache := range []bool{false, true} {
@@ -2988,7 +2990,12 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 
 					if !flushCache {
 						// ensure revision is cached
-						_, _ = rt.GetDoc(docID)
+						fetchVersion := version1.CV.String()
+						if revType == "RevTreeID" {
+							fetchVersion = version1.RevTreeID
+						}
+						_, err := collection.GetRev(ctx, docID, fetchVersion, false, nil)
+						require.NoError(t, err)
 					}
 
 					// version 2 moves to channel B (alice has no access) with an attachment

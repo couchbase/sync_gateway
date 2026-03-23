@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -29,20 +30,20 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 
-	// GetWithRev returns the given revision, and stores if not already cached.
+	// GetUsingRevID returns the given revision, and stores if not already cached.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
+	GetUsingRevID(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error)
 
-	// GetWithCV returns the given revision by CV, and stores if not already cached.
+	// GetUsingCV returns the given revision by CV, and stores if not already cached.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
 	// When loadBackup=true, will load from backup revisions if requested version is not active document
-	GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (DocumentRevision, error)
+	GetUsingCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID string, key string, collectionID uint32) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32)
@@ -50,17 +51,11 @@ type RevisionCache interface {
 	// Upsert will remove existing value and re-create new one
 	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
 
-	// RemoveWithRev evicts a revision from the cache using its revID.
-	RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32)
+	// RemoveUsingRevID removes the specified revID key from the cache if it exists
+	RemoveUsingRevID(ctx context.Context, docID, revID string, collectionID uint32)
 
-	// RemoveWithCV evicts a revision from the cache using its current version.
-	RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32)
-
-	// RemoveRevOnly removes the specified key from the revID lookup map in the cache
-	RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32)
-
-	// RemoveCVOnly removes the specified key from the HLV lookup map in the cache
-	RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32)
+	// RemoveUsingCV removes the specified CV key from the cache if it exists
+	RemoveUsingCV(ctx context.Context, docID string, cv *Version, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
@@ -146,13 +141,13 @@ func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) co
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) GetWithRev(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
-	return (*c.revCache).GetWithRev(ctx, docID, revID, c.collectionID, includeDelta)
+func (c *collectionRevisionCache) GetUsingRevID(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
+	return (*c.revCache).GetUsingRevID(ctx, docID, revID, c.collectionID, includeDelta)
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
-	return (*c.revCache).GetWithCV(ctx, docID, cv, c.collectionID, includeDelta, loadBackup)
+func (c *collectionRevisionCache) GetUsingCV(ctx context.Context, docID string, cv *Version, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
+	return (*c.revCache).GetUsingCV(ctx, docID, cv, c.collectionID, includeDelta, loadBackup)
 }
 
 // GetActive is for per collection access to GetActive method
@@ -161,8 +156,8 @@ func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string) (
 }
 
 // Peek is for per collection access to Peek method
-func (c *collectionRevisionCache) Peek(ctx context.Context, docID, revID string) (DocumentRevision, bool) {
-	return (*c.revCache).Peek(ctx, docID, revID, c.collectionID)
+func (c *collectionRevisionCache) Peek(ctx context.Context, docID, key string) (DocumentRevision, bool) {
+	return (*c.revCache).Peek(ctx, docID, key, c.collectionID)
 }
 
 // Put is for per collection access to Put method
@@ -175,22 +170,12 @@ func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRev
 	(*c.revCache).Upsert(ctx, docRev, c.collectionID)
 }
 
-// RemoveWithRev is for per collection access to Remove method
-func (c *collectionRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string) {
-	(*c.revCache).RemoveWithRev(ctx, docID, revID, c.collectionID)
+func (c *collectionRevisionCache) RemoveUsingRevID(ctx context.Context, docID, revID string) {
+	(*c.revCache).RemoveUsingRevID(ctx, docID, revID, c.collectionID)
 }
 
-func (c *collectionRevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string) {
-	(*c.revCache).RemoveRevOnly(ctx, docID, revID, c.collectionID)
-}
-
-func (c *collectionRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version) {
-	(*c.revCache).RemoveCVOnly(ctx, docID, cv, c.collectionID)
-}
-
-// RemoveWithCV is for per collection access to Remove method
-func (c *collectionRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version) {
-	(*c.revCache).RemoveWithCV(ctx, docID, cv, c.collectionID)
+func (c *collectionRevisionCache) RemoveUsingCV(ctx context.Context, docID string, cv *Version) {
+	(*c.revCache).RemoveUsingCV(ctx, docID, cv, c.collectionID)
 }
 
 // UpdateDelta is for per collection access to UpdateDelta method
@@ -523,4 +508,12 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 		bodyBytes = cleanBodyBytes
 	}
 	return bodyBytes, attachments, channels, deleted, err
+}
+
+func CreateRevisionCacheRevIDKey(docID, revID string, collectionID uint32) string {
+	return fmt.Sprintf("%s:%s:%d", docID, revID, collectionID)
+}
+
+func CreateRevisionCacheCVKey(docID string, cv *Version, collectionID uint32) string {
+	return fmt.Sprintf("%s:%s:%d", docID, cv.String(), collectionID)
 }

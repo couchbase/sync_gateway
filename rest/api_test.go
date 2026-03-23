@@ -3427,10 +3427,18 @@ func TestDocCRUDWithCV(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
 	const docID = "doc1"
 	createVersion := rt.PutDoc(docID, `{"create":true}`)
 
-	getDocVersion, _ := rt.GetDoc(docID)
+	// fetch above version to load into cache
+	docRev, err := collection.GetRev(ctx, docID, createVersion.CV.String(), false, nil)
+	require.NoError(t, err)
+	getDocVersion := DocVersion{
+		CV:        *docRev.CV,
+		RevTreeID: docRev.RevID,
+	}
 	require.Equal(t, createVersion, getDocVersion)
 
 	revIDGen := func(v DocVersion) int {
@@ -3493,7 +3501,7 @@ func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
 	// flush cache to ensure we're reading from the bucket
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
-	docRev, err := collection.GetRevisionCacheForTest().GetWithCV(ctx, docID, &createVersion.CV, false, true)
+	docRev, err := collection.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &createVersion.CV, false, true)
 	require.NoError(t, err)
 	// assert doc is not deleted
 	assert.False(t, docRev.Deleted)
@@ -3506,7 +3514,7 @@ func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// fetch rev 2 which is deleted
-	docRev, err = collection.GetRevisionCacheForTest().GetWithCV(ctx, docID, &deleteVrs.CV, false, true)
+	docRev, err = collection.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &deleteVrs.CV, false, true)
 	require.NoError(t, err)
 	assert.True(t, docRev.Deleted)
 	// assert deleted property is there
@@ -3634,7 +3642,7 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// fetch rev 1 by its CV, which should include the attachment
-	docRev, err := coll.GetRevisionCacheForTest().GetWithCV(ctx, docID, &createVersion.CV, false, true)
+	docRev, err := coll.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &createVersion.CV, false, true)
 	require.NoError(t, err)
 
 	assert.Len(t, docRev.Attachments, 1)

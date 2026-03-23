@@ -1089,7 +1089,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 	db.FlushRevisionCacheForTest()
 
 	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
-	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc.HLV.ExtractCurrentVersionFromHLV(), false, true)
+	docRev, err := collection.revisionCache.GetUsingCV(ctx, "doc1", doc.HLV.ExtractCurrentVersionFromHLV(), false, true)
 	require.NoError(t, err, "Error fetching backup revision CV")
 	assert.Equal(t, "", docRev.RevID)
 	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
