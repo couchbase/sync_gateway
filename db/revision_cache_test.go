@@ -1167,7 +1167,7 @@ func TestResetRevCache(t *testing.T) {
 	}
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
-			MaxBytes:      100,
+			MaxBytes:      90,
 			MaxItemCount:  10,
 			InsertOnWrite: true,
 		},
