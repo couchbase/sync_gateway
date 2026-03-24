@@ -128,6 +128,12 @@ func (lds *LeakyDataStore) Touch(k string, exp uint32) (cas uint64, err error) {
 	return lds.dataStore.Touch(k, exp)
 }
 func (lds *LeakyDataStore) Add(k string, exp uint32, v any) (added bool, err error) {
+	if lds.config.AddCallback != nil {
+		added, err := lds.config.AddCallback(k)
+		if err != nil {
+			return added, err
+		}
+	}
 	return lds.dataStore.Add(k, exp, v)
 }
 func (lds *LeakyDataStore) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {

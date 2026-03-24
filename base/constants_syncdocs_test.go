@@ -11,8 +11,10 @@ package base
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -273,6 +275,183 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.backgroundProcessStatusPrefix, metadataKeys.BackgroundProcessStatusPrefix("backgroundID"))
 			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix())
 			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix())
+		})
+	}
+}
+
+func TestInitSyncInfoErrors(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	ds, ok := AsLeakyDataStore(NewLeakyBucket(bucket, LeakyBucketConfig{}).DefaultDataStore())
+	require.True(t, ok, "expected leaky bucket to return a leaky data store")
+
+	shouldFailAdd := atomic.Bool{}
+	expectedMetadataID := "metadataID"
+
+	missingErrorMsg := "missing"
+	if !UnitTestUrlIsWalrus() {
+		missingErrorMsg = "not found"
+	}
+	testCases := []struct {
+		name                        string
+		expectedError               string
+		requiresResync              bool
+		requiresAttachmentMigration bool
+		addCallback                 func(docID string) (bool, error)
+	}{
+		{
+
+			name:                        "generic error",
+			requiresResync:              true,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				return false, fmt.Errorf("generic error")
+			},
+			expectedError: "generic error",
+		},
+		{
+			name:                        "single cas error, then empty",
+			requiresResync:              true,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				return false, sgbucket.CasMismatchErr{}
+			},
+			expectedError: missingErrorMsg,
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=match, no metadataVersion",
+			requiresResync:              false,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{MetadataID: Ptr(expectedMetadataID)}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=mismatch, no metadataVersion",
+			requiresResync:              true,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{
+						MetadataID: Ptr("another metadataID"),
+					}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=match, correct metadataVersion",
+			requiresResync:              false,
+			requiresAttachmentMigration: false,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{
+						MetadataID:      Ptr(expectedMetadataID),
+						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
+					}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=mismatch, correct metadataVersion",
+			requiresResync:              true,
+			requiresAttachmentMigration: false,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{
+						MetadataID:      Ptr("another metadataID"),
+						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
+					}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=match, incorrect metadataVersion",
+			requiresResync:              false,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{
+						MetadataID:      Ptr(expectedMetadataID),
+						MetaDataVersion: "3.0.0",
+					}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+		{
+			name:                        "single cas error, get replacement with metadataID=mismatch, incorrect metadataVersion",
+			requiresResync:              true,
+			requiresAttachmentMigration: true,
+			addCallback: func(docID string) (bool, error) {
+				if shouldFailAdd.CompareAndSwap(false, true) {
+					newSyncInfo := &SyncInfo{
+						MetadataID:      Ptr("another metadataID"),
+						MetaDataVersion: "3.0.0",
+					}
+					added, err := ds.Add(docID, 0, newSyncInfo)
+					require.True(t, added)
+					require.NoError(t, err)
+					return false, sgbucket.CasMismatchErr{}
+				}
+				return false, nil
+			},
+			expectedError: "",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			defer func() {
+				err := ds.Delete(SGSyncInfo)
+				if err != nil {
+					RequireDocNotFoundError(t, err)
+					return
+				}
+				assert.NoError(t, err)
+			}()
+			shouldFailAdd.Store(false)
+			ds.config.AddCallback = test.addCallback
+			requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, expectedMetadataID)
+			if test.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.requiresResync, requiresResync, "Expected requiresResync to be %t", test.requiresResync)
+			require.Equal(t, test.requiresAttachmentMigration, requiresAttachmentMigration, "Expected requiresAttachmentMigration to be %t", test.requiresAttachmentMigration)
 		})
 	}
 }

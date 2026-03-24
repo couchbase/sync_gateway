@@ -22,6 +22,8 @@ const MetadataIdPrefix = "m_"                                  // Prefix for met
 const SyncDocMetadataPrefix = SyncDocPrefix + MetadataIdPrefix // Prefix for all namespaced Sync Gateway metadata documents
 const DCPCheckpointPrefix = "dcp_ck:"
 
+const minimumAttachmentMigrationMetadataVersion = "4.0.0" // minimum metadata version that needs to be defined for metadata migration.
+
 // Sync Gateway Metadata document types
 type metadataKey int
 
@@ -408,8 +410,8 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID      string `json:"metadataID,omitempty"`
-	MetaDataVersion string `json:"metadata_version,omitempty"`
+	MetadataID      *string `json:"metadataID,omitempty"`
+	MetaDataVersion string  `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -425,7 +427,7 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		if metadataID == "" {
 			return false, true, nil
 		}
-		newSyncInfo := &SyncInfo{MetadataID: metadataID}
+		newSyncInfo := &SyncInfo{MetadataID: Ptr(metadataID)}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
 		if IsCasMismatch(addErr) {
 			// attempt new fetch
@@ -436,22 +438,33 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		} else if addErr != nil {
 			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
-		// successfully added
+		requiresResync = syncInfo.requiresResync(metadataID)
 		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 		if err != nil {
-			return syncInfo.MetadataID != metadataID, true, err
+			return requiresResync, true, err
 		}
-		return false, requiresAttachmentMigration, nil
+		return requiresResync, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
+	requiresResync = syncInfo.requiresResync(metadataID)
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
 	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 	if err != nil {
-		return syncInfo.MetadataID != metadataID, true, err
+		return requiresResync, true, err
 	}
 
-	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
+	return requiresResync, requiresAttachmentMigration, nil
+}
+
+// requiresResync determines if a given SyncInfo document represents a collection requiring resync.
+func (s *SyncInfo) requiresResync(metadataID string) bool {
+	// if metadataID is not set, then the document was empty (pre collections) or it only ran attachment migration. Either
+	// way, this means the associated collection only has a single database associated and doesn't need resync.
+	if s.MetadataID == nil {
+		return false
+	}
+	return *s.MetadataID != metadataID
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
@@ -470,7 +483,7 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 			}
 		}
 		// if we have a metadataID to set, set it preserving the metadata version if present
-		syncInfo.MetadataID = metadataID
+		syncInfo.MetadataID = Ptr(metadataID)
 		bytes, err := JSONMarshal(&syncInfo)
 		return bytes, nil, false, err
 	})
@@ -526,7 +539,7 @@ func CheckRequireAttachmentMigration(ctx context.Context, version *ComparableBui
 		AssertfCtx(ctx, "failed to build comparable build version for syncInfo metaVersion")
 		return true, fmt.Errorf("corrupt syncInfo metaVersion value")
 	}
-	minVerStr := "4.0.0" // minimum meta version that needs to be defined for metadata migration. Any version less than this will require attachment migration
+	minVerStr := minimumAttachmentMigrationMetadataVersion
 	minVersion, err := NewComparableBuildVersionFromString(minVerStr)
 	if err != nil {
 		AssertfCtx(ctx, "failed to build comparable build version for minimum version for attachment migration")
