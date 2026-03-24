@@ -140,7 +140,7 @@ func TestComputeMetadataID(t *testing.T) {
 	assert.Equal(t, standardMetadataID, metadataID)
 
 	// Write syncInfo to default collection, indicating that default collection is already associated with a different database
-	docBody := []byte(`{"foo":"bar"}`)
+	docBody := []byte(`{"metadataID":"foo"}`)
 	err = defaultStore.Set(base.SGSyncInfo, 0, nil, docBody)
 	require.NoError(t, err)
 	defaultDbConfig.Scopes = nil

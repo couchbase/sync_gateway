@@ -820,8 +820,8 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 		return standardMetadataID
 	}
 
-	if exists && syncInfo.MetadataID != defaultMetadataID {
-		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(syncInfo.MetadataID))
+	if exists && (syncInfo.MetadataID != nil && *syncInfo.MetadataID != defaultMetadataID) {
+		base.InfofCtx(ctx, base.KeyConfig, "Using metadata ID %q for db %q because db uses the default collection, and _sync:syncInfo in the default collection specifies the non-default metadata ID %q", base.MD(standardMetadataID), base.MD(config.Name), base.MD(*syncInfo.MetadataID))
 		return standardMetadataID
 	}
 
