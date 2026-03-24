@@ -295,7 +295,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 
 	// check if databases are online
 	dbRoot := group1RT.GetDatabaseRoot("db")
-	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State)
+	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State, "Database did not come online after upgrade %#+v", dbRoot)
 
 	dbRoot = group2RT.GetDatabaseRoot("db")
 	require.Equal(t, db.RunStateString[db.DBOnline], dbRoot.State, "Database did not come online after upgrade %#+v", dbRoot)
