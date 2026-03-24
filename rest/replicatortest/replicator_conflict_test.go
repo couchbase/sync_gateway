@@ -2091,16 +2091,16 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 
 		// assert we cannot keep old cache entry for original wrote (before conflict resolution) on active cluster rest testers
 		collectionActive1, ctxActive1 := active.GetSingleTestDatabaseCollectionWithUser()
-		_, ok := collectionActive1.GetRevisionCacheForTest().Peek(ctxActive1, docID, rt1Version.RevTreeID)
+		_, ok := collectionActive1.GetRevisionCacheForTest().Peek(ctxActive1, docID, db.CreateRevisionCacheRevIDKey(docID, rt1Version.RevTreeID, collectionActive1.GetCollectionID()))
 		require.False(t, ok)
-		// no peek for cv so fetch by cv, which in turn loads from bucket so assert item ahs correct history on it
+		// no peek for cv so fetch by cv, which in turn loads from bucket so assert item has correct history on it
 		docRev, err := collectionActive1.GetRevisionCacheForTest().GetUsingCV(ctxActive1, docID, &rt1Version.CV, false, false)
 		require.NoError(t, err)
 		assert.Equal(t, rt2Version.CV.String(), docRev.HlvHistory)
 
 		// same for other active rest tester
 		collectionRT1, ctxRT1 := rt1.GetSingleTestDatabaseCollectionWithUser()
-		_, ok = collectionRT1.GetRevisionCacheForTest().Peek(ctxRT1, docID, rt1Version.RevTreeID)
+		_, ok = collectionRT1.GetRevisionCacheForTest().Peek(ctxRT1, docID, db.CreateRevisionCacheRevIDKey(docID, rt1Version.RevTreeID, collectionRT1.GetCollectionID()))
 		require.False(t, ok)
 		docRev, err = collectionRT1.GetRevisionCacheForTest().GetUsingCV(ctxRT1, docID, &rt1Version.CV, false, false)
 		require.NoError(t, err)

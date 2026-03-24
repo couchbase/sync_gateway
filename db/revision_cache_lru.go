@@ -61,8 +61,8 @@ func (sc *ShardedLRURevisionCache) GetUsingCV(ctx context.Context, docID string,
 	return sc.getShard(docID).GetUsingCV(ctx, docID, cv, collectionID, includeDelta, loadBackup)
 }
 
-func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID string, key string, collectionID uint32) (docRev DocumentRevision, found bool) {
-	return sc.getShard(docID).Peek(ctx, docID, key, collectionID)
+func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID string, key RevCacheKey) (docRev DocumentRevision, found bool) {
+	return sc.getShard(docID).Peek(ctx, docID, key)
 }
 
 func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
@@ -96,7 +96,7 @@ func (sc *ShardedLRURevisionCache) RemoveUsingCV(ctx context.Context, docID stri
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	backingStores        map[uint32]RevisionCacheBackingStore
-	cache                map[string]*list.Element
+	cache                map[RevCacheKey]*list.Element
 	lruList              *list.List
 	cacheHits            *base.SgwIntStat
 	cacheMisses          *base.SgwIntStat
@@ -117,7 +117,7 @@ type revCacheValue struct {
 	attachments  AttachmentsMeta
 	delta        *RevisionDelta
 	id           string
-	itemKey      string
+	itemKey      RevCacheKey
 	cv           Version
 	hlvHistory   string
 	revID        string
@@ -135,7 +135,7 @@ type revCacheValue struct {
 func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat *base.SgwIntStat, cacheMissStat *base.SgwIntStat, cacheNumItemsStat *base.SgwIntStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
-		cache:                map[string]*list.Element{},
+		cache:                map[RevCacheKey]*list.Element{},
 		lruList:              list.New(),
 		capacity:             revCacheOptions.MaxItemCount,
 		backingStores:        backingStores,
@@ -161,7 +161,7 @@ func (rc *LRURevisionCache) GetUsingCV(ctx context.Context, docID string, cv *Ve
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
-func (rc *LRURevisionCache) Peek(ctx context.Context, docID string, key string, collectionID uint32) (docRev DocumentRevision, found bool) {
+func (rc *LRURevisionCache) Peek(ctx context.Context, docID string, key RevCacheKey) (docRev DocumentRevision, found bool) {
 	value := rc.peekCacheForKey(ctx, key)
 	if value == nil {
 		return DocumentRevision{}, false
@@ -307,7 +307,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	rc.revCacheMemoryBasedEviction(ctx)
 }
 
-func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey string, docRev DocumentRevision, collectionID uint32) (int64, *revCacheValue) {
+func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey RevCacheKey, docRev DocumentRevision, collectionID uint32) (int64, *revCacheValue) {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 
@@ -343,7 +343,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey string, 
 	return numItemsRemoved, cvValue
 }
 
-func (rc *LRURevisionCache) peekCacheForKey(ctx context.Context, key string) (value *revCacheValue) {
+func (rc *LRURevisionCache) peekCacheForKey(ctx context.Context, key RevCacheKey) (value *revCacheValue) {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
@@ -357,7 +357,7 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, revID string, c
 	if docID == "" || (revID == "" && cv == nil) {
 		return nil
 	}
-	var key string
+	var key RevCacheKey
 	if cv == nil {
 		key = CreateRevisionCacheRevIDKey(docID, revID, collectionID)
 	} else {
@@ -398,7 +398,7 @@ func (rc *LRURevisionCache) RemoveUsingRevID(ctx context.Context, docID, revID s
 	rc.removeFromRevCache(ctx, CreateRevisionCacheRevIDKey(docID, revID, collectionID))
 }
 
-func (rc *LRURevisionCache) removeFromRevCache(ctx context.Context, key string) {
+func (rc *LRURevisionCache) removeFromRevCache(ctx context.Context, key RevCacheKey) {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	elem, ok := rc.cache[key]

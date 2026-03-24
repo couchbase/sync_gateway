@@ -118,7 +118,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
-func (rc *BypassRevisionCache) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
+func (rc *BypassRevisionCache) Peek(ctx context.Context, docID string, key RevCacheKey) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 

@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -43,7 +42,7 @@ type RevisionCache interface {
 	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(ctx context.Context, docID string, key string, collectionID uint32) (docRev DocumentRevision, found bool)
+	Peek(ctx context.Context, docID string, key RevCacheKey) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32)
@@ -156,8 +155,8 @@ func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string) (
 }
 
 // Peek is for per collection access to Peek method
-func (c *collectionRevisionCache) Peek(ctx context.Context, docID, key string) (DocumentRevision, bool) {
-	return (*c.revCache).Peek(ctx, docID, key, c.collectionID)
+func (c *collectionRevisionCache) Peek(ctx context.Context, docID string, key RevCacheKey) (DocumentRevision, bool) {
+	return (*c.revCache).Peek(ctx, docID, key)
 }
 
 // Put is for per collection access to Put method
@@ -510,10 +509,16 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 	return bodyBytes, attachments, channels, deleted, err
 }
 
-func CreateRevisionCacheRevIDKey(docID, revID string, collectionID uint32) string {
-	return fmt.Sprintf("%s:%s:%d", docID, revID, collectionID)
+type RevCacheKey struct {
+	docID        string
+	docVersion   string
+	collectionID uint32
 }
 
-func CreateRevisionCacheCVKey(docID string, cv *Version, collectionID uint32) string {
-	return fmt.Sprintf("%s:%s:%d", docID, cv.String(), collectionID)
+func CreateRevisionCacheRevIDKey(docID, revID string, collectionID uint32) RevCacheKey {
+	return RevCacheKey{docID: docID, docVersion: revID, collectionID: collectionID}
+}
+
+func CreateRevisionCacheCVKey(docID string, cv *Version, collectionID uint32) RevCacheKey {
+	return RevCacheKey{docID: docID, docVersion: cv.String(), collectionID: collectionID}
 }
