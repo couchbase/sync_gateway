@@ -22,6 +22,8 @@ const MetadataIdPrefix = "m_"                                  // Prefix for met
 const SyncDocMetadataPrefix = SyncDocPrefix + MetadataIdPrefix // Prefix for all namespaced Sync Gateway metadata documents
 const DCPCheckpointPrefix = "dcp_ck:"
 
+const minimumAttachmentMigrationMetadataVersion = "4.0.0" // minimum metadata version that needs to be defined for metadata migration.
+
 // Sync Gateway Metadata document types
 type metadataKey int
 
@@ -39,6 +41,8 @@ const (
 	MetaKeyRolePrefix                                          // "role:"
 	MetaKeyUserEmailPrefix                                     // "useremail:"
 	MetaKeySessionPrefix                                       // "session:"
+	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
+	MetaKeyResyncCfgPrefix                                     // "resync_cfg:"
 )
 
 var metadataKeyNames = []string{
@@ -55,7 +59,8 @@ var metadataKeyNames = []string{
 	"role:",                         // stores a role
 	"useremail:",                    // stores a role
 	"session:",                      // stores a session
-
+	"resync_hb:",                    // document prefix used to store resync data
+	"resync_cfg:",                   // document prefix used to store resync cfg data
 }
 
 func (m metadataKey) String() string {
@@ -108,6 +113,8 @@ type MetadataKeys struct {
 	rolePrefix                string
 	userEmailPrefix           string
 	sessionPrefix             string
+	resyncHeartbeaterPrefix   string
+	resyncCfgPrefix           string
 }
 
 // sha1HashLength is the number of characters in a sha1
@@ -130,6 +137,8 @@ var DefaultMetadataKeys = &MetadataKeys{
 	rolePrefix:                formatDefaultMetadataKey(MetaKeyRolePrefix),
 	userEmailPrefix:           formatDefaultMetadataKey(MetaKeyUserEmailPrefix),
 	sessionPrefix:             formatDefaultMetadataKey(MetaKeySessionPrefix),
+	resyncHeartbeaterPrefix:   formatDefaultMetadataKey(MetaKeyResyncHeartBeaterPrefix),
+	resyncCfgPrefix:           formatDefaultMetadataKey(MetaKeyResyncCfgPrefix),
 }
 
 // NewMetadataKeys returns MetadataKeys for the specified MetadataID  If metadataID is empty string, returns the default (legacy) metadata keys.
@@ -153,6 +162,8 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 			rolePrefix:                formatInvertedMetadataKey(metadataID, MetaKeyRolePrefix),
 			userEmailPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyUserEmailPrefix),
 			sessionPrefix:             formatInvertedMetadataKey(metadataID, MetaKeySessionPrefix),
+			resyncHeartbeaterPrefix:   formatMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
+			resyncCfgPrefix:           formatMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
 		}
 	}
 }
@@ -222,6 +233,22 @@ func (m *MetadataKeys) SGCfgPrefix(groupID string) string {
 		return m.sgCfgPrefix + groupID + ":"
 	}
 	return m.sgCfgPrefix
+}
+
+// ResyncHeartbeaterPrefix returns a document prefix to use for resync heartbeat documents.
+//
+//	format: _sync:{m_$}:resync_hb:   (collections)
+//	format: _sync:resync_hb:   (default)
+func (m *MetadataKeys) ResyncHeartbeaterPrefix() string {
+	return m.resyncHeartbeaterPrefix
+}
+
+// ResyncCfgPrefix returns a document prefix to use for resync cfg documents
+//
+//	format: _sync:{m_$}:resync_cfg:   (collections)
+//	format: _sync:resync_cfg:   (default)
+func (m *MetadataKeys) ResyncCfgPrefix() string {
+	return m.resyncCfgPrefix
 }
 
 // PersistentConfigKey returns a document key to use for persisted database configurations
@@ -383,8 +410,8 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
 type SyncInfo struct {
-	MetadataID      string `json:"metadataID,omitempty"`
-	MetaDataVersion string `json:"metadata_version,omitempty"`
+	MetadataID      *string `json:"metadataID,omitempty"`
+	MetaDataVersion string  `json:"metadata_version,omitempty"`
 }
 
 // initSyncInfo attempts to initialize syncInfo for a datastore
@@ -400,7 +427,7 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		if metadataID == "" {
 			return false, true, nil
 		}
-		newSyncInfo := &SyncInfo{MetadataID: metadataID}
+		newSyncInfo := &SyncInfo{MetadataID: Ptr(metadataID)}
 		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
 		if IsCasMismatch(addErr) {
 			// attempt new fetch
@@ -411,22 +438,33 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		} else if addErr != nil {
 			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
 		}
-		// successfully added
+		requiresResync = syncInfo.requiresResync(metadataID)
 		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 		if err != nil {
-			return syncInfo.MetadataID != metadataID, true, err
+			return requiresResync, true, err
 		}
-		return false, requiresAttachmentMigration, nil
+		return requiresResync, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
 		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
+	requiresResync = syncInfo.requiresResync(metadataID)
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
 	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 	if err != nil {
-		return syncInfo.MetadataID != metadataID, true, err
+		return requiresResync, true, err
 	}
 
-	return syncInfo.MetadataID != metadataID, requiresAttachmentMigration, nil
+	return requiresResync, requiresAttachmentMigration, nil
+}
+
+// requiresResync determines if a given SyncInfo document represents a collection requiring resync.
+func (s *SyncInfo) requiresResync(metadataID string) bool {
+	// if metadataID is not set, then the document was empty (pre collections) or it only ran attachment migration. Either
+	// way, this means the associated collection only has a single database associated and doesn't need resync.
+	if s.MetadataID == nil {
+		return false
+	}
+	return *s.MetadataID != metadataID
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
@@ -445,7 +483,7 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 			}
 		}
 		// if we have a metadataID to set, set it preserving the metadata version if present
-		syncInfo.MetadataID = metadataID
+		syncInfo.MetadataID = Ptr(metadataID)
 		bytes, err := JSONMarshal(&syncInfo)
 		return bytes, nil, false, err
 	})
@@ -501,7 +539,7 @@ func CheckRequireAttachmentMigration(ctx context.Context, version *ComparableBui
 		AssertfCtx(ctx, "failed to build comparable build version for syncInfo metaVersion")
 		return true, fmt.Errorf("corrupt syncInfo metaVersion value")
 	}
-	minVerStr := "4.0.0" // minimum meta version that needs to be defined for metadata migration. Any version less than this will require attachment migration
+	minVerStr := minimumAttachmentMigrationMetadataVersion
 	minVersion, err := NewComparableBuildVersionFromString(minVerStr)
 	if err != nil {
 		AssertfCtx(ctx, "failed to build comparable build version for minimum version for attachment migration")

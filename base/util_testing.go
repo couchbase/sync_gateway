@@ -982,3 +982,46 @@ func TestRequiresDeltaSync(t testing.TB) {
 		t.Skipf("Skipping test - Delta Sync requires EE")
 	}
 }
+
+const (
+	TestChanTimeout = 30 * time.Second
+)
+
+// RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
+func RequireChanSend[T any](t testing.TB, ch chan<- T, val T) {
+	t.Helper()
+	RequireChanSendWithTimeout(t, ch, val, TestChanTimeout)
+}
+
+// RequireChanSendWithTimeout performs a blocking send on a channel with a timeout. Fails the test if the send cannot complete in time.
+func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout time.Duration) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case ch <- val:
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+	}
+}
+
+// RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time.
+func RequireChanRecv[T any](t testing.TB, ch <-chan T) T {
+	t.Helper()
+	return RequireChanRecvWithTimeout(t, ch, TestChanTimeout)
+}
+
+// RequireChanRecvWithTimeout reads from a channel with a timeout. Fails the test if no value arrives in time.
+func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) T {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case val, ok := <-ch:
+		require.True(t, ok, "channel closed without sending a value")
+		return val
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout))
+		return *new(T) // unreachable
+	}
+}

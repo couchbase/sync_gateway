@@ -13,7 +13,9 @@ package base
 import (
 	"fmt"
 	"log"
+	"maps"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -145,66 +147,74 @@ func TestCBGTIndexCreation(t *testing.T) {
 	}
 
 	shortDbName := "testDB"
+	shortDbImportIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayImport)
+	require.NoError(t, err)
+	shortDBResyncIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayResync)
+	require.NoError(t, err)
 	longDbName := "testDB" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789"
-
+	longDbImportIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayImport)
+	require.NoError(t, err)
+	longDBResyncIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayResync)
+	require.NoError(t, err)
 	for _, tc := range []struct {
 		name                 string
 		dbName               string
 		existingLegacyIndex  bool
 		existingCurrentIndex bool
+		feedID               string
+		feedType             string
 		expectedIndexName    string
 	}{
 		{
-			name:                 "nonUpgradeFirstRun",
+			name:                 "nonUpgradeFirstRun-import",
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			expectedIndexName:    shortDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
 		},
 		{
-			name:                 "nonUpgradeRestart",
+			name:                 "nonUpgradeRestart-import",
 			dbName:               shortDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			expectedIndexName:    shortDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
 		},
 		{
-			name:                 "nonUpgradeUnsafeName",
+			name:                 "nonUpgradeUnsafeName-import",
 			dbName:               longDbName,
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(longDbName),
+			expectedIndexName:    longDbImportIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayImport,
 		},
 		{
-			name:                 "upgradeFromSafeLegacy",
+			name:                 "nonUpgradeFirstRun-resync",
 			dbName:               shortDbName,
-			existingLegacyIndex:  true,
+			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
-			expectedIndexName:    GenerateLegacyIndexName(shortDbName),
+			expectedIndexName:    shortDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
 		},
 		{
-			name:                 "upgradeFromUnsafeLegacy",
-			dbName:               longDbName,
-			existingLegacyIndex:  true,
-			existingCurrentIndex: false,
-			expectedIndexName:    GenerateIndexName(longDbName),
-		},
-		{
-			name:                 "upgradeFromSafeDualIndex",
+			name:                 "nonUpgradeRestart-resync",
 			dbName:               shortDbName,
-			existingLegacyIndex:  true,
+			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(shortDbName),
+			expectedIndexName:    shortDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
 		},
 		{
-			name:                 "upgradeFromUnsafeDualIndex",
+			name:                 "nonUpgradeUnsafeName-resync",
 			dbName:               longDbName,
-			existingLegacyIndex:  true,
-			existingCurrentIndex: true,
-			expectedIndexName:    GenerateIndexName(longDbName),
+			existingLegacyIndex:  false,
+			existingCurrentIndex: false,
+			expectedIndexName:    longDBResyncIndexName,
+			feedType:             CBGTIndexTypeSyncGatewayResync,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,42 +244,13 @@ func TestCBGTIndexCreation(t *testing.T) {
 			cbgt.RegisterPIndexImplType(indexType,
 				&cbgt.PIndexImplType{})
 
-			// Create existing index in legacy format
-			if tc.existingLegacyIndex {
-				// initCBGTManager will set up the manager with a couchbase:// connection string,
-				// while go-couchbase expects a http:// string, causing test setup to fail.
-				t.Skip("TODO: can't create indexes of type cbgt.SOURCE_GOCOUCHBASE")
-				// Define a CBGT index with legacy naming
-				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := legacyFeedParams(spec)
-				require.NoError(t, err)
-				legacyIndexName := GenerateLegacyIndexName(tc.dbName)
-				indexParams := `{"name": "` + tc.dbName + `"}`
-				planParams := cbgt.PlanParams{
-					MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
-					NumReplicas:            0,  // No replicas required for SG sharded feed
-				}
-
-				err = context.Manager.CreateIndex(
-					cbgt.SOURCE_GOCOUCHBASE, // sourceType
-					bucket.GetName(),        // sourceName
-					bucketUUID,              // sourceUUID
-					sourceParams,            // sourceParams
-					indexType,               // indexType
-					legacyIndexName,         // indexName
-					indexParams,             // indexParams
-					planParams,              // planParams
-					"",                      // prevIndexUUID
-				)
-				require.NoError(t, err, "Unable to create legacy-style index")
-			}
-
 			if tc.existingCurrentIndex {
 				// Define an existing CBGT index with current naming
 				bucketUUID, _ := bucket.UUID()
-				sourceParams, err := cbgtFeedParams(ctx, "", nil, tc.dbName)
+				sourceParams, err := cbgtFeedParams(ctx, nil, tc.dbName)
 				require.NoError(t, err)
-				legacyIndexName := GenerateIndexName(tc.dbName)
+				legacyIndexName, err := GenerateCBGTIndexName(tc.dbName, tc.feedType)
+				require.NoError(t, err)
 				indexParams := `{"name": "` + tc.dbName + `"}`
 				planParams := cbgt.PlanParams{
 					MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -290,16 +271,25 @@ func TestCBGTIndexCreation(t *testing.T) {
 				require.NoError(t, err, "Unable to create legacy-style index")
 			}
 
+			indexName, err := GenerateCBGTIndexName(tc.dbName, tc.feedType)
+			require.NoError(t, err)
+
 			// Create cbgt index via SG handling
-			err = createCBGTIndex(ctx, context, tc.dbName, configGroup, bucket, "", nil, 16)
+			err = createCBGTIndex(ctx, context, ShardedDCPOptions{
+				DBName:            tc.dbName,
+				Bucket:            bucket,
+				NumPartitions:     16,
+				IndexName:         indexName,
+				PreviousIndexName: GenerateLegacyImportIndexName(tc.dbName),
+				IndexType:         indexType,
+			})
 			require.NoError(t, err)
 
 			// Verify single index exists, and matches expected naming
 			_, indexDefsMap, err := context.Manager.GetIndexDefs(true)
 			require.NoError(t, err)
-			assert.Len(t, indexDefsMap, 1)
-			indexDef, ok := indexDefsMap[tc.expectedIndexName]
-			assert.True(t, ok, "Expected index name"+tc.expectedIndexName+"not found")
+			require.Contains(t, indexDefsMap, tc.expectedIndexName)
+			indexDef := indexDefsMap[tc.expectedIndexName]
 
 			assert.False(t, strings.Contains(indexDef.SourceParams, "authUser"), "sourceParams should not include authUser")
 			assert.False(t, strings.Contains(indexDef.SourceParams, "authPassword"), "sourceParams should not include authPassword")
@@ -340,9 +330,9 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, "", nil, testDbName)
+	sourceParams, err := cbgtFeedParams(ctx, nil, testDbName)
 	require.NoError(t, err)
-	legacyIndexName := GenerateLegacyIndexName(testDbName)
+	legacyIndexName := GenerateLegacyImportIndexName(testDbName)
 	indexParams := `{"name": "` + testDbName + `"}`
 	planParams := cbgt.PlanParams{
 		MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -362,8 +352,15 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
+	opts := ShardedDCPOptions{
+		DBName:        testDbName,
+		Bucket:        bucket,
+		NumPartitions: 16,
+		IndexType:     indexType,
+		IndexName:     legacyIndexName, // use legacy name as the primary name for this test
+	}
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, opts)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -372,15 +369,13 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, testDbName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, opts)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
 	_, indexDefsMap, err = context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Len(t, indexDefsMap, 1)
-	_, ok := indexDefsMap[legacyIndexName]
-	assert.True(t, ok)
+	require.Contains(t, indexDefsMap, legacyIndexName)
 }
 
 func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
@@ -418,9 +413,9 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 	// Define a CBGT index with legacy naming not within safe limits
 	bucketUUID, _ := bucket.UUID()
-	sourceParams, err := cbgtFeedParams(ctx, "", nil, unsafeTestDBName)
+	sourceParams, err := cbgtFeedParams(ctx, nil, unsafeTestDBName)
 	require.NoError(t, err)
-	legacyIndexName := GenerateLegacyIndexName(unsafeTestDBName)
+	legacyIndexName := GenerateLegacyImportIndexName(unsafeTestDBName)
 	indexParams := `{"name": "` + unsafeTestDBName + `"}`
 	planParams := cbgt.PlanParams{
 		MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
@@ -440,8 +435,19 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
+	indexName, err := GenerateCBGTIndexName(unsafeTestDBName, CBGTIndexTypeSyncGatewayImport)
+	require.NoError(t, err)
+
+	opts := ShardedDCPOptions{
+		DBName:            unsafeTestDBName,
+		Bucket:            bucket,
+		NumPartitions:     16,
+		IndexType:         indexType,
+		IndexName:         indexName, // use legacy name as the primary name for this test
+		PreviousIndexName: legacyIndexName,
+	}
 	// Create cbgt index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, opts)
 	require.NoError(t, err)
 
 	// Verify single index created
@@ -450,17 +456,13 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	assert.Len(t, indexDefsMap, 1)
 
 	// Attempt to recreate index
-	err = createCBGTIndex(ctx, context, unsafeTestDBName, configGroup, bucket, "", nil, 16)
+	err = createCBGTIndex(ctx, context, opts)
 	require.NoError(t, err)
 
 	// Verify single index defined (acts as upsert to existing)
 	_, indexDefsMap, err = context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	assert.Len(t, indexDefsMap, 1)
-	_, ok := indexDefsMap[legacyIndexName]
-	assert.False(t, ok)
-	_, ok = indexDefsMap[GenerateIndexName(unsafeTestDBName)]
-	assert.True(t, ok)
+	require.Equal(t, []string{indexName}, slices.Collect(maps.Keys(indexDefsMap)))
 }
 
 func TestConcurrentCBGTIndexCreation(t *testing.T) {
@@ -477,74 +479,69 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
 
-	// Use a bucket-backed cfg
-	cfg, err := NewCfgSG(ctx, dataStore, "")
-	require.NoError(t, err)
+	for _, feedType := range []string{CBGTIndexTypeSyncGatewayImport, CBGTIndexTypeSyncGatewayResync} {
 
-	// Define index type for db name
-	configGroup := "configGroup" + t.Name()
-	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
-	cbgt.RegisterPIndexImplType(indexType,
-		&cbgt.PIndexImplType{})
+		// Use a bucket-backed cfg
+		cfg, err := NewCfgSG(ctx, dataStore, "")
+		require.NoError(t, err)
 
-	terminator := make(chan struct{})
+		// Define index type for db name
+		configGroup := "configGroup" + t.Name()
+		var indexType string
+		if feedType == CBGTIndexTypeSyncGatewayImport {
+			indexType = CBGTIndexTypeSyncGatewayImport + configGroup
+		} else {
+			indexType = CBGTIndexTypeSyncGatewayResync
+		}
+		cbgt.RegisterPIndexImplType(indexType,
+			&cbgt.PIndexImplType{})
 
-	// Note: Would need to increase partition count if increasing test concurrency beyond 16
-	managerCount := 10
+		terminator := make(chan struct{})
 
-	var managerWg sync.WaitGroup
-	managerWg.Add(managerCount)
+		// Note: Would need to increase partition count if increasing test concurrency beyond 16
+		managerCount := 10
 
-	for i := range managerCount {
-		go func(i int, terminatorChan chan struct{}) {
-			// random sleep to hit race conditions that depend on initial creation
-			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+		var managerWg sync.WaitGroup
+		managerWg.Add(managerCount)
 
-			ctx := TestCtx(t)
-			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
-			assert.NoError(t, err)
+		for i := range managerCount {
+			go func(i int, terminatorChan chan struct{}) {
+				// random sleep to hit race conditions that depend on initial creation
+				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 
-			// StartManager starts the manager and creates the index
-			log.Printf("Starting manager for %s", managerUUID)
-			startErr := context.StartManager(ctx, testDBName, configGroup, bucket, "", nil, DefaultImportPartitions)
-			assert.NoError(t, startErr)
-			managerWg.Done()
+				ctx := TestCtx(t)
+				managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
+				context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
+				assert.NoError(t, err)
 
-			// ensure all goroutines start the manager before we start closing them
-			select {
-			case <-terminatorChan:
-				context.Manager.Stop()
-			case <-time.After(20 * time.Second):
-				require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
-			}
+				// StartManager starts the manager and creates the index
+				log.Printf("Starting manager for %s", managerUUID)
+				indexName, err := GenerateCBGTIndexName(testDBName, feedType)
+				require.NoError(t, err)
+				opts := ShardedDCPOptions{
+					DBName:        testDBName,
+					Bucket:        bucket,
+					NumPartitions: DefaultImportPartitions,
+					IndexType:     indexType,
+					IndexName:     indexName,
+				}
+				startErr := context.StartManager(ctx, opts)
+				require.NoError(t, startErr)
+				managerWg.Done()
 
-		}(i, terminator)
+				// ensure all goroutines start the manager before we start closing them
+				select {
+				case <-terminatorChan:
+					context.Manager.Stop()
+				case <-time.After(20 * time.Second):
+					require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
+				}
+
+			}(i, terminator)
+		}
+		managerWg.Wait()
+		close(terminator)
 	}
-	managerWg.Wait()
-	close(terminator)
-}
-
-// legacyFeedParams format with credentials included
-func legacyFeedParams(spec BucketSpec) (string, error) {
-	feedParams := cbgt.NewDCPFeedParams()
-
-	// check for basic auth
-	if spec.Certpath == "" && spec.Auth != nil {
-		username, password, _ := spec.Auth.GetCredentials()
-		feedParams.AuthUser = username
-		feedParams.AuthPassword = password
-	}
-
-	if spec.UseXattrs {
-		feedParams.IncludeXAttrs = true
-	}
-
-	paramBytes, err := JSONMarshal(feedParams)
-	if err != nil {
-		return "", err
-	}
-	return string(paramBytes), nil
 }
 
 func TestCBGTKvPoolSize(t *testing.T) {
@@ -559,6 +556,6 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	require.NoError(t, err)
 	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb")
 	assert.NoError(t, err)
-	defer cbgtContext.Stop()
+	defer cbgtContext.Stop(ctx)
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")
 }

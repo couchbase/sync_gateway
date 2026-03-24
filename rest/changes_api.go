@@ -443,10 +443,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				base.InfofCtx(h.ctx(), base.KeyChanges, "Connection lost from client")
 				forceClose = true
 				break loop
-			case <-h.db.ExitChanges:
-				message = "OK DB has gone offline"
-				forceClose = true
-				break loop
 			}
 			if err != nil {
 				logStatus(599, fmt.Sprintf("Write error: %v", err))

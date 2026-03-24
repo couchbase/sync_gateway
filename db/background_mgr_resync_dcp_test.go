@@ -199,7 +199,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
-
 	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
@@ -232,51 +231,74 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	})
 
-	t.Run("Resync with updated sync function", func(t *testing.T) {
-		docsToCreate := 100
-		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
-		defer db.Close(ctx)
+	for _, distributed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("Resync with updated sync function/distributed=%t", distributed), func(t *testing.T) {
+			if distributed && base.UnitTestUrlIsWalrus() {
+				t.Skip("Distribute resync not supported for rosmar")
+			}
+			docsToCreate := 100
+			db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+			defer db.Close(ctx)
 
-		dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		scopeAndCollectionName := dbc.ScopeAndCollectionName()
-		scopeName := scopeAndCollectionName.ScopeName()
-		collectionName := scopeAndCollectionName.CollectionName()
+			dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+			scopeAndCollectionName := dbc.ScopeAndCollectionName()
+			scopeName := scopeAndCollectionName.ScopeName()
+			collectionName := scopeAndCollectionName.CollectionName()
 
-		initialStats := getResyncStats(t, db)
-		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
+			initialStats := getResyncStats(t, db)
+			log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-		options := map[string]any{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         base.NewCollectionNames(),
-		}
+			options := map[string]any{
+				"database":            db,
+				"regenerateSequences": false,
+				"collections":         base.NewCollectionNames(),
+			}
 
-		err := db.ResyncManager.Start(ctx, options)
-		require.NoError(t, err)
+			if distributed {
+				rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+				require.True(t, ok)
+				rs.Distributed = true
+			}
+			err := db.ResyncManager.Start(ctx, options)
+			require.NoError(t, err)
 
-		RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			if distributed {
+				waitForResyncDocsChanged(t, db, int64(docsToCreate))
+				err := db.ResyncManager.Stop()
+				require.NoError(t, err)
+			} else {
+				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+			}
 
-		stats := getResyncStats(t, db)
-		// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
-		// be greater than DocsChanged
-		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+			stats := getResyncStats(t, db)
+			// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
+			// be greater than DocsChanged
+			assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
-		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
-		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
+			cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
-		assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
-	})
+			// This is just a temporary check until MB-70378 is implemented
+			if !distributed {
+				deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
+				assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
+			}
+		})
+	}
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
 	docsToCreate := 1000
+	// rosmar runs too quickly, increase doc count
+	if base.UnitTestUrlIsWalrus() {
+		docsToCreate *= 10
+	}
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
@@ -356,6 +378,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 // TestResyncManagerDCPResumeStoppedProcessChangeCollections starts a resync with a single collection, stops it, and re-runs with an additional collection.
 // Expects the resync process to reset with a new ID, and new checkpoints, and reprocess the full set of documents across both collections.
 func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug)
 	base.TestRequiresCollections(t)
 
 	docsPerCollection := int64(1000)
@@ -597,7 +620,15 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Greater(c, stats.DocsProcessed, count)
-	}, 10*time.Second, 1*time.Millisecond)
+	}, 1*time.Minute, 100*time.Millisecond)
+}
+
+func waitForResyncDocsChanged(t testing.TB, db *Database, count int64) {
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stats := getResyncStats(t, db)
+		assert.Equal(c, stats.DocsChanged, count)
+	}, 5*time.Minute, 100*time.Millisecond)
 }
 
 func TestResyncCheckpointPrefix(t *testing.T) {
@@ -605,36 +636,83 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
+	defaultCollection := bucket.DefaultDataStore()
+	customCollection := bucket.GetSingleDataStore()
 	resyncID := "1234"
 	testCases := []struct {
-		name          string
-		collectionIDs []uint32
-		groupID       string
-		expected      string
+		name            string
+		collectionNames base.CollectionNameSet
+		groupID         string
+		distributed     bool
+		expected        string
 	}{
 		{
-			name:          "default collection, no group id",
-			collectionIDs: []uint32{base.DefaultCollectionID},
-			groupID:       "",
-			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
+			name:            "default collection, no group id",
+			collectionNames: base.NewCollectionNameSet(defaultCollection),
+			groupID:         "",
+			distributed:     false,
+			expected:        fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection, group id=foo",
-			collectionIDs: []uint32{base.DefaultCollectionID},
-			groupID:       "foo",
-			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+			name:            "default collection, group id=foo",
+			collectionNames: base.NewCollectionNameSet(defaultCollection),
+			groupID:         "foo",
+			distributed:     false,
+			expected:        fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, no group id",
-			collectionIDs: []uint32{base.DefaultCollectionID, 1},
-			groupID:       "",
-			expected:      fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
+			name: "default collection + collection 1, no group id",
+			collectionNames: base.NewCollectionNameSet(
+				defaultCollection,
+				customCollection,
+			),
+			groupID:     "",
+			distributed: false,
+			expected:    fmt.Sprintf("_sync:dcp_ck::sg-%v:resync:1234", base.ProductAPIVersion),
 		},
 		{
-			name:          "default collection + collection 1, group id=foo",
-			collectionIDs: []uint32{base.DefaultCollectionID, 1},
-			groupID:       "foo",
-			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+			name: "default collection + collection 1, group id=foo",
+			collectionNames: base.NewCollectionNameSet(
+				defaultCollection,
+				customCollection,
+			),
+			groupID:     "foo",
+			distributed: false,
+			expected:    fmt.Sprintf("_sync:dcp_ck:foo::sg-%v:resync:1234", base.ProductAPIVersion),
+		},
+		{
+			name:            "distributed, default collection, no group id",
+			collectionNames: base.NewCollectionNameSet(defaultCollection),
+			groupID:         "",
+			distributed:     true,
+			expected:        fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name:            "distributed, default collection, group id=foo",
+			collectionNames: base.NewCollectionNameSet(defaultCollection),
+			groupID:         "foo",
+			distributed:     true,
+			expected:        fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name: "distributed, default collection + collection 1, no group id",
+			collectionNames: base.NewCollectionNameSet(
+				defaultCollection,
+				customCollection,
+			),
+			groupID:     "",
+			distributed: true,
+			expected:    fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
+		},
+		{
+			name: "distributed, default collection + collection 1, group id=foo",
+			collectionNames: base.NewCollectionNameSet(
+				defaultCollection,
+				customCollection,
+			),
+			groupID:     "foo",
+			distributed: true,
+			expected:    fmt.Sprintf("_sync:dcp_ck::sg-%v:resync-distributed:1234", base.ProductAPIVersion),
 		},
 	}
 	for _, test := range testCases {
@@ -655,11 +733,13 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			clientOptions := getResyncDCPClientOptions(
 				db,
 				resyncID,
-				db.collectionNameSet(),
+				test.collectionNames,
 				func(sgbucket.FeedEvent) bool {
-					require.FailNow(t, "DCP callback should not be called")
+					// no-op for test, just need to provide a callback to satisfy function signature
+					require.Fail(t, "unexpected feed event callback")
 					return false
 				},
+				test.distributed,
 			)
 
 			dcpClient, err := base.NewDCPClient(

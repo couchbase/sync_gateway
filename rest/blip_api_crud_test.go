@@ -1897,7 +1897,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
 					if changeEntryDocID == docID && changeEntryRevID == version1.RevTreeID || changeEntryRevID == version1.CV.String() {
-						updatedVersion <- rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel))
+						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version1, fmt.Sprintf(`{"foo":"buzz","channels":["%s"]}`, test.replacementRevChannel)))
 
 						// also purge revision backup and flush cache to ensure request for rev 1-... cannot be fulfilled
 						err := collection.PurgeOldRevisionJSON(ctx, docID, version1.RevTreeID)
@@ -1919,7 +1919,7 @@ func TestSendReplacementRevision(t *testing.T) {
 				btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Channels: test.replicationChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
-				version2 := <-updatedVersion
+				version2 := base.RequireChanRecv(t, updatedVersion)
 
 				if test.expectReplacementRev {
 					// version 2 was sent instead
@@ -2760,7 +2760,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				receivedNoRevs := make(chan *blip.Message)
 				btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
 					fmt.Println("Received noRev", msg.Properties)
-					receivedNoRevs <- msg
+					base.RequireChanSend(t, receivedNoRevs, msg)
 				}
 
 				version := rt.PutDoc(docName, `{"foo": "bar"}`)
@@ -3244,6 +3244,65 @@ func TestBlipDatabaseClose(t *testing.T) {
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			assert.True(c, blipContextClosed.Load())
 		}, time.Second*10, time.Millisecond*100)
+	})
+}
+
+func TestBlipDisconnectOnDbOffline(t *testing.T) {
+	base.LongRunningTest(t)
+
+	testCases := []struct {
+		name             string
+		persistentConfig bool
+	}{
+		{
+			name:             "non persistent config",
+			persistentConfig: false,
+		},
+		{
+			name:             "persistent config",
+			persistentConfig: true,
+		},
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				var rt *RestTester
+				if testCase.persistentConfig {
+					rt = NewRestTesterPersistentConfig(t)
+					defer rt.Close()
+				} else {
+					rt = NewRestTester(t, nil)
+					defer rt.Close()
+				}
+				const alice = "alice"
+				rt.CreateUser(alice, []string{"*"})
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
+					&BlipTesterClientOpts{
+						Username: alice,
+					})
+				defer btc.Close()
+
+				var blipPullContextClosed atomic.Bool
+				btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
+					blipPullContextClosed.Store(true)
+				}
+				// add some replication activity
+				markerDoc := "markerDoc"
+				markerDocVersion := rt.PutDoc(markerDoc, `{"mark": "doc"}`)
+				rt.WaitForPendingChanges()
+				btcRunner.StartPull(btc.id)
+				btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
+
+				rt.TakeDbOffline()
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, blipPullContextClosed.Load())
+				}, time.Second*10, time.Millisecond*100)
+			})
+		}
 	})
 }
 

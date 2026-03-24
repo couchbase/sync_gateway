@@ -3284,6 +3284,30 @@ func TestBufferFlush(t *testing.T) {
 	assert.True(t, resp.Flushed)
 }
 
+func TestContinuousChangesDoesNotBlockOffline(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	_ = rt.GetDatabase()
+
+	go func() {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=50000&include_docs=true", "")
+		RequireStatus(t, resp, http.StatusOK)
+	}()
+
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
+	}, 1)
+
+	// assert that we can take db offline still
+	rt.TakeDbOffline()
+
+	// expect changes to be closed after offline
+	base.RequireWaitForStat(t, func() int64 {
+		return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
+	}, 0)
+}
+
 func TestPublicAllDocsApiStats(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
