@@ -1285,7 +1285,6 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			rtConfig)

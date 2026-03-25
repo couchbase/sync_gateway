@@ -50,9 +50,6 @@ type RevisionCache interface {
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
-
-	// UpdateDeltaCV stores the given toDelta value in the given rev if cached but will look up in cache by cv
-	UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta)
 }
 
 const (
@@ -163,11 +160,6 @@ func (c *collectionRevisionCache) Remove(ctx context.Context, docID, versionStri
 // UpdateDelta is for per collection access to UpdateDelta method
 func (c *collectionRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
 	(*c.revCache).UpdateDelta(ctx, docID, revID, c.collectionID, toDelta)
-}
-
-// UpdateDeltaCV is for per collection access to UpdateDeltaCV method
-func (c *collectionRevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, toDelta RevisionDelta) {
-	(*c.revCache).UpdateDeltaCV(ctx, docID, cv, c.collectionID, toDelta)
 }
 
 // DocumentRevision stored and returned by the rev cache

@@ -65,10 +65,6 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID
 	sc.getShard(docID).UpdateDelta(ctx, docID, revID, collectionID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	sc.getShard(docID).UpdateDeltaCV(ctx, docID, cv, collectionID, toDelta)
-}
-
 func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
 	return sc.getShard(docID).GetActive(ctx, docID, collectionID)
 }
@@ -165,19 +161,6 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID string, versionStrin
 // fails silently
 func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
 	value := rc.getValue(ctx, docID, revID, collectionID, false)
-	if value != nil {
-		outGoingBytes := value.updateDelta(toDelta)
-		if outGoingBytes != 0 {
-			rc.currMemoryUsage.Add(outGoingBytes)
-			rc.cacheMemoryBytesStat.Add(outGoingBytes)
-		}
-		// check for memory based eviction
-		rc.revCacheMemoryBasedEviction(ctx)
-	}
-}
-
-func (rc *LRURevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValue(ctx, docID, "", collectionID, false)
 	if value != nil {
 		outGoingBytes := value.updateDelta(toDelta)
 		if outGoingBytes != 0 {
