@@ -22,14 +22,14 @@ import (
 )
 
 type ShardedLRURevisionCache struct {
-	caches    []*LRURevisionCache
+	caches    []*RevisionCacheOrchestrator
 	numShards uint16
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
 func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
-	caches := make([]*LRURevisionCache, revCacheOptions.ShardCount)
+	caches := make([]*RevisionCacheOrchestrator, revCacheOptions.ShardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
 	perCacheCapacity := 1.1 * float32(revCacheOptions.MaxItemCount) / float32(revCacheOptions.ShardCount)
 	revCacheOptions.MaxItemCount = uint32(perCacheCapacity)
@@ -40,7 +40,8 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 	}
 
 	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
-		caches[i] = NewLRURevisionCache(revCacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+		caches[i] = NewCompositeRevisionCache(cacheForShard)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -49,7 +50,7 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 	}
 }
 
-func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
+func (sc *ShardedLRURevisionCache) getShard(docID string) *RevisionCacheOrchestrator {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 

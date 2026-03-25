@@ -1025,12 +1025,12 @@ func TestShardedMemoryEviction(t *testing.T) {
 	// grab this particular shard + assert that the shard memory usage is as expected
 	shardedCache := db.revisionCache.(*ShardedLRURevisionCache)
 	doc1Shard := shardedCache.getShard("doc1")
-	assert.Equal(t, int64(size), doc1Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(size), doc1Shard.revisionCache.currMemoryUsage.Value())
 
 	// add new doc in diff shard + assert that the shard memory usage is as expected
 	size, _, _ = createDocAndReturnSizeAndRev(t, ctx, "doc2", collection, docBody, false)
 	doc2Shard := shardedCache.getShard("doc2")
-	assert.Equal(t, int64(size), doc2Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(size), doc2Shard.revisionCache.currMemoryUsage.Value())
 	// overall mem usage should be combination oif the two added docs
 	assert.Equal(t, int64(size*2), cacheStats.RevisionCacheTotalMemory.Value())
 
@@ -1044,7 +1044,7 @@ func TestShardedMemoryEviction(t *testing.T) {
 	// add new doc to trigger eviction and assert stats are as expected
 	newDocSize, _, _ := createDocAndReturnSizeAndRev(t, ctx, "doc3", collection, docBody, false)
 	doc3Shard := shardedCache.getShard("doc3")
-	assert.Equal(t, int64(newDocSize), doc3Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(newDocSize), doc3Shard.revisionCache.currMemoryUsage.Value())
 	assert.Equal(t, int64(2), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(size+newDocSize), cacheStats.RevisionCacheTotalMemory.Value())
 }
@@ -1080,7 +1080,7 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 
 	// assert that doc was not added to cache as it's too large
 	doc1Shard := shardedCache.getShard("doc1")
-	assert.Equal(t, int64(0), doc1Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(0), doc1Shard.revisionCache.currMemoryUsage.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
 
@@ -1091,7 +1091,7 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 	assert.NotNil(t, docRev.BodyBytes)
 
 	// assert rev cache is still empty
-	assert.Equal(t, int64(0), doc1Shard.currMemoryUsage.Value())
+	assert.Equal(t, int64(0), doc1Shard.revisionCache.currMemoryUsage.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
 }
