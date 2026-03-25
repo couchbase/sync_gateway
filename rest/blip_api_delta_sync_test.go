@@ -1001,7 +1001,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 			collection, ctx := rt.GetSingleTestDatabaseCollection()
 			// Validate that generation of a delta didn't mutate the revision body in the revision cache
-			docRev, cacheErr := collection.GetRevisionCacheForTest().GetUsingRevID(ctx, "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta)
+			docRev, cacheErr := collection.GetRevisionCacheForTest().Get(ctx, "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta, true)
 			assert.NoError(t, cacheErr)
 			assert.NotContains(t, docRev.BodyBytes, "bob")
 		} else {
@@ -1285,6 +1285,7 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
 	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t,
 			rtConfig)

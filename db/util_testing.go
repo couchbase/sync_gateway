@@ -1116,8 +1116,8 @@ func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context,
 		cache = (*c.revCache).(*LRURevisionCache)
 	}
 	// Remove any existing entry so that store() below is not a no-op.
-	cache.RemoveUsingRevID(ctx, docRev.DocID, docRev.RevID, c.collectionID)
-	value := cache.getValue(ctx, docRev.DocID, docRev.RevID, nil, c.collectionID, true)
+	cache.Remove(ctx, docRev.DocID, docRev.RevID, c.collectionID)
+	value := cache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, true)
 	docRev.CalculateBytes()
 	cache.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
 	value.store(docRev)

@@ -3501,7 +3501,7 @@ func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
 	// flush cache to ensure we're reading from the bucket
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
-	docRev, err := collection.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &createVersion.CV, false, true)
+	docRev, err := collection.GetRevisionCacheForTest().Get(ctx, docID, createVersion.CV.String(), false, true)
 	require.NoError(t, err)
 	// assert doc is not deleted
 	assert.False(t, docRev.Deleted)
@@ -3514,7 +3514,7 @@ func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// fetch rev 2 which is deleted
-	docRev, err = collection.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &deleteVrs.CV, false, true)
+	docRev, err = collection.GetRevisionCacheForTest().Get(ctx, docID, deleteVrs.CV.String(), false, true)
 	require.NoError(t, err)
 	assert.True(t, docRev.Deleted)
 	// assert deleted property is there
@@ -3642,7 +3642,7 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// fetch rev 1 by its CV, which should include the attachment
-	docRev, err := coll.GetRevisionCacheForTest().GetUsingCV(ctx, docID, &createVersion.CV, false, true)
+	docRev, err := coll.GetRevisionCacheForTest().Get(ctx, docID, createVersion.CV.String(), false, true)
 	require.NoError(t, err)
 
 	assert.Len(t, docRev.Attachments, 1)

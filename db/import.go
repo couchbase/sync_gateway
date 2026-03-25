@@ -458,7 +458,7 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(ctx, docid, CreateRevisionCacheRevIDKey(docid, revid, db.GetCollectionID()))
+	previousRev, ok := db.revisionCache.Peek(ctx, docid, revid)
 	if !ok {
 		return nil
 	}

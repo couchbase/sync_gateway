@@ -340,25 +340,24 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //     that hasn't changed since one of those revisions will be returned as a stub.
 func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV string, maxHistory int, historyFrom []string) (DocumentRevision, error) {
 	var (
-		revID *string
-		cv    *Version
-	)
-
-	var (
+		revID    *string
+		cv       *Version
 		revision DocumentRevision
 		getErr   error
+		isRevID  bool
 	)
+
 	if revOrCV != "" {
-		// Get a specific revision body and history from the revision cache
-		// (which will load them if necessary, by calling revCacheLoader, above)
 		if currentVersion, parseErr := ParseVersion(revOrCV); parseErr != nil {
 			// try as a rev ID
 			revID = &revOrCV
-			revision, getErr = db.revisionCache.GetUsingRevID(ctx, docid, *revID, RevCacheOmitDelta)
+			isRevID = true
 		} else {
 			cv = &currentVersion
-			revision, getErr = db.revisionCache.GetUsingCV(ctx, docid, cv, RevCacheOmitDelta, false)
 		}
+		// Get a specific revision body and history from the revision cache
+		// (which will load them if necessary, by calling revCacheLoader, above)
+		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, RevCacheOmitDelta, isRevID)
 	} else {
 		// No rev given, so load active revision
 		revision, getErr = db.revisionCache.GetActive(ctx, docid)
@@ -432,7 +431,7 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 
 func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
 	if cv != nil {
-		revision, err = db.revisionCache.GetUsingCV(ctx, docid, cv, RevCacheOmitDelta, false)
+		revision, err = db.revisionCache.Get(ctx, docid, cv.String(), RevCacheOmitDelta, false)
 	} else {
 		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
@@ -455,23 +454,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	}
 
 	var initialFromRevision DocumentRevision
-	var fromRevVrs Version
-	fromRevIsCV := !base.IsRevTreeID(fromRev)
-	if fromRevIsCV {
-		fromRevVrs, err = ParseVersion(fromRev)
-		if err != nil {
-			return nil, nil, err
-		}
-		// It is possible delta source will not be resident in the cache and we may want to lookup to the bucket for a backup revision
-		initialFromRevision, err = db.revisionCache.GetUsingCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
-		if err != nil {
-			return nil, nil, err
-		}
-	} else {
-		initialFromRevision, err = db.revisionCache.GetUsingRevID(ctx, docID, fromRev, RevCacheIncludeDelta)
-		if err != nil {
-			return nil, nil, err
-		}
+	initialFromRevision, err = db.revisionCache.Get(ctx, docID, fromRev, RevCacheIncludeDelta, true)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
@@ -503,16 +488,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// fromRevisionForDiff is a version of the fromRevision that is guarded by the delta lock that we will use to generate the delta (or check again for a newly cached delta)
 		var fromRevisionForDiff DocumentRevision
-		if fromRevIsCV {
-			fromRevisionForDiff, err = db.revisionCache.GetUsingCV(ctx, docID, &fromRevVrs, RevCacheIncludeDelta, true)
-			if err != nil {
-				return nil, nil, err
-			}
-		} else {
-			fromRevisionForDiff, err = db.revisionCache.GetUsingRevID(ctx, docID, fromRev, RevCacheIncludeDelta)
-			if err != nil {
-				return nil, nil, err
-			}
+		fromRevisionForDiff, err = db.revisionCache.Get(ctx, docID, fromRev, RevCacheIncludeDelta, true)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		// Check if another writer beat us to generating the delta and caching it.
@@ -533,20 +511,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// Need to generate delta and cache it for others.
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
 		var toRevision DocumentRevision
-		if !base.IsRevTreeID(toRev) {
-			cv, err := ParseVersion(toRev)
-			if err != nil {
-				return nil, nil, err
-			}
-			toRevision, err = db.revisionCache.GetUsingCV(ctx, docID, &cv, RevCacheIncludeDelta, false)
-			if err != nil {
-				return nil, nil, err
-			}
-		} else {
-			toRevision, err = db.revisionCache.GetUsingRevID(ctx, docID, toRev, RevCacheIncludeDelta)
-			if err != nil {
-				return nil, nil, err
-			}
+		toRevision, err = db.revisionCache.Get(ctx, docID, toRev, RevCacheIncludeDelta, false)
+		if err != nil {
+			return nil, nil, err
 		}
 
 		deleted := toRevision.Deleted
@@ -562,11 +529,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta.
 		if deleted {
 			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
-			if fromRevIsCV {
-				db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
-			} else {
-				db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
-			}
+			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
 
@@ -606,11 +569,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning.
-		if fromRevIsCV {
-			db.revisionCache.UpdateDeltaCV(ctx, docID, &fromRevVrs, revCacheDelta)
-		} else {
-			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
-		}
+		db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
 		return &revCacheDelta, nil, nil
 	}
 
@@ -2131,7 +2090,7 @@ func (db *DatabaseCollectionWithUser) resolveLocalWinsHLV(ctx context.Context, l
 
 	// remove the local doc from the revision cache, given the hlv is changing but the CV is staying same so the old reference
 	// to this cv in rev cache is stale
-	db.revisionCache.RemoveUsingCV(ctx, localDoc.ID, localDoc.HLV.ExtractCurrentVersionFromHLV())
+	db.revisionCache.Remove(ctx, localDoc.ID, localDoc.HLV.GetCurrentVersionString())
 	localDoc.localWinsConflict = true
 
 	localWinsConflictResolutionDocumentHandling(ctx, localDoc, remoteDoc, revTreeHistory, docBodyBytes, newRevID)
@@ -2814,7 +2773,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// Prior to saving doc, remove the revision in cache
 			if createNewRevIDSkipped {
-				db.revisionCache.RemoveUsingRevID(ctx, doc.ID, doc.GetRevTreeID())
+				db.revisionCache.Remove(ctx, doc.ID, doc.GetRevTreeID())
 			}
 
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.GetRevTreeID())
@@ -2926,7 +2885,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			if updateRevCache {
 				if createNewRevIDSkipped {
 					// remove revisionID entry if it exists
-					db.revisionCache.RemoveUsingRevID(ctx, documentRevision.DocID, documentRevision.RevID)
+					db.revisionCache.Remove(ctx, documentRevision.DocID, documentRevision.RevID)
 					// upsert entry to the cache, this will upsert using CV as key
 					db.revisionCache.Upsert(ctx, documentRevision)
 				} else {
