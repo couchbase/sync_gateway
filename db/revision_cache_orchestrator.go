@@ -18,8 +18,8 @@ type RevisionCacheOrchestrator struct {
 	// delta cache to be implemented: CBG-5234
 }
 
-// NewCompositeRevisionCache creates a new RevisionCacheOrchestrator.
-func NewCompositeRevisionCache(bodyCache *LRURevisionCache) *RevisionCacheOrchestrator {
+// NewRevisionCacheOrchestrator creates a new RevisionCacheOrchestrator.
+func NewRevisionCacheOrchestrator(bodyCache *LRURevisionCache) *RevisionCacheOrchestrator {
 	return &RevisionCacheOrchestrator{
 		revisionCache: bodyCache,
 	}

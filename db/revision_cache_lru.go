@@ -41,7 +41,7 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 
 	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
 		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
-		caches[i] = NewCompositeRevisionCache(cacheForShard)
+		caches[i] = NewRevisionCacheOrchestrator(cacheForShard)
 	}
 
 	return &ShardedLRURevisionCache{

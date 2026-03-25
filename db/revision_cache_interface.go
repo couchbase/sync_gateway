@@ -91,7 +91,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
-	return NewCompositeRevisionCache(NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat))
+	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat))
 }
 
 type RevisionCacheOptions struct {
