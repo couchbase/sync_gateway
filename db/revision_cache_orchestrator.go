@@ -25,20 +25,16 @@ func NewRevisionCacheOrchestrator(bodyCache *LRURevisionCache) *RevisionCacheOrc
 	}
 }
 
-func (c *RevisionCacheOrchestrator) GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (DocumentRevision, error) {
-	return c.revisionCache.GetWithRev(ctx, docID, revID, collectionID, includeDelta)
-}
-
-func (c *RevisionCacheOrchestrator) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (DocumentRevision, error) {
-	return c.revisionCache.GetWithCV(ctx, docID, cv, collectionID, includeDelta, loadBackup)
+func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (DocumentRevision, error) {
+	return c.revisionCache.Get(ctx, docID, versionString, collectionID, includeDelta, loadBackup)
 }
 
 func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
 	return c.revisionCache.GetActive(ctx, docID, collectionID)
 }
 
-func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
-	return c.revisionCache.Peek(ctx, docID, revID, collectionID)
+func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
+	return c.revisionCache.Peek(ctx, docID, versionString, collectionID)
 }
 
 func (c *RevisionCacheOrchestrator) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
@@ -49,26 +45,10 @@ func (c *RevisionCacheOrchestrator) Upsert(ctx context.Context, docRev DocumentR
 	c.revisionCache.Upsert(ctx, docRev, collectionID)
 }
 
-func (c *RevisionCacheOrchestrator) RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32) {
-	c.revisionCache.RemoveWithRev(ctx, docID, revID, collectionID)
-}
-
-func (c *RevisionCacheOrchestrator) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
-	c.revisionCache.RemoveWithCV(ctx, docID, cv, collectionID)
-}
-
-func (c *RevisionCacheOrchestrator) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
-	c.revisionCache.RemoveRevOnly(ctx, docID, revID, collectionID)
-}
-
-func (c *RevisionCacheOrchestrator) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
-	c.revisionCache.RemoveCVOnly(ctx, docID, cv, collectionID)
+func (c *RevisionCacheOrchestrator) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {
+	c.revisionCache.Remove(ctx, docID, versionString, collectionID)
 }
 
 func (c *RevisionCacheOrchestrator) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
 	c.revisionCache.UpdateDelta(ctx, docID, revID, collectionID, toDelta)
-}
-
-func (c *RevisionCacheOrchestrator) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	c.revisionCache.UpdateDeltaCV(ctx, docID, cv, collectionID, toDelta)
 }
