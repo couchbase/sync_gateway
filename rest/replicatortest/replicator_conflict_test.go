@@ -2093,8 +2093,8 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		collectionActive1, ctxActive1 := active.GetSingleTestDatabaseCollectionWithUser()
 		_, ok := collectionActive1.GetRevisionCacheForTest().Peek(ctxActive1, docID, rt1Version.RevTreeID)
 		require.False(t, ok)
-		// no peek for cv so fetch by cv, which in turn loads from bucket so assert item ahs correct history on it
-		docRev, err := collectionActive1.GetRevisionCacheForTest().GetWithCV(ctxActive1, docID, &rt1Version.CV, false, false)
+		// no peek for cv so fetch by cv, which in turn loads from bucket so assert item has correct history on it
+		docRev, err := collectionActive1.GetRevisionCacheForTest().Get(ctxActive1, docID, rt1Version.CV.String(), false, false)
 		require.NoError(t, err)
 		assert.Equal(t, rt2Version.CV.String(), docRev.HlvHistory)
 
@@ -2102,7 +2102,7 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		collectionRT1, ctxRT1 := rt1.GetSingleTestDatabaseCollectionWithUser()
 		_, ok = collectionRT1.GetRevisionCacheForTest().Peek(ctxRT1, docID, rt1Version.RevTreeID)
 		require.False(t, ok)
-		docRev, err = collectionRT1.GetRevisionCacheForTest().GetWithCV(ctxRT1, docID, &rt1Version.CV, false, false)
+		docRev, err = collectionRT1.GetRevisionCacheForTest().Get(ctxRT1, docID, rt1Version.CV.String(), false, false)
 		require.NoError(t, err)
 		assert.Equal(t, rt2Version.CV.String(), docRev.HlvHistory)
 	})

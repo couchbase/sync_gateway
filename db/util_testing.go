@@ -1103,3 +1103,23 @@ func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
 	require.GreaterOrEqual(t, factor, time.Duration(1), "Caching feed delay factor must be greater than 0, or wait functions will not work. Modify the factor value")
 	return factor
 }
+
+// PutRevEntry inserts a DocumentRevision into the cache under its revID key.
+// Use this in tests to populate the revID lookup path directly (e.g. to inject a corrupt body).
+// NOTE this should be test only use.
+func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context, docRev DocumentRevision) {
+	var cache *LRURevisionCache
+	shard, ok := (*c.revCache).(*ShardedLRURevisionCache)
+	if ok {
+		cache = shard.getShard(docRev.DocID)
+	} else {
+		cache = (*c.revCache).(*LRURevisionCache)
+	}
+	// Remove any existing entry so that store() below is not a no-op.
+	cache.Remove(ctx, docRev.DocID, docRev.RevID, c.collectionID)
+	value := cache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, true)
+	docRev.CalculateBytes()
+	cache.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
+	value.store(docRev)
+	cache.revCacheMemoryBasedEviction(ctx)
+}
