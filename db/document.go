@@ -723,8 +723,8 @@ func (s *SyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete 
 		extractedCV, err := cv.ExtractCV()
 		if !errors.Is(err, base.ErrNotFound) {
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWriteXattrOnly check - skipping cv match check: %v", err)
-				return true, false
+				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWriteXattrOnly check, document will not be processed: %v", err)
+				return false, false
 			}
 			if !s.CVEqual(*extractedCV) {
 				return false, false
