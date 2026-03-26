@@ -2215,6 +2215,13 @@ func TestIsSGWrite(t *testing.T) {
 			})
 		}
 	})
+	t.Run("corrupt HLV", func(t *testing.T) {
+		doc := createNewTestDocument(t, db, body)
+		doc.Cas = 1 // force mismatch cas
+		corruptCV := rawHLV([]byte(`{invalid json}`))
+		isSGWrite, _, _ := doc.SyncData.IsSGWrite(ctx, doc.Cas, body, doc.rawUserXattr, &corruptCV)
+		require.False(t, isSGWrite, "Expected doc with corrupt HLV to not be identified as SG write")
+	})
 
 }
 
