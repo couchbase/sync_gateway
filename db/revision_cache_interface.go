@@ -61,6 +61,7 @@ const (
 var _ RevisionCache = &LRURevisionCache{}
 var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
+var _ RevisionCache = &RevisionCacheOrchestrator{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
 func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
@@ -90,7 +91,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat))
 }
 
 type RevisionCacheOptions struct {
