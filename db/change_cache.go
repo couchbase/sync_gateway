@@ -330,7 +330,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	case DocTypeUser, DocTypeRole:
 		if docBody, err := c.fetchMetadataDocBody(ctx, docID, event.Cas); err != nil {
 			if !base.IsDocNotFoundError(err) && !base.IsCasMismatch(err) {
-				base.WarnfCtx(ctx, "Error fetching body for principal doc %q: %v", base.UD(docID), err)
+				base.WarnfCtx(ctx, "Error fetching body for principal doc %q: %v - will not be processed", base.UD(docID), err)
 			}
 		} else {
 			c.processPrincipalDoc(ctx, docID, docBody, docType == DocTypeUser, timeReceived)
