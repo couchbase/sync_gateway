@@ -1944,7 +1944,7 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 // TestGetRevWithCVDocResidentInCache:
 //   - Two test cases, one with doc a user will have access to, one without
 //   - Purpose is to have a doc that is resident in rev cache and use the GetRev function to retrieve these docs
-//   - Assert that the doc the user has access to is corrected fetched
+//   - Assert that the doc the user has access to is correctly fetched
 //   - Assert the doc the user doesn't have access to is fetched but correctly redacted
 func TestGetRevWithCVDocResidentInCache(t *testing.T) {
 	const docID = "doc1"

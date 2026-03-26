@@ -58,6 +58,9 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, versionString str
 		return DocumentRevision{}, err
 	}
 	if hlv != nil {
+		if docRev.CV == nil {
+			docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		}
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
