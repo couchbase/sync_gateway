@@ -418,25 +418,6 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 	return revision, nil
 }
 
-func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
-	var requestRevision string
-	if cv != nil {
-		revision, err = db.revisionCache.Get(ctx, docid, cv.String(), RevCacheOmitDelta, false)
-		requestRevision = cv.String()
-	} else {
-		revision, err = db.revisionCache.GetActive(ctx, docid)
-	}
-	if err != nil {
-		return DocumentRevision{}, err
-	}
-	maxHistory := 0
-	if revTreeHistory {
-		maxHistory = math.MaxInt32
-	}
-
-	return db.documentRevisionForRequest(ctx, docid, revision, requestRevision, maxHistory, nil)
-}
-
 // GetDelta attempts to return the delta between fromRevId and toRevId. If the delta can't be generated, returns nil.
 // Delta generation is synchronized per fromRev via a shared revision cache value lock to avoid multiple clients generating the same delta simultaneously.
 func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRev, toRev string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {

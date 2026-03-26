@@ -1941,12 +1941,12 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", doc.SyncData.GetRevTreeID())
 }
 
-// TestGetCVWithDocResidentInCache:
+// TestGetRevWithCVDocResidentInCache:
 //   - Two test cases, one with doc a user will have access to, one without
-//   - Purpose is to have a doc that is resident in rev cache and use the GetCV function to retrieve these docs
-//   - Assert that the doc the user has access to is corrected fetched
+//   - Purpose is to have a doc that is resident in rev cache and use the GetRev function to retrieve these docs
+//   - Assert that the doc the user has access to is correctly fetched
 //   - Assert the doc the user doesn't have access to is fetched but correctly redacted
-func TestGetCVWithDocResidentInCache(t *testing.T) {
+func TestGetRevWithCVDocResidentInCache(t *testing.T) {
 	const docID = "doc1"
 
 	testCases := []struct {
@@ -1988,7 +1988,7 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 			vrs := doc.HLV.Version
 			src := doc.HLV.SourceID
 			sv := &Version{Value: vrs, SourceID: src}
-			revision, err := collection.GetCV(ctx, docID, sv, false)
+			revision, err := collection.GetRev(ctx, docID, sv.String(), false, nil)
 			require.NoError(t, err)
 			if testCase.access {
 				assert.Equal(t, rev, revision.RevID)
@@ -2005,13 +2005,12 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 	}
 }
 
-// TestGetByCVForDocNotResidentInCache:
+// TestGetRevWithCVForDocNotResidentInCache:
 //   - Setup db with rev cache size of 1
 //   - Put two docs forcing eviction of the first doc
-//   - Use GetCV function to fetch the first doc, forcing the rev cache to load the doc from bucket
+//   - Use GetRev function to fetch the first doc, forcing the rev cache to load the doc from bucket
 //   - Assert the doc revision fetched is correct to the first doc we created
-func TestGetByCVForDocNotResidentInCache(t *testing.T) {
-	t.Skip("")
+func TestGetRevWithCVForDocNotResidentInCache(t *testing.T) {
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2047,23 +2046,25 @@ func TestGetByCVForDocNotResidentInCache(t *testing.T) {
 	vrs := doc.HLV.Version
 	src := doc.HLV.SourceID
 	sv := &Version{Value: vrs, SourceID: src}
-	revision, err := collection.GetCV(ctx, doc1ID, sv, false)
+	revision, err := collection.GetRev(ctx, doc1ID, sv.String(), false, nil)
 	require.NoError(t, err)
 
 	// assert the fetched doc is the first doc we added and assert that we did in fact get cache miss
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	if !base.TestDisableRevCache() {
+		assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	}
 	assert.Equal(t, rev, revision.RevID)
 	assert.Equal(t, sv, revision.CV)
 	assert.Equal(t, doc1ID, revision.DocID)
 	assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
 }
 
-// TestGetCVActivePathway:
+// TestGetRevWithCVActivePathway:
 //   - Two test cases, one with doc a user will have access to, one without
-//   - Purpose is top specify nil CV to the GetCV function to force the GetActive code pathway
+//   - Purpose is to specify an empty revOrCV to the GetRev function to force the GetActive code pathway
 //   - Assert doc that is created is fetched correctly when user has access to doc
 //   - Assert that correct error is returned when user has no access to the doc
-func TestGetCVActivePathway(t *testing.T) {
+func TestGetRevWithCVActivePathway(t *testing.T) {
 	const docID = "doc1"
 
 	testCases := []struct {
@@ -2101,7 +2102,7 @@ func TestGetCVActivePathway(t *testing.T) {
 			revBody := Body{"channels": testCase.docChannels}
 			rev, doc, err := collection.Put(ctx, docID, revBody)
 			require.NoError(t, err)
-			revision, err := collection.GetCV(ctx, docID, nil, false)
+			revision, err := collection.GetRev(ctx, docID, "", false, nil)
 
 			if testCase.access == true {
 				require.NoError(t, err)
