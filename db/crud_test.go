@@ -2226,6 +2226,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 
 	matchingCV := rawHLV([]byte(`{"ver":"0x0100000000000000","src":"testSource"}`))
 	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
+	errorCV := rawHLV([]byte(`{invalid json}`))
 
 	baseSyncData := SyncData{
 		Cas:             sgCasHex,
@@ -2305,6 +2306,14 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 			cv:              &matchingCV,
 			expectedSGWrite: false,
 			expectedAmbig:   true,
+		},
+		{
+			name:            "CV extraction error - corrupt document",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &errorCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
 		},
 		{
 			name: "nil CV with no sync rev - ambiguous",
