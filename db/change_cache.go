@@ -324,18 +324,16 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	// Is this a user/role doc for this database?
 	switch docType {
 	case DocTypeUnknown:
 		return // no-op unknown doc type
-	case DocTypeUser:
-		if docBody := c.fetchMetadataDocBody(ctx, docID, event.Cas); docBody != nil {
-			c.processPrincipalDoc(ctx, docID, docBody, true, timeReceived)
-		}
-		return
-	case DocTypeRole:
-		if docBody := c.fetchMetadataDocBody(ctx, docID, event.Cas); docBody != nil {
-			c.processPrincipalDoc(ctx, docID, docBody, false, timeReceived)
+	case DocTypeUser, DocTypeRole:
+		if docBody, err := c.fetchMetadataDocBody(ctx, docID, event.Cas); err != nil {
+			if !base.IsDocNotFoundError(err) && !base.IsCasMismatch(err) {
+				base.WarnfCtx(ctx, "Error fetching body for principal doc %q: %v", base.UD(docID), err)
+			}
+		} else {
+			c.processPrincipalDoc(ctx, docID, docBody, docType == DocTypeUser, timeReceived)
 		}
 		return
 	case DocTypeUnusedSeq:
@@ -349,7 +347,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
 		return
-	case DocTypeDocument: // this is processed below
+	case DocTypeDocument: // processed below
 	}
 
 	collection, exists := c.db.CollectionByID[event.CollectionID]
@@ -724,18 +722,15 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 // fetchMetadataDocBody fetches the full document body via a KV get from the metadata store.
 // This works around the xattr-only caching feed not including document bodies,
 // which are required for metadata doc types (e.g. user/role principal docs).
-// Returns nil if the document cannot be fetched or if the CAS does not match the expected value.
-func (c *changeCache) fetchMetadataDocBody(ctx context.Context, docID string, expectedCas uint64) []byte {
+func (c *changeCache) fetchMetadataDocBody(ctx context.Context, docID string, expectedCas uint64) ([]byte, error) {
 	docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
 	if err != nil {
-		base.WarnfCtx(ctx, "fetchMetadataDocBody: unable to fetch doc %q from metadata store: %v", base.UD(docID), err)
-		return nil
+		return nil, err
 	}
 	if cas != expectedCas {
-		base.WarnfCtx(ctx, "fetchMetadataDocBody: CAS mismatch for doc %q - expected %d, got %d", base.UD(docID), expectedCas, cas)
-		return nil
+		return nil, sgbucket.CasMismatchErr{Expected: expectedCas, Actual: cas}
 	}
-	return docBody
+	return docBody, nil
 }
 
 func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp) {
