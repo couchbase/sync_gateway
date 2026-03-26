@@ -672,20 +672,8 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 
 	var originalErr error
 	var docRev DocumentRevision
-	var localIsLegacyRev bool
-	if base.IsRevTreeID(revID) {
-		localIsLegacyRev = true
-	}
-	if !bsc.useHLV() || localIsLegacyRev {
-		docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
-	} else {
-		// extract CV string rev representation
-		version, vrsErr := ParseVersion(revID)
-		if vrsErr != nil {
-			return vrsErr
-		}
-		docRev, originalErr = handleChangesResponseCollection.GetCV(ctx, docID, &version, true)
-	}
+	localIsLegacyRev := base.IsRevTreeID(revID)
+	docRev, originalErr = handleChangesResponseCollection.GetRev(ctx, docID, revID, true, nil)
 
 	// set if we find an alternative revision to send in the event the originally requested rev is unavailable
 	var replacedRevID string
