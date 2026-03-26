@@ -9,7 +9,6 @@
 package base
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -43,73 +42,4 @@ func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
 		metadata[vbNo].SnapEndSeqNo = highSeqNo
 	}
 	return metadata, nil
-}
-
-func newGocbDCPClient(ctx context.Context, bucket *GocbV2Bucket, opts DCPClientOptions) (*GoCBDCPClient, error) {
-	var collectionIDs []uint32
-
-	cm, err := bucket.GetCollectionManifest()
-	if err != nil {
-		return nil, err
-	}
-
-	for scopeName, collections := range opts.CollectionNames {
-		// should only be one args.Scope so cheaper to iterate this way around
-		var manifestScope *gocbcore.ManifestScope
-		for _, ms := range cm.Scopes {
-			if scopeName == ms.Name {
-				manifestScope = &ms
-				break
-			}
-		}
-		if manifestScope == nil {
-			return nil, RedactErrorf("scope %s not found", MD(scopeName))
-		}
-		collectionsFound := make(map[string]struct{})
-		// should be less than or equal number of args.collections than cm.scope.collections, so iterate this way so that the inner loop completes quicker on average
-		for _, manifestCollection := range manifestScope.Collections {
-			for collectionName := range collections {
-				if collectionName != manifestCollection.Name {
-					continue
-				}
-				collectionIDs = append(collectionIDs, manifestCollection.UID)
-				collectionsFound[collectionName] = struct{}{}
-			}
-		}
-		if len(collectionsFound) != len(collections) {
-			for collectionName := range collections {
-				if _, ok := collectionsFound[collectionName]; !ok {
-					return nil, RedactErrorf("collection %s not found in scope %s %+v", MD(collectionName), MD(manifestScope.Name), manifestScope.Collections)
-				}
-			}
-		}
-	}
-	options := GoCBDCPClientOptions{
-		FeedID:            opts.FeedID,
-		MetadataStoreType: opts.MetadataStoreType,
-		DbStats:           opts.DBStats,
-		CollectionIDs:     collectionIDs,
-		AgentPriority:     gocbcore.DcpAgentPriorityMed,
-		CheckpointPrefix:  opts.CheckpointPrefix,
-		OneShot:           opts.OneShot,
-		FailOnRollback:    opts.FailOnRollback,
-		InitialMetadata:   opts.InitialMetadata,
-	}
-
-	if opts.FromLatestSequence {
-		if len(opts.InitialMetadata) > 0 {
-			return nil, fmt.Errorf("DCPClientOptions.InitialMetadata cannot be provided when FromLatestSequence is true")
-		}
-		metadata, err := getHighSeqMetadata(bucket)
-		if err != nil {
-			return nil, err
-		}
-		options.InitialMetadata = metadata
-	}
-
-	return NewGocbDCPClient(
-		ctx,
-		opts.Callback,
-		options,
-		bucket)
 }

@@ -225,7 +225,6 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	r.collectionsLock.Lock()
 	defer r.collectionsLock.Unlock()
 	r.terminator = make(chan bool)
-	//r.doneChan = make(chan struct{})
 	r.doneChan = make(chan error)
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)

@@ -953,7 +953,7 @@ func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundMa
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
 func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(t) || os.Getenv("CI") == "" {
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
 		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
 		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
 		waitTime = 30 * time.Second

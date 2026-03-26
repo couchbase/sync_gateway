@@ -112,7 +112,6 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
 	dataStore := database.Bucket.DefaultDataStore()
 	collectionID := base.DefaultCollectionID
-	var metadataKeyPrefix string
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
@@ -138,7 +137,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 				a.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 			}
 			if err != nil {
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, metadataKeyPrefix)
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, dcpClient.GetMetadataKeyPrefix())
 			}
 			return shouldRetry, err, nil
 		}
@@ -164,7 +163,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			metadataKeyPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
 			if err != nil {
 				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
 			}
