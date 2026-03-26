@@ -823,16 +823,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					var gotBodyOnly, gotXattr, gotCounter atomic.Bool
 					var bodyOnlyEvent, xattrEvent, counterEvent sgbucket.FeedEvent
 					var eventMu sync.Mutex
-					allFound := make(chan struct{})
-
-					checkAllFound := func() {
-						if gotBodyOnly.Load() && gotXattr.Load() && gotCounter.Load() {
-							select {
-							case allFound <- struct{}{}:
-							default:
-							}
-						}
-					}
+					allFound := make(chan struct{}, 1)
 
 					callback := func(event sgbucket.FeedEvent) bool {
 						eventMu.Lock()
@@ -856,7 +847,12 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 						default:
 							return true
 						}
-						checkAllFound()
+						if gotBodyOnly.Load() && gotXattr.Load() && gotCounter.Load() {
+							select {
+							case allFound <- struct{}{}:
+							default:
+							}
+						}
 						return true
 					}
 
@@ -870,7 +866,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					dcpClient, err := NewDCPClient(ctx, callback, clientOptions, gocbv2Bucket)
 					require.NoError(t, err)
 
-					doneChan, startErr := dcpClient.Start()
+					_, startErr := dcpClient.Start()
 					require.NoError(t, startErr)
 					defer func() {
 						_ = dcpClient.Close()
@@ -882,20 +878,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					}
 
 					// Wait for all three docs to arrive
-					timeout := time.After(30 * time.Second)
-					select {
-					case <-allFound:
-						// success
-					case <-doneChan:
-						// one-shot feed completed — check if we got everything
-						if !gotBodyOnly.Load() || !gotXattr.Load() || !gotCounter.Load() {
-							t.Fatalf("DCP feed completed but not all docs arrived: bodyOnly=%v xattr=%v counter=%v",
-								gotBodyOnly.Load(), gotXattr.Load(), gotCounter.Load())
-						}
-					case <-timeout:
-						t.Fatalf("Timed out waiting for DCP events: bodyOnly=%v xattr=%v counter=%v",
-							gotBodyOnly.Load(), gotXattr.Load(), gotCounter.Load())
-					}
+					RequireChanRecv(t, allFound)
 
 					// Verify the body-only doc arrived (this is the key assertion for CBG-4640)
 					require.True(t, gotBodyOnly.Load(), "body-only document (like _sync:user:*) was not delivered by DCP with FeedContent=%s", mode.name)
