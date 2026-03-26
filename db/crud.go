@@ -340,24 +340,14 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //     that hasn't changed since one of those revisions will be returned as a stub.
 func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV string, maxHistory int, historyFrom []string) (DocumentRevision, error) {
 	var (
-		revID    *string
-		cv       *Version
 		revision DocumentRevision
 		getErr   error
-		isRevID  bool
 	)
 
 	if revOrCV != "" {
-		if currentVersion, parseErr := ParseVersion(revOrCV); parseErr != nil {
-			// try as a rev ID
-			revID = &revOrCV
-			isRevID = true
-		} else {
-			cv = &currentVersion
-		}
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, RevCacheOmitDelta, isRevID)
+		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, RevCacheOmitDelta, base.IsRevTreeID(revOrCV))
 	} else {
 		// No rev given, so load active revision
 		revision, getErr = db.revisionCache.GetActive(ctx, docid)
@@ -366,20 +356,19 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV
 		return DocumentRevision{}, getErr
 	}
 
-	return db.documentRevisionForRequest(ctx, docid, revision, revID, cv, maxHistory, historyFrom)
+	return db.documentRevisionForRequest(ctx, docid, revision, revOrCV, maxHistory, historyFrom)
 }
 
 // documentRevisionForRequest processes the given DocumentRevision and returns a version of it for a given client request, depending on access, deleted, etc.
-func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, revID *string, cv *Version, maxHistory int, historyFrom []string) (DocumentRevision, error) {
-	// ensure only one of cv or revID is specified
-	if cv != nil && revID != nil {
-		return DocumentRevision{}, fmt.Errorf("must have one of cv or revID in documentRevisionForRequest (had cv=%v revID=%v)", cv, revID)
-	}
-	var requestedVersion string
-	if revID != nil {
-		requestedVersion = *revID
-	} else if cv != nil {
-		requestedVersion = cv.String()
+func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Context, docID string, revision DocumentRevision, requestedVersion string, maxHistory int, historyFrom []string) (DocumentRevision, error) {
+	var cv *Version
+	isRevID := base.IsRevTreeID(requestedVersion)
+	if !isRevID && requestedVersion != "" {
+		currentVersion, err := ParseVersion(requestedVersion)
+		if err != nil {
+			return DocumentRevision{}, err
+		}
+		cv = &currentVersion
 	}
 
 	if revision.BodyBytes == nil {
@@ -430,8 +419,10 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 }
 
 func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, cv *Version, revTreeHistory bool) (revision DocumentRevision, err error) {
+	var requestRevision string
 	if cv != nil {
 		revision, err = db.revisionCache.Get(ctx, docid, cv.String(), RevCacheOmitDelta, false)
+		requestRevision = cv.String()
 	} else {
 		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
@@ -443,7 +434,7 @@ func (db *DatabaseCollectionWithUser) GetCV(ctx context.Context, docid string, c
 		maxHistory = math.MaxInt32
 	}
 
-	return db.documentRevisionForRequest(ctx, docid, revision, nil, cv, maxHistory, nil)
+	return db.documentRevisionForRequest(ctx, docid, revision, requestRevision, maxHistory, nil)
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId. If the delta can't be generated, returns nil.

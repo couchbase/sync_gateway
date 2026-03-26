@@ -29,7 +29,7 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 
-	// GetUsingRevID returns the given revision, and stores if not already cached.
+	// Get returns the given revision, and stores if not already cached.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
 	Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (DocumentRevision, error)
 
@@ -484,12 +484,12 @@ func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Documen
 	return bodyBytes, attachments, channels, deleted, err
 }
 
-type RevCacheKey struct {
+type revCacheKey struct {
 	docID        string
 	docVersion   string
 	collectionID uint32
 }
 
-func CreateRevisionCacheKey(docID string, versionString string, collectionID uint32) RevCacheKey {
-	return RevCacheKey{docID: docID, docVersion: versionString, collectionID: collectionID}
+func CreateRevisionCacheKey(docID string, versionString string, collectionID uint32) revCacheKey {
+	return revCacheKey{docID: docID, docVersion: versionString, collectionID: collectionID}
 }
