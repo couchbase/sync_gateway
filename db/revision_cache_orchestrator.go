@@ -19,9 +19,9 @@ type RevisionCacheOrchestrator struct {
 }
 
 // NewRevisionCacheOrchestrator creates a new RevisionCacheOrchestrator.
-func NewRevisionCacheOrchestrator(bodyCache *LRURevisionCache) *RevisionCacheOrchestrator {
+func NewRevisionCacheOrchestrator(revisionCache *LRURevisionCache) *RevisionCacheOrchestrator {
 	return &RevisionCacheOrchestrator{
-		revisionCache: bodyCache,
+		revisionCache: revisionCache,
 	}
 }
 
