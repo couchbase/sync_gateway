@@ -688,8 +688,8 @@ func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, ra
 		extractedCV, err := cv.ExtractCV()
 		if !errors.Is(err, base.ErrNotFound) {
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWrite write check - skipping cv match check: %v", err)
-				return true, true, false
+				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWrite check, document will not be processed: %v", err)
+				return false, false, false
 			}
 			if !s.CVEqual(*extractedCV) {
 				// technically the crc32 matches but return false so Crc32MatchCount is not incremented, to mark that it would be imported
