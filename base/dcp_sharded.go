@@ -566,7 +566,7 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 		return nil, errors.New("Unable to register heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
-	// Register listener for import, uses cfg and manager to manage set of participating nodes
+	// Register listener for shardedDCP, uses cfg and manager to manage set of participating nodes
 	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
@@ -582,7 +582,7 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 
 // shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
 type shardedDCPHeartbeatListener struct {
-	cfg        cbgt.Cfg      // cbgt cfg being used for import
+	cfg        cbgt.Cfg      // cbgt cfg being used for shardedDCP
 	mgr        *cbgt.Manager // cbgt manager associated with this import node
 	ctx        *CbgtContext
 	terminator chan struct{} // close cfg subscription on close
