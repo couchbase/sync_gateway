@@ -583,7 +583,7 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 // shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
 type shardedDCPHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for shardedDCP
-	mgr        *cbgt.Manager // cbgt manager associated with this import node
+	mgr        *cbgt.Manager // cbgt manager associated with this node
 	ctx        *CbgtContext
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
