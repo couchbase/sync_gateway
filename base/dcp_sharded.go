@@ -56,7 +56,7 @@ type CbgtContext struct {
 	Manager           *cbgt.Manager                // Manager is main entry point for initialization, registering indexes
 	Cfg               cbgt.Cfg                     // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater                  // Heartbeater used for failed node detection
-	heartbeatListener *shardedDCPHeartBeatListener // Listener subscribed to failed node alerts from heartbeater
+	heartbeatListener *shardedDCPHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	eventHandlers     *sgMgrEventHandlers          // Event handler callbacks
 	dbName            string                       // Database name
 	sourceName        string                       // cbgt source name. Store on CbgtContext for access during teardown
@@ -560,28 +560,28 @@ func DestKey(dbName string, scope string, collections []string, feedType string)
 	return destKey
 }
 
-func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartBeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
-		return nil, errors.New("Unable to register import heartbeat listener with nil manager, cfg or heartbeater")
+		return nil, errors.New("Unable to register heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	shardedDCPHeartBeatListener, err := NewShardedDCPHeartBeatListener(ctx, cbgtContext)
+	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
 
-	err = heartbeater.RegisterListener(shardedDCPHeartBeatListener)
+	err = heartbeater.RegisterListener(shardedDCPHeartbeatListener)
 	if err != nil {
 		return nil, err
 	}
 
-	return shardedDCPHeartBeatListener, nil
+	return shardedDCPHeartbeatListener, nil
 }
 
-// shardedDCPHeartBeatListener uses cbgt's cfg to manage node list
-type shardedDCPHeartBeatListener struct {
+// shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
+type shardedDCPHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for import
 	mgr        *cbgt.Manager // cbgt manager associated with this import node
 	ctx        *CbgtContext
@@ -590,13 +590,13 @@ type shardedDCPHeartBeatListener struct {
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewShardedDCPHeartBeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartBeatListener, error) {
+func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtCtx == nil {
-		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
+		return nil, errors.New("cbgt ctx must not be nil for shardedDCPHeartbeatListener")
 	}
 
-	listener := &shardedDCPHeartBeatListener{
+	listener := &shardedDCPHeartbeatListener{
 		ctx:        cbgtCtx,
 		mgr:        cbgtCtx.Manager,
 		cfg:        cbgtCtx.Cfg,
@@ -618,12 +618,12 @@ func NewShardedDCPHeartBeatListener(ctx context.Context, cbgtCtx *CbgtContext) (
 	return listener, nil
 }
 
-func (l *shardedDCPHeartBeatListener) Name() string {
-	return "importListener"
+func (l *shardedDCPHeartbeatListener) Name() string {
+	return "shardedDCPHeartbeatListener"
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *shardedDCPHeartBeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
+func (l *shardedDCPHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
 
 	InfofCtx(ctx, KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
@@ -634,7 +634,7 @@ func (l *shardedDCPHeartBeatListener) StaleHeartbeatDetected(ctx context.Context
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
 // NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *shardedDCPHeartBeatListener) subscribeNodeChanges(ctx context.Context) error {
+func (l *shardedDCPHeartbeatListener) subscribeNodeChanges(ctx context.Context) error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
@@ -671,7 +671,7 @@ func (l *shardedDCPHeartBeatListener) subscribeNodeChanges(ctx context.Context) 
 	return nil
 }
 
-func (l *shardedDCPHeartBeatListener) reloadNodes() (localNodePresent bool, err error) {
+func (l *shardedDCPHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
@@ -697,7 +697,7 @@ func (l *shardedDCPHeartBeatListener) reloadNodes() (localNodePresent bool, err 
 }
 
 // GetNodes returns a copy of the in-memory node set
-func (l *shardedDCPHeartBeatListener) GetNodes() ([]string, error) {
+func (l *shardedDCPHeartbeatListener) GetNodes() ([]string, error) {
 
 	l.lock.RLock()
 	nodeIDsCopy := make([]string, len(l.nodeIDs))
@@ -706,7 +706,7 @@ func (l *shardedDCPHeartBeatListener) GetNodes() ([]string, error) {
 	return nodeIDsCopy, nil
 }
 
-func (l *shardedDCPHeartBeatListener) Stop() {
+func (l *shardedDCPHeartbeatListener) Stop() {
 	close(l.terminator)
 }
 
