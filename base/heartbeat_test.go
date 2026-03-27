@@ -351,21 +351,21 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		"some-datasource",
 		eventHandlers,
 		options)
-	listener1, err := NewImportHeartbeatListener(ctx, &CbgtContext{
+	listener1, err := NewShardedDCPHeartBeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
-	listener2, err := NewImportHeartbeatListener(ctx, &CbgtContext{
+	listener2, err := NewShardedDCPHeartBeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
-	listener3, err := NewImportHeartbeatListener(ctx, &CbgtContext{
+	listener3, err := NewShardedDCPHeartBeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})

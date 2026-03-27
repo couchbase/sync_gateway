@@ -53,14 +53,14 @@ type nodeExtras struct {
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
-	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
-	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
-	heartbeater       Heartbeater              // Heartbeater used for failed node detection
-	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
-	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
-	dbName            string                   // Database name
-	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
-	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
+	Manager           *cbgt.Manager                // Manager is main entry point for initialization, registering indexes
+	Cfg               cbgt.Cfg                     // Cfg manages storage of the current pindex set and node assignment
+	heartbeater       Heartbeater                  // Heartbeater used for failed node detection
+	heartbeatListener *shardedDCPHeartBeatListener // Listener subscribed to failed node alerts from heartbeater
+	eventHandlers     *sgMgrEventHandlers          // Event handler callbacks
+	dbName            string                       // Database name
+	sourceName        string                       // cbgt source name. Store on CbgtContext for access during teardown
+	sourceUUID        string                       // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
 // ShardedDCPOptions contains options for starting a DCP feed for cbgt.
@@ -560,28 +560,28 @@ func DestKey(dbName string, scope string, collections []string, feedType string)
 	return destKey
 }
 
-func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartBeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
 		return nil, errors.New("Unable to register import heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(ctx, cbgtContext)
+	shardedDCPHeartBeatListener, err := NewShardedDCPHeartBeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
 
-	err = heartbeater.RegisterListener(importHeartbeatListener)
+	err = heartbeater.RegisterListener(shardedDCPHeartBeatListener)
 	if err != nil {
 		return nil, err
 	}
 
-	return importHeartbeatListener, nil
+	return shardedDCPHeartBeatListener, nil
 }
 
-// ImportHeartbeatListener uses cbgt's cfg to manage node list
-type importHeartbeatListener struct {
+// shardedDCPHeartBeatListener uses cbgt's cfg to manage node list
+type shardedDCPHeartBeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for import
 	mgr        *cbgt.Manager // cbgt manager associated with this import node
 	ctx        *CbgtContext
@@ -590,13 +590,13 @@ type importHeartbeatListener struct {
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*importHeartbeatListener, error) {
+func NewShardedDCPHeartBeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartBeatListener, error) {
 
 	if cbgtCtx == nil {
 		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
 	}
 
-	listener := &importHeartbeatListener{
+	listener := &shardedDCPHeartBeatListener{
 		ctx:        cbgtCtx,
 		mgr:        cbgtCtx.Manager,
 		cfg:        cbgtCtx.Cfg,
@@ -618,12 +618,12 @@ func NewImportHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*imp
 	return listener, nil
 }
 
-func (l *importHeartbeatListener) Name() string {
+func (l *shardedDCPHeartBeatListener) Name() string {
 	return "importListener"
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *importHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
+func (l *shardedDCPHeartBeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
 
 	InfofCtx(ctx, KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
@@ -634,7 +634,7 @@ func (l *importHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, no
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
 // NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) error {
+func (l *shardedDCPHeartBeatListener) subscribeNodeChanges(ctx context.Context) error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
@@ -671,7 +671,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) erro
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
+func (l *shardedDCPHeartBeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
@@ -697,7 +697,7 @@ func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err erro
 }
 
 // GetNodes returns a copy of the in-memory node set
-func (l *importHeartbeatListener) GetNodes() ([]string, error) {
+func (l *shardedDCPHeartBeatListener) GetNodes() ([]string, error) {
 
 	l.lock.RLock()
 	nodeIDsCopy := make([]string, len(l.nodeIDs))
@@ -706,7 +706,7 @@ func (l *importHeartbeatListener) GetNodes() ([]string, error) {
 	return nodeIDsCopy, nil
 }
 
-func (l *importHeartbeatListener) Stop() {
+func (l *shardedDCPHeartBeatListener) Stop() {
 	close(l.terminator)
 }
 
