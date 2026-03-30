@@ -266,6 +266,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			IndexType:     base.CBGTIndexTypeSyncGatewayResync,
 			DestKey:       resyncDestKey,
 			IndexName:     indexName,
+			Datastore:     db.MetadataStore,
+			FeedType:      base.ShardedDCPFeedTypeResync,
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 
