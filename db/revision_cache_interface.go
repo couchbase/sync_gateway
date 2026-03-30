@@ -31,7 +31,7 @@ type RevisionCache interface {
 
 	// Get returns the given revision, and stores if not already cached.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (DocumentRevision, error)
+	Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
 	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
@@ -49,12 +49,15 @@ type RevisionCache interface {
 	Remove(ctx context.Context, docID, versionString string, collectionID uint32)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
-	UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta)
+	UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32, toDelta RevisionDelta)
+
+	// GetWithDelta will fetch revision and its associated delta from the independent revision cache and delta revision cache
+	GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error)
 }
 
 const (
-	RevCacheIncludeDelta = true
-	RevCacheOmitDelta    = false
+	RevCacheLoadBackupRev     = true
+	RevCacheDontLoadBackupRev = false
 )
 
 // Force compile-time check of all RevisionCache types for interface
@@ -63,8 +66,16 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 var _ RevisionCache = &RevisionCacheOrchestrator{}
 
+// revisionCacheStats holds references to stats needed for the revision cache
+type revisionCacheStats struct {
+	cacheHitStat      *base.SgwIntStat
+	cacheMissStat     *base.SgwIntStat
+	cacheNumItemsStat *base.SgwIntStat
+	cacheMemoryStat   *base.SgwIntStat
+}
+
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheStats *base.CacheStats, deltaSyncStats *base.DeltaSyncStats, initDeltaCache bool) RevisionCache {
 
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
@@ -76,22 +87,32 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 		return NewBypassRevisionCache(backingStores, bypassStat)
 	}
 
-	cacheHitStat := cacheStats.RevisionCacheHits
-	cacheMissStat := cacheStats.RevisionCacheMisses
-	cacheNumItemsStat := cacheStats.RevisionCacheNumItems
-	cacheMemoryStat := cacheStats.RevisionCacheTotalMemory
-	if cacheNumItemsStat.Value() != 0 {
-		cacheNumItemsStat.Set(0)
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      cacheStats.RevisionCacheHits,
+		cacheMissStat:     cacheStats.RevisionCacheMisses,
+		cacheNumItemsStat: cacheStats.RevisionCacheNumItems,
+		cacheMemoryStat:   cacheStats.RevisionCacheTotalMemory,
 	}
-	if cacheMemoryStat.Value() != 0 {
-		cacheMemoryStat.Set(0)
+	if revCacheStats.cacheNumItemsStat.Value() != 0 {
+		revCacheStats.cacheNumItemsStat.Set(0)
+	}
+	if revCacheStats.cacheMemoryStat.Value() != 0 {
+		revCacheStats.cacheMemoryStat.Set(0)
+	}
+	if deltaSyncStats != nil && deltaSyncStats.DeltaCacheNumItems.Value() != 0 {
+		deltaSyncStats.DeltaCacheNumItems.Set(0)
 	}
 
 	if cacheOptions.ShardCount > 1 {
-		return NewShardedLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
+		return NewShardedLRURevisionCache(cacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 	}
 
-	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat))
+	var deltaCache *LRUDeltaCache
+	if initDeltaCache {
+		deltaCache = NewLRUDeltaCache(cacheOptions, deltaSyncStats, backingStores)
+	}
+
+	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, revCacheStats), deltaCache)
 }
 
 type RevisionCacheOptions struct {
@@ -130,8 +151,8 @@ func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) co
 }
 
 // Get is for per collection access to Get method
-func (c *collectionRevisionCache) Get(ctx context.Context, docID, versionString string, includeDelta, loadBackup bool) (DocumentRevision, error) {
-	return (*c.revCache).Get(ctx, docID, versionString, c.collectionID, includeDelta, loadBackup)
+func (c *collectionRevisionCache) Get(ctx context.Context, docID, versionString string, loadBackup bool) (DocumentRevision, error) {
+	return (*c.revCache).Get(ctx, docID, versionString, c.collectionID, loadBackup)
 }
 
 // GetActive is for per collection access to GetActive method
@@ -159,8 +180,12 @@ func (c *collectionRevisionCache) Remove(ctx context.Context, docID, versionStri
 }
 
 // UpdateDelta is for per collection access to UpdateDelta method
-func (c *collectionRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, toDelta RevisionDelta) {
-	(*c.revCache).UpdateDelta(ctx, docID, revID, c.collectionID, toDelta)
+func (c *collectionRevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, toDelta RevisionDelta) {
+	(*c.revCache).UpdateDelta(ctx, docID, fromVersionString, toVersionString, c.collectionID, toDelta)
+}
+
+func (c *collectionRevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string) (DocumentRevision, error) {
+	return (*c.revCache).GetWithDelta(ctx, docID, fromVersionString, toVersionString, c.collectionID)
 }
 
 // DocumentRevision stored and returned by the rev cache

@@ -93,6 +93,7 @@ const (
 	StatAddedVersion3dot2dot4     = "3.2.4"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 	StatAddedVersion4dot0dot0     = "4.0.0"
+	StatAddedVersion4dot1dot0     = "4.1.0"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -790,6 +791,8 @@ type DeltaSyncStats struct {
 	DeltaCacheHit *SgwIntStat `json:"delta_cache_hit"`
 	// The total number of requested deltas that were not available in the revision cache.
 	DeltaCacheMiss *SgwIntStat `json:"delta_cache_miss"`
+	// DeltaCacheNumItems numer of items in delta cache
+	DeltaCacheNumItems *SgwIntStat `json:"delta_cache_num_items"`
 	// The number of delta replications that have been run.
 	DeltaPullReplicationCount *SgwIntStat `json:"delta_pull_replication_count"`
 	// The total number of documents pushed as a delta from a previous revision.
@@ -2054,6 +2057,10 @@ func (d *DbStats) InitDeltaSyncStats() error {
 		return err
 	}
 	resUtil.DeltaCacheMiss, err = NewIntStat(SubsystemDeltaSyncKey, "delta_sync_miss", StatUnitNoUnits, DeltaCacheMissDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.DeltaCacheNumItems, err = NewIntStat(SubsystemDeltaSyncKey, "delta_cache_num_items", StatUnitNoUnits, DeltaCacheNumItemsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}

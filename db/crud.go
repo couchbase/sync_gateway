@@ -347,7 +347,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV
 	if revOrCV != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, RevCacheOmitDelta, base.IsRevTreeID(revOrCV))
+		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, base.IsRevTreeID(revOrCV))
 	} else {
 		// No rev given, so load active revision
 		revision, getErr = db.revisionCache.GetActive(ctx, docid)
@@ -426,7 +426,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	}
 
 	var initialFromRevision DocumentRevision
-	initialFromRevision, err = db.revisionCache.Get(ctx, docID, fromRev, RevCacheIncludeDelta, true)
+	initialFromRevision, err = db.revisionCache.GetWithDelta(ctx, docID, fromRev, toRev)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -460,7 +460,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// fromRevisionForDiff is a version of the fromRevision that is guarded by the delta lock that we will use to generate the delta (or check again for a newly cached delta)
 		var fromRevisionForDiff DocumentRevision
-		fromRevisionForDiff, err = db.revisionCache.Get(ctx, docID, fromRev, RevCacheIncludeDelta, true)
+		fromRevisionForDiff, err = db.revisionCache.GetWithDelta(ctx, docID, fromRev, toRev)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -483,7 +483,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// Need to generate delta and cache it for others.
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
 		var toRevision DocumentRevision
-		toRevision, err = db.revisionCache.Get(ctx, docID, toRev, RevCacheIncludeDelta, false)
+		toRevision, err = db.revisionCache.Get(ctx, docID, toRev, RevCacheDontLoadBackupRev)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -501,7 +501,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta.
 		if deleted {
 			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRev, toRevision, deleted, nil)
-			db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+			db.revisionCache.UpdateDelta(ctx, docID, fromRev, toRev, revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
 
@@ -541,7 +541,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		revCacheDelta := newRevCacheDelta(deltaBytes, fromRev, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning.
-		db.revisionCache.UpdateDelta(ctx, docID, fromRev, revCacheDelta)
+		db.revisionCache.UpdateDelta(ctx, docID, fromRev, toRev, revCacheDelta)
 		return &revCacheDelta, nil, nil
 	}
 

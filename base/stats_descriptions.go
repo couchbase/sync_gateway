@@ -353,6 +353,8 @@ const (
 
 	DeltaCacheMissDesc = "The total number of requested deltas that were not available in the revision cache."
 
+	DeltaCacheNumItemsDesc = "The total number of deltas stored in the delta cache."
+
 	DeltaPullReplicationCountDesc = "The number of delta replications that have been run."
 
 	DeltaPushDocCountDesc = "The total number of documents pushed as a delta from a previous revision."

@@ -594,11 +594,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Init the rev cache
-	dbContext.revisionCache = NewRevisionCache(
-		dbContext.Options.RevisionCacheOptions,
-		collectionIDToRevCacheBackingStore,
-		dbContext.DbStats.Cache(),
-	)
+	dbContext.revisionCache = NewRevisionCache(dbContext.Options.RevisionCacheOptions, collectionIDToRevCacheBackingStore, dbContext.DbStats.Cache(), dbContext.DbStats.DeltaSyncStats, options.DeltaSyncOptions.Enabled)
 
 	if syncFunctionsChanged {
 		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))

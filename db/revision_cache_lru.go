@@ -27,7 +27,7 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat *base.SgwIntStat) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, revCacheStats revisionCacheStats, deltaSyncStats *base.DeltaSyncStats, initDeltaCache bool) *ShardedLRURevisionCache {
 
 	caches := make([]*RevisionCacheOrchestrator, revCacheOptions.ShardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
@@ -40,8 +40,12 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 	}
 
 	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
-		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, cacheHitStat, cacheMissStat, cacheNumItemsStat, cacheMemoryStat)
-		caches[i] = NewRevisionCacheOrchestrator(cacheForShard)
+		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, revCacheStats)
+		var deltaCacheForShard *LRUDeltaCache
+		if initDeltaCache {
+			deltaCacheForShard = NewLRUDeltaCache(revCacheOptions, deltaSyncStats, backingStores)
+		}
+		caches[i] = NewRevisionCacheOrchestrator(cacheForShard, deltaCacheForShard)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -54,16 +58,16 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *RevisionCacheOrchestr
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).Get(ctx, docID, versionString, collectionID, includeDelta, loadBackup)
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(ctx, docID, versionString, collectionID, loadBackup)
 }
 
 func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
 	return sc.getShard(docID).Peek(ctx, docID, versionString, collectionID)
 }
 
-func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
-	sc.getShard(docID).UpdateDelta(ctx, docID, revID, collectionID, toDelta)
+func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32, toDelta RevisionDelta) {
+	sc.getShard(docID).UpdateDelta(ctx, docID, fromVersionString, toVersionString, collectionID, toDelta)
 }
 
 func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
@@ -80,6 +84,10 @@ func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRe
 
 func (sc *ShardedLRURevisionCache) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {
 	sc.getShard(docID).Remove(ctx, docID, versionString, collectionID)
+}
+
+func (sc *ShardedLRURevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
+	return sc.getShard(docID).GetWithDelta(ctx, docID, fromVersionString, toVersionString, collectionID)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
@@ -104,7 +112,6 @@ type revCacheValue struct {
 	channels     base.Set
 	expiry       *time.Time
 	attachments  AttachmentsMeta
-	delta        *RevisionDelta
 	id           string
 	itemKey      revCacheKey
 	cv           Version
@@ -121,17 +128,17 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, cacheHitStat *base.SgwIntStat, cacheMissStat *base.SgwIntStat, cacheNumItemsStat *base.SgwIntStat, revCacheMemoryStat *base.SgwIntStat) *LRURevisionCache {
+func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, revCacheStats revisionCacheStats) *LRURevisionCache {
 
 	return &LRURevisionCache{
 		cache:                map[revCacheKey]*list.Element{},
 		lruList:              list.New(),
 		capacity:             revCacheOptions.MaxItemCount,
 		backingStores:        backingStores,
-		cacheHits:            cacheHitStat,
-		cacheMisses:          cacheMissStat,
-		cacheNumItems:        cacheNumItemsStat,
-		cacheMemoryBytesStat: revCacheMemoryStat,
+		cacheHits:            revCacheStats.cacheHitStat,
+		cacheMisses:          revCacheStats.cacheMissStat,
+		cacheNumItems:        revCacheStats.cacheNumItemsStat,
+		cacheMemoryBytesStat: revCacheStats.cacheMemoryStat,
 		memoryCapacity:       revCacheOptions.MaxBytes,
 	}
 }
@@ -140,13 +147,13 @@ func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores ma
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error) {
 	value := rc.getValue(ctx, docID, versionString, collectionID, true)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
 
-	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], includeDelta, loadBackup)
+	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], loadBackup)
 	rc.statsRecorderFunc(cacheHit)
 
 	if !cacheHit && err == nil {
@@ -163,6 +170,11 @@ func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string
 	return docRev, err
 }
 
+func (rc *LRURevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
+	// no-op, here to complete interface
+	return DocumentRevision{}, nil
+}
+
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
 func (rc *LRURevisionCache) Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
@@ -177,19 +189,8 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID string, versionStrin
 	return docRev, docRev.BodyBytes != nil
 }
 
-// Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
-// fails silently
-func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
-	value := rc.getValue(ctx, docID, revID, collectionID, false)
-	if value != nil {
-		outGoingBytes := value.updateDelta(toDelta)
-		if outGoingBytes != 0 {
-			rc.currMemoryUsage.Add(outGoingBytes)
-			rc.cacheMemoryBytesStat.Add(outGoingBytes)
-		}
-		// check for memory based eviction
-		rc.revCacheMemoryBasedEviction(ctx)
-	}
+func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32, toDelta RevisionDelta) {
+	// no-op
 }
 
 // Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
@@ -408,7 +409,7 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeDelta bool, loadBackup bool) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, loadBackup bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	// Reading the delta from the revCacheValue requires holding the read lock, so it's managed outside asDocumentRevision,
 	// to reduce locking when includeDelta=false
@@ -418,9 +419,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	// Attempt to read cached value.
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
-		if includeDelta {
-			delta = value.delta
-		}
 		value.lock.RUnlock()
 
 		docRev, err = value.asDocumentRevision(delta)
@@ -462,10 +460,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 				value.hlvHistory = hlv.ToHistoryForHLV()
 			}
 		}
-	}
-
-	if includeDelta {
-		delta = value.delta
 	}
 
 	docRev, err = value.asDocumentRevision(delta)
@@ -574,22 +568,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.itemLoaded.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
-func (value *revCacheValue) updateDelta(toDelta RevisionDelta) (diffInBytes int64) {
-	value.lock.Lock()
-	defer value.lock.Unlock()
-	var previousDeltaBytes int64
-	if value.delta != nil {
-		// delta exists, need to pull this to update overall memory size correctly
-		previousDeltaBytes = value.delta.totalDeltaBytes
-	}
-	diffInBytes = toDelta.totalDeltaBytes - previousDeltaBytes
-	value.delta = &toDelta
-	if diffInBytes != 0 {
-		value.itemBytes.Add(diffInBytes)
-	}
-	return diffInBytes
-}
-
 // getItemBytes atomically retrieves the rev cache items overall memory footprint
 func (value *revCacheValue) getItemBytes() int64 {
 	return value.itemBytes.Load()
@@ -611,23 +589,6 @@ func (rev *DocumentRevision) CalculateBytes() {
 
 	// convert the int to int64 type and assign to document revision
 	rev.MemoryBytes = int64(totalBytes)
-}
-
-// CalculateDeltaBytes will calculate bytes from delta channels, delta revisions and delta body
-func (delta *RevisionDelta) CalculateDeltaBytes() {
-	var totalBytes int
-	for v := range delta.ToChannels {
-		bytes := len([]byte(v))
-		totalBytes += bytes
-	}
-	// history calculation
-	historyBytes := 32 * len(delta.RevisionHistory)
-	totalBytes += historyBytes
-
-	// account for delta body
-	totalBytes += len(delta.DeltaBytes)
-
-	delta.totalDeltaBytes = int64(totalBytes)
 }
 
 // revCacheMemoryBasedEviction checks for rev cache eviction, if required calls performEviction which will acquire lock to evict
