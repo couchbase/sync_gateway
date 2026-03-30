@@ -69,6 +69,19 @@ if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "cou
     exit 1
 fi
 
+description=(
+    "COUCHBASE_SERVER_VERSION: ${COUCHBASE_SERVER_VERSION}"
+    "DISABLE_REV_CACHE: ${DISABLE_REV_CACHE:-false}"
+    "GSI: ${GSI}"
+    "ROSMAR: ${RUN_WALRUS}"
+    "SG_EDITION: ${SG_EDITION}"
+    "TARGET_PACKAGE: ${TARGET_PACKAGE}"
+    "TARGET_TEST: ${TARGET_TEST}"
+)
+
+DESCRIPTION_SETTER_DESCRIPTION=$(printf "%s\n" "${description[@]}")
+export DESCRIPTION_SETTER_DESCRIPTION
+
 # Set environment vars
 GO_TEST_FLAGS=(-v -p 1 "-count=${RUN_COUNT:-1}")
 INT_LOG_FILE_NAME="verbose_int"
