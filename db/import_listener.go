@@ -108,6 +108,8 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		DestKey:           il.importDestKey,
 		IndexName:         indexName,
 		PreviousIndexName: base.GenerateLegacyImportIndexName(dbContext.Name),
+		Datastore:         dbContext.MetadataStore,
+		FeedType:          base.ShardedDCPFeedTypeImport,
 	}
 	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, opts)
 	return err
