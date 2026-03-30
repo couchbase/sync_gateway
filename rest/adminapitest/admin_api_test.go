@@ -3593,9 +3593,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.CBGTIndexTypeSyncGatewayImport))
+	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.CBGTIndexTypeSyncGatewayImport))
+	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.NoError(t, fetchDb2DestErr)
 }
 

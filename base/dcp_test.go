@@ -147,17 +147,17 @@ func TestCBGTIndexCreation(t *testing.T) {
 	}
 
 	shortDbName := "testDB"
-	shortDbImportIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayImport)
+	shortDbImportIndexName, err := GenerateCBGTIndexName(shortDbName, ShardedDCPFeedTypeImport)
 	require.NoError(t, err)
-	shortDBResyncIndexName, err := GenerateCBGTIndexName(shortDbName, CBGTIndexTypeSyncGatewayResync)
+	shortDBResyncIndexName, err := GenerateCBGTIndexName(shortDbName, ShardedDCPFeedTypeResync)
 	require.NoError(t, err)
 	longDbName := "testDB" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789" +
 		"01234567890123456789012345678901234567890123456789"
-	longDbImportIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayImport)
+	longDbImportIndexName, err := GenerateCBGTIndexName(longDbName, ShardedDCPFeedTypeImport)
 	require.NoError(t, err)
-	longDBResyncIndexName, err := GenerateCBGTIndexName(longDbName, CBGTIndexTypeSyncGatewayResync)
+	longDBResyncIndexName, err := GenerateCBGTIndexName(longDbName, ShardedDCPFeedTypeResync)
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		name                 string
@@ -165,7 +165,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 		existingLegacyIndex  bool
 		existingCurrentIndex bool
 		feedID               string
-		feedType             string
+		feedType             ShardedDCPFeedType
 		expectedIndexName    string
 	}{
 		{
@@ -174,7 +174,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
 			expectedIndexName:    shortDbImportIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayImport,
+			feedType:             ShardedDCPFeedTypeImport,
 		},
 		{
 			name:                 "nonUpgradeRestart-import",
@@ -182,7 +182,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
 			expectedIndexName:    shortDbImportIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayImport,
+			feedType:             ShardedDCPFeedTypeImport,
 		},
 		{
 			name:                 "nonUpgradeUnsafeName-import",
@@ -190,7 +190,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
 			expectedIndexName:    longDbImportIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayImport,
+			feedType:             ShardedDCPFeedTypeImport,
 		},
 		{
 			name:                 "nonUpgradeFirstRun-resync",
@@ -198,7 +198,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
 			expectedIndexName:    shortDBResyncIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayResync,
+			feedType:             ShardedDCPFeedTypeResync,
 		},
 		{
 			name:                 "nonUpgradeRestart-resync",
@@ -206,7 +206,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: true,
 			expectedIndexName:    shortDBResyncIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayResync,
+			feedType:             ShardedDCPFeedTypeResync,
 		},
 		{
 			name:                 "nonUpgradeUnsafeName-resync",
@@ -214,7 +214,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			existingLegacyIndex:  false,
 			existingCurrentIndex: false,
 			expectedIndexName:    longDBResyncIndexName,
-			feedType:             CBGTIndexTypeSyncGatewayResync,
+			feedType:             ShardedDCPFeedTypeResync,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -479,7 +479,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
 
-	for _, feedType := range []string{CBGTIndexTypeSyncGatewayImport, CBGTIndexTypeSyncGatewayResync} {
+	for _, feedType := range []ShardedDCPFeedType{ShardedDCPFeedTypeImport, ShardedDCPFeedTypeResync} {
 
 		// Use a bucket-backed cfg
 		cfg, err := NewCfgSG(ctx, dataStore, "")

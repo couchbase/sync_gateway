@@ -37,6 +37,13 @@ const (
 	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
 )
 
+type ShardedDCPFeedType string
+
+const (
+	ShardedDCPFeedTypeImport ShardedDCPFeedType = "import"
+	ShardedDCPFeedTypeResync ShardedDCPFeedType = "resync"
+)
+
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableBuildVersion{
 	epoch: 0,
@@ -176,14 +183,14 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 
 // GenerateCBGTIndexName creates an index name for cbgt using the database name suitable for the distributed DCP feed.
 // Given a dbName and feedType, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
-func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
+func GenerateCBGTIndexName(dbName string, feedType ShardedDCPFeedType) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
 	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
 	// existing values.
 	var indexName string
-	if feedType == CBGTIndexTypeSyncGatewayImport {
+	if feedType == ShardedDCPFeedTypeImport {
 		indexName = fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
-	} else if feedType == CBGTIndexTypeSyncGatewayResync {
+	} else if feedType == ShardedDCPFeedTypeResync {
 		indexName = fmt.Sprintf("db0x%x_resync_index", Crc32cHash([]byte(dbName)))
 	} else {
 		return "", fmt.Errorf("unknown index type %s", feedType)
@@ -537,7 +544,7 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func DestKey(dbName string, scope string, collections []string, feedType string) string {
+func DestKey(dbName string, scope string, collections []string, feedType ShardedDCPFeedType) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true
@@ -549,12 +556,11 @@ func DestKey(dbName string, scope string, collections []string, feedType string)
 	}
 	var destKey string
 	// format for _default._default
-	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == CBGTIndexTypeSyncGatewayImport {
+	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == ShardedDCPFeedTypeImport {
 		destKey = fmt.Sprintf("%s_import", dbName)
-	} else if feedType == CBGTIndexTypeSyncGatewayImport {
+	} else if feedType == ShardedDCPFeedTypeImport {
 		destKey = fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
-	} else {
-
+	} else if feedType == ShardedDCPFeedTypeResync {
 		destKey = fmt.Sprintf("%s_resync_%x", dbName, sha256.Sum256([]byte(collectionString)))
 	}
 	return destKey
