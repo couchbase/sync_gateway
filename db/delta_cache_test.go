@@ -130,6 +130,9 @@ func TestNumberBasedEvictionForDeltaCache(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("delta sync requires enterprise edition")
 	}
+	if base.TestDisableRevCache() {
+		t.Skip("test requires delta cache to be in use")
+	}
 	dbcOptions := DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
 			MaxItemCount: 5,

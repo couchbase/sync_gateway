@@ -791,7 +791,7 @@ type DeltaSyncStats struct {
 	DeltaCacheHit *SgwIntStat `json:"delta_cache_hit"`
 	// The total number of requested deltas that were not available in the revision cache.
 	DeltaCacheMiss *SgwIntStat `json:"delta_cache_miss"`
-	// DeltaCacheNumItems numer of items in delta cache
+	// DeltaCacheNumItems number of items in delta cache
 	DeltaCacheNumItems *SgwIntStat `json:"delta_cache_num_items"`
 	// The number of delta replications that have been run.
 	DeltaPullReplicationCount *SgwIntStat `json:"delta_pull_replication_count"`

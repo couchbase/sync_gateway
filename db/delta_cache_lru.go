@@ -67,6 +67,7 @@ func (dc *LRUDeltaCache) addDelta(ctx context.Context, docID, fromVersionString,
 	dc.lock.Lock()
 	defer dc.lock.Unlock()
 	if elem := dc.cache[key]; elem != nil {
+		dc.lruList.MoveToFront(elem)
 		return
 	}
 	value := &deltaCacheValue{delta: &toDelta, itemKey: key}

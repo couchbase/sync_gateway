@@ -171,7 +171,8 @@ func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string
 }
 
 func (rc *LRURevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
-	// no-op, here to complete interface
+	// GetWithDelta is not supported directly by LRURevisionCache;
+	// use RevisionCacheOrchestrator for delta support.
 	return DocumentRevision{}, nil
 }
 
