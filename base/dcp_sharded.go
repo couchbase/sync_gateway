@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -72,17 +73,19 @@ type CbgtContext struct {
 
 // ShardedDCPOptions contains options for starting a DCP feed for cbgt.
 type ShardedDCPOptions struct {
-	Bucket            Bucket          // bucket to target
-	Cfg               cbgt.Cfg        // cbgt cfg used to coordinate cbgt documents
-	Collections       CollectionNames // collection names to target
-	DBName            string          // database name is used to look up credentials
-	DestKey           string          // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
-	Heartbeater       Heartbeater     // heartbeater to use to find nodes
-	IndexName         string          // cbgt.Manger.IndexName, used to uniquely identify the index
-	IndexType         string          // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
-	NumPartitions     uint16          // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
-	PreviousIndexName string          // previous index name. If specified, marks IndexName as as a replacement for this name.
-	UUID              string          // database uuid, used to uniquely identify nodes
+	Bucket            Bucket             // bucket to target
+	Cfg               cbgt.Cfg           // cbgt cfg used to coordinate cbgt documents
+	Collections       CollectionNames    // collection names to target
+	DBName            string             // database name is used to look up credentials
+	DestKey           string             // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
+	Heartbeater       Heartbeater        // heartbeater to use to find nodes
+	IndexName         string             // cbgt.Manger.IndexName, used to uniquely identify the index
+	IndexType         string             // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
+	NumPartitions     uint16             // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
+	PreviousIndexName string             // previous index name. If specified, marks IndexName as as a replacement for this name.
+	UUID              string             // database uuid, used to uniquely identify nodes
+	Datastore         DataStore          // datastore to perform KV ops
+	FeedType          ShardedDCPFeedType // type of sharded DCP feed to start
 }
 
 // Validate makes sure that all options are specified.
@@ -110,6 +113,12 @@ func (opts ShardedDCPOptions) Validate() error {
 	}
 	if opts.DestKey == "" {
 		return fmt.Errorf("destKey must be provided to start sharded DCP feed")
+	}
+	if opts.Datastore == nil {
+		return fmt.Errorf("datastore must be provided to start sharded DCP feed")
+	}
+	if opts.FeedType != ShardedDCPFeedTypeImport && opts.FeedType != ShardedDCPFeedTypeResync {
+		return fmt.Errorf("unknown feed type %s", opts.FeedType)
 	}
 	if len(opts.Collections) == 0 {
 		return fmt.Errorf("at least one collection must be specified to start a sharded DCP feed")
@@ -170,7 +179,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 
 	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext)
+	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext, opts.Datastore, opts.FeedType)
 	if err != nil {
 		return nil, err
 	}
@@ -566,14 +575,14 @@ func DestKey(dbName string, scope string, collections []string, feedType Sharded
 	return destKey
 }
 
-func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartbeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext, datastore DataStore, feedType ShardedDCPFeedType) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
 		return nil, errors.New("Unable to register heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
 	// Register listener for shardedDCP, uses cfg and manager to manage set of participating nodes
-	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext)
+	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext, datastore, feedType)
 	if err != nil {
 		return nil, err
 	}
@@ -586,6 +595,69 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 	return shardedDCPHeartbeatListener, nil
 }
 
+type cfgNodePoller struct {
+	nodeDefsKnownKey  string
+	nodeDefsWantedKey string
+	nodeDefsKnownCAS  uint64 // to store the last known cas of nodeDefsKnown
+	nodeDefsWantedCAS uint64 // to store the last known cas of nodeDefsWanted
+	datastore         DataStore
+	cfg               *CfgSG
+}
+
+func newCfgNodePoller(datastore DataStore, cfg cbgt.Cfg) (*cfgNodePoller, error) {
+
+	nodeDefsKnownKey := cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN)
+	_, nodeDefsKnownCas, err := datastore.GetRaw(nodeDefsKnownKey)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeDefsWantedKey := cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED)
+	_, nodeDefsWantedCas, err := datastore.GetRaw(nodeDefsWantedKey)
+	if err != nil {
+		return nil, err
+	}
+
+	cfgSG, ok := cfg.(*CfgSG)
+	if !ok {
+		return nil, errors.New("cfg is not a CfgSG")
+	}
+
+	return &cfgNodePoller{
+		nodeDefsKnownKey:  nodeDefsKnownKey,
+		nodeDefsWantedKey: nodeDefsWantedKey,
+		nodeDefsKnownCAS:  nodeDefsKnownCas,
+		nodeDefsWantedCAS: nodeDefsWantedCas,
+		datastore:         datastore,
+		cfg:               cfgSG,
+	}, nil
+
+}
+
+func (p *cfgNodePoller) Poll() error {
+
+	_, nodeDefsKnownCas, err := p.datastore.GetRaw(p.nodeDefsKnownKey)
+	if err != nil {
+		return err
+	}
+
+	_, nodeDefsWantedCas, err := p.datastore.GetRaw(p.nodeDefsWantedKey)
+	if err != nil {
+		return err
+	}
+	if nodeDefsKnownCas != p.nodeDefsKnownCAS {
+		p.nodeDefsKnownCAS = nodeDefsKnownCas
+		p.cfg.FireEvent(p.nodeDefsKnownKey, nodeDefsKnownCas, nil)
+		return nil
+	}
+	if nodeDefsWantedCas != p.nodeDefsWantedCAS {
+		p.nodeDefsWantedCAS = nodeDefsWantedCas
+		p.cfg.FireEvent(p.nodeDefsWantedKey, nodeDefsWantedCas, nil)
+		return nil
+	}
+	return nil
+}
+
 // shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
 type shardedDCPHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for shardedDCP
@@ -594,9 +666,12 @@ type shardedDCPHeartbeatListener struct {
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
+	datastore  DataStore
+	feedType   ShardedDCPFeedType
+	poller     *cfgNodePoller
 }
 
-func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartbeatListener, error) {
+func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext, dataStore DataStore, feedType ShardedDCPFeedType) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtCtx == nil {
 		return nil, errors.New("cbgt ctx must not be nil for shardedDCPHeartbeatListener")
@@ -607,6 +682,8 @@ func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (
 		mgr:        cbgtCtx.Manager,
 		cfg:        cbgtCtx.Cfg,
 		terminator: make(chan struct{}),
+		datastore:  dataStore,
+		feedType:   feedType,
 	}
 
 	// Initialize the node set
@@ -620,6 +697,16 @@ func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (
 	if err != nil {
 		return nil, err
 	}
+
+	if feedType == ShardedDCPFeedTypeResync {
+		poller, err := newCfgNodePoller(dataStore, cbgtCtx.Cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize poller for resync node: %w", err)
+		}
+		listener.poller = poller
+	}
+
+	listener.StartPolling(ctx)
 
 	return listener, nil
 }
@@ -714,6 +801,28 @@ func (l *shardedDCPHeartbeatListener) GetNodes() ([]string, error) {
 
 func (l *shardedDCPHeartbeatListener) Stop() {
 	close(l.terminator)
+}
+
+func (l *shardedDCPHeartbeatListener) StartPolling(ctx context.Context) {
+	if l.feedType == ShardedDCPFeedTypeImport {
+		return
+	}
+	ticker := time.NewTicker(defaultHeartbeatPollInterval)
+	go func() {
+		defer FatalPanicHandler()
+		for {
+			select {
+			case <-l.terminator:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				err := l.poller.Poll()
+				if err != nil {
+					WarnfCtx(ctx, "Error polling sharded dcp heartbeat: %v", err)
+				}
+			}
+		}
+	}()
 }
 
 // cbgtDestFactories map DCP feed keys (destKey) to a function that will generate cbgt.Dest.  Need to be stored in a
