@@ -202,7 +202,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 			prevCacheMissCount := cacheMissCounter.Value()
 			for i := range 3 {
 				docID := strconv.Itoa(i)
-				docRev, ok := cache.Peek(ctx, docID, revOrCV, 0)
+				docRev, ok := cache.Peek(ctx, docID, revOrCV, testCollectionID)
 				assert.False(t, ok)
 				assert.Nil(t, docRev.BodyBytes)
 				assert.Equal(t, prevCacheMissCount, cacheMissCounter.Value()) // peek incurs no cache miss if not found
@@ -288,7 +288,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 			require.NoError(t, err)
 			expValue += int64(docSize)
 			// assert doc 0 been evicted
-			docRev, ok := db.revisionCache.Peek(ctx, "0", versionKey(versions[0], rev), 0)
+			docRev, ok := db.revisionCache.Peek(ctx, "0", versionKey(versions[0], rev), collection.GetCollectionID())
 			assert.False(t, ok)
 			assert.Nil(t, docRev.BodyBytes)
 
@@ -298,7 +298,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 
 			// remove doc "1" to give headroom for memory based eviction
 			db.revisionCache.Remove(ctx, "1", versionKey(versions[1], rev), collection.GetCollectionID())
-			docRev, ok = db.revisionCache.Peek(ctx, "1", versionKey(versions[1], rev), 0)
+			docRev, ok = db.revisionCache.Peek(ctx, "1", versionKey(versions[1], rev), collection.GetCollectionID())
 			assert.False(t, ok)
 			assert.Nil(t, docRev.BodyBytes)
 
@@ -325,7 +325,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 
 			// assert doc "2" has been evicted even though we only have 9 items in cache with capacity of 10, so memory based
 			// eviction took place
-			docRev, ok = db.revisionCache.Peek(ctx, "2", versionKey(versions[2], rev), 0)
+			docRev, ok = db.revisionCache.Peek(ctx, "2", versionKey(versions[2], rev), collection.GetCollectionID())
 			assert.False(t, ok)
 			assert.Nil(t, docRev.BodyBytes)
 
@@ -606,7 +606,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	backingStoreMap := CreateTestSingleBackingStoreMap(collection, testCollectionID)
+	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
 
 	docBody := Body{
 		"value": 1234,
@@ -624,38 +624,38 @@ func TestBypassRevisionCache(t *testing.T) {
 	rc := NewBypassRevisionCache(backingStoreMap, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
-	_, ok := rc.Peek(ctx, key, rev1, 0)
+	_, ok := rc.Peek(ctx, key, rev1, collection.GetCollectionID())
 	assert.False(t, ok)
-	_, ok = rc.Peek(ctx, key, rev2, 0)
+	_, ok = rc.Peek(ctx, key, rev2, collection.GetCollectionID())
 	assert.False(t, ok)
 
 	// Get non-existing doc
-	_, err = rc.Get(base.TestCtx(t), "invalid", rev1, testCollectionID, false)
+	_, err = rc.Get(base.TestCtx(t), "invalid", rev1, collection.GetCollectionID(), RevCacheDontLoadBackupRev)
 	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
-	_, err = rc.Get(base.TestCtx(t), key, "3-abc", testCollectionID, false)
+	_, err = rc.Get(base.TestCtx(t), key, "3-abc", collection.GetCollectionID(), RevCacheDontLoadBackupRev)
 	assertHTTPError(t, err, 404)
 
 	// Get specific revision
-	doc, err := rc.Get(base.TestCtx(t), key, rev1, testCollectionID, false)
+	doc, err := rc.Get(base.TestCtx(t), key, rev1, collection.GetCollectionID(), RevCacheDontLoadBackupRev)
 	assert.NoError(t, err)
 	require.NotNil(t, doc)
 	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
 
 	// Check peek is still returning false for "Get"
-	_, ok = rc.Peek(ctx, key, rev1, 0)
+	_, ok = rc.Peek(ctx, key, rev1, collection.GetCollectionID())
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(ctx, doc, testCollectionID)
+	rc.Put(ctx, doc, collection.GetCollectionID())
 
 	// Check peek is still returning false for "Put"
-	_, ok = rc.Peek(ctx, key, rev1, 0)
+	_, ok = rc.Peek(ctx, key, rev1, collection.GetCollectionID())
 	assert.False(t, ok)
 
 	// Get active revision
-	doc, err = rc.GetActive(ctx, key, testCollectionID)
+	doc, err = rc.GetActive(ctx, key, collection.GetCollectionID())
 	assert.NoError(t, err)
 	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes))
 
@@ -1240,7 +1240,7 @@ func TestBasicOperationsOnCacheWithMemoryStat(t *testing.T) {
 			prevMemStat := cacheStats.RevisionCacheTotalMemory.Value()
 			revDoc2 := createThenRemoveFromRevCache(t, ctx, "doc2", db, collection)
 			// load from doc from bucket
-			docRev, err = db.revisionCache.Get(ctx, "doc2", versionKey(&revDoc2.CV, docRev.RevID), collectionID, RevCacheDontLoadBackupRev)
+			docRev, err = db.revisionCache.Get(ctx, "doc2", versionKey(&revDoc2.CV, revDoc2.RevTreeID), collectionID, RevCacheDontLoadBackupRev)
 			require.NoError(t, err)
 			assert.NotNil(t, docRev.BodyBytes)
 			assert.Equal(t, "doc2", docRev.DocID)
