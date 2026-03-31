@@ -284,7 +284,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 			expValue -= revZeroSize // for doc being evicted
 			docSize, rev, docVersion := createDocAndReturnSizeAndRev(t, ctx, "11", collection, smallBody, testCase.useCVKey)
 			// load into cache
-			_, err := db.revisionCache.Get(ctx, "11", key(docVersion, rev), collection.GetCollectionID(), RevCacheDontLoadBackupRev)
+			_, err := db.revisionCache.Get(ctx, "11", versionKey(docVersion, rev), collection.GetCollectionID(), RevCacheDontLoadBackupRev)
 			require.NoError(t, err)
 			expValue += int64(docSize)
 			// assert doc 0 been evicted
