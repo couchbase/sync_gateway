@@ -2080,6 +2080,7 @@ func (d *DbStats) unregisterDeltaSyncStats() {
 	prometheus.Unregister(d.DeltaSyncStats.DeltaCacheHit)
 	prometheus.Unregister(d.DeltaSyncStats.DeltaCacheMiss)
 	prometheus.Unregister(d.DeltaSyncStats.DeltaPushDocCount)
+	prometheus.Unregister(d.DeltaSyncStats.DeltaCacheNumItems)
 }
 
 func (d *DbStats) DeltaSync() *DeltaSyncStats {
