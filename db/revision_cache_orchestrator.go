@@ -15,18 +15,19 @@ import "context"
 // RevisionCacheOrchestrator orchestrates between the revisionCache and a deltaCache.
 type RevisionCacheOrchestrator struct {
 	revisionCache *LRURevisionCache
-	// delta cache to be implemented: CBG-5234
+	deltaCache    *LRUDeltaCache
 }
 
 // NewRevisionCacheOrchestrator creates a new RevisionCacheOrchestrator.
-func NewRevisionCacheOrchestrator(revisionCache *LRURevisionCache) *RevisionCacheOrchestrator {
+func NewRevisionCacheOrchestrator(revisionCache *LRURevisionCache, deltaCache *LRUDeltaCache) *RevisionCacheOrchestrator {
 	return &RevisionCacheOrchestrator{
 		revisionCache: revisionCache,
+		deltaCache:    deltaCache,
 	}
 }
 
-func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, includeDelta, loadBackup bool) (DocumentRevision, error) {
-	return c.revisionCache.Get(ctx, docID, versionString, collectionID, includeDelta, loadBackup)
+func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error) {
+	return c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
 }
 
 func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
@@ -49,6 +50,21 @@ func (c *RevisionCacheOrchestrator) Remove(ctx context.Context, docID, versionSt
 	c.revisionCache.Remove(ctx, docID, versionString, collectionID)
 }
 
-func (c *RevisionCacheOrchestrator) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
-	c.revisionCache.UpdateDelta(ctx, docID, revID, collectionID, toDelta)
+func (c *RevisionCacheOrchestrator) UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32, toDelta RevisionDelta) {
+	if c.deltaCache == nil {
+		return
+	}
+	c.deltaCache.addDelta(ctx, docID, fromVersionString, toVersionString, collectionID, toDelta)
+}
+
+func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
+	docRev, err := c.revisionCache.Get(ctx, docID, fromVersionString, collectionID, RevCacheLoadBackupRev)
+	if err != nil {
+		return docRev, err
+	}
+	if c.deltaCache != nil {
+		cachedDelta := c.deltaCache.getCachedDelta(ctx, docID, fromVersionString, toVersionString, collectionID)
+		docRev.Delta = cachedDelta
+	}
+	return docRev, nil
 }

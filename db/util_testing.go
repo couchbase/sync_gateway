@@ -510,11 +510,7 @@ func (db *DatabaseContext) FlushRevisionCacheForTest() {
 		backingStores[i] = v
 	}
 
-	db.revisionCache = NewRevisionCache(
-		db.Options.RevisionCacheOptions,
-		backingStores,
-		db.DbStats.Cache(),
-	)
+	db.revisionCache = NewRevisionCache(db.Options.RevisionCacheOptions, backingStores, db.DbStats.Cache(), db.DbStats.DeltaSync(), db.DeltaSyncEnabled())
 
 }
 
