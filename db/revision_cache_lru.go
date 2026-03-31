@@ -13,6 +13,7 @@ package db
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -173,7 +174,7 @@ func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string
 func (rc *LRURevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
 	// GetWithDelta is not supported directly by LRURevisionCache;
 	// use RevisionCacheOrchestrator for delta support.
-	return DocumentRevision{}, nil
+	return DocumentRevision{}, errors.New("delta retrieval not supported via LRURevisionCache, use RevisionCacheOrchestrator")
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not

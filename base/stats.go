@@ -2060,7 +2060,7 @@ func (d *DbStats) InitDeltaSyncStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.DeltaCacheNumItems, err = NewIntStat(SubsystemDeltaSyncKey, "delta_cache_num_items", StatUnitNoUnits, DeltaCacheNumItemsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.DeltaCacheNumItems, err = NewIntStat(SubsystemDeltaSyncKey, "delta_cache_num_items", StatUnitNoUnits, DeltaCacheNumItemsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}

@@ -25,7 +25,7 @@ type LRUDeltaCache struct {
 	cacheHits      *base.SgwIntStat
 	cacheMisses    *base.SgwIntStat
 	cacheNumDeltas *base.SgwIntStat
-	lock           sync.RWMutex
+	lock           sync.Mutex
 	capacity       uint32 // Max number of items capacity of LRUDeltaCache
 }
 
@@ -104,8 +104,8 @@ func (dc *LRUDeltaCache) getCachedDelta(ctx context.Context, docID, fromVersionS
 		return nil
 	}
 	key := createDeltaCacheKey(docID, fromVersionString, toVersionString, collectionID)
-	dc.lock.RLock()
-	defer dc.lock.RUnlock()
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
 	var deltaValue *RevisionDelta
 	if elem := dc.cache[key]; elem != nil {
 		dc.lruList.MoveToFront(elem)
