@@ -703,22 +703,22 @@ func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, ra
 // IsSGWriteXattrOnly determines if a document was written by Sync Gateway using only xattr data (no body).
 // Returns isSGWrite=true if the write is definitively from SG, ambiguous=true if the body CRC is needed to decide.
 func (s *SyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete bool, rawUserXattr []byte, cv cvExtractor) (isSGWrite bool, ambiguous bool) {
-	// 1. CAS match — most common SG write path
+	// 1. CAS match - most common SG write path
 	if cas == s.GetSyncCas() {
 		return true, false
 	}
 
-	// 2. Deletion with non-SG CRC — SG deletions always store DeleteCrc32c
+	// 2. Deletion with non-SG CRC - SG deletions always store DeleteCrc32c
 	if isDelete && s.Crc32c != base.DeleteCrc32c {
 		return false, false
 	}
 
-	// 3. User xattr changed — SDK write
+	// 3. User xattr changed - SDK write
 	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
 		return false, false
 	}
 
-	// 4. CV mismatch — SDK write
+	// 4. CV mismatch - SDK write
 	if s.RevAndVersion.CurrentVersion != "" || s.RevAndVersion.CurrentSource != "" {
 		extractedCV, err := cv.ExtractCV()
 		if !errors.Is(err, base.ErrNotFound) {
@@ -732,12 +732,12 @@ func (s *SyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete 
 		}
 	}
 
-	// 5. Deletion with matching SG CRC — all other checks passed, definitive SG write
+	// 5. Deletion with matching SG CRC - all other checks passed, definitive SG write
 	if isDelete && s.Crc32c == base.DeleteCrc32c {
 		return true, false
 	}
 
-	// 6. Non-deleted doc with CAS mismatch but xattr+CV match — body CRC is the only remaining differentiator
+	// 6. Non-deleted doc with CAS mismatch but xattr+CV match - body CRC is the only remaining differentiator
 	return false, true
 }
 

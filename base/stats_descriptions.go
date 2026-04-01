@@ -150,6 +150,8 @@ const (
 
 	ViewQueriesDesc = "The total view_queries."
 
+	IsSGWriteKVFetchCountDesc = "The total number of ambiguous IsSGWrite checks on the caching DCP feed that required a KV body fetch to resolve."
+
 	NonMobileIgnoredCountDesc = "Number of non mobile documents that were ignored off the cache feed."
 )
 

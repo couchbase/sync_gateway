@@ -329,7 +329,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return // no-op unknown doc type
 	case DocTypeUser, DocTypeRole:
 		if docBody, err := c.fetchMetadataDocBody(ctx, docID, event.Cas); err != nil {
-			if !base.IsDocNotFoundError(err) && !base.IsCasMismatch(err) {
+			if base.IsDocNotFoundError(err) || base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyCache, "Skipping now changed principal doc %q feed event - a newer mutation will be processed", base.UD(docID))
+			} else {
 				base.WarnfCtx(ctx, "Error fetching body for principal doc %q: %v - will not be processed", base.UD(docID), err)
 			}
 		} else {
@@ -400,27 +402,26 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		rawVV = base.Ptr(rawHLV(vv))
 	}
 	isDelete := event.Opcode == sgbucket.FeedOpDeletion
-	isSGWrite, ambiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV)
 
-	if ambiguous {
-		// Body CRC is the only remaining check — fetch from data store
+	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV); isSGWriteAmbiguous {
+		// CRC is the only remaining check, but we need to fetch the doc body now
+		c.db.DbStats.Cache().IsSGWriteKVFetchCount.Add(1)
 		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(docID)
 		if err != nil {
-			// Can't fetch body — drop this event. A subsequent mutation
+			// Can't fetch body - drop this event. A subsequent mutation
 			// will arrive on the feed if the doc is updated again.
 			base.DebugfCtx(ctx, base.KeyCache, "Unable to fetch doc body for IsSGWrite on %q, dropping: %v", base.UD(docID), err)
 			return
 		} else if cas != event.Cas {
-			// Doc mutated since DCP event — drop this stale event,
+			// Doc mutated since DCP event - drop this stale event,
 			// the newer mutation will arrive on the feed.
 			base.DebugfCtx(ctx, base.KeyCache, "CAS mismatch on body fetch for IsSGWrite on %q (event=%d, current=%d), dropping stale event", base.UD(docID), event.Cas, cas)
 			return
-		} else {
-			isSGWrite = base.Crc32cHashString(docBody) == syncData.Crc32c
 		}
-	}
-
-	if !isSGWrite {
+		if base.Crc32cHashString(docBody) != syncData.Crc32c {
+			return
+		}
+	} else if !isSGWrite {
 		return
 	}
 

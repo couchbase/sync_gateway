@@ -477,6 +477,8 @@ type CacheStats struct {
 	// The highest contiguous sequence number that has been cached.
 	HighSeqStable         *SgwUint64Stat `json:"high_seq_stable"`
 	NonMobileIgnoredCount *SgwIntStat    `json:"non_mobile_ignored_count"`
+	// The total number of ambiguous IsSGWrite checks on the caching DCP feed that required a KV body fetch to resolve.
+	IsSGWriteKVFetchCount *SgwIntStat `json:"issgwrite_kv_fetch_count"`
 	// The total number of active channels.
 	NumActiveChannels *SgwIntStat `json:"num_active_channels"`
 	// The total number of skipped sequences. This is a cumulative value.
@@ -1471,6 +1473,10 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.IsSGWriteKVFetchCount, err = NewIntStat(SubsystemCacheKey, "issgwrite_kv_fetch_count", StatUnitNoUnits, IsSGWriteKVFetchCountDesc, StatAddedVersion4dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.NonMobileIgnoredCount, err = NewIntStat(SubsystemCacheKey, "non_mobile_ignored_count", StatUnitNoUnits, NonMobileIgnoredCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1550,6 +1556,7 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.ChannelCacheRevsTombstone)
 	prometheus.Unregister(d.CacheStats.HighSeqCached)
 	prometheus.Unregister(d.CacheStats.HighSeqStable)
+	prometheus.Unregister(d.CacheStats.IsSGWriteKVFetchCount)
 	prometheus.Unregister(d.CacheStats.NonMobileIgnoredCount)
 	prometheus.Unregister(d.CacheStats.NumActiveChannels)
 	prometheus.Unregister(d.CacheStats.NumSkippedSeqs)
