@@ -800,16 +800,16 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 
 					// writeTestDocs writes the three document types we want to verify
 					writeTestDocs := func() {
-						// Body-only JSON doc via WriteCas (Insert, cas=0) — same path as auth.Save() for _sync:user:*
+						// Body-only JSON doc via WriteCas (Insert, cas=0) - same path as auth.Save() for _sync:user:*
 						body := map[string]any{"type": "user", "name": "testuser", "channels": []string{"a", "b"}}
 						_, err := dataStore.WriteCas(bodyOnlyKey, 0, 0, body, 0)
 						require.NoError(t, err)
 
-						// Xattr+body doc — same as application documents
+						// Xattr+body doc - same as application documents
 						_, err = dataStore.WriteWithXattrs(ctx, xattrKey, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{"_sync": []byte(`{"rev":"1-abc"}`)}, nil, nil)
 						require.NoError(t, err)
 
-						// Counter doc via Incr — same path as _sync:seq
+						// Counter doc via Incr - same path as _sync:seq
 						_, err = dataStore.Incr(counterKey, 1, 0, 0)
 						require.NoError(t, err)
 					}
