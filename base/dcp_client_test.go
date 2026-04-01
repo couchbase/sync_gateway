@@ -753,8 +753,8 @@ func TestDCPFeedEventTypes(t *testing.T) {
 }
 
 // TestDCPFeedContentBodyOnlyDocs verifies that body-only documents (no xattrs) are delivered
-// by Couchbase Server on DCP feeds using different FeedContent modes. This specifically targets
-// the NoValueWithUnderlyingDatatype (0x40) DCP open flag used by FeedContentXattrOnly, which
+// on DCP feeds using different FeedContent modes. This specifically targets the
+// NoValueWithUnderlyingDatatype (0x40) DCP open flag used by FeedContentXattrOnly, which
 // is suspected of causing CBS to silently drop mutations for body-only documents (CBG-4640).
 //
 // The test writes three document types that mirror production Sync Gateway usage:
@@ -762,11 +762,9 @@ func TestDCPFeedEventTypes(t *testing.T) {
 //   - Xattr+body doc (like application documents)
 //   - Counter doc (like _sync:seq written via Incr)
 //
-// Both backfill (one-shot, docs written before feed starts) and live streaming (continuous,
+// Both backfill (docs written before feed starts) and live streaming (continuous,
 // docs written after feed starts) scenarios are tested.
 func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
-	TestRequiresGocbDCPClient(t)
-
 	ctx := TestCtx(t)
 
 	feedContentModes := []struct {
@@ -789,10 +787,6 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					defer bucket.Close(ctx)
 
 					dataStore := bucket.GetSingleDataStore()
-					collectionIDs := getCollectionIDs(t, bucket)
-
-					gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
-					require.NoError(t, err)
 
 					bodyOnlyKey := t.Name() + "_bodyOnly"
 					xattrKey := t.Name() + "_xattr"
@@ -856,20 +850,38 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 						return true
 					}
 
-					clientOptions := DCPClientOptions{
-						OneShot:          !live,
-						CollectionIDs:    collectionIDs,
+					// Build FeedArguments for StartDCPFeed (works on both Rosmar and CBS)
+					var backfill uint64
+					if live {
+						backfill = sgbucket.FeedNoBackfill
+					}
+					var scopes map[string][]string
+					if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+						scopes = map[string][]string{
+							dataStore.ScopeName(): {dataStore.CollectionName()},
+						}
+					}
+					terminator := make(chan bool)
+					doneChan := make(chan struct{})
+					feedArgs := sgbucket.FeedArguments{
+						ID:               t.Name(),
+						Backfill:         backfill,
+						Terminator:       terminator,
+						DoneChan:         doneChan,
 						CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+						Scopes:           scopes,
 						FeedContent:      mode.feedContent,
 					}
-
-					dcpClient, err := NewDCPClient(ctx, callback, clientOptions, gocbv2Bucket)
+					err := bucket.StartDCPFeed(ctx, feedArgs, callback, nil)
 					require.NoError(t, err)
-
-					_, startErr := dcpClient.Start()
-					require.NoError(t, startErr)
 					defer func() {
-						_ = dcpClient.Close()
+						close(terminator)
+						// DoneChan is closed (not sent to) when the feed exits, so wait directly
+						select {
+						case <-doneChan:
+						case <-time.After(TestChanTimeout):
+							require.FailNow(t, "timed out waiting for DCP feed to close")
+						}
 					}()
 
 					if live {
