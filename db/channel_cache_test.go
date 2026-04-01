@@ -598,3 +598,58 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	assert.Equal(t, "CleanAgedItems", backgroundTaskError.TaskName)
 	assert.Equal(t, options.ChannelCacheAge, backgroundTaskError.Interval)
 }
+
+func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.ChannelCacheMaxLength = 2
+	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+
+	const (
+		activeChannel   = "active"
+		inactiveChannel = "inactive"
+		doc1            = "doc1"
+		doc2            = "doc2"
+		doc3            = "doc3"
+	)
+
+	// doc1 rev1: channel active
+	// doc1 rev2: channel inactive
+	// doc2 rev1: channel active
+	// doc2 rev2: channel inactive
+	// doc3 rev1: channel active
+	revID, _, err := collection.Put(ctx, doc1, Body{"channels": activeChannel})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, doc1, Body{"channel": inactiveChannel, "_rev": revID})
+	require.NoError(t, err)
+	revID, _, err = collection.Put(ctx, doc2, Body{"channels": activeChannel})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, doc2, Body{"channel": inactiveChannel, "_rev": revID})
+	require.NoError(t, err)
+
+	_, _, err = collection.Put(ctx, doc3, Body{"channels": activeChannel})
+	require.NoError(t, err)
+
+	db.WaitForPendingChanges(t)
+
+	// prime channel cache, doc2 and doc3 should be in cache
+	changesOptions := ChangesOptions{
+		Since:      SequenceID{Seq: 0},
+		ActiveOnly: false,
+		ChangesCtx: base.TestCtx(t),
+	}
+	require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 3)
+
+	// whether limit or no limit, should only be 1 active entry
+	changesOptions = ChangesOptions{
+		Since:      SequenceID{Seq: 0},
+		ActiveOnly: true,
+		ChangesCtx: base.TestCtx(t),
+		Limit:      1,
+	}
+	require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 1)
+}
