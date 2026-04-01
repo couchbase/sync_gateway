@@ -406,9 +406,7 @@ func TestBackingStoreMemoryCalculation(t *testing.T) {
 				cacheNumItemsStat: &cacheNumItems,
 				cacheMemoryStat:   &memoryBytesCounted,
 			}
-			mc := newCacheMemoryController(cacheOptions.MaxBytes, revCacheStats.cacheMemoryStat)
-			lruCache := NewLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, mc)
-			cache := NewRevisionCacheOrchestrator(lruCache, nil, mc)
+			cache := NewRevisionCacheOrchestrator(cacheOptions, backingStoreMap, revCacheStats, nil, false)
 			ctx := base.TestCtx(t)
 			var err error
 
@@ -839,10 +837,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 		DeltaCacheHit:      &deltaCacheHit,
 		DeltaCacheNumItems: &deltaCacheCount,
 	}
-	mc := newCacheMemoryController(cacheOptions.MaxBytes, &memoryBytesCounted)
-	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, mc)
-	deltaCache := NewLRUDeltaCache(cacheOptions, deltaStats, mc)
-	orchestrator := NewRevisionCacheOrchestrator(cache, deltaCache, mc)
+	orchestrator := NewRevisionCacheOrchestrator(cacheOptions, backingStoreMap, revCacheStats, deltaStats, true)
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
@@ -990,8 +985,8 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 			}
 			ctx := base.TestCtx(t)
 			var err error
-			lruCache := NewLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, newCacheMemoryController(cacheOptions.MaxBytes, revCacheStats.cacheMemoryStat))
-			cache := NewRevisionCacheOrchestrator(lruCache, nil, lruCache.memoryController)
+			cache := NewRevisionCacheOrchestrator(cacheOptions, backingStoreMap, revCacheStats, nil, false)
+
 			cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
 
 			assert.Equal(t, int64(0), memoryBytesCounted.Value())
