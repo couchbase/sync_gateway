@@ -40,13 +40,7 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 		revCacheOptions.MaxBytes = int64(perCacheMemoryCapacity)
 	}
 	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
-		memoryController := newCacheMemoryController(revCacheOptions.MaxBytes, revCacheStats.cacheMemoryStat)
-		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, revCacheStats, memoryController)
-		var deltaCacheForShard *LRUDeltaCache
-		if initDeltaCache {
-			deltaCacheForShard = NewLRUDeltaCache(revCacheOptions, deltaSyncStats, memoryController)
-		}
-		caches[i] = NewRevisionCacheOrchestrator(cacheForShard, deltaCacheForShard, memoryController)
+		caches[i] = NewRevisionCacheOrchestrator(revCacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 	}
 
 	return &ShardedLRURevisionCache{

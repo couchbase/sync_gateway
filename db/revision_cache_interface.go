@@ -106,13 +106,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	if cacheOptions.ShardCount > 1 {
 		return NewShardedLRURevisionCache(cacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 	}
-
-	var deltaCache *LRUDeltaCache
-	memoryController := newCacheMemoryController(cacheOptions.MaxBytes, revCacheStats.cacheMemoryStat)
-	if initDeltaCache {
-		deltaCache = NewLRUDeltaCache(cacheOptions, deltaSyncStats, memoryController)
-	}
-	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, revCacheStats, memoryController), deltaCache, memoryController)
+	return NewRevisionCacheOrchestrator(cacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 }
 
 type RevisionCacheOptions struct {
