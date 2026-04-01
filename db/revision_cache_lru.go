@@ -39,14 +39,14 @@ func NewShardedLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingSt
 		perCacheMemoryCapacity = float32(revCacheOptions.MaxBytes) / float32(revCacheOptions.ShardCount)
 		revCacheOptions.MaxBytes = int64(perCacheMemoryCapacity)
 	}
-
 	for i := 0; i < int(revCacheOptions.ShardCount); i++ {
-		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, revCacheStats)
+		memoryController := newCacheMemoryController(revCacheOptions.MaxBytes, revCacheStats.cacheMemoryStat)
+		cacheForShard := NewLRURevisionCache(revCacheOptions, backingStores, revCacheStats, memoryController)
 		var deltaCacheForShard *LRUDeltaCache
 		if initDeltaCache {
-			deltaCacheForShard = NewLRUDeltaCache(revCacheOptions, deltaSyncStats, backingStores)
+			deltaCacheForShard = NewLRUDeltaCache(revCacheOptions, deltaSyncStats, memoryController)
 		}
-		caches[i] = NewRevisionCacheOrchestrator(cacheForShard, deltaCacheForShard)
+		caches[i] = NewRevisionCacheOrchestrator(cacheForShard, deltaCacheForShard, memoryController)
 	}
 
 	return &ShardedLRURevisionCache{
@@ -59,7 +59,7 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *RevisionCacheOrchestr
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, err error) {
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, b bool, err error) {
 	return sc.getShard(docID).Get(ctx, docID, versionString, collectionID, loadBackup)
 }
 
@@ -71,7 +71,7 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, fromV
 	sc.getShard(docID).UpdateDelta(ctx, docID, fromVersionString, toVersionString, collectionID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
+func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error) {
 	return sc.getShard(docID).GetActive(ctx, docID, collectionID)
 }
 
@@ -93,17 +93,15 @@ func (sc *ShardedLRURevisionCache) GetWithDelta(ctx context.Context, docID, from
 
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
-	backingStores        map[uint32]RevisionCacheBackingStore
-	cache                map[revCacheKey]*list.Element
-	lruList              *list.List
-	cacheHits            *base.SgwIntStat
-	cacheMisses          *base.SgwIntStat
-	cacheNumItems        *base.SgwIntStat
-	lock                 sync.Mutex
-	capacity             uint32           // Max number of items capacity of LRURevisionCache
-	memoryCapacity       int64            // Max memory capacity of LRURevisionCache
-	currMemoryUsage      base.AtomicInt   // count of number of bytes used currently in the LRURevisionCache
-	cacheMemoryBytesStat *base.SgwIntStat // stat for overall revision cache memory usage in bytes.  When using sharded cache, will be shared by all shards.
+	backingStores    map[uint32]RevisionCacheBackingStore
+	cache            map[revCacheKey]*list.Element
+	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
+	lruList          *list.List
+	cacheHits        *base.SgwIntStat
+	cacheMisses      *base.SgwIntStat
+	cacheNumItems    *base.SgwIntStat
+	lock             sync.Mutex
+	capacity         uint32 // Max number of items capacity of LRURevisionCache
 }
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -125,22 +123,22 @@ type revCacheValue struct {
 	itemBytes    atomic.Int64
 	collectionID uint32
 	itemLoaded   atomic.Bool
-	deltaLock    sync.Mutex // synchronizes GetDelta across multiple clients for each fromRevision
+	deltaLock    sync.Mutex    // synchronizes GetDelta across multiple clients for each fromRevision
+	accessOrder  atomic.Uint64 // stamped on insert; used for cross-cache eviction ordering
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, revCacheStats revisionCacheStats) *LRURevisionCache {
+func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores map[uint32]RevisionCacheBackingStore, revCacheStats revisionCacheStats, memoryController *CacheMemoryController) *LRURevisionCache {
 
 	return &LRURevisionCache{
-		cache:                map[revCacheKey]*list.Element{},
-		lruList:              list.New(),
-		capacity:             revCacheOptions.MaxItemCount,
-		backingStores:        backingStores,
-		cacheHits:            revCacheStats.cacheHitStat,
-		cacheMisses:          revCacheStats.cacheMissStat,
-		cacheNumItems:        revCacheStats.cacheNumItemsStat,
-		cacheMemoryBytesStat: revCacheStats.cacheMemoryStat,
-		memoryCapacity:       revCacheOptions.MaxBytes,
+		cache:            map[revCacheKey]*list.Element{},
+		lruList:          list.New(),
+		capacity:         revCacheOptions.MaxItemCount,
+		backingStores:    backingStores,
+		cacheHits:        revCacheStats.cacheHitStat,
+		cacheMisses:      revCacheStats.cacheMissStat,
+		cacheNumItems:    revCacheStats.cacheNumItemsStat,
+		memoryController: memoryController,
 	}
 }
 
@@ -148,27 +146,26 @@ func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores ma
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error) {
 	value := rc.getValue(ctx, docID, versionString, collectionID, true)
 	if value == nil {
-		return DocumentRevision{}, nil
+		return DocumentRevision{}, false, nil
 	}
 
 	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], loadBackup)
 	rc.statsRecorderFunc(cacheHit)
 
-	if !cacheHit && err == nil {
+	incrementStatEvent := !cacheHit && err == nil
+	if incrementStatEvent {
 		// cache miss so we had to load doc, increment memory count
-		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
-		// check for memory based eviction
-		rc.revCacheMemoryBasedEviction(ctx)
+		rc.memoryController.incrementBytesCount(ctx, value.getItemBytes())
 	}
 
 	if err != nil {
 		rc.removeValueForFailedLoad(value) // don't keep failed loads in the cache
 	}
 
-	return docRev, err
+	return docRev, incrementStatEvent, err
 }
 
 func (rc *LRURevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
@@ -200,16 +197,16 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionS
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (DocumentRevision, error) {
+func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (DocumentRevision, bool, error) {
 
 	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
 	// cache hit we don't want to do that work (yet).
 	bucketDoc, getErr := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if getErr != nil {
-		return DocumentRevision{}, getErr
+		return DocumentRevision{}, false, getErr
 	}
 	if bucketDoc == nil {
-		return DocumentRevision{}, nil
+		return DocumentRevision{}, false, nil
 	}
 
 	// Retrieve from or add to rev cache
@@ -220,18 +217,17 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)
 	rc.statsRecorderFunc(statEvent)
 
-	if !statEvent && err == nil {
+	incrementStatEvent := !statEvent && err == nil
+	if incrementStatEvent {
 		// cache miss so we had to load doc, increment memory count
-		rc.incrRevCacheMemoryUsage(ctx, value.getItemBytes())
-		// check for rev cache memory based eviction
-		rc.revCacheMemoryBasedEviction(ctx)
+		rc.memoryController.incrementBytesCount(ctx, value.getItemBytes())
 	}
 
 	if err != nil {
 		rc.removeValueForFailedLoad(value) // don't keep failed loads in the cache
 	}
 
-	return docRev, err
+	return docRev, incrementStatEvent, err
 }
 
 func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
@@ -253,11 +249,8 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	value := rc.getValue(ctx, docRev.DocID, docRev.CV.String(), collectionID, true)
 	// increment incoming bytes
 	docRev.CalculateBytes()
-	rc.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
+	rc.memoryController.incrementBytesCount(ctx, docRev.MemoryBytes)
 	value.store(docRev)
-
-	// check for rev cache memory based eviction
-	rc.revCacheMemoryBasedEviction(ctx)
 }
 
 // Upsert a revision in the cache. This function only upserts for CV key
@@ -271,11 +264,8 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 
 	docRev.CalculateBytes()
 	// add new item bytes to overall count
-	rc.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
+	rc.memoryController.incrementBytesCount(ctx, docRev.MemoryBytes)
 	cvValue.store(docRev)
-
-	// check we aren't over memory capacity, if so perform eviction
-	rc.revCacheMemoryBasedEviction(ctx)
 }
 
 func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCacheKey, docRev DocumentRevision, collectionID uint32) (int64, *revCacheValue) {
@@ -290,7 +280,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	if found {
 		revItem := existingElem.Value.(*revCacheValue)
 		// decrement item bytes by the removed item
-		rc._decrRevCacheMemoryUsage(ctx, -revItem.getItemBytes())
+		rc.memoryController.decrementBytesCount(ctx, revItem.getItemBytes())
 		rc.lruList.Remove(existingElem)
 		newItem = false
 	}
@@ -299,6 +289,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	// also ensure we add to rev id lookup map too
 	cvValue := &revCacheValue{id: docRev.DocID, cv: *docRev.CV, collectionID: collectionID, itemKey: cvKey}
 	elem := rc.lruList.PushFront(cvValue)
+	cvValue.accessOrder.Store(nextAccessOrder()) // stamp on insert
 	rc.cache[cvKey] = elem
 
 	// only increment if we are inserting new item to cache
@@ -309,7 +300,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	// Purge oldest item if over number capacity
 	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 	if numBytesEvicted > 0 {
-		rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
+		rc.memoryController.decrementBytesCount(ctx, numBytesEvicted)
 	}
 	return numItemsRemoved, cvValue
 }
@@ -342,12 +333,13 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, docVersionStrin
 			value.cv = currentVersion
 		}
 		value.itemLoaded.Store(false)
+		value.accessOrder.Store(nextAccessOrder()) // stamp on insert
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
 		numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 		if numBytesEvicted > 0 {
-			rc._decrRevCacheMemoryUsage(ctx, -numBytesEvicted)
+			rc.memoryController.decrementBytesCount(ctx, numBytesEvicted)
 		}
 		if numItemsRemoved > 0 {
 			rc.cacheNumItems.Add(-numItemsRemoved)
@@ -369,7 +361,7 @@ func (rc *LRURevisionCache) Remove(ctx context.Context, docID, versionString str
 	if !ok {
 		return
 	}
-	rc._decrRevCacheMemoryUsage(ctx, -revValue.getItemBytes())
+	rc.memoryController.decrementBytesCount(ctx, revValue.getItemBytes())
 	rc.lruList.Remove(elem)
 	rc.cacheNumItems.Add(-1)
 	delete(rc.cache, key)
@@ -593,86 +585,6 @@ func (rev *DocumentRevision) CalculateBytes() {
 	rev.MemoryBytes = int64(totalBytes)
 }
 
-// revCacheMemoryBasedEviction checks for rev cache eviction, if required calls performEviction which will acquire lock to evict
-func (rc *LRURevisionCache) revCacheMemoryBasedEviction(ctx context.Context) {
-	// if memory capacity is not set, don't check for eviction this way
-	if rc.memoryCapacity > 0 && rc.currMemoryUsage.Value() > rc.memoryCapacity {
-		rc.performEviction(ctx)
-	}
-}
-
-// performEviction will evict the oldest items in the cache till we are below the memory threshold
-func (rc *LRURevisionCache) performEviction(ctx context.Context) {
-	numItemsRemoved := rc.evictBasedOffMemoryUsage(ctx)
-	rc.cacheNumItems.Add(-numItemsRemoved)
-}
-
-func (rc *LRURevisionCache) evictBasedOffMemoryUsage(ctx context.Context) int64 {
-	var numItemsRemoved, numBytesRemoved int64
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	// check if we are over memory capacity after holding rev cache mutex (protect against another goroutine evicting whilst waiting for mutex above)
-	if currMemoryUsage := rc.currMemoryUsage.Value(); currMemoryUsage > rc.memoryCapacity {
-		// find amount of bytes needed to evict till below threshold
-		bytesNeededToRemove := currMemoryUsage - rc.memoryCapacity
-		for bytesNeededToRemove > numBytesRemoved {
-			value := rc._findEvictionValue()
-			if value == nil {
-				if rc.lruList.Len() > 0 {
-					// no more values ready for eviction
-					break
-				} else {
-					// list is empty, nothing more to evict but stats are wrong so zero stats and return
-					base.DebugfCtx(ctx, base.KeyCache, "Revision cache memory stats inconsistent for this shard, resetting to zero")
-					correctionVal := rc.currMemoryUsage.Value()
-					// Correct overall memory stat across shards to remove this shards memory usage, and set this shard to zero
-					rc.cacheMemoryBytesStat.Add(-correctionVal)
-					rc.currMemoryUsage.Set(0)
-					return numItemsRemoved
-				}
-			}
-			delete(rc.cache, value.itemKey)
-			numItemsRemoved++
-			valueBytes := value.getItemBytes()
-			numBytesRemoved += valueBytes
-		}
-	}
-	rc._decrRevCacheMemoryUsage(ctx, -numBytesRemoved) // need update rev cache memory stats before release lock to stop other goroutines evicting based on outdated stats
-	return numItemsRemoved
-}
-
-// _decrRevCacheMemoryUsage atomically decreases overall memory usage for cache and the actual rev cache objects usage.
-// You should be holding rev cache lock in using this function to avoid eviction processes over evicting items
-func (rc *LRURevisionCache) _decrRevCacheMemoryUsage(ctx context.Context, bytesCount int64) {
-	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
-	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
-	// LRURevisionCache object for sharding the rev cache. This way we can perform eviction on per shard basis much like
-	// we do with the number of items capacity eviction
-	if bytesCount > 0 {
-		// function is for decrementing memory usage, so return if incrementing
-		base.AssertfCtx(ctx, "Attempting to increment memory stats with inside decrement function, should use incrRevCacheMemoryUsage instead")
-		return
-	}
-	rc.currMemoryUsage.Add(bytesCount)
-	rc.cacheMemoryBytesStat.Add(bytesCount)
-}
-
-// incrRevCacheMemoryUsage atomically increases overall memory usage for cache and the actual rev cache objects usage.
-// You do not need to hold rev cache lock when using this function
-func (rc *LRURevisionCache) incrRevCacheMemoryUsage(ctx context.Context, bytesCount int64) {
-	// We need to keep track of the current LRURevisionCache memory usage AND the overall usage of the cache. We need
-	// overall memory usage for the stat added to show rev cache usage plus we need the current rev cache capacity of the
-	// LRURevisionCache object for sharding the rev cache. This way we can perform eviction on per shard basis much like
-	// we do with the number of items capacity eviction
-	if bytesCount < 0 {
-		// function is for incrementing memory usage, so return if decrementing
-		base.AssertfCtx(ctx, "Attempting to decrement memory stats with inside increment function, should use _decrRevCacheMemoryUsage instead whilst holding rev cache lock")
-		return
-	}
-	rc.currMemoryUsage.Add(bytesCount)
-	rc.cacheMemoryBytesStat.Add(bytesCount)
-}
-
 func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 	evictionCandidate := rc.lruList.Back()
 	if evictionCandidate == nil {
@@ -700,4 +612,33 @@ func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 		evictionCandidate = evictionCandidate.Prev()
 	}
 	return nil
+}
+
+// peekLRUTailAccessOrder returns the accessOrder of the least-recently-used loaded item,
+// or 0 if the cache is empty or has no loaded items ready for eviction.
+// Called by the orchestrator to compare against the delta cache tail before deciding which to evict.
+func (rc *LRURevisionCache) peekLRUTailAccessOrder() uint64 {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	// Walk backwards to find a loaded item — mirrors _findEvictionValue but without removing.
+	for elem := rc.lruList.Back(); elem != nil; elem = elem.Prev() {
+		if v, ok := elem.Value.(*revCacheValue); ok && v.itemLoaded.Load() {
+			return v.accessOrder.Load()
+		}
+	}
+	return 0
+}
+
+// evictLRUTail removes the LRU loaded item and notifies the memory controller.
+// Returns false if there was nothing eligible to evict.
+func (rc *LRURevisionCache) evictLRUTail(ctx context.Context) int64 {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	value := rc._findEvictionValue() // already walks back to find a loaded item
+	if value == nil {
+		return 0
+	}
+	delete(rc.cache, value.itemKey)
+	rc.cacheNumItems.Add(-1)
+	return value.getItemBytes()
 }

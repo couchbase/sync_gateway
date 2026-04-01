@@ -14,27 +14,28 @@ import (
 	"container/list"
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
 )
 
 type LRUDeltaCache struct {
-	backingStores  map[uint32]RevisionCacheBackingStore
-	cache          map[deltaCacheKey]*list.Element
-	lruList        *list.List
-	cacheHits      *base.SgwIntStat
-	cacheMisses    *base.SgwIntStat
-	cacheNumDeltas *base.SgwIntStat
-	lock           sync.Mutex
-	capacity       uint32 // Max number of items capacity of LRUDeltaCache
+	cache            map[deltaCacheKey]*list.Element
+	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
+	lruList          *list.List
+	cacheNumDeltas   *base.SgwIntStat
+	lock             sync.Mutex
+	capacity         uint32 // Max number of items capacity of LRUDeltaCache
 }
 
 // deltaCacheValue is the delta cache payload data. Stored as the Value of a list Element.
 type deltaCacheValue struct {
-	delta   *RevisionDelta
-	itemKey deltaCacheKey
+	delta       *RevisionDelta
+	itemKey     deltaCacheKey
+	accessOrder atomic.Uint64 // stamped on insert; used for cross-cache eviction ordering
 }
 
+// deltaCacheKey is used to key the lookup map to delta cache items
 type deltaCacheKey struct {
 	docID          string
 	toDocVersion   string
@@ -46,15 +47,13 @@ func createDeltaCacheKey(docID string, fromVersionString, toVersionString string
 	return deltaCacheKey{docID: docID, fromDocVersion: fromVersionString, toDocVersion: toVersionString, collectionID: collectionID}
 }
 
-func NewLRUDeltaCache(revCacheOptions *RevisionCacheOptions, deltaSyncStats *base.DeltaSyncStats, backingStores map[uint32]RevisionCacheBackingStore) *LRUDeltaCache {
+func NewLRUDeltaCache(revCacheOptions *RevisionCacheOptions, deltaSyncStats *base.DeltaSyncStats, memoryController *CacheMemoryController) *LRUDeltaCache {
 	return &LRUDeltaCache{
-		cache:          map[deltaCacheKey]*list.Element{},
-		lruList:        list.New(),
-		capacity:       revCacheOptions.MaxItemCount,
-		backingStores:  backingStores,
-		cacheHits:      deltaSyncStats.DeltaCacheHit,
-		cacheMisses:    deltaSyncStats.DeltaCacheMiss,
-		cacheNumDeltas: deltaSyncStats.DeltaCacheNumItems,
+		cache:            map[deltaCacheKey]*list.Element{},
+		lruList:          list.New(),
+		capacity:         revCacheOptions.MaxItemCount,
+		cacheNumDeltas:   deltaSyncStats.DeltaCacheNumItems,
+		memoryController: memoryController,
 	}
 }
 
@@ -74,15 +73,22 @@ func (dc *LRUDeltaCache) addDelta(ctx context.Context, docID, fromVersionString,
 	elem := dc.lruList.PushFront(value)
 	dc.cache[key] = elem
 	dc.cacheNumDeltas.Add(1)
-	numItemsRemoved := dc._numberCapacityEviction()
+	value.accessOrder.Store(nextAccessOrder()) // stamp on insert
+	numItemsRemoved, bytesEvicted := dc._numberCapacityEviction()
 	if numItemsRemoved > 0 {
 		dc.cacheNumDeltas.Add(-numItemsRemoved)
+	}
+	if dc.memoryController != nil {
+		dc.memoryController.incrementBytesCount(nil, value.delta.totalDeltaBytes)
+		if bytesEvicted > 0 {
+			dc.memoryController.decrementBytesCount(nil, bytesEvicted)
+		}
 	}
 }
 
 // _numberCapacityEviction will iterate removing the last element in cache til we fall below the maximum number of items
 // threshold for this shard, returning the number of items evicted
-func (dc *LRUDeltaCache) _numberCapacityEviction() (numItemsEvicted int64) {
+func (dc *LRUDeltaCache) _numberCapacityEviction() (numItemsEvicted int64, bytesEvicted int64) {
 	for dc.lruList.Len() > int(dc.capacity) {
 		value := dc.lruList.Back()
 		if value == nil {
@@ -95,7 +101,7 @@ func (dc *LRUDeltaCache) _numberCapacityEviction() (numItemsEvicted int64) {
 		delete(dc.cache, deltaValue.itemKey)
 		numItemsEvicted++
 	}
-	return numItemsEvicted
+	return numItemsEvicted, bytesEvicted
 }
 
 // getCachedDelta will retrieve a delta if cached
@@ -130,4 +136,44 @@ func (delta *RevisionDelta) CalculateDeltaBytes() {
 	totalBytes += len(delta.DeltaBytes)
 
 	delta.totalDeltaBytes = int64(totalBytes)
+}
+
+// peekLRUTailAccessOrder returns the accessOrder of the LRU item, or 0 if the cache is empty.
+func (c *LRUDeltaCache) peekLRUTailAccessOrder() uint64 {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if elem := c.lruList.Back(); elem != nil {
+		return elem.Value.(*deltaCacheValue).accessOrder.Load()
+	}
+	return 0
+}
+
+// RevisionDelta stores data about a delta between a revision and ToRevID.
+type RevisionDelta struct {
+	ToRevID               string                  // Target revID for the delta
+	ToCV                  string                  // Target CV for the delta
+	DeltaBytes            []byte                  // The actual delta
+	AttachmentStorageMeta []AttachmentStorageMeta // Storage metadata of all attachments present on ToRevID
+	ToChannels            base.Set                // Full list of channels for the to revision
+	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
+	HlvHistory            string                  // HLV History in CBL format
+	ToDeleted             bool                    // Flag if ToRevID is a tombstone
+	totalDeltaBytes       int64                   // totalDeltaBytes is the total bytes for channels, revisions and body on the delta itself
+}
+
+func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+	revDelta := RevisionDelta{
+		ToRevID:               toRevision.RevID,
+		DeltaBytes:            deltaBytes,
+		AttachmentStorageMeta: toRevAttStorageMeta,
+		ToChannels:            toRevision.Channels,
+		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
+		HlvHistory:            toRevision.HlvHistory,
+		ToDeleted:             deleted,
+	}
+	if toRevision.CV != nil {
+		revDelta.ToCV = toRevision.CV.String()
+	}
+	revDelta.CalculateDeltaBytes()
+	return revDelta
 }

@@ -1115,7 +1115,5 @@ func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context,
 	cache.Remove(ctx, docRev.DocID, docRev.RevID, c.collectionID)
 	value := cache.revisionCache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, true)
 	docRev.CalculateBytes()
-	cache.revisionCache.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
 	value.store(docRev)
-	cache.revisionCache.revCacheMemoryBasedEviction(ctx)
 }
