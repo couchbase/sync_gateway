@@ -10,28 +10,40 @@ licenses/APL2.txt.
 
 package db
 
-import "context"
+import (
+	"context"
+)
 
 // RevisionCacheOrchestrator orchestrates between the revisionCache and a deltaCache.
 type RevisionCacheOrchestrator struct {
-	revisionCache *LRURevisionCache
-	deltaCache    *LRUDeltaCache
+	revisionCache    *LRURevisionCache      // holds document revisions
+	deltaCache       *LRUDeltaCache         // holds computed deltas, only initialed when delta sync is enabled
+	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
 }
 
 // NewRevisionCacheOrchestrator creates a new RevisionCacheOrchestrator.
-func NewRevisionCacheOrchestrator(revisionCache *LRURevisionCache, deltaCache *LRUDeltaCache) *RevisionCacheOrchestrator {
+func NewRevisionCacheOrchestrator(revisionCache *LRURevisionCache, deltaCache *LRUDeltaCache, memoryController *CacheMemoryController) *RevisionCacheOrchestrator {
 	return &RevisionCacheOrchestrator{
-		revisionCache: revisionCache,
-		deltaCache:    deltaCache,
+		revisionCache:    revisionCache,
+		deltaCache:       deltaCache,
+		memoryController: memoryController,
 	}
 }
 
-func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error) {
-	return c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
+func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error) {
+	docRev, cacheHit, err := c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
+	if cacheHit {
+		c.triggerMemoryEviction(ctx)
+	}
+	return docRev, cacheHit, err
 }
 
-func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error) {
-	return c.revisionCache.GetActive(ctx, docID, collectionID)
+func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error) {
+	docRev, cacheHit, err = c.revisionCache.GetActive(ctx, docID, collectionID)
+	if cacheHit {
+		c.triggerMemoryEviction(ctx)
+	}
+	return docRev, cacheHit, err
 }
 
 func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
@@ -40,10 +52,12 @@ func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionStri
 
 func (c *RevisionCacheOrchestrator) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
 	c.revisionCache.Put(ctx, docRev, collectionID)
+	c.triggerMemoryEviction(ctx)
 }
 
 func (c *RevisionCacheOrchestrator) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
 	c.revisionCache.Upsert(ctx, docRev, collectionID)
+	c.triggerMemoryEviction(ctx)
 }
 
 func (c *RevisionCacheOrchestrator) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {
@@ -55,10 +69,12 @@ func (c *RevisionCacheOrchestrator) UpdateDelta(ctx context.Context, docID, from
 		return
 	}
 	c.deltaCache.addDelta(ctx, docID, fromVersionString, toVersionString, collectionID, toDelta)
+	// check for memory based eviction
+	c.triggerMemoryEviction(ctx)
 }
 
 func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
-	docRev, err := c.revisionCache.Get(ctx, docID, fromVersionString, collectionID, RevCacheLoadBackupRev)
+	docRev, _, err := c.revisionCache.Get(ctx, docID, fromVersionString, collectionID, RevCacheLoadBackupRev)
 	if err != nil {
 		return docRev, err
 	}
@@ -67,4 +83,63 @@ func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fro
 		docRev.Delta = cachedDelta
 	}
 	return docRev, nil
+}
+
+// triggerMemoryEviction is called after any write to either sub-cache.
+func (c *RevisionCacheOrchestrator) triggerMemoryEviction(ctx context.Context) {
+	if c.memoryController == nil || !c.memoryController.IsOverCapacity() {
+		// no eviction to take place
+		return
+	}
+	// do we need to syncdhirnise this????
+
+	var numBytesRemoved int64
+	var deltaCandidateOrder uint64
+	bytesNeededToEvict := c.memoryController.bytesToEvict()
+	for bytesNeededToEvict > numBytesRemoved {
+		if c.deltaCache != nil {
+			deltaCandidateOrder = c.deltaCache.peekLRUTailAccessOrder()
+		}
+		revCandidateOrder := c.revisionCache.peekLRUTailAccessOrder()
+		if revCandidateOrder == 0 && deltaCandidateOrder == 0 {
+			// Both caches are empty — nothing more to evict.
+			//base.AssertfCtx(ctx, "memory")
+			break
+		}
+		var bytesRemoved int64
+		evictFromRev := deltaCandidateOrder == 0 || (revCandidateOrder != 0 && revCandidateOrder < deltaCandidateOrder)
+		if evictFromRev {
+			bytesRemoved = c.revisionCache.evictLRUTail(ctx)
+		} else {
+			bytesRemoved = c.deltaCache.evictLRUTail(ctx)
+		}
+		numBytesRemoved += bytesRemoved
+		if bytesRemoved == 0 {
+			// Nothing evictable in the chosen cache (e.g. all items still loading).
+			// Try the other cache before giving up.
+			if evictFromRev && c.deltaCache != nil {
+				c.deltaCache.evictLRUTail(ctx)
+			} else {
+				c.revisionCache.evictLRUTail(ctx)
+			}
+			break
+		}
+	}
+	c.memoryController.decrementBytesCount(ctx, numBytesRemoved)
+}
+
+// evictLRUTail removes the LRU item and notifies the memory controller.
+// Returns false if the cache was empty.
+func (dc *LRUDeltaCache) evictLRUTail(ctx context.Context) int64 {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+	elem := dc.lruList.Back()
+	if elem == nil {
+		return 0
+	}
+	val := elem.Value.(*deltaCacheValue)
+	dc.lruList.Remove(elem)
+	delete(dc.cache, val.itemKey)
+	dc.cacheNumDeltas.Add(-1)
+	return val.delta.totalDeltaBytes
 }

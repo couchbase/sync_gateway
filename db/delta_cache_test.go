@@ -208,7 +208,7 @@ func TestUpdateDeltaWhenNoDeltaCacheInit(t *testing.T) {
 	_, doc2, err := collection.Put(ctx, docID, Body{"foo": "baz", BodyRev: rev1ID})
 	require.NoError(t, err)
 	rev2CV := doc2.HLV.GetCurrentVersionString()
-	docRev, err := db.revisionCache.Get(ctx, docID, doc2.HLV.GetCurrentVersionString(), collection.GetCollectionID(), RevCacheDontLoadBackupRev)
+	docRev, _, err := db.revisionCache.Get(ctx, docID, doc2.HLV.GetCurrentVersionString(), collection.GetCollectionID(), RevCacheDontLoadBackupRev)
 	require.NoError(t, err)
 
 	// try adding delta when delta sync is off
