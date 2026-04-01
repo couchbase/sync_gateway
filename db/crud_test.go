@@ -2182,12 +2182,12 @@ func TestIsSGWrite(t *testing.T) {
 			expectedBodyChange: true,
 		},
 		{
-			name:     "user xattr changed",
-			syncData: baseSyncData,
-			cas:      otherCas,
-			body:     body,
+			name:         "user xattr changed",
+			syncData:     baseSyncData,
+			cas:          otherCas,
+			body:         body,
 			rawUserXattr: []byte(`{"newkey":"newval"}`),
-			cv:       &matchingCV,
+			cv:           &matchingCV,
 		},
 		{
 			name:     "CV mismatch",
