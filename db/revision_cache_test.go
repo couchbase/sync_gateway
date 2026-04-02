@@ -2601,11 +2601,20 @@ func TestRaceRemovingStaleCVValue(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 
+	docRev := DocumentRevision{
+		BodyBytes: []byte(`{"some":"data"}`),
+		DocID:     "doc1",
+		RevID:     "1-abc",
+		CV:        &Version{Value: 123, SourceID: "test"},
+		History:   Revisions{"start": 1},
+	}
+	docRev.CalculateBytes()
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"data"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+		cache.Put(ctx, docRev, testCollectionID)
 		wg.Done()
 	}()
 
@@ -2616,6 +2625,18 @@ func TestRaceRemovingStaleCVValue(t *testing.T) {
 
 	wg.Wait()
 
+	// Two valid outcomes depending on goroutine scheduling:
+	//   - Remove ran before Put inserted the item (Remove was a no-op): item is still in the
+	//     cache and the stat reflects its bytes.
+	//   - Remove ran after Put's getValue (our memState fix handles the race): the item has
+	//     been removed and the stat must be 0.
+	// In either case the stat must be consistent with what is actually in the cache.
+	_, inCache := cache.Peek(ctx, "doc1", Version{Value: 123, SourceID: "test"}.String(), testCollectionID)
+	if inCache {
+		assert.Equal(t, docRev.MemoryBytes, memoryBytesCounted.Value(), "item is in cache so stat should equal item bytes")
+	} else {
+		assert.Equal(t, int64(0), memoryBytesCounted.Value(), "item was removed so stat should be 0")
+	}
 }
 
 func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {

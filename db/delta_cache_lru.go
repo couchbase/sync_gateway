@@ -79,9 +79,9 @@ func (dc *LRUDeltaCache) addDelta(ctx context.Context, docID, fromVersionString,
 		dc.cacheNumDeltas.Add(-numItemsRemoved)
 	}
 	if dc.memoryController != nil {
-		dc.memoryController.incrementBytesCount(nil, value.delta.totalDeltaBytes)
+		dc.memoryController.incrementBytesCount(value.delta.totalDeltaBytes)
 		if bytesEvicted > 0 {
-			dc.memoryController.decrementBytesCount(nil, bytesEvicted)
+			dc.memoryController.decrementBytesCount(bytesEvicted)
 		}
 	}
 }
@@ -146,6 +146,22 @@ func (c *LRUDeltaCache) peekLRUTailAccessOrder() uint64 {
 		return elem.Value.(*deltaCacheValue).accessOrder.Load()
 	}
 	return 0
+}
+
+// evictLRUTail removes the LRU item and notifies the memory controller.
+// Returns false if the cache was empty.
+func (dc *LRUDeltaCache) evictLRUTail() int64 {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+	elem := dc.lruList.Back()
+	if elem == nil {
+		return 0
+	}
+	val := elem.Value.(*deltaCacheValue)
+	dc.lruList.Remove(elem)
+	delete(dc.cache, val.itemKey)
+	dc.cacheNumDeltas.Add(-1)
+	return val.delta.totalDeltaBytes
 }
 
 // RevisionDelta stores data about a delta between a revision and ToRevID.
