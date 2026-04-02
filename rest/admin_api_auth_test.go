@@ -1010,9 +1010,11 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication:    true,
 		enableAdminAuthPermissionsCheck: true,
+		PersistentConfig:                true,
 	})
 	defer rt.Close()
 
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	bucketName := rt.Bucket().GetName()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -1389,16 +1391,6 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 			Users:    []string{syncGatewayDevOps},
 		},
 		{
-			Method:   "POST",
-			Endpoint: "/db/_offline",
-			Users:    []string{syncGatewayConfigurator},
-		},
-		{
-			Method:   "POST",
-			Endpoint: "/db/_online",
-			Users:    []string{syncGatewayConfigurator},
-		},
-		{
 			Method:   "GET",
 			Endpoint: "/db/_dump/view",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
@@ -1432,6 +1424,16 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 			Method:   "GET",
 			Endpoint: "/_all_dbs",
 			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_offline",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_online",
+			Users:    []string{syncGatewayConfigurator},
 		},
 	}
 
