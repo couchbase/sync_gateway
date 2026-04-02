@@ -624,11 +624,11 @@ func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
 	// doc3 rev1: channel active
 	revID, _, err := collection.Put(ctx, doc1, Body{"channels": activeChannel})
 	require.NoError(t, err)
-	_, _, err = collection.Put(ctx, doc1, Body{"channel": inactiveChannel, "_rev": revID})
+	_, _, err = collection.Put(ctx, doc1, Body{"channels": inactiveChannel, "_rev": revID})
 	require.NoError(t, err)
 	revID, _, err = collection.Put(ctx, doc2, Body{"channels": activeChannel})
 	require.NoError(t, err)
-	_, _, err = collection.Put(ctx, doc2, Body{"channel": inactiveChannel, "_rev": revID})
+	_, _, err = collection.Put(ctx, doc2, Body{"channels": inactiveChannel, "_rev": revID})
 	require.NoError(t, err)
 
 	_, _, err = collection.Put(ctx, doc3, Body{"channels": activeChannel})
@@ -645,11 +645,15 @@ func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
 	require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 3)
 
 	// whether limit or no limit, should only be 1 active entry
-	changesOptions = ChangesOptions{
-		Since:      SequenceID{Seq: 0},
-		ActiveOnly: true,
-		ChangesCtx: base.TestCtx(t),
-		Limit:      1,
+	for _, limit := range []int{0, 1} {
+		t.Run("limit="+fmt.Sprint(limit), func(t *testing.T) {
+			changesOptions = ChangesOptions{
+				Since:      SequenceID{Seq: 0},
+				ActiveOnly: true,
+				ChangesCtx: base.TestCtx(t),
+				Limit:      limit,
+			}
+			require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 1)
+		})
 	}
-	require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 1)
 }

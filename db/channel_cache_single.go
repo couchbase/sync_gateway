@@ -449,7 +449,7 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 		if options.Limit > 0 && room > 0 && room < n {
 			n = room
 		}
-		if !options.ActiveOnly || len(resultFromQuery)+len(resultFromCache) <= options.Limit {
+		if !options.ActiveOnly || options.Limit == 0 || len(resultFromQuery)+len(resultFromCache) <= options.Limit {
 			result = append(result, resultFromCache[0:n]...)
 		} else {
 			totalEntries := len(result)

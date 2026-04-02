@@ -131,8 +131,6 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			queryRowCount++
 			highSeq = entry.Sequence
 
-			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
-			// for limit calculation below.
 			if activeOnly && !entry.IsActive() {
 				continue
 			}
