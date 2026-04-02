@@ -67,7 +67,8 @@ type GoCBDCPClient struct {
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 }
 
-type DCPClientOptions struct {
+// GoCBDCPClientOptions contains options specific for starting a DCP client backed by gocb.
+type GoCBDCPClientOptions struct {
 	FeedID                     string // Optional description for a DCP feed
 	NumWorkers                 int
 	OneShot                    bool
@@ -79,19 +80,21 @@ type DCPClientOptions struct {
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 	CheckpointPrefix           string
+	NumVBuckets                uint16 // NumVBuckets is used to set the number of vbuckets for the DCP feed, if not set, it will be determined from the bucket when creating the client
 }
 
-func NewDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
+// NewGocbDCPClient creates a DCP client for a gocb.Bucket. Callers should generally use NewDCPClient rather than this
+// function directly when possible.
+func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options GoCBDCPClientOptions, bucket *GocbV2Bucket) (*GoCBDCPClient, error) {
 
-	numVbuckets, err := bucket.GetMaxVbno()
-	if err != nil {
-		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
+	numVbuckets := options.NumVBuckets
+	if numVbuckets == 0 {
+		var err error
+		numVbuckets, err = bucket.GetMaxVbno()
+		if err != nil {
+			return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
+		}
 	}
-
-	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
-}
-
-func newDCPClientWithForBuckets(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
 
 	numWorkers := DefaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -673,9 +676,11 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 	dc.startWorkers(dc.ctx)
 }
 
-// NewDCPClientForTest is a test-only function to create a DCP client with a specific number of vbuckets.
-func NewDCPClientForTest(ctx context.Context, t *testing.T, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket, numVbuckets uint16) (*GoCBDCPClient, error) {
-	return newDCPClientWithForBuckets(ctx, callback, options, bucket, numVbuckets)
+// PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
+// will not alter the feed nor remove the checkpoint for the future.
+func (dc *GoCBDCPClient) PurgeCheckpoints() error {
+	dc.metadata.Purge(dc.ctx, len(dc.workers))
+	return nil
 }
 
 var _ gocbcore.StreamObserver = &GoCBDCPClient{}

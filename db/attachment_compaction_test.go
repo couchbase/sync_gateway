@@ -61,10 +61,10 @@ func TestAttachmentMark(t *testing.T) {
 	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), databaseCollection))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, checkpointPrefix, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMark_mark", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMark_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName})
@@ -125,11 +125,11 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
+	purged, dcpClient, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentSweep_sweep", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentSweep_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
 }
 
 func TestAttachmentCleanup(t *testing.T) {
@@ -258,7 +258,6 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	var garbageVBUUID gocbcore.VbUUID = 1234
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
-	collectionID := collection.GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -283,15 +282,17 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	bucket, err := base.AsGocbV2Bucket(testDb.Bucket)
-	require.NoError(t, err)
 	clientOptions := getCompactionDCPClientOptions(
 		testDb,
 		t.Name(),
-		collectionID,
+		base.NewCollectionNameSet(dataStore),
 		CleanupPhase,
+		func(event sgbucket.FeedEvent) bool {
+			require.FailNow(t, "DCP callback function should not be called for this test")
+			return false
+		},
 	)
-	dcpClient, err := base.NewDCPClient(ctx, nil, *clientOptions, bucket)
+	dcpClient, err := base.NewDCPClient(ctx, testDb.Bucket, clientOptions)
 	require.NoError(t, err)
 
 	// alter dcp metadata to feed into the compaction manager
@@ -362,15 +363,16 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, checkpointPrefix, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	vbUUIDS := base.GetVBUUIDs(dcpClient.GetMetadata())
 
-	attachmentsPurged, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, dcpClient, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -389,7 +391,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	checkpointPrefix, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
+	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
 
@@ -704,18 +706,19 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, checkpointPrefix, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	vbUUIDs := base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
-	_, checkpointPrefix, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	_, dcpClient, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	require.Error(t, err)
 	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
@@ -983,10 +986,11 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, checkpointPrefix, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
+		attachmentCount, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
-		require.NotEmpty(t, checkpointPrefix)
+		require.NotNil(t, dcpClient)
+		require.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
 	}()
 
 	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value any) {
