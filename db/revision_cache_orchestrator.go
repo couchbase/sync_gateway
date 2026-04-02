@@ -39,19 +39,19 @@ func NewRevisionCacheOrchestrator(cacheOptions *RevisionCacheOptions, backingSto
 }
 
 func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error) {
-	docRev, cacheHit, err := c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
-	if cacheHit {
+	docRev, cacheMiss, err := c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
+	if cacheMiss {
 		c.triggerMemoryEviction()
 	}
-	return docRev, cacheHit, err
+	return docRev, cacheMiss, err
 }
 
-func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error) {
-	docRev, cacheHit, err = c.revisionCache.GetActive(ctx, docID, collectionID)
-	if cacheHit {
+func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheMiss bool, err error) {
+	docRev, cacheMiss, err = c.revisionCache.GetActive(ctx, docID, collectionID)
+	if cacheMiss {
 		c.triggerMemoryEviction()
 	}
-	return docRev, cacheHit, err
+	return docRev, cacheMiss, err
 }
 
 func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
@@ -90,6 +90,8 @@ func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fro
 		cachedDelta := c.deltaCache.getCachedDelta(ctx, docID, fromVersionString, toVersionString, collectionID)
 		docRev.Delta = cachedDelta
 	}
+	// check for memory based eviction
+	c.triggerMemoryEviction()
 	return docRev, nil
 }
 
@@ -128,16 +130,6 @@ func (c *RevisionCacheOrchestrator) triggerMemoryEviction() {
 			bytesRemoved = c.deltaCache.evictLRUTail()
 		}
 		numBytesRemoved += bytesRemoved
-		if bytesRemoved == 0 {
-			// Nothing evictable in the chosen cache (e.g. all items still loading).
-			// Try the other cache before giving up.
-			if evictFromRev && c.deltaCache != nil {
-				c.deltaCache.evictLRUTail()
-			} else {
-				c.revisionCache.evictLRUTail()
-			}
-			break
-		}
 	}
 	c.memoryController.decrementBytesCount(numBytesRemoved)
 }
