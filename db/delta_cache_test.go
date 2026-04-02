@@ -174,7 +174,7 @@ func TestNumberBasedEvictionForDeltaCache(t *testing.T) {
 	}
 	// assert that num items in delta is 5
 	assert.Equal(t, int64(5), db.DbStats.DeltaSync().DeltaCacheNumItems.Value())
-	// attempt to add a delta version that already exsits in the cache
+	// attempt to add a delta version that already exists in the cache
 	db.revisionCache.UpdateDelta(ctx, docID, fromCV.String(), toCV.String(), collection.GetCollectionID(), testDelta)
 	// assert that num items in delta is still 5
 	assert.Equal(t, int64(5), db.DbStats.DeltaSync().DeltaCacheNumItems.Value())
@@ -448,4 +448,104 @@ func TestAccessCheckOnNonCurrentRevision(t *testing.T) {
 	// should return missing error given rev2 is no longer current revision
 	_, _, err = collection.GetDelta(ctx, docID, rev1CV, rev2CV)
 	require.ErrorContains(t, err, "404 missing")
+}
+
+// TestDeltaNumberBasedEvictionDecrementsMemoryBytes verifies that when the delta cache
+// hits its MaxItemCount limit and number-based eviction removes an item, the memory
+// controller correctly decrements the evicted delta's bytes.
+func TestDeltaNumberBasedEvictionDecrementsMemoryBytes(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta cache is EE only")
+	}
+
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	deltaStats := newTestDeltaStats()
+
+	var getDocumentCounter, getRevisionCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &getDocumentCounter, getRevisionCounter: &getRevisionCounter}
+
+	// MaxItemCount=2 caps the delta cache at 2 items; MaxBytes=0 so memory-based eviction
+	// never fires — only number-based eviction is exercised here.
+	opts := &RevisionCacheOptions{MaxItemCount: 2, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID), revStats, deltaStats, true,
+	)
+
+	const perDeltaBytes = int64(10) // len("0123456789")
+	makeDelta := func() RevisionDelta {
+		d := RevisionDelta{DeltaBytes: []byte("0123456789")}
+		d.CalculateDeltaBytes()
+		return d
+	}
+
+	// Fill the delta cache to its item limit.
+	orchestrator.UpdateDelta(ctx, "doc1", "from1", "to1", testCollectionID, makeDelta())
+	orchestrator.UpdateDelta(ctx, "doc1", "from2", "to2", testCollectionID, makeDelta())
+	assert.Equal(t, int64(2), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, 2*perDeltaBytes, revStats.cacheMemoryStat.Value(), "both deltas should be counted")
+
+	// Adding a third delta triggers number-based eviction of the oldest (from1→to1).
+	// Before the fix, bytesEvicted was never set so the stat remained at 30 instead of 20.
+	orchestrator.UpdateDelta(ctx, "doc1", "from3", "to3", testCollectionID, makeDelta())
+
+	assert.Equal(t, int64(2), deltaStats.DeltaCacheNumItems.Value(), "only 2 deltas should remain")
+	assert.Equal(t, 2*perDeltaBytes, revStats.cacheMemoryStat.Value(),
+		"evicted delta's bytes must be decremented; stat should equal 2 deltas not 3")
+}
+
+// TestGetWithDeltaTriggersMemoryEvictionOnMiss verifies that a backing-store load
+// triggered by GetWithDelta (revision cache miss) calls triggerMemoryEviction so that
+// memory pressure is relieved.
+func TestGetWithDeltaTriggersMemoryEvictionOnMiss(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta sync and delta cache are EE only")
+	}
+
+	ctx := base.TestCtx(t)
+	// testBackingStore serves any docID at cv{Value:123, SourceID:"test"}.
+	rev1CV := Version{Value: 123, SourceID: "test"}
+	rev2CV := Version{Value: 456, SourceID: "test"}
+
+	// testBackingStore produces 118 bytes for a 4-char docID like "doc1".
+	const expectedRevBytes = int64(118)
+	const expectedDeltaBytes = int64(10) // len("delta12345")
+	// maxBytes=118: rev alone just fits (118 NOT > 118); together (128 > 118) they trigger eviction.
+	const maxBytes = expectedRevBytes
+
+	revStats := newTestRevCacheStats()
+	deltaStats := newTestDeltaStats()
+
+	var getDocumentCounter, getRevisionCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &getDocumentCounter, getRevisionCounter: &getRevisionCounter}
+
+	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: maxBytes}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID), revStats, deltaStats, true,
+	)
+
+	// Add the delta first so it carries the older access order.
+	delta := RevisionDelta{DeltaBytes: []byte("delta12345")}
+	delta.CalculateDeltaBytes()
+	orchestrator.UpdateDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID, delta)
+	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, expectedDeltaBytes, revStats.cacheMemoryStat.Value(), "only delta bytes counted so far")
+
+	// GetWithDelta causes a revision backing-store miss, adding 118 bytes.
+	// Total (128) exceeds maxBytes (118) → triggerMemoryEviction must fire and evict the
+	// delta (older access order), leaving only the revision in memory.
+	docRev, err := orchestrator.GetWithDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID)
+	require.NoError(t, err)
+	require.NotNil(t, docRev.BodyBytes, "revision should be loaded from backing store")
+
+	_, revInCache := orchestrator.Peek(ctx, "doc1", rev1CV.String(), testCollectionID)
+	assert.True(t, revInCache, "revision should remain in cache")
+
+	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID)
+	assert.Nil(t, cachedDelta, "delta should have been evicted by memory pressure from GetWithDelta")
+
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(0), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, expectedRevBytes, revStats.cacheMemoryStat.Value(), "memory stat should equal revision bytes only")
 }

@@ -100,6 +100,7 @@ func (dc *LRUDeltaCache) _numberCapacityEviction() (numItemsEvicted int64, bytes
 		// delete item from lookup map
 		delete(dc.cache, deltaValue.itemKey)
 		numItemsEvicted++
+		bytesEvicted += deltaValue.delta.totalDeltaBytes
 	}
 	return numItemsEvicted, bytesEvicted
 }

@@ -2678,3 +2678,413 @@ func TestMultipleRevCacheItemsForSameDocs(t *testing.T) {
 	// assert four items now in cache
 	assert.Equal(t, int64(4), db.DbStats.Cache().RevisionCacheNumItems.Value())
 }
+
+// TestMemoryBasedEvictionBetweenRevAndDeltaCache verifies that the shared CacheMemoryController
+// evicts across both LRURevisionCache and LRUDeltaCache, always choosing the globally oldest item
+// (by access order). The test drives two round-trips:
+//
+//  1. Get rev1  → loaded from backing store, memory at capacity (no eviction).
+//  2. UpdateDelta(rev1→rev2) → total exceeds limit; rev1 (older access order) is evicted from
+//     the revision cache.
+//  3. Get rev1 again → loaded from backing store, total exceeds limit again; the delta (now the
+//     oldest item) is evicted from the delta cache.
+//
+// At each step the cache item counts and shared memory byte stat are asserted for consistency.
+func TestMemoryBasedEvictionBetweenRevAndDeltaCache(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta sync and delta cache are EE only")
+	}
+
+	ctx := base.TestCtx(t)
+	const docID = "testDoc"
+
+	// testBackingStore always serves docID at cv{Value:123, SourceID:"test"}.
+	rev1CV := Version{Value: 123, SourceID: "test"}
+	rev2CV := Version{Value: 456, SourceID: "test"} // only used as the delta's toVersion key
+
+	// Delta body bytes.  With no channels or revision history, totalDeltaBytes = len(DeltaBytes).
+	deltaBodyBytes := []byte("delta_data") // 10 bytes
+	const expectedDeltaBytes = int64(10)
+
+	// testBackingStore produces 121 bytes for "testDoc" (verified empirically: body JSON + 1
+	// history digest at 32 bytes + 1 channel byte "*").
+	const expectedRev1Bytes = int64(121)
+
+	// maxBytes=121: rev1 alone just fits (121 is NOT > 121), delta alone fits (10 < 121), but
+	// together (131 > 121) they trigger memory-based eviction.
+	const maxBytes = expectedRev1Bytes
+
+	// Revision cache stats.
+	var cacheHits, cacheMisses, cacheNumItems, cacheMemoryBytes base.SgwIntStat
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      &cacheHits,
+		cacheMissStat:     &cacheMisses,
+		cacheNumItemsStat: &cacheNumItems,
+		cacheMemoryStat:   &cacheMemoryBytes,
+	}
+
+	// Delta cache stats.
+	var deltaCacheHit, deltaCacheMiss, deltaCacheNumItems base.SgwIntStat
+	deltaStats := &base.DeltaSyncStats{
+		DeltaCacheHit:      &deltaCacheHit,
+		DeltaCacheMiss:     &deltaCacheMiss,
+		DeltaCacheNumItems: &deltaCacheNumItems,
+	}
+
+	var docCounter, revCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &docCounter, getRevisionCounter: &revCounter}
+
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 100, // high enough that number-based eviction never fires
+		MaxBytes:     maxBytes,
+	}
+	orchestrator := NewRevisionCacheOrchestrator(
+		cacheOptions,
+		CreateTestSingleBackingStoreMap(bs, testCollectionID),
+		revCacheStats,
+		deltaStats,
+		true, // initDeltaCache
+	)
+
+	// -----------------------------------------------------------------------
+	// Step 1: Load rev1 via Get (cache miss — loaded from backing store).
+	// Memory reaches the limit exactly; IsOverCapacity returns false (> not >=),
+	// so no eviction occurs.
+	// -----------------------------------------------------------------------
+	_, wasMiss, err := orchestrator.Get(ctx, docID, rev1CV.String(), testCollectionID, false)
+	require.NoError(t, err)
+	require.True(t, wasMiss, "first Get should be a cache miss triggering a backing-store load")
+
+	_, rev1InCache := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
+	assert.True(t, rev1InCache, "rev1 should be in revision cache after Get")
+	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should have one item")
+	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should be empty")
+	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes")
+	assert.Equal(t, int64(1), cacheMisses.Value())
+	assert.Equal(t, int64(0), cacheHits.Value())
+
+	// -----------------------------------------------------------------------
+	// Step 2: Add delta rev1→rev2 via UpdateDelta.
+	// Total (121+10=131) exceeds maxBytes (121).  rev1 carries the older access
+	// order, so it is evicted from the revision cache, leaving only the delta.
+	// -----------------------------------------------------------------------
+	delta := RevisionDelta{DeltaBytes: deltaBodyBytes}
+	delta.CalculateDeltaBytes()
+	orchestrator.UpdateDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID, delta)
+
+	_, rev1InCacheAfterDelta := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
+	assert.False(t, rev1InCacheAfterDelta, "rev1 should have been evicted from revision cache by memory pressure")
+
+	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
+	assert.NotNil(t, cachedDelta, "delta should remain in delta cache after evicting rev1")
+
+	assert.Equal(t, int64(0), cacheNumItems.Value(), "revision cache should be empty after evicting rev1")
+	assert.Equal(t, int64(1), deltaCacheNumItems.Value(), "delta cache should have one entry")
+	assert.Equal(t, expectedDeltaBytes, cacheMemoryBytes.Value(), "memory stat should equal delta bytes only after eviction")
+
+	// -----------------------------------------------------------------------
+	// Step 3: Load rev1 again via Get (cache miss — it was evicted in step 2).
+	// Total (10+121=131) exceeds maxBytes again.  The delta now carries the older
+	// access order, so it is evicted from the delta cache, leaving only rev1.
+	// -----------------------------------------------------------------------
+	_, wasMiss2, err := orchestrator.Get(ctx, docID, rev1CV.String(), testCollectionID, false)
+	require.NoError(t, err)
+	require.True(t, wasMiss2, "second Get should be a cache miss (rev1 was evicted)")
+
+	_, rev1BackInCache := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
+	assert.True(t, rev1BackInCache, "rev1 should be back in revision cache after second Get")
+
+	cachedDeltaAfter := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
+	assert.Nil(t, cachedDeltaAfter, "delta should have been evicted from delta cache by memory pressure")
+
+	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should have rev1 again")
+	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should be empty after eviction")
+	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes only after delta evicted")
+	assert.Equal(t, int64(2), cacheMisses.Value(), "both Gets were cache misses")
+	assert.Equal(t, int64(0), cacheHits.Value())
+}
+
+// TestMemoryBasedEvictionRevisionCacheOnly verifies memory-based eviction when the delta cache
+// is disabled (delta sync off).  Two documents are loaded sequentially; each fits within the
+// memory limit on its own, but together they exceed it, so the older document must be evicted
+// when the second is loaded.
+func TestMemoryBasedEvictionRevisionCacheOnly(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	// testBackingStore serves any docID at cv{Value:123, SourceID:"test"}.
+	rev1CV := Version{Value: 123, SourceID: "test"}
+
+	// testBackingStore produces 118 bytes for a 4-char docID (verified empirically: body JSON
+	// + 1 history digest at 32 bytes + 1 channel byte "*").
+	const expectedBytesPerDoc = int64(118)
+
+	// maxBytes=118: one document just fits (118 is NOT > 118); two together (236 > 118)
+	// trigger memory-based eviction of the older document.
+	const maxBytes = expectedBytesPerDoc
+
+	var cacheHits, cacheMisses, cacheNumItems, cacheMemoryBytes base.SgwIntStat
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      &cacheHits,
+		cacheMissStat:     &cacheMisses,
+		cacheNumItemsStat: &cacheNumItems,
+		cacheMemoryStat:   &cacheMemoryBytes,
+	}
+
+	var docCounter, revCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &docCounter, getRevisionCounter: &revCounter}
+
+	cacheOptions := &RevisionCacheOptions{
+		MaxItemCount: 100, // number-based eviction disabled
+		MaxBytes:     maxBytes,
+	}
+	// initDeltaCache=false mirrors the configuration when delta sync is disabled.
+	orchestrator := NewRevisionCacheOrchestrator(
+		cacheOptions,
+		CreateTestSingleBackingStoreMap(bs, testCollectionID),
+		revCacheStats,
+		&base.DeltaSyncStats{},
+		false,
+	)
+
+	// -----------------------------------------------------------------------
+	// Step 1: Load doc1 via Get (cache miss).
+	// Memory reaches the limit exactly; no eviction occurs.
+	// -----------------------------------------------------------------------
+	_, wasMiss, err := orchestrator.Get(ctx, "doc1", rev1CV.String(), testCollectionID, false)
+	require.NoError(t, err)
+	require.True(t, wasMiss, "first Get should be a cache miss")
+
+	_, doc1InCache := orchestrator.Peek(ctx, "doc1", rev1CV.String(), testCollectionID)
+	assert.True(t, doc1InCache, "doc1 should be in revision cache after Get")
+	assert.Equal(t, int64(1), cacheNumItems.Value())
+	assert.Equal(t, expectedBytesPerDoc, cacheMemoryBytes.Value(), "memory stat should equal doc1 bytes")
+	assert.Equal(t, int64(1), cacheMisses.Value())
+	assert.Equal(t, int64(0), cacheHits.Value())
+
+	// -----------------------------------------------------------------------
+	// Step 2: Load doc2 via Get (cache miss).
+	// Total (118+118=236) exceeds maxBytes (118).  doc1 carries the older access
+	// order, so it is evicted, leaving only doc2 in the revision cache.
+	// -----------------------------------------------------------------------
+	_, wasMiss2, err := orchestrator.Get(ctx, "doc2", rev1CV.String(), testCollectionID, false)
+	require.NoError(t, err)
+	require.True(t, wasMiss2, "second Get should be a cache miss")
+
+	_, doc1InCacheAfter := orchestrator.Peek(ctx, "doc1", rev1CV.String(), testCollectionID)
+	assert.False(t, doc1InCacheAfter, "doc1 should have been evicted from revision cache by memory pressure")
+
+	_, doc2InCache := orchestrator.Peek(ctx, "doc2", rev1CV.String(), testCollectionID)
+	assert.True(t, doc2InCache, "doc2 should be in revision cache")
+
+	assert.Equal(t, int64(1), cacheNumItems.Value(), "only doc2 should remain in revision cache")
+	assert.Equal(t, expectedBytesPerDoc, cacheMemoryBytes.Value(), "memory stat should equal doc2 bytes only after eviction")
+	assert.Equal(t, int64(2), cacheMisses.Value(), "both Gets were cache misses")
+	assert.Equal(t, int64(0), cacheHits.Value())
+}
+
+// makeTestRevision creates a minimal DocumentRevision for memory-accounting tests.
+// MemoryBytes = len(body) because History is an empty (but non-nil) Revisions map
+// and there are no channels, so CalculateBytes contributes 0 history/channel overhead.
+func makeTestRevision(docID string, cv Version, body string) DocumentRevision {
+	return DocumentRevision{
+		DocID:     docID,
+		CV:        &cv,
+		BodyBytes: []byte(body),
+		History:   Revisions{}, // non-nil satisfies Put's nil-history guard; contributes 0 bytes
+	}
+}
+
+// newTestRevCacheStats returns zero-value stats for standalone cache tests.
+func newTestRevCacheStats() revisionCacheStats {
+	var hits, misses, numItems, cacheMemoryStat base.SgwIntStat
+	return revisionCacheStats{
+		cacheHitStat:      &hits,
+		cacheMissStat:     &misses,
+		cacheNumItemsStat: &numItems,
+		cacheMemoryStat:   &cacheMemoryStat,
+	}
+}
+
+// newTestDeltaStats returns zero-value delta stats for standalone cache tests.
+func newTestDeltaStats() *base.DeltaSyncStats {
+	var hit, miss, numItems base.SgwIntStat
+	return &base.DeltaSyncStats{
+		DeltaCacheHit:      &hit,
+		DeltaCacheMiss:     &miss,
+		DeltaCacheNumItems: &numItems,
+	}
+}
+
+// TestEvictLRUTailOnLoadingItemReturnsZeroBytes verifies that evicting an item still in
+// memStateLoading (bytes not yet accounted) returns 0 bytes and does not corrupt the
+// memory stat.  It also verifies that the CAS Loading→Sized, which would normally
+// follow a backing-store load, correctly fails after eviction — preventing a double-count.
+func TestEvictLRUTailOnLoadingItemReturnsZeroBytes(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+
+	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: 0}
+	mc := newCacheMemoryController(0, revStats.cacheMemoryStat)
+	rc := NewLRURevisionCache(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID), revStats, mc,
+	)
+
+	docCV := Version{Value: 123, SourceID: "test"}
+
+	// getValue(create=true) inserts a shell entry in memStateLoading with itemBytes=0.
+	value := rc.getValue(ctx, "doc1", docCV.String(), testCollectionID, true)
+	require.NotNil(t, value)
+	assert.Equal(t, memStateLoading, value.memState.Load(), "item should start in Loading state")
+	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "no bytes counted while item is still loading")
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+
+	// Evict the still-loading item — must return 0 bytes, not inflate or deflate the stat.
+	bytesReturned := rc.evictLRUTail()
+	assert.Equal(t, int64(0), bytesReturned, "evicting a loading item must return 0 bytes")
+	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "memory stat must not go negative")
+	assert.Equal(t, memStateRemoved, value.memState.Load(), "evicted item should be in Removed state")
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+
+	// Simulate the backing-store load completing after eviction: store bytes then attempt
+	// the CAS that Get would perform.  The CAS must fail (state is already Removed),
+	// preventing any bytes from being counted for a no-longer-cached item.
+	value.itemBytes.Store(int64(50))
+	casSucceeded := value.memState.CompareAndSwap(memStateLoading, memStateSized)
+	assert.False(t, casSucceeded, "CAS Loading→Sized must fail on an already-evicted item")
+	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "memory stat must stay at 0 after the failed CAS")
+}
+
+// TestUpsertReplacesItemMemoryBytes verifies that Upserting a document with a different
+// body size correctly decrements the old bytes and increments the new bytes, so the stat
+// always reflects the current item's size only — no double-counting, no stale bytes.
+func TestUpsertReplacesItemMemoryBytes(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+
+	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	docCV := Version{Value: 1, SourceID: "test"}
+
+	// First Upsert: small body — MemoryBytes = len(`{"v":1}`) = 7.
+	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":1}`), testCollectionID)
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value(), "first upsert should count 7 bytes")
+
+	// Second Upsert: same doc/CV, larger body — MemoryBytes = 22.
+	// Old bytes (7) must be decremented and new bytes (22) incremented; stat = 22, not 29.
+	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":2,"extra":"data"}`), testCollectionID)
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value(), "upsert replaces in-place — still 1 item")
+	assert.Equal(t, int64(22), revStats.cacheMemoryStat.Value(),
+		"stat must equal new body size only — no double-counting of old bytes")
+
+	// Third Upsert: smaller body — MemoryBytes = 7.  Stat must shrink, not accumulate.
+	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":3}`), testCollectionID)
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value(), "stat must shrink when the replacement body is smaller")
+}
+
+// TestCombinedNumberAndMemoryEviction verifies that when both MaxItemCount and MaxBytes
+// are configured, number-based eviction (inside addDelta) and memory-based eviction
+// (triggerMemoryEviction) interact correctly, leaving consistent item-count and memory stats.
+func TestCombinedNumberAndMemoryEviction(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta cache is EE only")
+	}
+
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	deltaStats := newTestDeltaStats()
+
+	// rev body = 15 bytes; each delta body = 10 bytes.
+	// maxBytes=20: rev(15) fits alone; delta(10) fits alone; rev+delta(25) triggers memory
+	// eviction; two deltas(20) exactly at the limit — NOT > 20 — so no memory eviction fires
+	// after the second delta is added via number-based eviction.
+	const maxBytes = int64(20)
+
+	// MaxItemCount=1 caps both rev and delta caches at 1 item, ensuring number-based
+	// eviction fires when the second delta is added.
+	opts := &RevisionCacheOptions{MaxItemCount: 1, MaxBytes: maxBytes}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, deltaStats, true,
+	)
+
+	makeDelta := func() RevisionDelta {
+		d := RevisionDelta{DeltaBytes: []byte("0123456789")} // 10 bytes
+		d.CalculateDeltaBytes()
+		return d
+	}
+
+	// Put a revision (15 bytes) — fits within maxBytes, no eviction.
+	orchestrator.Put(ctx, makeTestRevision("doc1", Version{Value: 1, SourceID: "src"}, `{"key":"value"}`), testCollectionID)
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value())
+
+	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision
+	// (older access order).  After eviction: only delta A in memory (10 bytes).
+	orchestrator.UpdateDelta(ctx, "doc1", "from1", "to1", testCollectionID, makeDelta())
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value(), "revision evicted by memory pressure")
+	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(), "only delta A bytes should remain")
+
+	// UpdateDelta B: number-based eviction (MaxItemCount=1) removes delta A and decrements
+	// its 10 bytes, then delta B is added and its 10 bytes incremented.  Net = 10 bytes.
+	// Memory (10) is NOT > maxBytes (20) so memory-based eviction does not fire.
+	orchestrator.UpdateDelta(ctx, "doc1", "from2", "to2", testCollectionID, makeDelta())
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value(), "revision cache still empty")
+	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value(), "only delta B should remain")
+	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(),
+		"number eviction of delta A must have decremented bytes; stat should equal delta B only")
+}
+
+// TestMemoryStatTracksUsageWithUnlimitedCapacity verifies that with MaxBytes=0 (no memory
+// limit), the shared stat still accurately tracks the sum of bytes in the revision cache
+// as items are added and removed, and never goes negative.
+func TestMemoryStatTracksUsageWithUnlimitedCapacity(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+
+	// MaxBytes=0: IsOverCapacity() always false — eviction never fires, only accounting.
+	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	cv1 := Version{Value: 1, SourceID: "test"}
+	cv2 := Version{Value: 2, SourceID: "test"}
+
+	// Put two revisions with different bodies.
+	// rev1: len(`{"v":1}`) = 7 bytes; rev2: len(`{"v":2,"x":"y"}`) = 15 bytes.
+	orchestrator.Put(ctx, makeTestRevision("doc1", cv1, `{"v":1}`), testCollectionID)
+	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value())
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+
+	orchestrator.Put(ctx, makeTestRevision("doc2", cv2, `{"v":2,"x":"y"}`), testCollectionID)
+	assert.Equal(t, int64(22), revStats.cacheMemoryStat.Value(), "stat should be the sum of both revision bodies")
+	assert.Equal(t, int64(2), revStats.cacheNumItemsStat.Value())
+
+	// Remove rev1 — stat must decrease by exactly rev1's bytes.
+	orchestrator.Remove(ctx, "doc1", cv1.String(), testCollectionID)
+	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value(), "stat should reflect only rev2 after removing rev1")
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+
+	// Remove rev2 — stat must reach exactly zero.
+	orchestrator.Remove(ctx, "doc2", cv2.String(), testCollectionID)
+	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "all items removed — stat must be 0")
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+
+	// Remove rev2 - item doesn't exist, stats stay same
+	orchestrator.Remove(ctx, "doc2", cv2.String(), testCollectionID)
+	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "all items removed — stat must be 0")
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+}
