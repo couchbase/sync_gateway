@@ -98,6 +98,18 @@ type LRURevisionCache struct {
 	capacity         uint32 // Max number of items capacity of LRURevisionCache
 }
 
+// Memory accounting lifecycle states for revCacheValue.
+// The transitions are:
+//
+//	memStateLoading → memStateSized  (CAS in Get/Put after bytes are known and stat incremented)
+//	memStateLoading → memStateRemoved (Swap in Remove/eviction before increment happened)
+//	memStateSized   → memStateRemoved (Swap in Remove/eviction after stat was incremented)
+const (
+	memStateLoading = int32(0) // item is in the cache but bytes have not yet been accounted in the memory stat
+	memStateSized   = int32(1) // bytes have been accounted; a future Remove/eviction must decrement
+	memStateRemoved = int32(2) // item has been removed; any in-flight CAS to memStateSized will fail
+)
+
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
 	err          error
@@ -116,7 +128,7 @@ type revCacheValue struct {
 	removed      bool
 	itemBytes    atomic.Int64
 	collectionID uint32
-	itemLoaded   atomic.Bool
+	memState     atomic.Int32  // memory accounting lifecycle; see memStateXxx constants
 	deltaLock    sync.Mutex    // synchronizes GetDelta across multiple clients for each fromRevision
 	accessOrder  atomic.Uint64 // stamped on insert; used for cross-cache eviction ordering
 }
@@ -151,8 +163,15 @@ func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string
 
 	incrementStatEvent := !cacheHit && err == nil
 	if incrementStatEvent {
-		// cache miss so we had to load doc, increment memory count
-		rc.memoryController.incrementBytesCount(ctx, value.getItemBytes())
+		// Transition to memStateSized under a CAS so that a concurrent Remove that ran before
+		// the load completed (reading itemBytes=0) cannot result in a permanently inflated stat.
+		// If Remove already set memStateRemoved the CAS fails and we skip the increment — the
+		// item is gone and its bytes were never decremented, so no increment is needed either.
+		if !value.memState.CompareAndSwap(memStateLoading, memStateSized) {
+			incrementStatEvent = false
+		} else {
+			rc.memoryController.incrementBytesCount(value.getItemBytes())
+		}
 	}
 
 	if err != nil {
@@ -213,8 +232,15 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	incrementStatEvent := !statEvent && err == nil
 	if incrementStatEvent {
-		// cache miss so we had to load doc, increment memory count
-		rc.memoryController.incrementBytesCount(ctx, value.getItemBytes())
+		// Transition to memStateSized under a CAS so that a concurrent Remove that ran before
+		// the load completed (reading itemBytes=0) cannot result in a permanently inflated stat.
+		// If Remove already set memStateRemoved the CAS fails and we skip the increment — the
+		// item is gone and its bytes were never decremented, so no increment is needed either.
+		if !value.memState.CompareAndSwap(memStateLoading, memStateSized) {
+			incrementStatEvent = false
+		} else {
+			rc.memoryController.incrementBytesCount(value.getItemBytes())
+		}
 	}
 
 	if err != nil {
@@ -243,7 +269,14 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 	value := rc.getValue(ctx, docRev.DocID, docRev.CV.String(), collectionID, true)
 	// increment incoming bytes
 	docRev.CalculateBytes()
-	rc.memoryController.incrementBytesCount(ctx, docRev.MemoryBytes)
+	// Store itemBytes on the value before the CAS so that a concurrent Remove or eviction
+	// that wins the Swap to memStateRemoved will read the correct size.
+	value.itemBytes.Store(docRev.MemoryBytes)
+	// CAS guards against double-counting if this key already exists and is memStateSized,
+	// and against incrementing for an item that was concurrently removed (memStateRemoved).
+	if value.memState.CompareAndSwap(memStateLoading, memStateSized) {
+		rc.memoryController.incrementBytesCount(docRev.MemoryBytes)
+	}
 	value.store(docRev)
 }
 
@@ -257,8 +290,12 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 	}
 
 	docRev.CalculateBytes()
-	// add new item bytes to overall count
-	rc.memoryController.incrementBytesCount(ctx, docRev.MemoryBytes)
+	// Store itemBytes before the CAS for the same reason as in Put.
+	cvValue.itemBytes.Store(docRev.MemoryBytes)
+	// CAS guards against incrementing for a value that was concurrently removed.
+	if cvValue.memState.CompareAndSwap(memStateLoading, memStateSized) {
+		rc.memoryController.incrementBytesCount(docRev.MemoryBytes)
+	}
 	cvValue.store(docRev)
 }
 
@@ -273,8 +310,11 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	existingElem, found = rc.cache[cvKey]
 	if found {
 		revItem := existingElem.Value.(*revCacheValue)
-		// decrement item bytes by the removed item
-		rc.memoryController.decrementBytesCount(ctx, revItem.getItemBytes())
+		// Swap to removed and only decrement if bytes were already accounted (memStateSized).
+		// If the old item was still loading its increment CAS will now fail, so no decrement needed.
+		if revItem.memState.Swap(memStateRemoved) == memStateSized {
+			rc.memoryController.decrementBytesCount(revItem.getItemBytes())
+		}
 		rc.lruList.Remove(existingElem)
 		newItem = false
 	}
@@ -294,7 +334,7 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	// Purge oldest item if over number capacity
 	numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 	if numBytesEvicted > 0 {
-		rc.memoryController.decrementBytesCount(ctx, numBytesEvicted)
+		rc.memoryController.decrementBytesCount(numBytesEvicted)
 	}
 	return numItemsRemoved, cvValue
 }
@@ -326,14 +366,13 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, docVersionStrin
 		} else {
 			value.cv = currentVersion
 		}
-		value.itemLoaded.Store(false)
 		value.accessOrder.Store(nextAccessOrder()) // stamp on insert
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
 		numItemsRemoved, numBytesEvicted := rc._numberCapacityEviction()
 		if numBytesEvicted > 0 {
-			rc.memoryController.decrementBytesCount(ctx, numBytesEvicted)
+			rc.memoryController.decrementBytesCount(numBytesEvicted)
 		}
 		if numItemsRemoved > 0 {
 			rc.cacheNumItems.Add(-numItemsRemoved)
@@ -355,15 +394,24 @@ func (rc *LRURevisionCache) Remove(ctx context.Context, docID, versionString str
 	if !ok {
 		return
 	}
-	rc.memoryController.decrementBytesCount(ctx, revValue.getItemBytes())
 	rc.lruList.Remove(elem)
 	rc.cacheNumItems.Add(-1)
 	delete(rc.cache, key)
+	// Swap to removed after the map/list are already updated.
+	// Only decrement if bytes were already accounted (memStateSized); if the item was still
+	// loading (memStateLoading) the in-flight CAS in Get/Put will fail and skip the increment.
+	if revValue.memState.Swap(memStateRemoved) == memStateSized {
+		rc.memoryController.decrementBytesCount(revValue.getItemBytes())
+	}
 }
 
-// removeValueForFailedLoad removes a value from after a failed load. NOTE this mist only be called for failed load, rto remove an item from the rev cache you must call Remove.
-// No decrement of memory stats needed as failed loads don't increment memory stats.
+// removeValueForFailedLoad removes a value after a failed load. Must only be called for failed loads;
+// to remove a cached item use Remove. No memory decrement is needed because failed loads never reach
+// the CAS that transitions to memStateSized, but we store memStateRemoved as a safety guard.
 func (rc *LRURevisionCache) removeValueForFailedLoad(value *revCacheValue) {
+	// Mark removed before acquiring the lock so any concurrent CAS-based increment sees the
+	// terminal state and skips, even if it races with this function.
+	value.memState.Store(memStateRemoved)
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	var itemRemoved bool
@@ -378,7 +426,7 @@ func (rc *LRURevisionCache) removeValueForFailedLoad(value *revCacheValue) {
 }
 
 // _numberCapacityEviction will iterate removing the last element in cache til we fall below the maximum number of items
-// threshold for this shard, retuning the bytes evicted and number of items evicted
+// threshold for this shard, returning the bytes evicted and number of items evicted.
 func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, numBytesEvicted int64) {
 	for rc.lruList.Len() > int(rc.capacity) {
 		value := rc._findEvictionValue()
@@ -386,10 +434,14 @@ func (rc *LRURevisionCache) _numberCapacityEviction() (numItemsEvicted int64, nu
 			// no more ready for eviction
 			break
 		}
-		// delete item from lookup map
 		delete(rc.cache, value.itemKey)
 		numItemsEvicted++
-		numBytesEvicted += value.getItemBytes()
+		// Only count bytes if they were already accounted in the stat (memStateSized).
+		// If the item was still in memStateLoading the in-flight CAS will fail and skip
+		// the increment, so there is nothing to decrement.
+		if value.memState.Swap(memStateRemoved) == memStateSized {
+			numBytesEvicted += value.getItemBytes()
+		}
 	}
 	return numItemsEvicted, numBytesEvicted
 }
@@ -421,12 +473,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
 	} else {
-		// we only want to set can evict if we are having to load the doc from the bucket into value,
-		// avoiding setting this value multiple times in the case other goroutines are loading the same value
-		defer func() {
-			value.itemLoaded.Store(true) // once done loading doc we can set the value to be ready for eviction
-		}()
-
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
@@ -452,7 +498,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 
 	docRev, err = value.asDocumentRevision(delta)
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
-	if !cacheHit {
+	if !cacheHit && err == nil {
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
@@ -506,12 +552,6 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
 	} else {
-		// we only want to set can evict if we are having to load the doc from the bucket into value,
-		// avoiding setting this value multiple times in the case other goroutines are loading the same value
-		defer func() {
-			value.itemLoaded.Store(true) // once done loading doc we can set the value to be ready for eviction
-		}()
-
 		cacheHit = false
 		hlv := &HybridLogicalVector{}
 		if value.revID == "" {
@@ -529,7 +569,7 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 	}
 	docRev, err = value.asDocumentRevision(nil)
 	// if not cache hit, we loaded from bucket. Calculate doc rev size and assign to rev cache value
-	if !cacheHit {
+	if !cacheHit && err == nil {
 		docRev.CalculateBytes()
 		value.itemBytes.Store(docRev.MemoryBytes)
 	}
@@ -553,7 +593,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.itemBytes.Store(docRev.MemoryBytes)
 		value.hlvHistory = docRev.HlvHistory
 	}
-	value.itemLoaded.Store(true) // now we have stored the doc revision in the cache, we can allow eviction
 }
 
 // getItemBytes atomically retrieves the rev cache items overall memory footprint
@@ -588,51 +627,38 @@ func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 	if !ok {
 		return nil
 	}
-
-	if revItem.itemLoaded.Load() {
-		rc.lruList.Remove(evictionCandidate)
-		return revItem
-	}
-
-	// iterate through list backwards to find value ready for eviction
-	evictionCandidate = evictionCandidate.Prev()
-	for evictionCandidate != nil {
-		revItem = evictionCandidate.Value.(*revCacheValue)
-		if revItem.itemLoaded.Load() {
-			rc.lruList.Remove(evictionCandidate)
-			return revItem
-		}
-		// check prev value
-		evictionCandidate = evictionCandidate.Prev()
-	}
-	return nil
+	rc.lruList.Remove(evictionCandidate)
+	return revItem
 }
 
-// peekLRUTailAccessOrder returns the accessOrder of the least-recently-used loaded item,
-// or 0 if the cache is empty or has no loaded items ready for eviction.
+// peekLRUTailAccessOrder returns the accessOrder of the least-recently-used item,
+// or 0 if the cache is empty.
 // Called by the orchestrator to compare against the delta cache tail before deciding which to evict.
 func (rc *LRURevisionCache) peekLRUTailAccessOrder() uint64 {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	// Walk backwards to find a loaded item — mirrors _findEvictionValue but without removing.
-	for elem := rc.lruList.Back(); elem != nil; elem = elem.Prev() {
-		if v, ok := elem.Value.(*revCacheValue); ok && v.itemLoaded.Load() {
+	if elem := rc.lruList.Back(); elem != nil {
+		if v, ok := elem.Value.(*revCacheValue); ok {
 			return v.accessOrder.Load()
 		}
 	}
 	return 0
 }
 
-// evictLRUTail removes the LRU loaded item and notifies the memory controller.
-// Returns false if there was nothing eligible to evict.
-func (rc *LRURevisionCache) evictLRUTail(ctx context.Context) int64 {
+// evictLRUTail removes the LRU loaded item and returns the bytes to decrement from the memory
+// controller, or 0 if there was nothing eligible to evict or the item's bytes were not yet
+// accounted (in which case the in-flight CAS in Get will fail, so no decrement is needed).
+func (rc *LRURevisionCache) evictLRUTail() int64 {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
-	value := rc._findEvictionValue() // already walks back to find a loaded item
+	value := rc._findEvictionValue()
 	if value == nil {
 		return 0
 	}
 	delete(rc.cache, value.itemKey)
 	rc.cacheNumItems.Add(-1)
-	return value.getItemBytes()
+	if value.memState.Swap(memStateRemoved) == memStateSized {
+		return value.getItemBytes()
+	}
+	return 0
 }

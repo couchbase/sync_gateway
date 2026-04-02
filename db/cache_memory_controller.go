@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"context"
 	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -60,12 +59,12 @@ func (mc *CacheMemoryController) bytesToEvict() int64 {
 	return excess
 }
 
-func (mc *CacheMemoryController) incrementBytesCount(ctx context.Context, n int64) {
+func (mc *CacheMemoryController) incrementBytesCount(n int64) {
 	mc.currBytesCount.Add(n)
 	mc.totalBytesStat.Add(n)
 }
 
-func (mc *CacheMemoryController) decrementBytesCount(ctx context.Context, n int64) {
+func (mc *CacheMemoryController) decrementBytesCount(n int64) {
 	mc.currBytesCount.Add(-n)
 	mc.totalBytesStat.Add(-n)
 }
