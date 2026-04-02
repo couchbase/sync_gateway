@@ -2430,8 +2430,6 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 //   - Then add another pending entry to take over pending capacity and assert that the range is processed correctly
 //   - Then add another range to completely unblock pending
 func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2530,8 +2528,6 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 //   - Assert this single range is processed off pending after new entry is added taking pending over the limit
 //   - Test release of another single range that is now skipped and assert that skipped is emptied
 func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -2755,8 +2751,6 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 //   - Empty skipped through unused sequence release
 //   - Add new contiguous sequence and assert it is processed correctly
 func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	ctx := base.TestCtx(t)
@@ -3170,8 +3164,6 @@ func TestChangeInBroadcastForSkipped(t *testing.T) {
 }
 
 func TestUnblockPendingWithUnusedRange(t *testing.T) {
-	base.LongRunningTest(t)
-
 	opts := DefaultCacheOptions()
 	opts.CachePendingSeqMaxWait = 20 * time.Minute
 	opts.CacheSkippedSeqMaxWait = 20 * time.Minute

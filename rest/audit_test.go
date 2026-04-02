@@ -781,8 +781,6 @@ func TestRedactConfigAsStr(t *testing.T) {
 }
 
 func TestEffectiveUserID(t *testing.T) {
-	base.LongRunningTest(t)
-
 	tempdir := t.TempDir()
 	base.ResetGlobalTestLogging(t)
 	base.InitializeMemoryLoggers()
@@ -1808,8 +1806,6 @@ func TestDatabaseAuditChanges(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
-
-	db.DisableSequenceWaitOnDbRestart(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 

@@ -26,8 +26,6 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
