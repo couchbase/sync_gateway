@@ -449,7 +449,22 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 		if options.Limit > 0 && room > 0 && room < n {
 			n = room
 		}
-		result = append(result, resultFromCache[0:n]...)
+		if !options.ActiveOnly || options.Limit == 0 || len(resultFromQuery)+len(resultFromCache) <= options.Limit {
+			result = append(result, resultFromCache[0:n]...)
+		} else {
+			totalEntries := len(result)
+			for _, entry := range resultFromCache {
+				if totalEntries >= options.Limit {
+					break
+				}
+				if !entry.IsActive() {
+					continue
+				}
+				result = append(result, entry)
+				totalEntries++
+			}
+
+		}
 	}
 	base.InfofCtx(ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 
