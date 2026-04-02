@@ -752,6 +752,184 @@ func TestDCPFeedEventTypes(t *testing.T) {
 
 }
 
+// TestDCPFeedContentBodyOnlyDocs verifies that body-only documents (no xattrs) are delivered
+// on DCP feeds using different FeedContent modes. This specifically targets the
+// NoValueWithUnderlyingDatatype (0x40) DCP open flag used by FeedContentXattrOnly, which
+// is suspected of causing CBS to silently drop mutations for body-only documents (CBG-4640).
+//
+// The test writes three document types that mirror production Sync Gateway usage:
+//   - Body-only JSON doc (like _sync:user:* written via WriteCas/Insert)
+//   - Xattr+body doc (like application documents)
+//   - Counter doc (like _sync:seq written via Incr)
+//
+// Both backfill (docs written before feed starts) and live streaming (continuous,
+// docs written after feed starts) scenarios are tested.
+func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
+	ctx := TestCtx(t)
+
+	feedContentModes := []struct {
+		name        string
+		feedContent sgbucket.FeedContent
+	}{
+		{"FeedContentDefault", sgbucket.FeedContentDefault},
+		{"FeedContentXattrOnly", sgbucket.FeedContentXattrOnly},
+	}
+
+	for _, mode := range feedContentModes {
+		t.Run(mode.name, func(t *testing.T) {
+			for _, live := range []bool{false, true} {
+				name := "backfill"
+				if live {
+					name = "live"
+				}
+				t.Run(name, func(t *testing.T) {
+					bucket := GetTestBucket(t)
+					defer bucket.Close(ctx)
+
+					dataStore := bucket.GetSingleDataStore()
+
+					bodyOnlyKey := t.Name() + "_bodyOnly"
+					xattrKey := t.Name() + "_xattr"
+					counterKey := t.Name() + "_counter"
+
+					// writeTestDocs writes the three document types we want to verify
+					writeTestDocs := func() {
+						// Body-only JSON doc via WriteCas (Insert, cas=0) - same path as auth.Save() for _sync:user:*
+						body := map[string]any{"type": "user", "name": "testuser", "channels": []string{"a", "b"}}
+						_, err := dataStore.WriteCas(bodyOnlyKey, 0, 0, body, 0)
+						require.NoError(t, err)
+
+						// Xattr+body doc - same as application documents
+						_, err = dataStore.WriteWithXattrs(ctx, xattrKey, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{"_sync": []byte(`{"rev":"1-abc"}`)}, nil, nil)
+						require.NoError(t, err)
+
+						// Counter doc via Incr - same path as _sync:seq
+						_, err = dataStore.Incr(counterKey, 1, 0, 0)
+						require.NoError(t, err)
+					}
+
+					if !live {
+						// Backfill: write docs before starting the feed
+						writeTestDocs()
+					}
+
+					// Track which docs arrive
+					var gotBodyOnly, gotXattr, gotCounter atomic.Bool
+					var bodyOnlyEvent, xattrEvent, counterEvent sgbucket.FeedEvent
+					var eventMu sync.Mutex
+					allFound := make(chan struct{}, 1)
+
+					callback := func(event sgbucket.FeedEvent) bool {
+						eventMu.Lock()
+						defer eventMu.Unlock()
+						switch string(event.Key) {
+						case bodyOnlyKey:
+							bodyOnlyEvent = event
+							bodyOnlyEvent.Key = append([]byte(nil), event.Key...)
+							bodyOnlyEvent.Value = append([]byte(nil), event.Value...)
+							gotBodyOnly.Store(true)
+						case xattrKey:
+							xattrEvent = event
+							xattrEvent.Key = append([]byte(nil), event.Key...)
+							xattrEvent.Value = append([]byte(nil), event.Value...)
+							gotXattr.Store(true)
+						case counterKey:
+							counterEvent = event
+							counterEvent.Key = append([]byte(nil), event.Key...)
+							counterEvent.Value = append([]byte(nil), event.Value...)
+							gotCounter.Store(true)
+						default:
+							return true
+						}
+						if gotBodyOnly.Load() && gotXattr.Load() && gotCounter.Load() {
+							select {
+							case allFound <- struct{}{}:
+							default:
+							}
+						}
+						return true
+					}
+
+					// Build FeedArguments for StartDCPFeed (works on both Rosmar and CBS)
+					var backfill uint64
+					if live {
+						backfill = sgbucket.FeedNoBackfill
+					}
+					var scopes map[string][]string
+					if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+						scopes = map[string][]string{
+							dataStore.ScopeName(): {dataStore.CollectionName()},
+						}
+					}
+					terminator := make(chan bool)
+					doneChan := make(chan struct{})
+					feedArgs := sgbucket.FeedArguments{
+						ID:               t.Name(),
+						Backfill:         backfill,
+						Terminator:       terminator,
+						DoneChan:         doneChan,
+						CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+						Scopes:           scopes,
+						FeedContent:      mode.feedContent,
+					}
+					err := bucket.StartDCPFeed(ctx, feedArgs, callback, nil)
+					require.NoError(t, err)
+					defer func() {
+						close(terminator)
+						// DoneChan is closed (not sent to) when the feed exits, so wait directly
+						select {
+						case <-doneChan:
+						case <-time.After(TestChanTimeout):
+							require.FailNow(t, "timed out waiting for DCP feed to close")
+						}
+					}()
+
+					if live {
+						// Live streaming: write docs after the feed has started
+						writeTestDocs()
+					}
+
+					// Wait for all three docs to arrive
+					RequireChanRecv(t, allFound)
+
+					// Verify the body-only doc arrived (this is the key assertion for CBG-4640)
+					require.True(t, gotBodyOnly.Load(), "body-only document (like _sync:user:*) was not delivered by DCP with FeedContent=%s", mode.name)
+					require.True(t, gotXattr.Load(), "xattr document was not delivered by DCP")
+					require.True(t, gotCounter.Load(), "counter document was not delivered by DCP")
+
+					// Verify event properties
+					assert.Equal(t, sgbucket.FeedOpMutation, bodyOnlyEvent.Opcode)
+					assert.Equal(t, sgbucket.FeedOpMutation, xattrEvent.Opcode)
+					assert.Equal(t, sgbucket.FeedOpMutation, counterEvent.Opcode)
+
+					assert.NotEqual(t, uint64(0), bodyOnlyEvent.Cas, "body-only doc CAS should be non-zero")
+					assert.NotEqual(t, uint64(0), xattrEvent.Cas, "xattr doc CAS should be non-zero")
+					assert.NotEqual(t, uint64(0), counterEvent.Cas, "counter doc CAS should be non-zero")
+
+					switch mode.feedContent {
+					case sgbucket.FeedContentDefault:
+						// All docs should have bodies
+						assert.NotEmpty(t, bodyOnlyEvent.Value, "body-only doc should have value with FeedContentDefault")
+						assert.NotEmpty(t, xattrEvent.Value, "xattr doc should have value with FeedContentDefault")
+					case sgbucket.FeedContentXattrOnly:
+						// Body-only doc should have datatype preserved but body stripped
+						assert.True(t, bodyOnlyEvent.DataType&sgbucket.FeedDataTypeJSON != 0 || bodyOnlyEvent.DataType == sgbucket.FeedDataTypeRaw,
+							"body-only doc datatype should indicate JSON or raw, got %d", bodyOnlyEvent.DataType)
+						// Xattr doc should have xattr data
+						assert.True(t, xattrEvent.DataType&sgbucket.FeedDataTypeXattr != 0,
+							"xattr doc should have xattr datatype flag, got %d", xattrEvent.DataType)
+					}
+
+					t.Logf("Results for FeedContent=%s %s:", mode.name, name)
+					t.Logf("  bodyOnly: arrived=%v datatype=%d valueLen=%d cas=%d", gotBodyOnly.Load(), bodyOnlyEvent.DataType, len(bodyOnlyEvent.Value), bodyOnlyEvent.Cas)
+					t.Logf("  xattr:    arrived=%v datatype=%d valueLen=%d cas=%d", gotXattr.Load(), xattrEvent.DataType, len(xattrEvent.Value), xattrEvent.Cas)
+					t.Logf("  counter:  arrived=%v datatype=%d valueLen=%d cas=%d", gotCounter.Load(), counterEvent.DataType, len(counterEvent.Value), counterEvent.Cas)
+				})
+			}
+		})
+	}
+}
+
 func TestDCPClientAgentConfig(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("exercises gocbcore code")

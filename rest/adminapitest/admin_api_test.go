@@ -3042,7 +3042,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
+	base.LongRunningTest(t) // 30s timeout on bad 'No credentials' request
 	rest.RequireBucketSpecificCredentials(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
@@ -3082,7 +3084,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusForbidden)
+	resp.RequireStatus(http.StatusBadGateway) // gocb v2.12.1 returns a timeout error instead of an auth error here
 
 	// Wrong credentials should fail
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
