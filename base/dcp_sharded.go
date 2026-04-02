@@ -37,6 +37,13 @@ const (
 	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
 )
 
+type ShardedDCPFeedType string
+
+const (
+	ShardedDCPFeedTypeImport ShardedDCPFeedType = "import"
+	ShardedDCPFeedTypeResync ShardedDCPFeedType = "resync"
+)
+
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableBuildVersion{
 	epoch: 0,
@@ -53,14 +60,14 @@ type nodeExtras struct {
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
-	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
-	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
-	heartbeater       Heartbeater              // Heartbeater used for failed node detection
-	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
-	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
-	dbName            string                   // Database name
-	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
-	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
+	Manager           *cbgt.Manager                // Manager is main entry point for initialization, registering indexes
+	Cfg               cbgt.Cfg                     // Cfg manages storage of the current pindex set and node assignment
+	heartbeater       Heartbeater                  // Heartbeater used for failed node detection
+	heartbeatListener *shardedDCPHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
+	eventHandlers     *sgMgrEventHandlers          // Event handler callbacks
+	dbName            string                       // Database name
+	sourceName        string                       // cbgt source name. Store on CbgtContext for access during teardown
+	sourceUUID        string                       // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
 // ShardedDCPOptions contains options for starting a DCP feed for cbgt.
@@ -176,14 +183,14 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 
 // GenerateCBGTIndexName creates an index name for cbgt using the database name suitable for the distributed DCP feed.
 // Given a dbName and feedType, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
-func GenerateCBGTIndexName(dbName string, feedType string) (string, error) {
+func GenerateCBGTIndexName(dbName string, feedType ShardedDCPFeedType) (string, error) {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
 	// Don't use Crc32cHashString here because this is intentionally non zero padded to match
 	// existing values.
 	var indexName string
-	if feedType == CBGTIndexTypeSyncGatewayImport {
+	if feedType == ShardedDCPFeedTypeImport {
 		indexName = fmt.Sprintf("db0x%x_index", Crc32cHash([]byte(dbName)))
-	} else if feedType == CBGTIndexTypeSyncGatewayResync {
+	} else if feedType == ShardedDCPFeedTypeResync {
 		indexName = fmt.Sprintf("db0x%x_resync_index", Crc32cHash([]byte(dbName)))
 	} else {
 		return "", fmt.Errorf("unknown index type %s", feedType)
@@ -537,7 +544,7 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func DestKey(dbName string, scope string, collections []string, feedType string) string {
+func DestKey(dbName string, scope string, collections []string, feedType ShardedDCPFeedType) string {
 	sort.Strings(collections)
 	collectionString := ""
 	onlyDefault := true
@@ -549,54 +556,53 @@ func DestKey(dbName string, scope string, collections []string, feedType string)
 	}
 	var destKey string
 	// format for _default._default
-	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == CBGTIndexTypeSyncGatewayImport {
+	if (collectionString == "" || (scope == DefaultScope && onlyDefault)) && feedType == ShardedDCPFeedTypeImport {
 		destKey = fmt.Sprintf("%s_import", dbName)
-	} else if feedType == CBGTIndexTypeSyncGatewayImport {
+	} else if feedType == ShardedDCPFeedTypeImport {
 		destKey = fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
-	} else {
-
+	} else if feedType == ShardedDCPFeedTypeResync {
 		destKey = fmt.Sprintf("%s_resync_%x", dbName, sha256.Sum256([]byte(collectionString)))
 	}
 	return destKey
 }
 
-func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
-		return nil, errors.New("Unable to register import heartbeat listener with nil manager, cfg or heartbeater")
+		return nil, errors.New("Unable to register heartbeat listener with nil manager, cfg or heartbeater")
 	}
 
-	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(ctx, cbgtContext)
+	// Register listener for shardedDCP, uses cfg and manager to manage set of participating nodes
+	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
 
-	err = heartbeater.RegisterListener(importHeartbeatListener)
+	err = heartbeater.RegisterListener(shardedDCPHeartbeatListener)
 	if err != nil {
 		return nil, err
 	}
 
-	return importHeartbeatListener, nil
+	return shardedDCPHeartbeatListener, nil
 }
 
-// ImportHeartbeatListener uses cbgt's cfg to manage node list
-type importHeartbeatListener struct {
-	cfg        cbgt.Cfg      // cbgt cfg being used for import
-	mgr        *cbgt.Manager // cbgt manager associated with this import node
+// shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
+type shardedDCPHeartbeatListener struct {
+	cfg        cbgt.Cfg      // cbgt cfg being used for shardedDCP
+	mgr        *cbgt.Manager // cbgt manager associated with this node
 	ctx        *CbgtContext
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*importHeartbeatListener, error) {
+func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtCtx == nil {
-		return nil, errors.New("ctx must not be nil for ImportHeartbeatListener")
+		return nil, errors.New("cbgt ctx must not be nil for shardedDCPHeartbeatListener")
 	}
 
-	listener := &importHeartbeatListener{
+	listener := &shardedDCPHeartbeatListener{
 		ctx:        cbgtCtx,
 		mgr:        cbgtCtx.Manager,
 		cfg:        cbgtCtx.Cfg,
@@ -618,12 +624,12 @@ func NewImportHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*imp
 	return listener, nil
 }
 
-func (l *importHeartbeatListener) Name() string {
-	return "importListener"
+func (l *shardedDCPHeartbeatListener) Name() string {
+	return "shardedDCPHeartbeatListener"
 }
 
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
-func (l *importHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
+func (l *shardedDCPHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {
 
 	InfofCtx(ctx, KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
@@ -634,7 +640,7 @@ func (l *importHeartbeatListener) StaleHeartbeatDetected(ctx context.Context, no
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
 // NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) error {
+func (l *shardedDCPHeartbeatListener) subscribeNodeChanges(ctx context.Context) error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
@@ -671,7 +677,7 @@ func (l *importHeartbeatListener) subscribeNodeChanges(ctx context.Context) erro
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
+func (l *shardedDCPHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeUUIDs := make([]string, 0)
 	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
@@ -697,7 +703,7 @@ func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err erro
 }
 
 // GetNodes returns a copy of the in-memory node set
-func (l *importHeartbeatListener) GetNodes() ([]string, error) {
+func (l *shardedDCPHeartbeatListener) GetNodes() ([]string, error) {
 
 	l.lock.RLock()
 	nodeIDsCopy := make([]string, len(l.nodeIDs))
@@ -706,7 +712,7 @@ func (l *importHeartbeatListener) GetNodes() ([]string, error) {
 	return nodeIDsCopy, nil
 }
 
-func (l *importHeartbeatListener) Stop() {
+func (l *shardedDCPHeartbeatListener) Stop() {
 	close(l.terminator)
 }
 

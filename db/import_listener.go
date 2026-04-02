@@ -62,7 +62,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		}
 	}
 	collectionNamesByScope := dbContext.collectionNames()
-	il.importDestKey = base.DestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], base.CBGTIndexTypeSyncGatewayImport)
+	il.importDestKey = base.DestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], base.ShardedDCPFeedTypeImport)
 
 	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
@@ -92,7 +92,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		return dbContext.Bucket.StartDCPFeed(il.loggingCtx, feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
-	indexName, err := base.GenerateCBGTIndexName(dbContext.Name, base.CBGTIndexTypeSyncGatewayImport)
+	indexName, err := base.GenerateCBGTIndexName(dbContext.Name, base.ShardedDCPFeedTypeImport)
 	if err != nil {
 		return fmt.Errorf("Could not determine index name for import feed: %w", err)
 	}
