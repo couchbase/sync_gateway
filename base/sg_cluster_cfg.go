@@ -139,7 +139,10 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 	c.subscriptions[cfgKey] = append(a, ch)
 
 	if c.nodePoller != nil {
-		c.nodePoller.Register(c.sgCfgBucketKey(cfgKey))
+		err := c.nodePoller.Register(c.sgCfgBucketKey(cfgKey))
+		if err != nil {
+			return err
+		}
 	}
 
 	c.lock.Unlock()

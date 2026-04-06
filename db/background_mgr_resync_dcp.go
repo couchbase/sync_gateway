@@ -249,11 +249,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		ctx, cancel := context.WithCancelCause(ctx)
 		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
+			cancel(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
 		indexName, err := base.GenerateCBGTIndexName(db.Name, base.ShardedDCPFeedTypeResync)
 		if err != nil {
+			cancel(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 		opts := base.ShardedDCPOptions{
@@ -278,7 +280,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		defer func() {
 			resyncCbgtContext.Stop(ctx)
 			resyncHB.Stop(ctx)
-			cancel(fmt.Errorf("resync run ended"))
+			cancel(fmt.Errorf("resync run ended with error: %v", err))
 		}()
 	} else {
 
