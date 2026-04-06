@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -783,7 +784,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	require.NoError(t, err)
 
 	// All test allocators are stopped when allocatorCtx is closed
-	allocatorCtx, cancelFunc := context.WithCancel(ctx)
+	allocatorCtx, cancelFunc := context.WithCancelCause(ctx)
 
 	// Start import node allocator, performing 10000 allocations/second.
 	var allocatorWg sync.WaitGroup
@@ -827,7 +828,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	updateWg.Wait()
 
 	// Stop background allocation goroutines, wait for them to close
-	cancelFunc()
+	cancelFunc(errors.New("force sequence allocators stop"))
 	allocatorWg.Wait()
 
 	log.Printf("expectedSequence (num allocations):%v", atomic.LoadUint64(&expectedAllocations))

@@ -248,9 +248,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Start continuous changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(ctx)
+	ctx, changesCtxCancel := context.WithCancelCause(ctx)
 	options.ChangesCtx = ctx
-	defer changesCtxCancel()
+	defer changesCtxCancel(errors.New("test teardown"))
 	options.Continuous = true
 	options.Wait = true
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
@@ -362,7 +362,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
-	changesCtx, changesCtxCancel := context.WithCancel(ctx)
+	changesCtx, changesCtxCancel := context.WithCancelCause(ctx)
 	var changesFeedsWg sync.WaitGroup
 	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
 	// Start 100 continuous changes feeds
@@ -448,7 +448,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 
 	// Cancel the changes context
-	changesCtxCancel()
+	changesCtxCancel(errors.New("cancel changes context after changes are caught up"))
 
 	log.Printf("terminator is closed")
 
@@ -605,11 +605,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Start changes feed
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(ctx)
+	ctx, changesCtxCancel := context.WithCancelCause(ctx)
 	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
-	defer changesCtxCancel()
+	defer changesCtxCancel(errors.New("test teardown"))
 
 	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
@@ -708,9 +708,9 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
+	changesCtx, changesCtxCancel := context.WithCancelCause(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
+	defer changesCtxCancel(errors.New("test teardown"))
 	options.Continuous = true
 	options.Wait = true
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
@@ -773,7 +773,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(ctx)
+	ctx, changesCtxCancel := context.WithCancelCause(ctx)
+	defer changesCtxCancel(errors.New("test teardown"))
 	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
@@ -790,8 +791,6 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	_, err = verifySequencesInFeed(feed, []uint64{9})
 	assert.True(t, err == nil)
-
-	changesCtxCancel()
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -830,7 +829,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(ctx)
+	ctx, changesCtxCancel := context.WithCancelCause(ctx)
+	defer changesCtxCancel(errors.New("test teardown"))
 	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
@@ -878,8 +878,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
-
-	changesCtxCancel()
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
@@ -968,7 +966,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	initialPendingQueries := db.DbStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
+	changesCtx, changesCtxCancel := context.WithCancelCause(base.TestCtx(t))
 	changesWg.Add(1)
 	go func() {
 		defer changesWg.Done()
@@ -993,7 +991,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.True(t, pendingQueries > initialPendingQueries, "Pending queries (%d) didn't exceed initialPendingQueries (%d) after 10s", pendingQueries, initialPendingQueries)
 
 	// Terminate the second changes request
-	changesCtxCancel()
+	changesCtxCancel(errors.New("Terminate second changes request"))
 
 	// Unblock the first goroutine
 	queryWg.Done()
@@ -1055,7 +1053,8 @@ func TestChannelRace(t *testing.T) {
 
 	var options ChangesOptions
 	options.Since = SequenceID{Seq: 0}
-	ctx, changesCtxCancel := context.WithCancel(ctx)
+	ctx, changesCtxCancel := context.WithCancelCause(ctx)
+	defer changesCtxCancel(errors.New("test teardown"))
 	options.ChangesCtx = ctx
 	options.Continuous = true
 	options.Wait = true
@@ -1121,8 +1120,6 @@ func TestChannelRace(t *testing.T) {
 	}
 	changes.lock.RUnlock()
 	fmt.Println("changes: ", changesString)
-
-	changesCtxCancel()
 }
 
 // Test that housekeeping goroutines get terminated when change cache is stopped

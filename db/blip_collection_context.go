@@ -21,8 +21,8 @@ type blipSyncCollectionContext struct {
 	dbCollection          *DatabaseCollection
 	activeSubChanges      base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	changesCtxLock        sync.Mutex
-	changesCtx            context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
-	changesCtxCancel      context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+	changesCtx            context.Context         // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel      context.CancelCauseFunc // Cancel function for changesCtx to cancel subChanges being sent
 	pendingInsertionsLock sync.Mutex
 	pendingInsertions     base.Set // DocIDs from handleProposeChanges that aren't in the db
 
@@ -58,7 +58,7 @@ func newBlipSyncCollectionContext(ctx context.Context, dbCollection *DatabaseCol
 		dbCollection:      dbCollection,
 		pendingInsertions: base.Set{},
 	}
-	c.changesCtx, c.changesCtxCancel = context.WithCancel(base.KeyspaceLogCtx(ctx, dbCollection.bucketName(), dbCollection.ScopeName, dbCollection.Name))
+	c.changesCtx, c.changesCtxCancel = context.WithCancelCause(base.KeyspaceLogCtx(ctx, dbCollection.bucketName(), dbCollection.ScopeName, dbCollection.Name))
 	return c
 }
 

@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -326,7 +327,7 @@ func (h *handler) handleChanges() error {
 	h.db.DatabaseContext.DbStats.Database().NumReplicationsTotal.Add(1)
 	defer h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(-1)
 
-	changesCtx, changesCtxCancel := context.WithCancel(h.ctx())
+	changesCtx, changesCtxCancel := context.WithCancelCause(h.ctx())
 	options.ChangesCtx = changesCtx
 
 	forceClose := false
@@ -353,7 +354,7 @@ func (h *handler) handleChanges() error {
 		forceClose = false
 	}
 
-	changesCtxCancel()
+	changesCtxCancel(errors.New("_changes request completed"))
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose {

@@ -39,7 +39,7 @@ type activeReplicatorCommon struct {
 	blipSender                      *blip.Sender
 	Stats                           expvar.Map
 	checkpointerCtx                 context.Context
-	checkpointerCtxCancel           context.CancelFunc
+	checkpointerCtxCancel           context.CancelCauseFunc
 	CheckpointID                    string // Used for checkpoint retrieval when Checkpointer isn't available
 	initialStatus                   *ReplicationStatus
 	statusKey                       string // key used when persisting replication status
@@ -52,7 +52,7 @@ type activeReplicatorCommon struct {
 	onReplicatorComplete            ReplicatorCompleteFunc
 	lock                            sync.RWMutex
 	ctx                             context.Context
-	ctxCancel                       context.CancelFunc
+	ctxCancel                       context.CancelCauseFunc
 	reconnectActive                 base.AtomicBool                                             // Tracks whether reconnect goroutine is active
 	replicatorConnectFn             func() error                                                // the function called inside reconnect.
 	registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error                     // function to register checkpointer callbacks
@@ -152,7 +152,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 	arc.setState(ReplicationStateStarting)
 	logCtx := base.CorrelationIDLogCtx(ctx,
 		arc.config.ID+"-"+string(arc.direction))
-	arc.ctx, arc.ctxCancel = context.WithCancel(logCtx)
+	arc.ctx, arc.ctxCancel = context.WithCancelCause(logCtx)
 
 	arc.startStatusReporter(arc.ctx)
 
@@ -162,7 +162,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 		base.WarnfCtx(arc.ctx, "Couldn't connect: %s", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
 			base.WarnfCtx(arc.ctx, "Stopping replication connection attempt")
-			defer arc.ctxCancel()
+			defer arc.ctxCancel(errors.New("stopping after fatal replicator connection error"))
 		} else {
 			base.InfofCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			arc.reconnect()
@@ -175,7 +175,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 // initCheckpointer starts a checkpointer. The remoteCheckpoints are only for collections and indexed by the blip collectionIdx. If using default collection only, replicationCheckpoints is an empty array.
 func (arc *activeReplicatorCommon) _initCheckpointer(remoteCheckpoints []replicationCheckpoint) error {
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
-	arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancel(arc.ctx)
+	arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancelCause(arc.ctx)
 
 	err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
 		checkpointHash, hashErr := arc.config.CheckpointHash(c.collectionIdx)
@@ -340,7 +340,7 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	// use setState to preserve last error from retry loop set by setLastError
 	arc.setState(ReplicationStateError)
 	arc._publishStatus()
-	arc._stop()
+	arc._stop("stopping after failed reconnect attempts: " + retryErr.Error())
 }
 
 // disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
@@ -356,7 +356,7 @@ func (arc *activeReplicatorCommon) disconnect() error {
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
 func (arc *activeReplicatorCommon) stopAndDisconnect() error {
 	arc.lock.Lock()
-	arc._stop()
+	arc._stop("stopping replicator from stopAndDisconnect()")
 	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
 	err := arc._disconnect()
 	arc.setState(ReplicationStateStopped)
@@ -380,7 +380,7 @@ func (arc *activeReplicatorCommon) _disconnect() error {
 
 	if arc.checkpointerCtx != nil {
 		base.TracefCtx(arc.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
-		arc.checkpointerCtxCancel()
+		arc.checkpointerCtxCancel(errors.New("cancelling checkpointer context from _disconnect"))
 		_ = arc.forEachCollection(func(c *activeReplicatorCollection) error {
 			c.Checkpointer.closeWg.Wait()
 			c.Checkpointer.CheckpointNow()
@@ -405,10 +405,10 @@ func (arc *activeReplicatorCommon) _disconnect() error {
 }
 
 // _stop aborts any replicator processes that run outside of a running replication connection (e.g: async reconnect handling, statsreporter)
-func (arc *activeReplicatorCommon) _stop() {
+func (arc *activeReplicatorCommon) _stop(message string) {
 	if arc.ctxCancel != nil {
 		base.TracefCtx(arc.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
-		arc.ctxCancel()
+		arc.ctxCancel(errors.New(message))
 	}
 }
 

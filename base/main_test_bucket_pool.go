@@ -82,7 +82,7 @@ type TestBucketPool struct {
 	bucketReadierWaitGroup *sync.WaitGroup
 	// bucketCreationDoneChan is closed when all buckets have been created and run through bucketInitFunc
 	bucketCreationDoneChan chan struct{}
-	ctxCancelFunc          context.CancelFunc
+	ctxCancelFunc          context.CancelCauseFunc
 
 	bucketInitFunc TBPBucketInitFunc
 
@@ -149,7 +149,7 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 	}
 
 	// Used to manage cancellation of worker goroutines
-	ctx, ctxCancelFunc := context.WithCancel(ctx)
+	ctx, ctxCancelFunc := context.WithCancelCause(ctx)
 
 	_, err := SetMaxFileDescriptors(ctx, 5000)
 	if err != nil {
@@ -473,7 +473,7 @@ func (tbp *TestBucketPool) Close(ctx context.Context) {
 	tbp.Logf(ctx, "Closing TestBucketPool and closing all buckets")
 	// Cancel async workers
 	if tbp.ctxCancelFunc != nil {
-		tbp.ctxCancelFunc()
+		tbp.ctxCancelFunc(errors.New("TestBucketPool.Close called"))
 		tbp.Logf(ctx, "Waiting for bucket readier to finish")
 		tbp.bucketReadierWaitGroup.Wait()
 		tbp.Logf(ctx, "Waiting for bucket creation to finish")

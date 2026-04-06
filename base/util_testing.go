@@ -450,7 +450,7 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 
 	var inuseHighWaterMarkMB float64
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancelCause(context.Background())
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -485,7 +485,7 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 	}(ctx)
 
 	return func() {
-		ctxCancel()
+		ctxCancel(errors.New("SetUpGlobalTestMemoryWatermark teardown"))
 		wg.Wait()
 
 		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
@@ -528,7 +528,7 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 
 	log.Printf("TEST: profiling for %v with frequency: %v", profiles, freq)
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancelCause(context.Background())
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -570,7 +570,7 @@ func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 	}(ctx)
 
 	return func() {
-		ctxCancel()
+		ctxCancel(errors.New("SetUpGlobalTestProfiling teardown"))
 		wg.Wait()
 	}
 }

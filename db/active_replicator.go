@@ -219,7 +219,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		ctx = arc.config.ActiveDB.AddBucketUserLogContext(ctx)
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(context.WithoutCancel(ctx)) // separate cancel context from parent cancel context
+	cancelCtx, cancelFunc := context.WithCancelCause(context.WithoutCancel(ctx)) // separate cancel context from parent cancel context
 
 	var originPatterns []string // no origin headers for ISGR
 	var blipContext *blip.Context
@@ -231,7 +231,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		ctx, blipContext, err = NewSGBlipContext(ctx, arc.config.ID+idSuffix, originPatterns, cancelCtx)
 	}
 	if err != nil {
-		cancelFunc()
+		cancelFunc(errors.New("failed to create blip context"))
 		return nil, nil, err
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval

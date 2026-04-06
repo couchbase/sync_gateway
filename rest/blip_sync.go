@@ -12,6 +12,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,11 +57,11 @@ func (h *handler) handleBLIPSync() error {
 	// error is checked at the time of database load, and ignored at this time
 	originPatterns, _ := hostOnlyCORS(h.db.CORS.Origin)
 
-	cancelCtx, cancelCtxFunc := context.WithCancel(h.db.DatabaseContext.CancelContext)
+	cancelCtx, cancelCtxFunc := context.WithCancelCause(h.db.DatabaseContext.CancelContext)
 	// Create a BLIP context:
 	ctx, blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, cancelCtx)
 	if err != nil {
-		cancelCtxFunc()
+		cancelCtxFunc(errors.New("_blipsync handler could not initialize a BlipContext"))
 		return err
 	}
 

@@ -88,7 +88,7 @@ func (apr *ActivePushReplicator) Complete() {
 		return nil
 	})
 
-	apr._stop()
+	apr._stop("push replication complete")
 
 	stopErr := apr._disconnect()
 	if stopErr != nil {
@@ -251,7 +251,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		})
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
-			bh.ctxCancelFunc()
+			bh.ctxCancelFunc(errors.New("ISGR push replicator changes feed error"))
 			apr.setError(err)
 			apr.publishStatus()
 			return

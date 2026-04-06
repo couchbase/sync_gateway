@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"runtime"
@@ -1821,9 +1822,9 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Now check the changes feed:
 	var options ChangesOptions
-	changesCtx, changesCtxCancel := context.WithCancel(base.TestCtx(t))
+	changesCtx, changesCtxCancel := context.WithCancelCause(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
+	defer changesCtxCancel(errors.New("test teardown"))
 	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
 	require.Len(t, changes, 100)
 
