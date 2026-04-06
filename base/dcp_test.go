@@ -435,7 +435,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	)
 	require.NoError(t, err, "Unable to create legacy-style index")
 
-	indexName, err := GenerateCBGTIndexName(unsafeTestDBName, CBGTIndexTypeSyncGatewayImport)
+	indexName, err := GenerateCBGTIndexName(unsafeTestDBName, ShardedDCPFeedTypeImport)
 	require.NoError(t, err)
 
 	opts := ShardedDCPOptions{
