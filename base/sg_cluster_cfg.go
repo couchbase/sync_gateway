@@ -32,6 +32,7 @@ type CfgSG struct {
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
 	keyPrefix     string                            // Config doc key prefix
+	nodePoller    *cfgNodePoller
 }
 
 type CfgEventNotifyFunc func(docID string, cas uint64, err error)
@@ -44,7 +45,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string) (*CfgSG, error) {
+func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	// should this inherit DB context?
@@ -55,6 +56,10 @@ func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
 		keyPrefix:     keyPrefix,
+	}
+
+	if useNodePoller {
+		c.nodePoller = newCfgNodePoller(ctx, datastore, c.FireEvent, defaultHeartbeatPollInterval)
 	}
 
 	return c, nil
@@ -132,6 +137,10 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 		a = make([]chan<- cbgt.CfgEvent, 0)
 	}
 	c.subscriptions[cfgKey] = append(a, ch)
+
+	if c.nodePoller != nil {
+		c.nodePoller.Register(c.sgCfgBucketKey(cfgKey))
+	}
 
 	c.lock.Unlock()
 

@@ -582,7 +582,7 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 	}
 
 	// Register listener for shardedDCP, uses cfg and manager to manage set of participating nodes
-	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext, datastore, feedType)
+	shardedDCPHeartbeatListener, err := NewShardedDCPHeartbeatListener(ctx, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -596,66 +596,72 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 }
 
 type cfgNodePoller struct {
-	nodeDefsKnownKey  string
-	nodeDefsWantedKey string
-	nodeDefsKnownCAS  uint64 // to store the last known cas of nodeDefsKnown
-	nodeDefsWantedCAS uint64 // to store the last known cas of nodeDefsWanted
-	datastore         DataStore
-	cfg               *CfgSG
+	ctx          context.Context
+	keyWatcher   map[string]uint64
+	datastore    DataStore
+	fireEvent    CfgEventNotifyFunc
+	lock         sync.Mutex
+	pollInterval time.Duration
 }
 
-func newCfgNodePoller(datastore DataStore, cfg cbgt.Cfg) (*cfgNodePoller, error) {
+func newCfgNodePoller(ctx context.Context, datastore DataStore, fireEvent CfgEventNotifyFunc, pollInterval time.Duration) *cfgNodePoller {
 
-	nodeDefsKnownKey := cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN)
-	_, nodeDefsKnownCas, err := datastore.GetRaw(nodeDefsKnownKey)
-	if err != nil {
-		return nil, err
+	p := &cfgNodePoller{
+		ctx:          ctx,
+		keyWatcher:   make(map[string]uint64),
+		datastore:    datastore,
+		fireEvent:    fireEvent,
+		pollInterval: pollInterval,
 	}
 
-	nodeDefsWantedKey := cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED)
-	_, nodeDefsWantedCas, err := datastore.GetRaw(nodeDefsWantedKey)
-	if err != nil {
-		return nil, err
-	}
-
-	cfgSG, ok := cfg.(*CfgSG)
-	if !ok {
-		return nil, errors.New("cfg is not a CfgSG")
-	}
-
-	return &cfgNodePoller{
-		nodeDefsKnownKey:  nodeDefsKnownKey,
-		nodeDefsWantedKey: nodeDefsWantedKey,
-		nodeDefsKnownCAS:  nodeDefsKnownCas,
-		nodeDefsWantedCAS: nodeDefsWantedCas,
-		datastore:         datastore,
-		cfg:               cfgSG,
-	}, nil
-
+	p.StartPolling(ctx)
+	return p
 }
 
-func (p *cfgNodePoller) Poll() error {
+func (p *cfgNodePoller) Register(key string) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
 
-	_, nodeDefsKnownCas, err := p.datastore.GetRaw(p.nodeDefsKnownKey)
-	if err != nil {
+	cas, err := p.datastore.Get(key, nil)
+	if err != nil && !IsDocNotFoundError(err) {
 		return err
 	}
-
-	_, nodeDefsWantedCas, err := p.datastore.GetRaw(p.nodeDefsWantedKey)
-	if err != nil {
-		return err
-	}
-	if nodeDefsKnownCas != p.nodeDefsKnownCAS {
-		p.nodeDefsKnownCAS = nodeDefsKnownCas
-		p.cfg.FireEvent(p.nodeDefsKnownKey, nodeDefsKnownCas, nil)
-		return nil
-	}
-	if nodeDefsWantedCas != p.nodeDefsWantedCAS {
-		p.nodeDefsWantedCAS = nodeDefsWantedCas
-		p.cfg.FireEvent(p.nodeDefsWantedKey, nodeDefsWantedCas, nil)
-		return nil
-	}
+	p.keyWatcher[key] = cas
 	return nil
+}
+
+func (p *cfgNodePoller) Poll() {
+
+	for key, oldCas := range p.keyWatcher {
+		newCas, err := p.datastore.Get(key, nil)
+		if err != nil && !IsDocNotFoundError(err) {
+			WarnfCtx(p.ctx, "error reading doc: %s %v", key, err)
+			continue
+		}
+		if oldCas != newCas {
+			p.lock.Lock()
+			defer p.lock.Unlock()
+			p.keyWatcher[key] = newCas
+
+			p.fireEvent(key, newCas, nil)
+		}
+	}
+}
+
+func (p *cfgNodePoller) StartPolling(ctx context.Context) {
+	ticker := time.NewTicker(p.pollInterval)
+	go func() {
+		defer FatalPanicHandler()
+		for {
+			select {
+			case <-ctx.Done():
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				p.Poll()
+			}
+		}
+	}()
 }
 
 // shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
@@ -666,12 +672,9 @@ type shardedDCPHeartbeatListener struct {
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
-	datastore  DataStore
-	feedType   ShardedDCPFeedType
-	poller     *cfgNodePoller
 }
 
-func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext, dataStore DataStore, feedType ShardedDCPFeedType) (*shardedDCPHeartbeatListener, error) {
+func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtCtx == nil {
 		return nil, errors.New("cbgt ctx must not be nil for shardedDCPHeartbeatListener")
@@ -682,8 +685,6 @@ func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext, d
 		mgr:        cbgtCtx.Manager,
 		cfg:        cbgtCtx.Cfg,
 		terminator: make(chan struct{}),
-		datastore:  dataStore,
-		feedType:   feedType,
 	}
 
 	// Initialize the node set
@@ -697,16 +698,6 @@ func NewShardedDCPHeartbeatListener(ctx context.Context, cbgtCtx *CbgtContext, d
 	if err != nil {
 		return nil, err
 	}
-
-	if feedType == ShardedDCPFeedTypeResync {
-		poller, err := newCfgNodePoller(dataStore, cbgtCtx.Cfg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize poller for resync node: %w", err)
-		}
-		listener.poller = poller
-	}
-
-	listener.StartPolling(ctx)
 
 	return listener, nil
 }
@@ -801,28 +792,6 @@ func (l *shardedDCPHeartbeatListener) GetNodes() ([]string, error) {
 
 func (l *shardedDCPHeartbeatListener) Stop() {
 	close(l.terminator)
-}
-
-func (l *shardedDCPHeartbeatListener) StartPolling(ctx context.Context) {
-	if l.feedType == ShardedDCPFeedTypeImport {
-		return
-	}
-	ticker := time.NewTicker(defaultHeartbeatPollInterval)
-	go func() {
-		defer FatalPanicHandler()
-		for {
-			select {
-			case <-l.terminator:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				err := l.poller.Poll()
-				if err != nil {
-					WarnfCtx(ctx, "Error polling sharded dcp heartbeat: %v", err)
-				}
-			}
-		}
-	}()
 }
 
 // cbgtDestFactories map DCP feed keys (destKey) to a function that will generate cbgt.Dest.  Need to be stored in a

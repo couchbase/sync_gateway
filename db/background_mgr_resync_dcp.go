@@ -246,7 +246,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		// CFG creation:
-		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix())
+		ctx, cancel := context.WithCancelCause(ctx)
+		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
@@ -277,6 +278,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		defer func() {
 			resyncCbgtContext.Stop(ctx)
 			resyncHB.Stop(ctx)
+			cancel(fmt.Errorf("resync run ended"))
 		}()
 	} else {
 

@@ -354,21 +354,21 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	listener1, err := NewShardedDCPHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
-	}, dataStore, ShardedDCPFeedTypeImport)
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
 	listener2, err := NewShardedDCPHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
-	}, dataStore, ShardedDCPFeedTypeImport)
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
 	listener3, err := NewShardedDCPHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
-	}, dataStore, ShardedDCPFeedTypeImport)
+	})
 	assert.NoError(t, err)
 	assert.NoError(t, node3.RegisterListener(listener3))
 
