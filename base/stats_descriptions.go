@@ -138,7 +138,7 @@ const (
 	RevCacheMissesDesc = "The total number of revision cache misses. This metric can be used to calculate the ratio of revision cache misses: " +
 		"Rev Cache Miss Ratio = rev_cache_misses / (rev_cache_hits + rev_cache_misses)"
 
-	RevCacheMemoryDesc = "The approximation of total memory taken up by rev cache for documents. This is measured by the raw document body, the channels allocated to a document and its revision history."
+	RevCacheMemoryDesc = "The approximation of total memory taken up by rev cache and delta cache for documents. This is measured by the raw document body, the channels allocated to a document and its revision history."
 
 	SkippedSeqLengthDesc = "The current length of the pending skipped sequence slice."
 

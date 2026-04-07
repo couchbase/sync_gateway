@@ -31,7 +31,8 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 	}
 }
 
-// Get fetches the revision for the given docID and revID immediately from the bucket.
+// Get fetches the revision for the given docID and revID immediately from the bucket. Always returns false for checking
+// for memory based eviction as there is nothing to evict from when using bypass revision cache.
 func (rc *BypassRevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, b bool, err error) {
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
@@ -70,11 +71,11 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, versionString str
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error) {
+func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, checkForMemoryEviction bool, err error) {
 
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
-		return DocumentRevision{}, cacheHit, err
+		return DocumentRevision{}, checkForMemoryEviction, err
 	}
 
 	docRev = DocumentRevision{
@@ -88,7 +89,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 	var hlv *HybridLogicalVector
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, doc.SyncData.GetRevTreeID())
 	if err != nil {
-		return DocumentRevision{}, cacheHit, err
+		return DocumentRevision{}, checkForMemoryEviction, err
 	}
 	if hlv != nil {
 		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
@@ -97,7 +98,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 
 	rc.bypassStat.Add(1)
 
-	return docRev, cacheHit, nil
+	return docRev, checkForMemoryEviction, nil
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.

@@ -65,7 +65,7 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, fromV
 	sc.getShard(docID).UpdateDelta(ctx, docID, fromVersionString, toVersionString, collectionID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error) {
+func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, checkForMemoryEviction bool, err error) {
 	return sc.getShard(docID).GetActive(ctx, docID, collectionID)
 }
 
@@ -151,7 +151,8 @@ func NewLRURevisionCache(revCacheOptions *RevisionCacheOptions, backingStores ma
 // Looks up a revision from the cache.
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
-// any error returned by the loaderFunction will be returned from Get.
+// any error returned by the loaderFunction will be returned from Get. Any successful load will return true for
+// flag to check for memory based eviction.
 func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error) {
 	value := rc.getValue(ctx, docID, versionString, collectionID, true)
 	if value == nil {
@@ -209,7 +210,8 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionS
 // of the document from the bucket to guarantee the current active revision, but does minimal unmarshalling
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
-// initial retrieval.
+// initial retrieval. Returns document revision, bool to indicate to caller whether we should check for memory based
+// eviction or not, and any error.
 func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collectionID uint32) (DocumentRevision, bool, error) {
 
 	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
@@ -227,10 +229,10 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 	// have a HLV assigned to it.
 	value := rc.getValue(ctx, docID, bucketDoc.GetRevTreeID(), collectionID, true)
 
-	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)
-	rc.statsRecorderFunc(statEvent)
+	docRev, cacheHit, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)
+	rc.statsRecorderFunc(cacheHit)
 
-	incrementStatEvent := !statEvent && err == nil
+	incrementStatEvent := !cacheHit && err == nil
 	if incrementStatEvent {
 		// Transition to memStateSized under a CAS so that a concurrent Remove that ran before
 		// the load completed (reading itemBytes=0) cannot result in a permanently inflated stat.

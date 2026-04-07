@@ -20,7 +20,7 @@ import (
 // RevisionCacheOrchestrator orchestrates between the revisionCache and a deltaCache.
 type RevisionCacheOrchestrator struct {
 	revisionCache    *LRURevisionCache      // holds document revisions
-	deltaCache       *LRUDeltaCache         // holds computed deltas, only initialed when delta sync is enabled
+	deltaCache       *LRUDeltaCache         // holds computed deltas, only initialized when delta sync is enabled
 	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
 	evictionLock     sync.Mutex             // This is to synchronise the eviction process so we don;t have multiple goroutines fighting to evict
 }
@@ -39,19 +39,19 @@ func NewRevisionCacheOrchestrator(cacheOptions *RevisionCacheOptions, backingSto
 }
 
 func (c *RevisionCacheOrchestrator) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error) {
-	docRev, cacheMiss, err := c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
-	if cacheMiss {
+	docRev, checkForMemoryEviction, err := c.revisionCache.Get(ctx, docID, versionString, collectionID, loadBackup)
+	if checkForMemoryEviction {
 		c.triggerMemoryEviction()
 	}
-	return docRev, cacheMiss, err
+	return docRev, checkForMemoryEviction, err
 }
 
-func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheMiss bool, err error) {
-	docRev, cacheMiss, err = c.revisionCache.GetActive(ctx, docID, collectionID)
-	if cacheMiss {
+func (c *RevisionCacheOrchestrator) GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, checkForMemoryEviction bool, err error) {
+	docRev, checkForMemoryEviction, err = c.revisionCache.GetActive(ctx, docID, collectionID)
+	if checkForMemoryEviction {
 		c.triggerMemoryEviction()
 	}
-	return docRev, cacheMiss, err
+	return docRev, checkForMemoryEviction, err
 }
 
 func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {

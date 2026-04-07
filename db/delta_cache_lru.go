@@ -146,7 +146,7 @@ func (c *LRUDeltaCache) peekLRUTailAccessOrder() uint64 {
 }
 
 // evictLRUTail removes the LRU item and notifies the memory controller.
-// Returns false if the cache was empty.
+// Returns 0 bytes if the cache was empty.
 func (dc *LRUDeltaCache) evictLRUTail() int64 {
 	dc.lock.Lock()
 	defer dc.lock.Unlock()

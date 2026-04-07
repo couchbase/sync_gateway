@@ -1098,9 +1098,16 @@ func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context,
 	} else {
 		cache = (*c.revCache).(*RevisionCacheOrchestrator)
 	}
+	val := cache.revisionCache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, false)
 	// Remove any existing entry so that store() below is not a no-op.
 	cache.Remove(ctx, docRev.DocID, docRev.RevID, c.collectionID)
+	if val.memState.Swap(memStateRemoved) == memStateSized {
+		cache.memoryController.decrementBytesCount(val.itemBytes.Load())
+	}
 	value := cache.revisionCache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, true)
 	docRev.CalculateBytes()
 	value.store(docRev)
+	if value.memState.CompareAndSwap(memStateLoading, memStateSized) {
+		cache.memoryController.incrementBytesCount(docRev.MemoryBytes)
+	}
 }

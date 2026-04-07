@@ -29,12 +29,13 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 
-	// Get returns the given revision, and stores if not already cached.
-	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
+	// Get returns the given revision, and stores if not already cached. Will return true if Get results in successful
+	// load to check for memory eviction.
 	Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error)
 
-	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
-	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, cacheHit bool, err error)
+	// GetActive returns the current revision for the given doc ID, and stores if not already cached. Will return true
+	// if GetActive results in successful load to check for memory eviction.
+	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, checkForMemoryEviction bool, err error)
 
 	// Peek returns the given revision if present in the cache
 	Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool)
