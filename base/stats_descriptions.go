@@ -150,6 +150,8 @@ const (
 
 	ViewQueriesDesc = "The total view_queries."
 
+	IsSGWriteKVFetchCountDesc = "The total number of ambiguous IsSGWrite checks on the caching DCP feed that required a KV body fetch to resolve."
+
 	NonMobileIgnoredCountDesc = "Number of non mobile documents that were ignored off the cache feed."
 )
 
@@ -352,6 +354,8 @@ const (
 	DeltaCacheHitDesc = "The total number of requested deltas that were available in the revision cache."
 
 	DeltaCacheMissDesc = "The total number of requested deltas that were not available in the revision cache."
+
+	DeltaCacheNumItemsDesc = "The total number of deltas stored in the delta cache."
 
 	DeltaPullReplicationCountDesc = "The number of delta replications that have been run."
 

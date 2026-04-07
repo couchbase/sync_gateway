@@ -1155,7 +1155,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
-	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
+	if deltaSrcRevString, isDelta := revMessage.DeltaSrc(); isDelta && !revMessage.Deleted() {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
@@ -1167,35 +1167,27 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		//        (otherwise we don't have information needed to do downloadOrVerifyAttachments below prior to PutExistingRev)
 
 		// Note: Using GetRevCopy here, and not direct rev cache retrieval, because it's still necessary to apply access check
-		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
+		//       while retrieving deltaSrcRevString.  Couchbase Lite replication guarantees client has access to deltaSrcRevString,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		var deltaSrcRev DocumentRevision
-		if bh.useHLV() && !base.IsRevTreeID(deltaSrcRevID) {
-			deltaSrcVersion, parseErr := ParseVersion(deltaSrcRevID)
-			if parseErr != nil {
-				return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to parse version for delta source for doc %s, error: %v", base.UD(docID), parseErr)
-			}
-			deltaSrcRev, err = bh.collection.GetCV(bh.loggingCtx, docID, &deltaSrcVersion, false)
-		} else {
-			deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevID, false, nil)
-		}
+		deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevString, false, nil)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, err)
 		}
 
 		// Receiving a delta to be applied on top of a tombstone is not valid.
 		if deltaSrcRev.Deleted {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevString)
 		}
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, err)
 		}
 
 		if deltaSrcBody[BodyRemoved] != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found _removed property for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found _removed property for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevString)
 		}
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
@@ -1208,7 +1200,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, rev, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevString, rev, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error patching deltaSrc with delta: %s", err)
 		}
 

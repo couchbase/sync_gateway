@@ -507,11 +507,7 @@ func (db *DatabaseContext) FlushRevisionCacheForTest() {
 		backingStores[i] = v
 	}
 
-	db.revisionCache = NewRevisionCache(
-		db.Options.RevisionCacheOptions,
-		backingStores,
-		db.DbStats.Cache(),
-	)
+	db.revisionCache = NewRevisionCache(db.Options.RevisionCacheOptions, backingStores, db.DbStats.Cache(), db.DbStats.DeltaSync(), db.DeltaSyncEnabled())
 
 }
 
@@ -1099,4 +1095,24 @@ func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
 	factor := cachingDelay / (5 * time.Millisecond)
 	require.GreaterOrEqual(t, factor, time.Duration(1), "Caching feed delay factor must be greater than 0, or wait functions will not work. Modify the factor value")
 	return factor
+}
+
+// PutRevEntry inserts a DocumentRevision into the cache under its revID key.
+// Use this in tests to populate the revID lookup path directly (e.g. to inject a corrupt body).
+// NOTE this should be test only use.
+func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context, docRev DocumentRevision) {
+	var cache *RevisionCacheOrchestrator
+	shard, ok := (*c.revCache).(*ShardedLRURevisionCache)
+	if ok {
+		cache = shard.getShard(docRev.DocID)
+	} else {
+		cache = (*c.revCache).(*RevisionCacheOrchestrator)
+	}
+	// Remove any existing entry so that store() below is not a no-op.
+	cache.Remove(ctx, docRev.DocID, docRev.RevID, c.collectionID)
+	value := cache.revisionCache.getValue(ctx, docRev.DocID, docRev.RevID, c.collectionID, true)
+	docRev.CalculateBytes()
+	cache.revisionCache.incrRevCacheMemoryUsage(ctx, docRev.MemoryBytes)
+	value.store(docRev)
+	cache.revisionCache.revCacheMemoryBasedEviction(ctx)
 }

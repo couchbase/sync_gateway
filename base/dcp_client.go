@@ -47,6 +47,7 @@ type DCPClientOptions struct {
 	FailOnRollback     bool                           // if true, fail Start if the current DCP checkpoints encounter a rollback condition
 	Terminator         chan bool                      // optional channel that can be closed to terminate the DCP feed, this will be replaced with a context option.
 	FromLatestSequence bool                           // If true, start at latest sequence.
+	FeedContent        sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
 }
 
 // NewDCPClient creates a new DCPClient to receive events from a bucket.
@@ -120,6 +121,7 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		OneShot:           opts.OneShot,
 		FailOnRollback:    opts.FailOnRollback,
 		InitialMetadata:   opts.InitialMetadata,
+		FeedContent:       opts.FeedContent,
 	}
 
 	if opts.FromLatestSequence {

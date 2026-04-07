@@ -814,7 +814,13 @@ func TestGetRemovedAsUser(t *testing.T) {
 		MaxItemCount: DefaultRevisionCacheSize,
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      cacheHitCounter,
+		cacheMissStat:     cacheMissCounter,
+		cacheNumItemsStat: cacheNumItems,
+		cacheMemoryStat:   memoryCacheStat,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, &base.DeltaSyncStats{}, false)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -1089,7 +1095,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 	db.FlushRevisionCacheForTest()
 
 	// fetch backup rev by cv and ensure we have no revID populated (no way to get revID from backup rev in CV)
-	docRev, err := collection.revisionCache.GetWithCV(ctx, "doc1", doc.HLV.ExtractCurrentVersionFromHLV(), false, true)
+	docRev, err := collection.revisionCache.Get(ctx, "doc1", doc.HLV.GetCurrentVersionString(), RevCacheLoadBackupRev)
 	require.NoError(t, err, "Error fetching backup revision CV")
 	assert.Equal(t, "", docRev.RevID)
 	assert.Equal(t, `{"k1":"v1"}`, string(docRev.BodyBytes))
@@ -1623,7 +1629,13 @@ func TestGetRemoved(t *testing.T) {
 		MaxItemCount: DefaultRevisionCacheSize,
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStat)
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      cacheHitCounter,
+		cacheMissStat:     cacheMissCounter,
+		cacheNumItemsStat: cacheNumItems,
+		cacheMemoryStat:   memoryCacheStat,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, &base.DeltaSyncStats{}, false)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -1695,7 +1707,13 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		MaxItemCount: DefaultRevisionCacheSize,
 		ShardCount:   DefaultRevisionCacheShardCount,
 	}
-	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, cacheHitCounter, cacheMissCounter, cacheNumItems, memoryCacheStats)
+	revCacheStats := revisionCacheStats{
+		cacheHitStat:      cacheHitCounter,
+		cacheMissStat:     cacheMissCounter,
+		cacheNumItemsStat: cacheNumItems,
+		cacheMemoryStat:   memoryCacheStats,
+	}
+	collection.dbCtx.revisionCache = NewShardedLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, &base.DeltaSyncStats{}, false)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 

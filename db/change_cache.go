@@ -318,20 +318,25 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType) {
 	ctx := c.logCtx
 	docID := string(event.Key)
-	docJSON := event.Value
+	dcpValue := event.Value
 	changedChannelsCombined := channels.Set{}
 
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
+
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	// Is this a user/role doc for this database?
 	switch docType {
 	case DocTypeUnknown:
 		return // no-op unknown doc type
-	case DocTypeUser:
-		c.processPrincipalDoc(ctx, docID, docJSON, true, timeReceived)
-		return
-	case DocTypeRole:
-		c.processPrincipalDoc(ctx, docID, docJSON, false, timeReceived)
+	case DocTypeUser, DocTypeRole:
+		if docBody, err := c.fetchMetadataDocBody(ctx, docID, event.Cas); err != nil {
+			if base.IsDocNotFoundError(err) || base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyCache, "Skipping now changed principal doc %q feed event - a newer mutation will be processed", base.UD(docID))
+			} else {
+				base.WarnfCtx(ctx, "Error fetching body for principal doc %q: %v - will not be processed", base.UD(docID), err)
+			}
+		} else {
+			c.processPrincipalDoc(ctx, docID, docBody, docType == DocTypeUser, timeReceived)
+		}
 		return
 	case DocTypeUnusedSeq:
 		c.processUnusedSequence(ctx, docID, timeReceived)
@@ -344,7 +349,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
 		return
-	case DocTypeDocument: // this is processed below
+	case DocTypeDocument: // processed below
 	}
 
 	collection, exists := c.db.CollectionByID[event.CollectionID]
@@ -377,7 +382,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.UserXattrKey(), false)
+	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(dcpValue, event.DataType, collection.UserXattrKey(), false)
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -387,35 +392,37 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
-	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
-	if collection.UseXattrs() {
-		if syncData == nil {
-			return
-		}
-		var rawVV *rawHLV
-		vv := doc.Xattrs[base.VvXattrName]
-		if len(vv) > 0 {
-			rawVV = base.Ptr(rawHLV(vv))
-		}
-		isSGWrite, _, _ := syncData.IsSGWrite(ctx, event.Cas, doc.Body, rawUserXattr, rawVV)
-		if !isSGWrite {
-			return
-		}
+	if syncData == nil {
+		return
 	}
 
-	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
-	// before ignoring the mutation.
-	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := collection.checkForUpgrade(ctx, docID, DocUnmarshalNoHistory)
-		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.InfofCtx(ctx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
-			syncData = &migratedDoc.SyncData
-		} else {
-			base.InfofCtx(ctx, base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
-			collection.dbStats().Cache().NonMobileIgnoredCount.Add(1)
+	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
+	var rawVV *rawHLV
+	if vv := doc.Xattrs[base.VvXattrName]; len(vv) > 0 {
+		rawVV = base.Ptr(rawHLV(vv))
+	}
+	isDelete := event.Opcode == sgbucket.FeedOpDeletion
+
+	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV); isSGWriteAmbiguous {
+		// CRC is the only remaining check, but we need to fetch the doc body now
+		c.db.DbStats.Cache().IsSGWriteKVFetchCount.Add(1)
+		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(docID)
+		if err != nil {
+			// Can't fetch body - drop this event. A subsequent mutation
+			// will arrive on the feed if the doc is updated again.
+			base.DebugfCtx(ctx, base.KeyCache, "Unable to fetch doc body for IsSGWrite on %q, dropping: %v", base.UD(docID), err)
+			return
+		} else if cas != event.Cas {
+			// Doc mutated since DCP event - drop this stale event,
+			// the newer mutation will arrive on the feed.
+			base.DebugfCtx(ctx, base.KeyCache, "CAS mismatch on body fetch for IsSGWrite on %q (event=%d, current=%d), dropping stale event", base.UD(docID), event.Cas, cas)
 			return
 		}
+		if base.Crc32cHashString(docBody) != syncData.Crc32c {
+			return
+		}
+	} else if !isSGWrite {
+		return
 	}
 
 	if syncData.Sequence <= c.initialSequence {
@@ -508,7 +515,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 
 	// Now add the entry for the new doc revision:
 	if len(rawUserXattr) > 0 {
-		collection.revisionCache.RemoveRevOnly(ctx, docID, syncData.GetRevTreeID())
+		collection.revisionCache.Remove(ctx, docID, syncData.GetRevTreeID())
 	}
 	// remove the local doc from the revision cache if the change is a result of a conflict resolution that resulted
 	// in local wins, given the HLV will have been updated but CV not changed
@@ -517,7 +524,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 			SourceID: syncData.RevAndVersion.CurrentSource,
 			Value:    base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion),
 		}
-		collection.revisionCache.RemoveCVOnly(ctx, docID, &vrs)
+		collection.revisionCache.Remove(ctx, docID, vrs.String())
 	}
 
 	change := &LogEntry{
@@ -711,6 +718,20 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 	}
 
 	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, channels.NewFeedTimestampFromNow())
+}
+
+// fetchMetadataDocBody fetches the full document body via a KV get from the metadata store.
+// This works around the xattr-only caching feed not including document bodies,
+// which are required for metadata doc types (e.g. user/role principal docs).
+func (c *changeCache) fetchMetadataDocBody(ctx context.Context, docID string, expectedCas uint64) ([]byte, error) {
+	docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
+	if err != nil {
+		return nil, err
+	}
+	if cas != expectedCas {
+		return nil, sgbucket.CasMismatchErr{Expected: expectedCas, Actual: cas}
+	}
+	return docBody, nil
 }
 
 func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp) {

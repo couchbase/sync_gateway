@@ -3031,7 +3031,9 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
+	base.LongRunningTest(t) // 30s timeout on bad 'No credentials' request
 	rest.RequireBucketSpecificCredentials(t)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
@@ -3071,7 +3073,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusForbidden)
+	resp.RequireStatus(http.StatusBadGateway) // gocb v2.12.1 returns a timeout error instead of an auth error here
 
 	// Wrong credentials should fail
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
@@ -3582,9 +3584,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.CBGTIndexTypeSyncGatewayImport))
+	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.CBGTIndexTypeSyncGatewayImport))
+	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.NoError(t, fetchDb2DestErr)
 }
 

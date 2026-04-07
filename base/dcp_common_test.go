@@ -63,9 +63,9 @@ func TestDCPNameLength(t *testing.T) {
 		"db1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 
-	for _, feedType := range []string{CBGTIndexTypeSyncGatewayImport, CBGTIndexTypeSyncGatewayResync} {
+	for _, feedType := range []ShardedDCPFeedType{ShardedDCPFeedTypeImport, ShardedDCPFeedTypeResync} {
 		for _, dbName := range dbNames {
-			t.Run("cbgt-index-"+dbName+feedType, func(t *testing.T) {
+			t.Run("cbgt-index-"+dbName+string(feedType), func(t *testing.T) {
 				indexName, err := GenerateCBGTIndexName(dbName, feedType)
 				require.NoError(t, err)
 

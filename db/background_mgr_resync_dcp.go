@@ -218,7 +218,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		collectionNamesByScope := db.collectionNames()
 
 		sort.Strings(collectionNamesByScope[scopeName])
-		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.CBGTIndexTypeSyncGatewayResync)
+		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
 
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
 
@@ -253,7 +253,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
-		indexName, err := base.GenerateCBGTIndexName(db.Name, base.CBGTIndexTypeSyncGatewayResync)
+		indexName, err := base.GenerateCBGTIndexName(db.Name, base.ShardedDCPFeedTypeResync)
 		if err != nil {
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}

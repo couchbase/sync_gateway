@@ -1941,12 +1941,12 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	assert.Equal(t, "1-3a208ea66e84121b528f05b5457d1134", doc.SyncData.GetRevTreeID())
 }
 
-// TestGetCVWithDocResidentInCache:
+// TestGetRevWithCVDocResidentInCache:
 //   - Two test cases, one with doc a user will have access to, one without
-//   - Purpose is to have a doc that is resident in rev cache and use the GetCV function to retrieve these docs
-//   - Assert that the doc the user has access to is corrected fetched
+//   - Purpose is to have a doc that is resident in rev cache and use the GetRev function to retrieve these docs
+//   - Assert that the doc the user has access to is correctly fetched
 //   - Assert the doc the user doesn't have access to is fetched but correctly redacted
-func TestGetCVWithDocResidentInCache(t *testing.T) {
+func TestGetRevWithCVDocResidentInCache(t *testing.T) {
 	const docID = "doc1"
 
 	testCases := []struct {
@@ -1988,7 +1988,7 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 			vrs := doc.HLV.Version
 			src := doc.HLV.SourceID
 			sv := &Version{Value: vrs, SourceID: src}
-			revision, err := collection.GetCV(ctx, docID, sv, false)
+			revision, err := collection.GetRev(ctx, docID, sv.String(), false, nil)
 			require.NoError(t, err)
 			if testCase.access {
 				assert.Equal(t, rev, revision.RevID)
@@ -2005,13 +2005,12 @@ func TestGetCVWithDocResidentInCache(t *testing.T) {
 	}
 }
 
-// TestGetByCVForDocNotResidentInCache:
+// TestGetRevWithCVForDocNotResidentInCache:
 //   - Setup db with rev cache size of 1
 //   - Put two docs forcing eviction of the first doc
-//   - Use GetCV function to fetch the first doc, forcing the rev cache to load the doc from bucket
+//   - Use GetRev function to fetch the first doc, forcing the rev cache to load the doc from bucket
 //   - Assert the doc revision fetched is correct to the first doc we created
-func TestGetByCVForDocNotResidentInCache(t *testing.T) {
-	t.Skip("")
+func TestGetRevWithCVForDocNotResidentInCache(t *testing.T) {
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
 		RevisionCacheOptions: &RevisionCacheOptions{
@@ -2047,23 +2046,25 @@ func TestGetByCVForDocNotResidentInCache(t *testing.T) {
 	vrs := doc.HLV.Version
 	src := doc.HLV.SourceID
 	sv := &Version{Value: vrs, SourceID: src}
-	revision, err := collection.GetCV(ctx, doc1ID, sv, false)
+	revision, err := collection.GetRev(ctx, doc1ID, sv.String(), false, nil)
 	require.NoError(t, err)
 
 	// assert the fetched doc is the first doc we added and assert that we did in fact get cache miss
-	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	if !base.TestDisableRevCache() {
+		assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
+	}
 	assert.Equal(t, rev, revision.RevID)
 	assert.Equal(t, sv, revision.CV)
 	assert.Equal(t, doc1ID, revision.DocID)
 	assert.Equal(t, []byte(`{"channels":["A"]}`), revision.BodyBytes)
 }
 
-// TestGetCVActivePathway:
+// TestGetRevWithCVActivePathway:
 //   - Two test cases, one with doc a user will have access to, one without
-//   - Purpose is top specify nil CV to the GetCV function to force the GetActive code pathway
+//   - Purpose is to specify an empty revOrCV to the GetRev function to force the GetActive code pathway
 //   - Assert doc that is created is fetched correctly when user has access to doc
 //   - Assert that correct error is returned when user has no access to the doc
-func TestGetCVActivePathway(t *testing.T) {
+func TestGetRevWithCVActivePathway(t *testing.T) {
 	const docID = "doc1"
 
 	testCases := []struct {
@@ -2101,7 +2102,7 @@ func TestGetCVActivePathway(t *testing.T) {
 			revBody := Body{"channels": testCase.docChannels}
 			rev, doc, err := collection.Put(ctx, docID, revBody)
 			require.NoError(t, err)
-			revision, err := collection.GetCV(ctx, docID, nil, false)
+			revision, err := collection.GetRev(ctx, docID, "", false, nil)
 
 			if testCase.access == true {
 				require.NoError(t, err)
@@ -2121,100 +2122,260 @@ func TestGetCVActivePathway(t *testing.T) {
 	}
 }
 
-// createNewTestDocument creates a valid document for testing.
-func createNewTestDocument(t *testing.T, db *Database, body []byte) *Document {
-	collection, ctx := GetSingleDatabaseCollectionWithUser(base.TestCtx(t), t, db)
-	ctx = base.UserLogCtx(ctx, "gotest", base.UserDomainBuiltin, nil)
-	ctx = base.DatabaseLogCtx(ctx, db.Name, nil)
-	name := SafeDocumentName(t, t.Name())
-	var b Body
-	require.NoError(t, base.JSONUnmarshal(body, &b))
-	_, _, err := collection.Put(ctx, name, b)
-	require.NoError(t, err)
-	doc, err := collection.GetDocument(ctx, name, DocUnmarshalAll)
-	require.NoError(t, err)
-	require.NotNil(t, doc.HLV)
-	require.NotEmpty(t, doc.RevAndVersion.CurrentSource)
-	require.NotEmpty(t, doc.RevAndVersion.CurrentVersion)
-	return doc
-}
-
 func TestIsSGWrite(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	ctx := base.TestCtx(t)
+
+	const sgCas uint64 = 100
+	const otherCas uint64 = 999
+	sgCasHex := base.CasToString(sgCas)
 
 	body := []byte(`{"some":"data"}`)
-	testCases := []struct {
-		name    string
-		docBody []byte
-	}{
-		{
-			name:    "normal body",
-			docBody: body,
-		},
-		{
-			name:    "nil body",
-			docBody: nil,
+	bodyCrc := base.Crc32cHashString(body)
+
+	matchingCV := rawHLV([]byte(`{"ver":"0x0100000000000000","src":"testSource"}`))
+	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
+	corruptCV := rawHLV([]byte(`{invalid json}`))
+
+	baseSyncData := SyncData{
+		Cas:    sgCasHex,
+		Crc32c: bodyCrc,
+		RevAndVersion: channels.RevAndVersion{
+			CurrentSource:  "testSource",
+			CurrentVersion: "0x0100000000000000",
 		},
 	}
 
-	t.Run("standard Put", func(t *testing.T) {
-		doc := createNewTestDocument(t, db, body)
-		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.True(t, isSGWrite, "Expected doc to be identified as SG write for body %q", string(testCase.docBody))
-			})
-		}
-	})
-	t.Run("no HLV", func(t *testing.T) {
-		// falls back to body crc32 comparison
-		doc := createNewTestDocument(t, db, body)
-		doc.HLV = nil
-		doc.Cas = 1 // force mismatch cas
-		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.True(t, isSGWrite, "Expected doc to be identified an SDK write for body %q", string(testCase.docBody))
-			})
-		}
-	})
-	t.Run("no _sync.rev.src", func(t *testing.T) {
-		// this is a corrupt _sync.rev, so assume that it was a _vv at some point and import just in case
-		doc := createNewTestDocument(t, db, body)
-		doc.RevAndVersion.CurrentSource = ""
-		doc.Cas = 1 // force mismatch cas
-		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.src is empty", string(testCase.docBody))
-			})
-		}
-	})
-	t.Run("no _sync.rev.ver", func(t *testing.T) {
-		doc := createNewTestDocument(t, db, body)
-		doc.RevAndVersion.CurrentVersion = ""
-		doc.Cas = 1 // force mismatch cas
-		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc not to be identified as SG write for body %q since _sync.rev.ver is empty", string(testCase.docBody))
-			})
-		}
-	})
-	t.Run("mismatch sync.rev.ver", func(t *testing.T) {
-		doc := createNewTestDocument(t, db, body)
-		doc.RevAndVersion.CurrentVersion = "0x1234"
-		doc.Cas = 1 // force mismatch cas
-		for _, testCase := range testCases {
-			t.Run(testCase.name, func(t *testing.T) {
-				isSGWrite, _, _ := doc.IsSGWrite(ctx, testCase.docBody)
-				require.False(t, isSGWrite, "Expected doc to not be identified as SG write for body %q due to mismatched _sync.rev.ver", string(testCase.docBody))
-			})
-		}
-	})
+	testCases := []struct {
+		name               string
+		syncData           SyncData
+		cas                uint64
+		body               []byte
+		rawUserXattr       []byte
+		cv                 cvExtractor
+		expectedIsSGWrite  bool
+		expectedCrc32Match bool
+		expectedBodyChange bool
+	}{
+		{
+			name:              "CAS match",
+			syncData:          baseSyncData,
+			cas:               sgCas,
+			body:              body,
+			cv:                &matchingCV,
+			expectedIsSGWrite: true,
+		},
+		{
+			name:              "CAS match nil body",
+			syncData:          baseSyncData,
+			cas:               sgCas,
+			body:              nil,
+			cv:                &matchingCV,
+			expectedIsSGWrite: true,
+		},
+		{
+			name:               "body CRC mismatch",
+			syncData:           baseSyncData,
+			cas:                otherCas,
+			body:               []byte(`{"different":"body"}`),
+			cv:                 &matchingCV,
+			expectedBodyChange: true,
+		},
+		{
+			name:         "user xattr changed",
+			syncData:     baseSyncData,
+			cas:          otherCas,
+			body:         body,
+			rawUserXattr: []byte(`{"newkey":"newval"}`),
+			cv:           &matchingCV,
+		},
+		{
+			name:     "CV mismatch",
+			syncData: baseSyncData,
+			cas:      otherCas,
+			body:     body,
+			cv:       &mismatchCV,
+		},
+		{
+			name: "no _sync.rev.src",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.RevAndVersion.CurrentSource = ""
+				return s
+			}(),
+			cas:  otherCas,
+			body: body,
+			cv:   &matchingCV,
+		},
+		{
+			name: "no _sync.rev.ver",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.RevAndVersion.CurrentVersion = ""
+				return s
+			}(),
+			cas:  otherCas,
+			body: body,
+			cv:   &matchingCV,
+		},
+		{
+			name:     "corrupt HLV",
+			syncData: baseSyncData,
+			cas:      otherCas,
+			body:     body,
+			cv:       &corruptCV,
+		},
+		{
+			name: "no CV with no sync rev",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.RevAndVersion.CurrentSource = ""
+				s.RevAndVersion.CurrentVersion = ""
+				return s
+			}(),
+			cas:                otherCas,
+			body:               body,
+			cv:                 (*rawHLV)(nil),
+			expectedIsSGWrite:  true,
+			expectedCrc32Match: true,
+		},
+		{
+			name:               "all checks pass",
+			syncData:           baseSyncData,
+			cas:                otherCas,
+			body:               body,
+			cv:                 &matchingCV,
+			expectedIsSGWrite:  true,
+			expectedCrc32Match: true,
+		},
+	}
 
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			isSGWrite, crc32Match, bodyChanged := tc.syncData.IsSGWrite(ctx, tc.cas, tc.body, tc.rawUserXattr, tc.cv)
+			require.Equal(t, tc.expectedIsSGWrite, isSGWrite, "isSGWrite")
+			require.Equal(t, tc.expectedCrc32Match, crc32Match, "crc32Match")
+			require.Equal(t, tc.expectedBodyChange, bodyChanged, "bodyChanged")
+		})
+	}
+}
+
+func TestIsSGWriteXattrOnly(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	const sgCas uint64 = 100
+	const otherCas uint64 = 999
+	sgCasHex := base.CasToString(sgCas)
+
+	matchingCV := rawHLV([]byte(`{"ver":"0x0100000000000000","src":"testSource"}`))
+	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
+	errorCV := rawHLV([]byte(`{invalid json}`))
+
+	baseSyncData := SyncData{
+		Cas:             sgCasHex,
+		Crc32c:          "0xaabbccdd",
+		Crc32cUserXattr: "",
+		RevAndVersion: channels.RevAndVersion{
+			CurrentSource:  "testSource",
+			CurrentVersion: "0x0100000000000000",
+		},
+	}
+
+	testCases := []struct {
+		name            string
+		syncData        SyncData
+		cas             uint64
+		isDelete        bool
+		rawUserXattr    []byte
+		cv              cvExtractor
+		expectedSGWrite bool
+		expectedAmbig   bool
+	}{
+		{
+			name:            "CAS match",
+			syncData:        baseSyncData,
+			cas:             sgCas,
+			cv:              &matchingCV,
+			expectedSGWrite: true,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "deletion with non-SG CRC",
+			syncData:        baseSyncData, // Crc32c is not DeleteCrc32c
+			cas:             otherCas,
+			isDelete:        true,
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "user xattr changed",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			rawUserXattr:    []byte(`{"newkey":"newval"}`),
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "CV mismatch",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &mismatchCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name: "deletion with SG CRC and all checks pass",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.Crc32c = base.DeleteCrc32c
+				return s
+			}(),
+			cas:             otherCas,
+			isDelete:        true,
+			cv:              &matchingCV,
+			expectedSGWrite: true,
+			expectedAmbig:   false,
+		},
+		{
+			name:            "non-deletion CAS mismatch xattr and CV match - ambiguous",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &matchingCV,
+			expectedSGWrite: false,
+			expectedAmbig:   true,
+		},
+		{
+			name:            "CV extraction error - corrupt document",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              &errorCV,
+			expectedSGWrite: false,
+			expectedAmbig:   false,
+		},
+		{
+			name: "nil CV with no sync rev - ambiguous",
+			syncData: func() SyncData {
+				s := baseSyncData
+				s.RevAndVersion.CurrentSource = ""
+				s.RevAndVersion.CurrentVersion = ""
+				return s
+			}(),
+			cas:             otherCas,
+			cv:              (*rawHLV)(nil),
+			expectedSGWrite: false,
+			expectedAmbig:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			isSGWrite, ambiguous := tc.syncData.IsSGWriteXattrOnly(ctx, tc.cas, tc.isDelete, tc.rawUserXattr, tc.cv)
+			require.Equal(t, tc.expectedSGWrite, isSGWrite, "isSGWrite")
+			require.Equal(t, tc.expectedAmbig, ambiguous, "ambiguous")
+		})
+	}
 }
 
 func TestSyncDataCVEqual(t *testing.T) {

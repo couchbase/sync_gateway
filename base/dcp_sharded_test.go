@@ -18,28 +18,28 @@ import (
 func TestIndexName(t *testing.T) {
 	tests := []struct {
 		dbName    string
-		feedType  string
+		feedType  ShardedDCPFeedType
 		indexName string
 		wantErr   bool
 	}{
 		{
 			dbName:    "",
-			feedType:  CBGTIndexTypeSyncGatewayImport,
+			feedType:  ShardedDCPFeedTypeImport,
 			indexName: "db0x0_index",
 		},
 		{
 			dbName:    "foo",
-			feedType:  CBGTIndexTypeSyncGatewayImport,
+			feedType:  ShardedDCPFeedTypeImport,
 			indexName: "db0xcfc4ae1d_index",
 		},
 		{
 			dbName:    "",
-			feedType:  CBGTIndexTypeSyncGatewayResync,
+			feedType:  ShardedDCPFeedTypeResync,
 			indexName: "db0x0_resync_index",
 		},
 		{
 			dbName:    "foo",
-			feedType:  CBGTIndexTypeSyncGatewayResync,
+			feedType:  ShardedDCPFeedTypeResync,
 			indexName: "db0xcfc4ae1d_resync_index",
 		},
 		{
@@ -69,33 +69,33 @@ func TestDestKey(t *testing.T) {
 		scopeName   string
 		collections []string
 		key         string
-		feedType    string
+		feedType    ShardedDCPFeedType
 	}{
 		{
 			name:     "import no scope or collections",
 			dbName:   "foo",
 			key:      "foo_import",
-			feedType: CBGTIndexTypeSyncGatewayImport,
+			feedType: ShardedDCPFeedTypeImport,
 		},
 		{
 			name:     "resync no scope or collections",
 			dbName:   "foo",
 			key:      "foo_resync_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			feedType: CBGTIndexTypeSyncGatewayResync,
+			feedType: ShardedDCPFeedTypeResync,
 		},
 		{
 			name:      "import default scope without collections",
 			dbName:    "foo",
 			scopeName: DefaultScope,
 			key:       "foo_import",
-			feedType:  CBGTIndexTypeSyncGatewayImport,
+			feedType:  ShardedDCPFeedTypeImport,
 		},
 		{
 			name:      "resync default scope without collections",
 			dbName:    "foo",
 			scopeName: DefaultScope,
 			key:       "foo_resync_e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			feedType:  CBGTIndexTypeSyncGatewayResync,
+			feedType:  ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import custom collection in default scope",
@@ -103,7 +103,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"bar"},
 			key:         "foo_import_02e3c10f452b5d9d5051ae25270ae5714471774097ca7e00424b52bf63de1f6d",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync custom collection in default scope",
@@ -111,7 +111,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"bar"},
 			key:         "foo_resync_02e3c10f452b5d9d5051ae25270ae5714471774097ca7e00424b52bf63de1f6d",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import custom collection in custom scope",
@@ -119,7 +119,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "baz",
 			collections: []string{"bar"},
 			key:         "foo_import_3a4b66f3c8aa40608000c82c417f201de305a1994f3048b7734a33205be5e410",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync custom collection in custom scope",
@@ -127,7 +127,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "baz",
 			collections: []string{"bar"},
 			key:         "foo_resync_3a4b66f3c8aa40608000c82c417f201de305a1994f3048b7734a33205be5e410",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import multiple collections in custom scope",
@@ -135,7 +135,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync multiple collections in custom scope",
@@ -143,7 +143,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import multiple collections across scope",
@@ -151,7 +151,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync multiple collections across scope",
@@ -159,7 +159,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   "bar",
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import default scope with multiple collections",
@@ -167,7 +167,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"baz", "bat"},
 			key:         "foo_import_98ea225323328e1d6ae54575908419f85dcad91b2ee3acb56b3a6491145d87cf",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync default scope with multiple collections",
@@ -175,7 +175,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{"baz", "bat"},
 			key:         "foo_resync_98ea225323328e1d6ae54575908419f85dcad91b2ee3acb56b3a6491145d87cf",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 		{
 			name:        "import default scope with default collection",
@@ -183,7 +183,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{DefaultCollection},
 			key:         "foo_import",
-			feedType:    CBGTIndexTypeSyncGatewayImport,
+			feedType:    ShardedDCPFeedTypeImport,
 		},
 		{
 			name:        "resync default scope with default collection",
@@ -191,7 +191,7 @@ func TestDestKey(t *testing.T) {
 			scopeName:   DefaultScope,
 			collections: []string{DefaultCollection},
 			key:         "foo_resync_03d1187922d96d534d985a0a386ecdf062d369673981c217d07610a7b8ca4a52",
-			feedType:    CBGTIndexTypeSyncGatewayResync,
+			feedType:    ShardedDCPFeedTypeResync,
 		},
 	}
 	for _, test := range tests {

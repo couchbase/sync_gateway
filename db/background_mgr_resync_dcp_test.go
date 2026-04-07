@@ -232,6 +232,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 	})
 
 	for _, distributed := range []bool{false, true} {
+		if distributed && !base.IsEnterpriseEdition() {
+			// distributed resync is only supported in EE
+			continue
+		}
 		t.Run(fmt.Sprintf("Resync with updated sync function/distributed=%t", distributed), func(t *testing.T) {
 			if distributed && base.UnitTestUrlIsWalrus() {
 				t.Skip("Distribute resync not supported for rosmar")

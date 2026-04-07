@@ -47,6 +47,7 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 		Terminator:       dc.terminator,
 		Scopes:           dc.opts.CollectionNames.ToCollectionNames(),
 		Backfill:         sgbucket.FeedResume,
+		FeedContent:      dc.opts.FeedContent,
 	}
 	if dc.opts.FromLatestSequence {
 		feedArgs.Backfill = sgbucket.FeedNoBackfill

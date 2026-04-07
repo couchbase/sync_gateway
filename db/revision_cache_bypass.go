@@ -31,53 +31,36 @@ func NewBypassRevisionCache(backingStores map[uint32]RevisionCacheBackingStore, 
 	}
 }
 
-// GetWithRev fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithRev(ctx context.Context, docID, revID string, collectionID uint32, includeDelta bool) (docRev DocumentRevision, err error) {
+// Get fetches the revision for the given docID and revID immediately from the bucket.
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, err error) {
 	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 
 	docRev = DocumentRevision{
-		RevID:                  revID,
 		DocID:                  docID,
 		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
 	}
+	if version, err := ParseVersion(versionString); err != nil {
+		docRev.RevID = versionString
+	} else {
+		docRev.CV = &version
+	}
+
 	var hlv *HybridLogicalVector
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, revID)
+	if docRev.RevID != "" {
+		docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, hlv, err = revCacheLoaderForDocument(ctx, rc.backingStores[collectionID], doc, versionString)
+	} else {
+		docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStores[collectionID], doc, *docRev.CV, loadBackup)
+	}
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 	if hlv != nil {
-		docRev.CV = hlv.ExtractCurrentVersionFromHLV()
-		docRev.HlvHistory = hlv.ToHistoryForHLV()
-	}
-
-	rc.bypassStat.Add(1)
-
-	return docRev, nil
-}
-
-// GetWithCV fetches the Current Version for the given docID and CV immediately from the bucket.
-func (rc *BypassRevisionCache) GetWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32, includeDelta bool, loadBackup bool) (docRev DocumentRevision, err error) {
-
-	docRev = DocumentRevision{
-		CV:                     cv,
-		DocID:                  docID,
-		RevCacheValueDeltaLock: &sync.Mutex{}, // initialize the mutex for delta updates
-	}
-
-	doc, err := rc.backingStores[collectionID].GetDocument(ctx, docID, DocUnmarshalSync)
-	if err != nil {
-		return DocumentRevision{}, err
-	}
-
-	var hlv *HybridLogicalVector
-	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, docRev.RevID, hlv, err = revCacheLoaderForDocumentCV(ctx, rc.backingStores[collectionID], doc, *cv, loadBackup)
-	if err != nil {
-		return DocumentRevision{}, err
-	}
-	if hlv != nil {
+		if docRev.CV == nil {
+			docRev.CV = hlv.ExtractCurrentVersionFromHLV()
+		}
 		docRev.HlvHistory = hlv.ToHistoryForHLV()
 	}
 
@@ -118,7 +101,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, coll
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
-func (rc *BypassRevisionCache) Peek(ctx context.Context, docID, revID string, collectionID uint32) (docRev DocumentRevision, found bool) {
+func (rc *BypassRevisionCache) Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 
@@ -132,28 +115,20 @@ func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevisi
 	// no-op
 }
 
-func (rc *BypassRevisionCache) RemoveWithRev(ctx context.Context, docID, revID string, collectionID uint32) {
-	// no-op
-}
-
-func (rc *BypassRevisionCache) RemoveRevOnly(ctx context.Context, docID, revID string, collectionID uint32) {
-	// no-op
-}
-
-func (rc *BypassRevisionCache) RemoveCVOnly(ctx context.Context, docID string, cv *Version, collectionID uint32) {
-	// no-op
-}
-
-func (rc *BypassRevisionCache) RemoveWithCV(ctx context.Context, docID string, cv *Version, collectionID uint32) {
+func (rc *BypassRevisionCache) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {
 	// no-op
 }
 
 // UpdateDelta is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, revID string, collectionID uint32, toDelta RevisionDelta) {
+func (rc *BypassRevisionCache) UpdateDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32, toDelta RevisionDelta) {
 	// no-op
 }
 
-// UpdateDeltaCV is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) UpdateDeltaCV(ctx context.Context, docID string, cv *Version, collectionID uint32, toDelta RevisionDelta) {
-	// no-op
+func (rc *BypassRevisionCache) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
+	docRev, err := rc.Get(ctx, docID, fromVersionString, collectionID, true)
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+	// no-op for delta cache fetch
+	return docRev, nil
 }

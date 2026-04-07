@@ -110,6 +110,7 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 		CollectionNames:    collectionNames,
 		DBStats:            dbStats,
 		MetadataStoreType:  base.DCPMetadataStoreInMemory,
+		FeedContent:        sgbucket.FeedContentXattrOnly,
 	}
 	var err error
 	listener.doneChan, err = base.StartDCPFeed(ctx, bucket, opts)
