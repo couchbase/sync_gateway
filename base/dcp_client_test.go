@@ -828,6 +828,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					dcpClient, err := NewDCPClient(ctx, bucket, feedArgs)
 					require.NoError(t, err)
 					_, err = dcpClient.Start()
+					require.NoError(t, err)
 					defer func() {
 						assert.NoError(t, dcpClient.Close())
 					}()
