@@ -1476,7 +1476,7 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.IsSGWriteKVFetchCount, err = NewIntStat(SubsystemCacheKey, "issgwrite_kv_fetch_count", StatUnitNoUnits, IsSGWriteKVFetchCountDesc, StatAddedVersion4dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.IsSGWriteKVFetchCount, err = NewIntStat(SubsystemCacheKey, "issgwrite_kv_fetch_count", StatUnitNoUnits, IsSGWriteKVFetchCountDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
