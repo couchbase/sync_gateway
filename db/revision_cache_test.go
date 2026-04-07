@@ -326,7 +326,7 @@ func TestLRURevisionCacheEvictionMemoryBased(t *testing.T) {
 
 			// assert doc "2" has been evicted even though we only have 9 items in cache with capacity of 10, so memory based
 			// eviction took place
-			docRev, _, ok = db.revisionCache.Peek(ctx, "2", versionKey(versions[2], rev), collection.GetCollectionID())
+			docRev, ok = db.revisionCache.Peek(ctx, "2", versionKey(versions[2], rev), collection.GetCollectionID())
 			assert.False(t, ok)
 			assert.Nil(t, docRev.BodyBytes)
 
