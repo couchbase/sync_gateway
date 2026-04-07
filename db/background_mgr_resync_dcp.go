@@ -266,6 +266,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			IndexType:     base.CBGTIndexTypeSyncGatewayResync,
 			DestKey:       resyncDestKey,
 			IndexName:     indexName,
+			OneShot:       true,
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 
@@ -297,6 +298,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 	}
 
+	// TODO: figure out how to determine when cbgt is done, and close doneChan
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())

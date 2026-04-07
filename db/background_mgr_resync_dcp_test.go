@@ -272,13 +272,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			err := db.ResyncManager.Start(ctx, options)
 			require.NoError(t, err)
 
-			if distributed {
-				waitForResyncDocsChanged(t, db, int64(docsToCreate))
-				err := db.ResyncManager.Stop()
-				require.NoError(t, err)
-			} else {
-				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
-			}
+			RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
 
 			stats := getResyncStats(t, db)
 			// If there are tombstones from older docs which have been deleted from the bucket, processed docs will

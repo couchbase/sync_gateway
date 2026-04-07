@@ -155,6 +155,7 @@ func init() {
 // SGFeedSourceParams is a wrapper for cbgt's parameters.
 type SGFeedSourceParams struct {
 	cbgt.DCPFeedParams
+	cbgt.StopAfterSourceParams
 
 	// Used to pass the SG database name to SGFeed* shims
 	DbName string `json:"sg_dbname,omitempty"`
@@ -167,13 +168,36 @@ type SGFeedIndexParams struct {
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
 // Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(ctx context.Context, collections CollectionNames, dbName string) (string, error) {
+func cbgtFeedParams(ctx context.Context, bucket *GocbV2Bucket, collections CollectionNames, dbName string, oneShot bool) (string, error) {
 	feedParams := &SGFeedSourceParams{
 		DbName: dbName,
 		DCPFeedParams: cbgt.DCPFeedParams{
 			AutoReconnectAfterRollback: true,
 			IncludeXAttrs:              true,
 		},
+	}
+	if oneShot {
+		feedParams.StopAfterSourceParams.StopAfter = "markReached"
+		numVbuckets, err := bucket.GetMaxVbno()
+		if err != nil {
+			return "", fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
+		}
+
+		// TODO:: get the high seqnos for the collection only
+		_, highSeqNos, statsErr := bucket.GetStatsVbSeqno(numVbuckets, true)
+		if statsErr != nil {
+			return "", fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
+		}
+		numPartitions := 16
+		seqMap := make(map[string]cbgt.UUIDSeq, numPartitions)
+		for vbNo, seqNo := range highSeqNos {
+			// TODO:: is it important to populate other fields in cbgt.UUIDSeq, such as VbNo or UUID?
+			// TODO: is this always the right key name? this matches "partition" name
+			seqMap[fmt.Sprintf("%d", uint16(vbNo))] = cbgt.UUIDSeq{
+				Seq: seqNo,
+			}
+		}
+		feedParams.StopAfterSourceParams.MarkPartitionSeqs = seqMap
 	}
 	if len(collections) > 1 {
 		return "", RedactErrorf("cbgtFeedParams: multiple scopes not supported, got %v", MD(collections))

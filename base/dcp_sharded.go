@@ -83,6 +83,7 @@ type ShardedDCPOptions struct {
 	NumPartitions     uint16          // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
 	PreviousIndexName string          // previous index name. If specified, marks IndexName as as a replacement for this name.
 	UUID              string          // database uuid, used to uniquely identify nodes
+	OneShot           bool
 }
 
 // Validate makes sure that all options are specified.
@@ -212,7 +213,11 @@ func GenerateLegacyImportIndexName(dbName string) string {
 func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions) error {
 	sourceType := SOURCE_DCP_SG
 
-	sourceParams, err := cbgtFeedParams(ctx, opts.Collections, opts.DBName)
+	b, err := AsGocbV2Bucket(opts.Bucket)
+	if err != nil {
+		return fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
+	}
+	sourceParams, err := cbgtFeedParams(ctx, b, opts.Collections, opts.DBName, opts.OneShot)
 	if err != nil {
 		return err
 	}
