@@ -817,37 +817,19 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					}
 
 					// Build FeedArguments for StartDCPFeed (works on both Rosmar and CBS)
-					var backfill uint64
-					if live {
-						backfill = sgbucket.FeedNoBackfill
+					feedArgs := DCPClientOptions{
+						FeedID:             t.Name(),
+						Callback:           callback,
+						CheckpointPrefix:   DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+						CollectionNames:    NewCollectionNameSet(dataStore),
+						FeedContent:        mode.feedContent,
+						FromLatestSequence: live,
 					}
-					var scopes map[string][]string
-					if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-						scopes = map[string][]string{
-							dataStore.ScopeName(): {dataStore.CollectionName()},
-						}
-					}
-					terminator := make(chan bool)
-					doneChan := make(chan struct{})
-					feedArgs := sgbucket.FeedArguments{
-						ID:               t.Name(),
-						Backfill:         backfill,
-						Terminator:       terminator,
-						DoneChan:         doneChan,
-						CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
-						Scopes:           scopes,
-						FeedContent:      mode.feedContent,
-					}
-					err := bucket.StartDCPFeed(ctx, feedArgs, callback, nil)
+					dcpClient, err := NewDCPClient(ctx, bucket, feedArgs)
 					require.NoError(t, err)
+					_, err = dcpClient.Start()
 					defer func() {
-						close(terminator)
-						// DoneChan is closed (not sent to) when the feed exits, so wait directly
-						select {
-						case <-doneChan:
-						case <-time.After(TestChanTimeout):
-							require.FailNow(t, "timed out waiting for DCP feed to close")
-						}
+						assert.NoError(t, dcpClient.Close())
 					}()
 
 					if live {
