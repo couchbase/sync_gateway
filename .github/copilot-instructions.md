@@ -10,4 +10,4 @@ When performing a code review, ensure code comments explain the _intent_ or _rea
 
 When performing a code review, ensure `for` loops have sufficient exit conditions and are not prone to infinite loops. Prefer expressing the exit condition in the loop declaration itself, rather than relying on `break` statements within the loop body.
 
-When performing a code review, make sure context.WithCancelCause is used used in favor of context.WithCancel.
+When performing a code review, make sure context.WithCancelCause is used instead of context.WithCancel.
