@@ -12,7 +12,6 @@ package rest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -61,7 +60,7 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP context:
 	ctx, blipContext, err := db.NewSGBlipContext(h.ctx(), "", originPatterns, cancelCtx)
 	if err != nil {
-		cancelCtxFunc(errors.New("_blipsync handler could not initialize a BlipContext"))
+		cancelCtxFunc(fmt.Errorf("_blipsync handler could not initialize a BlipContext: %w", err))
 		return err
 	}
 
