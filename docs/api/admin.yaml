@@ -188,6 +188,12 @@ paths:
     $ref: './paths/common/db-_ensure_full_commit.yaml'
   /_logging:
     $ref: ./paths/admin/_logging.yaml
+  /_rosmar:
+    x-internal: true
+    $ref: ./paths/admin/_rosmar.yaml
+  '/_rosmar/{bucketkeyspace}':
+    x-internal: true
+    $ref: './paths/admin/_rosmar-bucketkeyspace.yaml'
 tags:
   - name: Authentication
     description: Manage authentication
