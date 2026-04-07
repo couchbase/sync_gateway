@@ -2239,13 +2239,8 @@ func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Docume
 func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]any, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
-	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
-	if err != nil {
-		return
-	}
 
-	var curBody Body
-	err = curBody.Unmarshal(curBodyBytes)
+	curBody, _, _, err := db.prepareSyncFn(doc, doc)
 	if err != nil {
 		return
 	}

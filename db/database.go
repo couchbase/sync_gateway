@@ -1750,19 +1750,11 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
 	doc.History.forEachLeaf(func(rev *RevInfo) {
-		bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
+		body, metaMap, _, err := db.prepareSyncFn(doc, doc)
 		if err != nil {
-			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+			base.WarnfCtx(ctx, "Error preparing sync function for document '%s': %v", docid, err)
 		}
-		var body Body
-		if err := body.Unmarshal(bodyBytes); err != nil {
-			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-			return
-		}
-		metaMap, err := doc.GetMetaMap(db.UserXattrKey())
-		if err != nil {
-			return
-		}
+
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
 			// Probably the validator rejected the doc
