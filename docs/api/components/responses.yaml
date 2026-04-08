@@ -213,7 +213,7 @@ expvar_reponses:
   '200':
     description: |-
       Successfully returned statistics.
-      For details, see [JSON Metrics](stats-monitoring-json.html).
+      For details, see [JSON Metrics](../monitoring/stats-monitoring-json.html).
     content:
       application/json:
         schema:
