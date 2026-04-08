@@ -1532,7 +1532,7 @@ func TestLoginRequiredForAdmin(t *testing.T) {
 }
 
 // TestDbLevelRequestDuringDBContextCloseReturns503 tests that a request which unblocks from
-// AccessLock after the DB has been closed during a concurrent operation returns 503.
+// DbStateLock after the DB has been closed during a concurrent operation returns 503.
 func TestDbLevelRequestDuringDBContextCloseReturns503(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -1559,7 +1559,7 @@ func TestDbLevelRequestDuringDBContextCloseReturns503(t *testing.T) {
 
 	// Acquire the write lock to simulate another goroutine (e.g. an offline operation)
 	// holding exclusive access while the DB is being closed.
-	dbContext.AccessLock.Lock()
+	dbContext.DbStateLock.Lock()
 
 	// Simulate the DB context being closed while the write lock is held.
 	dbContext.BucketLock.Lock()
@@ -1567,7 +1567,14 @@ func TestDbLevelRequestDuringDBContextCloseReturns503(t *testing.T) {
 	dbContext.Bucket = nil
 	dbContext.BucketLock.Unlock()
 
-	// This request will block on AccessLock.RLock() until the write lock is released below.
+	defer func() {
+		// Restore the bucket so that deferred rt.Close() can clean up properly.
+		dbContext.BucketLock.Lock()
+		dbContext.Bucket = origBucket
+		dbContext.BucketLock.Unlock()
+	}()
+
+	// This request will block on DbStateLock.RLock() until the write lock is released below.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	var resp *TestResponse
@@ -1576,17 +1583,9 @@ func TestDbLevelRequestDuringDBContextCloseReturns503(t *testing.T) {
 		resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/db/_dump/view", "", mobileSyncGateway, "password")
 	}()
 
-	// Allow the goroutine to reach AccessLock.RLock() before releasing the write lock.
-	time.Sleep(50 * time.Millisecond)
-
 	// Unblock the above _dump/view goroutine. It will acquire RLock, find IsClosed() == true, and return 503.
-	dbContext.AccessLock.Unlock()
+	dbContext.DbStateLock.Unlock()
 	wg.Wait()
 
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
-
-	// Restore the bucket so that deferred rt.Close() can clean up properly.
-	dbContext.BucketLock.Lock()
-	dbContext.Bucket = origBucket
-	dbContext.BucketLock.Unlock()
 }

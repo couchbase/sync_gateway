@@ -497,18 +497,11 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// When the lock is returned we know that the db state will not be changed by
 			// any other call
 
-			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
-			if !h.isBlipSync() {
-				dbContext.AccessLock.RLock()
-				defer dbContext.AccessLock.RUnlock()
-
-				// Check if the dbContext was closed while we were waiting to acquire AccessLock.
-				// Another goroutine may have held the write lock and closed the DB before we got here.
-				// Re-fetching and re-locking would introduce a new race, so we return 503
-				// instead — signalling the client to retry once the DB is available again.
-				if dbContext.IsClosed() {
-					return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is not available - try again later")
-				}
+			// defer releasing the dbContext until after the handler method returns
+			dbContext.DbStateLock.RLock()
+			defer dbContext.DbStateLock.RUnlock()
+			if dbContext.IsClosed() {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is not available - try again later")
 			}
 		}
 	}
