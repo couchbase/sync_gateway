@@ -2253,9 +2253,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 
 	// removing _attachments, as attachments are not required to be passed
 	// into sync function
-	if _, ok := curBody[BodyAttachments]; ok {
-		delete(curBody, BodyAttachments)
-	}
+	delete(curBody, BodyAttachments)
 
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",

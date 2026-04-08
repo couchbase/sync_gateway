@@ -1765,12 +1765,8 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		}
 
 		// removing the following fields as these fields are not required for sync function
-		if _, ok := body[BodyAttachments]; ok {
-			delete(body, BodyAttachments)
-		}
-		if _, ok := body[BodyRevisions]; ok {
-			delete(body, BodyRevisions)
-		}
+		delete(body, BodyAttachments)
+		delete(body, BodyRevisions)
 
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
