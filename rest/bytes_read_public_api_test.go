@@ -70,7 +70,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	defer srv.Close()
 
 	// test metrics endpoint, assert the stat doesn't increment
-	response, err := http.Get(srv.URL + "/_metrics")
+	response, err := http.Get(srv.URL + "/metrics")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())

@@ -213,8 +213,29 @@ expvar_reponses:
   '200':
     description: |-
       Successfully returned statistics.
-      For details, see [JSON Metrics](stats-monitoring-json.html).
+      For details, see [JSON Metrics](../manage/stats-monitoring-json.html).
     content:
       application/json:
         schema:
           $ref: ./schemas.yaml#/ExpVars
+prometheus_metrics_responses:
+  '200':
+    content:
+      text/plain:
+        example: |-
+          # HELP go_gc_duration_seconds A summary of the wall-time pause (stop-the-world) duration in garbage collection cycles.
+          # TYPE go_gc_duration_seconds summary
+          go_gc_duration_seconds{quantile="0"} 3.2374e-05
+          go_gc_duration_seconds{quantile="0.25"} 3.6417e-05
+          go_gc_duration_seconds{quantile="0.5"} 7.9875e-05
+          go_gc_duration_seconds{quantile="0.75"} 0.000152499
+          go_gc_duration_seconds{quantile="1"} 0.001503708
+          go_gc_duration_seconds_sum 0.002018457
+          go_gc_duration_seconds_count 7
+          # HELP go_gc_gogc_percent Heap size target percentage configured by the user, otherwise 100. This value is set by the GOGC environment variable, and the runtime/debug.SetGCPercent function. Sourced from /gc/gogc:percent
+          # TYPE go_gc_gogc_percent gauge
+          go_gc_gogc_percent 100
+          ...
+    description: |-
+      Successfully returned statistics.
+      For detailed metrics descriptions, see [Prometheus Metrics](../manage/stats-monitoring-prometheus.html).
