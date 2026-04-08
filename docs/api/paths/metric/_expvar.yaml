@@ -13,6 +13,8 @@ get:
 
     This includes per database stats, replication stats, and server stats.
 
+    For details, see [JSON Metrics](../manage/stats-monitoring-json.html).
+
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect

@@ -1,4 +1,4 @@
-# Copyright 2022-Present Couchbase, Inc.
+# Copyright 2026-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
 # in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -6,8 +6,11 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 get:
+  deprecated: true
   summary: Get debugging and monitoring runtime stats in Prometheus Exposition format
   description: |-
+    **Deprecated: Use the [`/metrics`](#tag/Prometheus/operation/get_metrics) endpoint instead.**
+
     Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
     For detailed metrics descriptions, see [Prometheus Metrics](../manage/stats-monitoring-prometheus.html).
@@ -21,4 +24,4 @@ get:
     $ref: ../../components/responses.yaml#/prometheus_metrics_responses
   tags:
     - Prometheus
-  operationId: get_metrics
+  operationId: get__metrics
