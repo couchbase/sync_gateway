@@ -22,11 +22,14 @@ get:
           schema:
             type: object
             additionalProperties:
+              x-additionalPropertiesName: bucketname
               type: object
               additionalProperties:
+                x-additionalPropertiesName: scopename
                 type: array
                 items:
                   type: string
+                  example: ["collectionname1", "collectionname2"]
   tags:
     - Unsupported
   operationId: get__rosmar
