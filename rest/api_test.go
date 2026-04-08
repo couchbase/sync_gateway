@@ -124,7 +124,7 @@ func TestPublicRESTStatCount(t *testing.T) {
 	defer srv.Close()
 
 	// test metrics endpoint
-	response, err := http.Get(srv.URL + "/_metrics")
+	response, err := http.Get(srv.URL + "/metrics")
 	require.NoError(t, err)
 	require.NoError(t, response.Body.Close())
 	assert.Equal(t, http.StatusOK, response.StatusCode)
@@ -2749,7 +2749,7 @@ func TestMetricsHandler(t *testing.T) {
 		base.SkipPrometheusStatsRegistration = true
 	}()
 
-	// Create and remove a databaseion
+	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
@@ -2766,14 +2766,13 @@ func TestMetricsHandler(t *testing.T) {
 	defer srv.Close()
 
 	// Ensure metrics endpoint is accessible and that db database has entries
-	resp, err := http.Get(srv.URL + "/_metrics")
+	resp, err := http.Get(srv.URL + "/metrics")
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	bodyString, err := io.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 	assert.Contains(t, string(bodyString), `database="db"`)
-	err = resp.Body.Close()
-	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
 	tBucket2 := base.GetTestBucket(t)
@@ -2782,22 +2781,29 @@ func TestMetricsHandler(t *testing.T) {
 	defer context.Close(context.AddDatabaseLogContext(ctx))
 
 	// Validate that metrics still works with both db and db2 databases and that they have entries
-	resp, err = http.Get(srv.URL + "/_metrics")
+	resp, err = http.Get(srv.URL + "/metrics")
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	bodyString, err = io.ReadAll(resp.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 	assert.Contains(t, string(bodyString), `database="db"`)
 	assert.Contains(t, string(bodyString), `database="db2"`)
-	err = resp.Body.Close()
-	assert.NoError(t, err)
+
+	// check /_metrics 'alias'
+	resp, err = http.Get(srv.URL + "/_metrics")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	aliasedBodyString, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, string(aliasedBodyString), string(bodyString))
 
 	// Ensure metrics endpoint is not serving any other routes
 	resp, err = http.Get(srv.URL + "/" + rt.GetSingleKeyspace() + "/")
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	err = resp.Body.Close()
-	assert.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestDocChannelSetPruning(t *testing.T) {
