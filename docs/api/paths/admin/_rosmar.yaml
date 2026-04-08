@@ -29,7 +29,7 @@ get:
                 type: array
                 items:
                   type: string
-                  example: ["collectionname1", "collectionname2"]
+                example: ["collectionname1", "collectionname2"]
   tags:
     - Unsupported
   operationId: get__rosmar
