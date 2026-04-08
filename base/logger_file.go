@@ -64,8 +64,8 @@ type FileLogger struct {
 	output           io.Writer
 	logger           *log.Logger
 	buffer           strings.Builder
-	cancelFunc       context.CancelFunc // cancelFunc is used to stop the log rotation goroutine
-	rotationDoneChan chan struct{}      // rotationDoneChan is used to signal when the log rotation goroutine has stopped
+	cancelFunc       context.CancelCauseFunc // cancelFunc is used to stop the log rotation goroutine
+	rotationDoneChan chan struct{}           // rotationDoneChan is used to signal when the log rotation goroutine has stopped
 
 	// FileLoggerConfig stores the initial config used to instantiate FileLogger
 	config FileLoggerConfig
@@ -94,12 +94,12 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		config = &FileLoggerConfig{}
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	cancelCtx, cancelFunc := context.WithCancelCause(ctx)
 
 	// validate and set defaults
 	rotationDoneChan, err := config.init(cancelCtx, level, name, logFilePath, minAge, defaultMaxAgeOverride)
 	if err != nil {
-		cancelFunc()
+		cancelFunc(errors.New("FileLogger failed to initialize"))
 		return nil, err
 	}
 
@@ -165,7 +165,7 @@ func (l *FileLogger) Close() error {
 	defer close(l.closed)
 	// cancel the log rotation goroutine and wait for it to stop
 	if l.cancelFunc != nil {
-		l.cancelFunc()
+		l.cancelFunc(errors.New("FileLogger closed"))
 	}
 	// wait for the rotation goroutine to stop
 	if l.rotationDoneChan != nil {

@@ -11,6 +11,7 @@ package main // main.go
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -94,7 +95,7 @@ func main() {
 	}
 
 	parentCtx := context.Background()
-	ctx, cancelFunc := context.WithCancel(parentCtx)
+	ctx, cancelFunc := context.WithCancelCause(parentCtx)
 
 	// Need a bucket type for creating the database context
 	var walrusBucket *rosmar.Bucket
@@ -228,7 +229,7 @@ outerloop:
 	for {
 		select {
 		case <-ticker.C:
-			cancelFunc()
+			cancelFunc(errors.New("test duration complete"))
 			break outerloop
 		}
 	}

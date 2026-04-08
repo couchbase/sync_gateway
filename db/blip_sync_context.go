@@ -35,7 +35,7 @@ const (
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 // NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
-func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
+func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelCauseFunc) (*BlipSyncContext, error) {
 	if ctxCancelFunc == nil {
 		return nil, errors.New("cancelCtxFunc is required")
 	}
@@ -141,7 +141,7 @@ type BlipSyncContext struct {
 
 	stats blipSyncStats // internal structure to store stats
 
-	ctxCancelFunc context.CancelFunc // function to cancel a blip replication
+	ctxCancelFunc context.CancelCauseFunc // function to cancel a blip replication
 }
 
 // blipSyncStats has support structures to support reporting stats at regular interval
@@ -253,11 +253,11 @@ func (bsc *BlipSyncContext) Close() {
 			collection.changesCtxLock.Lock()
 			defer collection.changesCtxLock.Unlock()
 
-			collection.changesCtxCancel()
+			collection.changesCtxCancel(errors.New("BlipSyncContext.Close called"))
 		}
 		bsc.reportStats(true)
 		close(bsc.terminator)
-		bsc.ctxCancelFunc()
+		bsc.ctxCancelFunc(errors.New("BlipSyncContext.Close called"))
 	})
 }
 

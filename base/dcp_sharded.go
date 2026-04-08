@@ -366,7 +366,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   avoids file system usage, in conjunction with managerLoadDataDir=false in options.
 	dataDir := ""
 
-	eventHandlersCtx, eventHandlersCancel := context.WithCancel(ctx)
+	eventHandlersCtx, eventHandlersCancel := context.WithCancelCause(ctx)
 	eventHandlers := &sgMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
 
 	// Specify one feed per pindex
@@ -513,7 +513,7 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 // Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
 func (c *CbgtContext) Stop(ctx context.Context) {
 	if c.eventHandlers != nil {
-		c.eventHandlers.ctxCancel()
+		c.eventHandlers.ctxCancel(errors.New("CbgtContext is stopping, cancelling event handlers"))
 	}
 
 	if c.heartbeatListener != nil {
@@ -763,7 +763,7 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 
 type sgMgrEventHandlers struct {
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 	manager   *cbgt.Manager
 }
 

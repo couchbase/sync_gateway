@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -96,7 +97,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 
 	if err := apr._subChanges(nil, since); err != nil {
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
-		apr.checkpointerCtxCancel()
+		apr.checkpointerCtxCancel(fmt.Errorf("error sending subChanges request: %w", err))
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -136,7 +137,7 @@ func (apr *ActivePullReplicator) Complete() {
 		return nil
 	})
 
-	apr._stop()
+	apr._stop("Pull replicator completed")
 
 	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling disconnect from Complete() in active replicator pull")
 	stopErr := apr._disconnect()

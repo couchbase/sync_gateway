@@ -53,12 +53,12 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 		config = &ConsoleLoggerConfig{}
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	cancelCtx, cancelFunc := context.WithCancelCause(ctx)
 
 	// validate and set defaults
 	rotationDoneChan, err := config.init(cancelCtx)
 	if err != nil {
-		defer cancelFunc()
+		defer cancelFunc(errors.New("ConsoleLogger failed to initialize"))
 		return nil, err
 	}
 

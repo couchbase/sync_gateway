@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -176,8 +177,10 @@ func NewTaskID(contextID string, taskName string) string {
 
 // TestCtx creates a context for the given test which is also cancelled once the test has completed.
 func TestCtx(t testing.TB) context.Context {
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	t.Cleanup(cancelCtx)
+	ctx, cancelCtx := context.WithCancelCause(context.Background())
+	t.Cleanup(func() {
+		cancelCtx(errors.New("TestCtx t.Cleanup canceled"))
+	})
 	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 

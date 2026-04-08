@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -31,8 +32,8 @@ func TestSubprotocolString(t *testing.T) {
 func TestBlipCorrelationID(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	ctx, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyWebSocket)
 	for _, explicitTestID := range []bool{true, false} {

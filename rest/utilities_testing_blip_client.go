@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"iter"
 	"net/http"
@@ -369,12 +370,12 @@ type BlipTesterCollectionClient struct {
 	parent *BlipTesterClient
 
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 
 	pushRunning     base.AtomicBool
 	pushGoroutineWg sync.WaitGroup
 	pushCtx         context.Context
-	pushCtxCancel   context.CancelFunc
+	pushCtxCancel   context.CancelCauseFunc
 
 	collection    string
 	collectionIdx int
@@ -1295,7 +1296,7 @@ func (e proposeChangeBatchEntry) GoString() string {
 func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOptions) {
 	require.True(btcc.TB(), btcc.pushRunning.CASRetry(false, true), "push replication already running")
 
-	btcc.pushCtx, btcc.pushCtxCancel = context.WithCancel(btcc.ctx)
+	btcc.pushCtx, btcc.pushCtxCancel = context.WithCancelCause(btcc.ctx)
 	ctx := btcc.pushCtx
 	sinceFromStr, err := db.ParsePlainSequenceID(opts.Since)
 	require.NoError(btcc.TB(), err)
@@ -1526,7 +1527,7 @@ func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpt
 
 func (btcc *BlipTesterCollectionClient) StopPush() {
 	require.True(btcc.TB(), btcc.pushRunning.IsTrue(), "can't stop push replication - not running")
-	btcc.pushCtxCancel()
+	btcc.pushCtxCancel(errors.New("StopPush called"))
 
 	// Wake up any waiting push loops to check for cancellation
 	btcc._seqCond.Broadcast()
@@ -1554,7 +1555,7 @@ func (btcc *BlipTesterCollectionClient) UnsubPullChanges() {
 
 // NewBlipTesterCollectionClient creates a collection specific client from a BlipTesterClient
 func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *BlipTesterCollectionClient {
-	ctx, ctxCancel := context.WithCancel(ctx)
+	ctx, ctxCancel := context.WithCancelCause(ctx)
 	l := sync.RWMutex{}
 	c := &BlipTesterCollectionClient{
 		ctx:           ctx,
@@ -1573,7 +1574,7 @@ func NewBlipTesterCollectionClient(ctx context.Context, btc *BlipTesterClient) *
 
 // Close will empty the stored docs and close the underlying replications.
 func (btcc *BlipTesterCollectionClient) Close() {
-	btcc.ctxCancel()
+	btcc.ctxCancel(errors.New("BlipTesterCollectionClient closed"))
 
 	// wake up changes feeds to exit - don't need lock for sync.Cond
 	btcc._seqCond.Broadcast()

@@ -137,7 +137,7 @@ type DatabaseContext struct {
 	CompactState                 uint32                         // Status of database compaction
 	terminator                   chan bool                      // Signal termination of background goroutines
 	CancelContext                context.Context                // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
-	cancelContextFunc            context.CancelFunc             // Cancel function for cancelContext
+	cancelContextFunc            context.CancelCauseFunc        // Cancel function for cancelContext
 	backgroundTasks              []BackgroundTask               // List of background tasks that are initiated.
 	activeChannels               *channels.ActiveChannels       // Tracks active replications by channel
 	CfgSG                        cbgt.Cfg                       // Sync Gateway cluster shared config
@@ -457,9 +457,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// set up cancellable context based on the background context (context lifecycle for the database
 	// must be distinct from the request context associated with the db create/update).  Used to trigger
 	// teardown of connected replications on database close.
-	dbContext.CancelContext, dbContext.cancelContextFunc = context.WithCancel(context.Background())
+	dbContext.CancelContext, dbContext.cancelContextFunc = context.WithCancelCause(context.Background())
 	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.cancelContextFunc()
+		dbContext.cancelContextFunc(errors.New("DatabaseContext failed to initialize"))
 	})
 
 	// Check if server version supports multi-xattr operations, required for mou handling
@@ -655,7 +655,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	if context.cancelContextFunc != nil {
-		context.cancelContextFunc()
+		context.cancelContextFunc(errors.New("Database is closing"))
 	}
 
 	// Stop All background processors

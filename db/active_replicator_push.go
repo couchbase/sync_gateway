@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -88,7 +89,7 @@ func (apr *ActivePushReplicator) Complete() {
 		return nil
 	})
 
-	apr._stop()
+	apr._stop("push replication complete")
 
 	stopErr := apr._disconnect()
 	if stopErr != nil {
@@ -251,7 +252,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		})
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
-			bh.ctxCancelFunc()
+			bh.ctxCancelFunc(fmt.Errorf("ISGR push replicator changes feed error: %w", err))
 			apr.setError(err)
 			apr.publishStatus()
 			return

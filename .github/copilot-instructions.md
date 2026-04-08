@@ -6,6 +6,8 @@ When performing a code review, if a log message includes User Data, ensure the v
 
 When performing a code review, be mindful of performance implications, such as mutex contention, race conditions, and other concurrency-related issues.
 
-When performing a code review, ensure code comments explain the *intent* or *reasoning* behind an implementation, rather than just restating what the code does.
+When performing a code review, ensure code comments explain the _intent_ or _reasoning_ behind an implementation, rather than just restating what the code does.
 
 When performing a code review, ensure `for` loops have sufficient exit conditions and are not prone to infinite loops. Prefer expressing the exit condition in the loop declaration itself, rather than relying on `break` statements within the loop body.
+
+When performing a code review, make sure context.WithCancelCause is used instead of context.WithCancel.

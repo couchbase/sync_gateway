@@ -287,7 +287,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Create ctx if it has been cancelled
 	if collectionCtx.changesCtx.Err() != nil {
-		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(bh.loggingCtx)
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancelCause(bh.loggingCtx)
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -355,7 +355,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
-			collectionCtx.changesCtxCancel()
+			collectionCtx.changesCtxCancel(errors.New("changes feed ended"))
 			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -375,7 +375,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		})
 		if err != nil {
 			base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "Closing blip connection due to changes feed error %+v\n", err)
-			bh.ctxCancelFunc()
+			bh.ctxCancelFunc(fmt.Errorf("changes feed returned error: %w", err))
 		}
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
@@ -406,7 +406,7 @@ func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
 	collectionCtx := bh.collectionCtx
 	collectionCtx.changesCtxLock.Lock()
 	defer collectionCtx.changesCtxLock.Unlock()
-	collectionCtx.changesCtxCancel()
+	collectionCtx.changesCtxCancel(errors.New("unsubChanges called"))
 	return nil
 }
 

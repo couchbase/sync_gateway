@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -1690,8 +1691,8 @@ func TestRevCacheOnDemand(t *testing.T) {
 	_, err = collection.getRev(ctx, docID, revID, 0, nil) // load into cache
 	require.NoError(t, err)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
+	testCtx, testCtxCancel := context.WithCancelCause(base.TestCtx(t))
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
@@ -1899,8 +1900,8 @@ func TestRevCacheOnDemandImport(t *testing.T) {
 	_, err = collection.getRev(ctx, docID, revID, 0, nil) // load into cache
 	require.NoError(t, err)
 
-	ctx, testCtxCancel := context.WithCancel(ctx)
-	defer testCtxCancel()
+	ctx, testCtxCancel := context.WithCancelCause(ctx)
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
@@ -1947,8 +1948,8 @@ func TestRevCacheOnDemandMemoryEviction(t *testing.T) {
 	_, err = collection.getRev(ctx, docID, revID, 0, nil) // load into cache
 	require.NoError(t, err)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
+	testCtx, testCtxCancel := context.WithCancelCause(base.TestCtx(t))
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
@@ -2168,8 +2169,8 @@ func TestLoadActiveDocFromBucketRevCacheChurn(t *testing.T) {
 	require.NoError(t, err)
 	wg.Add(1)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
+	testCtx, testCtxCancel := context.WithCancelCause(base.TestCtx(t))
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
@@ -2223,8 +2224,8 @@ func TestLoadRequestedRevFromBucketHighChurn(t *testing.T) {
 	require.NoError(t, err)
 	wg.Add(1)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
+	testCtx, testCtxCancel := context.WithCancelCause(base.TestCtx(t))
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)
@@ -2274,8 +2275,8 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 	docID := "doc1"
 	wg.Add(1)
 
-	testCtx, testCtxCancel := context.WithCancel(base.TestCtx(t))
-	defer testCtxCancel()
+	testCtx, testCtxCancel := context.WithCancelCause(base.TestCtx(t))
+	defer testCtxCancel(errors.New("test teardown"))
 
 	for i := range 2 {
 		docID := fmt.Sprintf("extraDoc%d", i)

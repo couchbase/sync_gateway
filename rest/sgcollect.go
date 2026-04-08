@@ -63,7 +63,7 @@ type sgCollectOutputStream struct {
 
 // sgCollect manages the state of a running sgcollect_info process.
 type sgCollect struct {
-	cancel           context.CancelFunc // Function to cancel a running sgcollect_info process, set when status == sgRunning
+	cancel           context.CancelCauseFunc // Function to cancel a running sgcollect_info process, set when status == sgRunning
 	status           *uint32
 	sgPath           string    // Path to the Sync Gateway executable
 	SGCollectPath    []string  // Path to the sgcollect_info executable
@@ -108,7 +108,7 @@ func (sg *sgCollect) Start(ctx context.Context, logFilePath string, zipFilename 
 	cmdline = append(cmdline, "--sync-gateway-executable", sg.sgPath)
 	cmdline = append(cmdline, zipPath)
 
-	ctx, sg.cancel = context.WithCancel(ctx)
+	ctx, sg.cancel = context.WithCancelCause(ctx)
 	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 
 	err := sg.createNewToken()
@@ -162,7 +162,7 @@ func (sg *sgCollect) Stop() error {
 		return ErrSGCollectInfoNotRunning
 	}
 
-	sg.cancel()
+	sg.cancel(errors.New("/_sgcollect_info stop requested"))
 	atomic.StoreUint32(sg.status, sgStopped)
 
 	return nil
