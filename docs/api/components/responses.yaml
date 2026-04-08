@@ -213,7 +213,7 @@ expvar_reponses:
   '200':
     description: |-
       Successfully returned statistics.
-      For details, see [JSON Metrics](../monitoring/stats-monitoring-json.html).
+      For details, see [JSON Metrics](../manage/stats-monitoring-json.html).
     content:
       application/json:
         schema:
@@ -238,4 +238,4 @@ prometheus_metrics_responses:
           ...
     description: |-
       Successfully returned statistics.
-      For detailed metrics descriptions, see [Prometheus Metrics](../monitoring/stats-monitoring-prometheus.html).
+      For detailed metrics descriptions, see [Prometheus Metrics](../manage/stats-monitoring-prometheus.html).

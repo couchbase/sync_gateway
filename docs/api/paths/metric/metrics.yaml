@@ -10,7 +10,7 @@ get:
   description: |-
     Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
-    For detailed metrics descriptions, see [Prometheus Metrics](../monitoring/stats-monitoring-prometheus.html).
+    For detailed metrics descriptions, see [Prometheus Metrics](../manage/stats-monitoring-prometheus.html).
 
     Required Sync Gateway RBAC roles:
 
