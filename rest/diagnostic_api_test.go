@@ -724,8 +724,6 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.TestRequiresCollections(t)
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)

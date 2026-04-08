@@ -25,8 +25,6 @@ import (
 const accessControlAllowOrigin = "Access-Control-Allow-Origin"
 
 func TestCORSDynamicSet(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})

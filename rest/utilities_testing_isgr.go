@@ -55,6 +55,16 @@ type SGRTestRunner struct {
 
 // NewSGRTestRunner returns a new SGRTestRunner instance.
 func NewSGRTestRunner(t *testing.T) *SGRTestRunner {
+	// If BypassReleasedSequenceWait is true, tests like TestReplicationRebalancePush can miss sequences due to a
+	// race between SGReplicateMgr assigning nodes and the sequenceAllocator/changeListener starting.
+	//
+	// See CBG-5267.
+	previousBypassReleasedSequenceWait := db.BypassReleasedSequenceWait.Load()
+	t.Cleanup(func() {
+		db.BypassReleasedSequenceWait.Store(previousBypassReleasedSequenceWait)
+	})
+	db.BypassReleasedSequenceWait.Store(false)
+
 	return &SGRTestRunner{
 		t:           t,
 		SkipSubtest: make(map[string]bool),

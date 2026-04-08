@@ -923,7 +923,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 			response = rt.Send(RequestByUser("GET", url, "", username))
 		}
 		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %d changes", numChangesExpected, len(changes.Results))
+		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %s changes", numChangesExpected, changes.Summary())
 	}, waitTime, 10*time.Millisecond)
 	return *changes
 }
@@ -2767,6 +2767,7 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 			panic(fmt.Sprintf("%v active blip tester clients should be 0 at end of tests", globalBlipTesterClients.m))
 		}
 	})
+	db.BypassReleasedSequenceWait.Store(true)
 	serverContextGlobalsInitialized.Store(true)
 	db.TestBucketPoolWithIndexes(ctx, m, tbpOptions)
 }

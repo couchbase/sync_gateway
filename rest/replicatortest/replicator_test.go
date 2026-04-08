@@ -7176,8 +7176,6 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 }
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{

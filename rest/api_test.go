@@ -81,8 +81,6 @@ func TestRoot(t *testing.T) {
 }
 
 func TestPublicRESTStatCount(t *testing.T) {
-	base.LongRunningTest(t)
-
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 

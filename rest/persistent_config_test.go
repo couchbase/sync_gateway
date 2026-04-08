@@ -338,8 +338,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
@@ -1375,8 +1373,6 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
-	base.LongRunningTest(t)
-
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
