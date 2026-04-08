@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1651,4 +1652,309 @@ func requireDocFoundOrCasMismatchError(t testing.TB, err error) {
 		errMsg := fmt.Sprintf("Expected error to be either a doc found or cas mismatch error, got %+v", err)
 		require.Fail(t, errMsg)
 	}
+}
+
+func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	// Test WriteWithXattrs
+	writeDocID := t.Name() + "_write"
+	writeBody := []byte(`{"val":"write"}`)
+	writeXattrs := map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}
+	cas, err := metaStore.WriteWithXattrs(ctx, writeDocID, 0, 0, writeBody, writeXattrs, nil, nil)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	v, xv, _, err := primaryStore.GetWithXattrs(ctx, writeDocID, []string{"_sync"})
+	require.NoError(t, err)
+	require.Len(t, xv, 1)
+	require.JSONEq(t, string(writeBody), string(v))
+	require.JSONEq(t, string(writeXattrs["_sync"]), string(xv["_sync"]))
+
+	_, _, _, err = fallbackStore.GetWithXattrs(ctx, writeDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test WriteTombstoneWithXattrs
+	tombstoneDocID := t.Name() + "_tombstone"
+	tombstoneXattrs := map[string][]byte{"_sync": []byte(`{"deleted": true}`)}
+	cas, err = metaStore.WriteTombstoneWithXattrs(ctx, tombstoneDocID, 0, 0, tombstoneXattrs, nil, false, nil)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	v, xv, _, err = primaryStore.GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
+	require.NoError(t, err)
+	assert.Nil(t, v) // tombstone has nil body
+	require.JSONEq(t, string(tombstoneXattrs["_sync"]), string(xv["_sync"]))
+
+	_, _, _, err = fallbackStore.GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test WriteResurrectionWithXattrs
+	resurrectionDocID := t.Name() + "_resurrection"
+	// Create tombstone first directly on primary
+	_, err = primaryStore.WriteTombstoneWithXattrs(ctx, resurrectionDocID, 0, 0, tombstoneXattrs, nil, false, nil)
+	require.NoError(t, err)
+
+	resBody := []byte(`{"val": "res"}`)
+	resXattrs := map[string][]byte{"_sync": []byte(`{"rev": "2-a"}`)}
+	cas, err = metaStore.WriteResurrectionWithXattrs(ctx, resurrectionDocID, 0, resBody, resXattrs, nil)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	v, xv, _, err = primaryStore.GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
+	require.NoError(t, err)
+	require.JSONEq(t, string(resBody), string(v))
+	require.JSONEq(t, string(resXattrs["_sync"]), string(xv["_sync"]))
+
+	_, _, _, err = fallbackStore.GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test SetXattrs
+	setXattrsDocID := t.Name() + "_setXattrs"
+	_, err = primaryStore.AddRaw(setXattrsDocID, 0, []byte(`{"val": "init"}`))
+	require.NoError(t, err)
+
+	xattrToSet := map[string][]byte{"_sync": []byte(`{"rev": "1-set"}`)}
+	cas, err = metaStore.SetXattrs(ctx, setXattrsDocID, xattrToSet)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	xvMap, _, err := primaryStore.GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
+	require.NoError(t, err)
+	require.JSONEq(t, string(xattrToSet["_sync"]), string(xvMap["_sync"]))
+
+	_, _, err = fallbackStore.GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test RemoveXattrs
+	removeXattrsDocID := t.Name() + "_removeXattrs"
+	cas, err = primaryStore.WriteWithXattrs(ctx, removeXattrsDocID, 0, 0, []byte(`{"val": "rem"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	err = metaStore.RemoveXattrs(ctx, removeXattrsDocID, []string{"_sync"}, cas)
+	require.NoError(t, err)
+
+	xvMap, _, err = primaryStore.GetXattrs(ctx, removeXattrsDocID, []string{"_sync"})
+	require.Error(t, err)
+	assert.Empty(t, xvMap)
+
+	// Test DeleteSubDocPaths
+	deleteSubDocDocID := t.Name() + "_deleteSubDoc"
+	_, err = primaryStore.WriteWithXattrs(ctx, deleteSubDocDocID, 0, 0, []byte(`{"val": "subdoc"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	err = metaStore.DeleteSubDocPaths(ctx, deleteSubDocDocID, "_sync.rev")
+	require.NoError(t, err)
+
+	xvMap, _, err = primaryStore.GetXattrs(ctx, deleteSubDocDocID, []string{"_sync"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]byte{"_sync": []byte(`{}`)}, xvMap)
+
+	// Test DeleteWithXattrs
+	deleteXattrsDocID := t.Name() + "_deleteXattrs"
+	_, err = primaryStore.WriteWithXattrs(ctx, deleteXattrsDocID, 0, 0, []byte(`{"val": "del"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	err = metaStore.DeleteWithXattrs(ctx, deleteXattrsDocID, []string{"_sync"})
+	require.NoError(t, err)
+
+	_, _, _, err = primaryStore.GetWithXattrs(ctx, deleteXattrsDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test WriteUpdateWithXattrs
+	writeUpdateDocID := t.Name() + "_writeUpdate"
+	_, err = primaryStore.WriteWithXattrs(ctx, writeUpdateDocID, 0, 0, []byte(`{"val": "writeUp"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	docBody := []byte(`{"val": "updated"}`)
+	xattrsToWriteUpdate := map[string][]byte{"_sync": []byte(`{"rev": "2-b"}`)}
+	cb := func(current []byte, currentXattrs map[string][]byte, currentCas uint64) (sgbucket.UpdatedDoc, error) {
+		return sgbucket.UpdatedDoc{
+			Doc:    docBody,
+			Xattrs: xattrsToWriteUpdate,
+		}, nil
+	}
+	cas, err = metaStore.WriteUpdateWithXattrs(ctx, writeUpdateDocID, []string{"_sync"}, 0, nil, nil, cb)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	v, xv, _, err = primaryStore.GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
+	require.NoError(t, err)
+	require.JSONEq(t, string(docBody), string(v))
+	require.JSONEq(t, string(xattrsToWriteUpdate["_sync"]), string(xv["_sync"]))
+
+	_, _, _, err = fallbackStore.GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test UpdateXattrs
+	updateXattrsDocID := t.Name() + "_updateXattrs"
+	updateXattrsBody := []byte(`{"val": "updateX"}`)
+	cas, err = primaryStore.WriteWithXattrs(ctx, updateXattrsDocID, 0, 0, updateXattrsBody, map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	updatedXattrs := map[string][]byte{"_sync": []byte(`{"rev": "2-update"}`)}
+	cas, err = metaStore.UpdateXattrs(ctx, updateXattrsDocID, 0, cas, updatedXattrs, nil)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	v, xv, _, err = primaryStore.GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
+	require.NoError(t, err)
+	require.JSONEq(t, string(updateXattrsBody), string(v))
+	require.JSONEq(t, string(updatedXattrs["_sync"]), string(xv["_sync"]))
+
+	_, _, _, err = fallbackStore.GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
+	require.True(t, IsDocNotFoundError(err))
+}
+
+func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	// write doc with xattrs to fallback and assert that we fallback to read form this datastore
+	docID := t.Name()
+	_, err := fallbackStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": []byte(`{"foo": "bar"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	xv, cas, err := metaStore.GetXattrs(ctx, docID, []string{"xattr1"})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Len(t, xv, 1)
+	_, ok := xv["xattr1"]
+	assert.True(t, ok)
+
+	bodyVal, xv, cas, err := metaStore.GetWithXattrs(ctx, docID, []string{"xattr1"})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.JSONEq(t, `{"foo": "bar"}`, string(bodyVal))
+	require.Len(t, xv, 1)
+	_, ok = xv["xattr1"]
+	assert.True(t, ok)
+
+	// now write another doc to primary and assert this doc is returned
+	docID2 := t.Name() + "2"
+	_, err = primaryStore.WriteWithXattrs(ctx, docID2, 0, 0, []byte(`{"foo": "baz"}`), map[string][]byte{"xattr2": []byte(`{"foo": "bar"}`)}, nil, nil)
+	require.NoError(t, err)
+
+	xv, cas, err = metaStore.GetXattrs(ctx, docID2, []string{"xattr2"})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Len(t, xv, 1)
+	_, ok = xv["xattr2"]
+	assert.True(t, ok)
+
+	bodyVal, xv, cas, err = metaStore.GetWithXattrs(ctx, docID2, []string{"xattr2"})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.JSONEq(t, `{"foo": "baz"}`, string(bodyVal))
+	require.Len(t, xv, 1)
+	_, ok = xv["xattr2"]
+	assert.True(t, ok)
+
+	// Ensure reading a non-existent document behaves correctly
+	_, _, _, err = metaStore.GetWithXattrs(ctx, "non_existent_doc", []string{"xattr2"})
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
+
+	_, _, err = metaStore.GetXattrs(ctx, "non_existent_doc", []string{"xattr2"})
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
+}
+
+func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	// Add doc to fallback store, perform read and assert item is returned from fallback store
+	// Flow should be Read from primary -> not found -> read from fallback
+	docID := t.Name() + "_fallback"
+	body := []byte(`{"a": "b", "c": {"d": "e"}}`)
+	_, err := fallbackStore.AddRaw(docID, 0, body)
+	require.NoError(t, err)
+
+	value, cas, err := metaStore.GetSubDocRaw(ctx, docID, "c.d")
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Equal(t, []byte(`"e"`), value)
+
+	// Add new doc to primary store, read from primary and assert
+	docID2 := t.Name() + "_primary"
+	_, err = primaryStore.AddRaw(docID2, 0, body)
+	require.NoError(t, err)
+
+	value, cas, err = metaStore.GetSubDocRaw(ctx, docID2, "c.d")
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Equal(t, []byte(`"e"`), value)
+
+	// Ensure reading a non-existent document behaves correctly
+	_, _, err = metaStore.GetSubDocRaw(ctx, "non_existent_doc", "c.d")
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
+}
+
+func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	// Test SubdocInsert
+	insertDocID := t.Name() + "_insert"
+	_, err := primaryStore.AddRaw(insertDocID, 0, []byte(`{"a": "b"}`))
+	require.NoError(t, err)
+
+	err = metaStore.SubdocInsert(ctx, insertDocID, "c", 0, "d")
+	require.NoError(t, err)
+
+	// primary should have this update
+	value, _, err := primaryStore.GetSubDocRaw(ctx, insertDocID, "c")
+	require.NoError(t, err)
+	require.Equal(t, []byte(`"d"`), value)
+
+	// fallback store should not have this document
+	_, _, err = fallbackStore.GetSubDocRaw(ctx, insertDocID, "c")
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
+
+	// Test WriteSubDoc
+	writeDocID := t.Name() + "_write"
+	_, err = primaryStore.AddRaw(writeDocID, 0, []byte(`{"a": "b"}`))
+	require.NoError(t, err)
+
+	cas, err := metaStore.WriteSubDoc(ctx, writeDocID, "a", 0, []byte(`"c"`))
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	// primary should have this update
+	value, _, err = primaryStore.GetSubDocRaw(ctx, writeDocID, "a")
+	require.NoError(t, err)
+	require.Equal(t, []byte(`"c"`), value)
+
+	// fallback store should not have this document
+	_, _, err = fallbackStore.GetSubDocRaw(ctx, writeDocID, "a")
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
 }

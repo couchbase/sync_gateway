@@ -148,6 +148,18 @@ func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
+// GetMobileSystemDataStore returns the _system._mobile DataStore from the bucket.
+// The test is skipped if the backing store does not support system collections
+// (i.e. Couchbase Server < 7.6 or rosmar).
+func (b *TestBucket) GetMobileSystemDataStore() DataStore {
+	if !b.Bucket.IsSupported(sgbucket.BucketStoreFeatureSystemCollections) {
+		b.t.Skipf("Skipping test - backing store does not support system collections (%s.%s)", SystemScope, SystemCollectionMobile)
+	}
+	ds, err := b.Bucket.NamedDataStore(ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
+	require.NoErrorf(b.t, err, "Failed to get %s.%s DataStore", SystemScope, SystemCollectionMobile)
+	return ds
+}
+
 func (b *TestBucket) CreateDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.Bucket.(sgbucket.DynamicDataStoreBucket)
 	if !ok {
