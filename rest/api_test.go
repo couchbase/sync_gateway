@@ -2794,10 +2794,11 @@ func TestMetricsHandler(t *testing.T) {
 	resp, err = http.Get(srv.URL + "/_metrics")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	aliasedBodyString, err := io.ReadAll(resp.Body)
+	bodyString, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, string(aliasedBodyString), string(bodyString))
+	assert.Contains(t, string(bodyString), `database="db"`)
+	assert.Contains(t, string(bodyString), `database="db2"`)
 
 	// Ensure metrics endpoint is not serving any other routes
 	resp, err = http.Get(srv.URL + "/" + rt.GetSingleKeyspace() + "/")
