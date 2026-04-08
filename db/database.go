@@ -1750,6 +1750,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
 	doc.History.forEachLeaf(func(rev *RevInfo) {
+		// Pass doc as both the old and new document because in resync only the latest document is recomputed
 		body, metaMap, _, err := db.prepareSyncFn(doc, doc)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error preparing sync function for document '%s': %v", docid, err)
