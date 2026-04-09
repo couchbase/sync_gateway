@@ -1457,7 +1457,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 							// state (from last successful online call). Wait until online call finishes online
 							// process and db is online state before moving to next test case
 							require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-								// cannot use rest api reliably here given it's prone to panic when online proces
+								// cannot use rest api reliably here given it's prone to panic when online process
 								// reloads the db so assert off the database context directly
 								dbCtx := rt.GetDatabase()
 								runState := db.RunStateString[atomic.LoadUint32(&dbCtx.State)]
