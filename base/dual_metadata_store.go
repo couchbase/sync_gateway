@@ -111,7 +111,7 @@ func (ms *MetadataStore) Exists(k string) (exists bool, err error) {
 	if err == nil && exists {
 		return true, nil
 	}
-	if ms.readFromFallback(err) || (!exists && err == nil) {
+	if ms.readFromFallback(err) || (!exists && err == nil && !ms.migrationComplete.Load()) {
 		return ms.fallback.Exists(k)
 	}
 	return exists, err

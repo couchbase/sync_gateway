@@ -25,9 +25,6 @@ import (
 // DefaultCollectionID represents _default._default collection
 const DefaultCollectionID = uint32(0)
 
-// MobileSystemCollectionID represents _system._mobile collection
-const MobileSystemCollectionID = uint32(8)
-
 const (
 	// SystemScope is the place for system collections to exist in
 	SystemScope = "_system"

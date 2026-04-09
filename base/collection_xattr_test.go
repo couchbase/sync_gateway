@@ -1823,7 +1823,7 @@ func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
 
-	// write doc with xattrs to fallback and assert that we fallback to read form this datastore
+	// write doc with xattrs to fallback and assert that we fallback to read from this datastore
 	docID := t.Name()
 	_, err := metaStore.Fallback().WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": []byte(`{"foo": "bar"}`)}, nil, nil)
 	require.NoError(t, err)

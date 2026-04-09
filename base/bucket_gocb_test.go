@@ -2686,7 +2686,7 @@ func TestMetadataStoreIdentity(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%s.%s.%s", bucket.GetName(), SystemScope, SystemCollectionMobile), metaStore.GetName())
 	assert.Equal(t, SystemScope, metaStore.ScopeName())
 	assert.Equal(t, SystemCollectionMobile, metaStore.CollectionName())
-	assert.Equal(t, MobileSystemCollectionID, metaStore.GetCollectionID())
+	assert.Equal(t, metaStore.Primary().GetCollectionID(), metaStore.GetCollectionID())
 }
 
 func TestMetadataStoreKVStoreReadOperations(t *testing.T) {
