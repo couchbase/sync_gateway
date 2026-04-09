@@ -122,7 +122,7 @@ type DatabaseContext struct {
 	EventMgr                    *EventManager          // Manages notification events
 	AllowEmptyPassword          bool                   // Allow empty passwords?  Defaults to false
 	Options                     DatabaseContextOptions // Database Context Options
-	AccessLock                  sync.RWMutex           // Allows processes that change db state to block until state is changed, avoiding state changing underneath other requests
+	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
 	State                       uint32                 // The runtime state of the DB from a service perspective
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager
