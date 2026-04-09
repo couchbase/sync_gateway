@@ -2703,7 +2703,7 @@ func TestMetadataStoreKVStoreReadOperations(t *testing.T) {
 	expiryValue := uint32(time.Now().Add(20 * time.Minute).Unix())
 	// add doc to fallback datastore, perform reads and assert items are returned from fallback store
 	// Flow should be Read from primary -> not found -> read from fallback
-	ok, err := fallbackStore.Add(docID, expiryValue, []byte(`{"some": "data"}`))
+	ok, err := metaStore.Fallback().Add(docID, expiryValue, []byte(`{"some": "data"}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 	var val map[string]any
@@ -2727,7 +2727,7 @@ func TestMetadataStoreKVStoreReadOperations(t *testing.T) {
 
 	// now add new doc to primary and fetch that doc, assert each operation finds it
 	docID2 := t.Name() + "2"
-	ok, err = primaryStore.Add(docID2, expiryValue, []byte(`{"some": "data"}`))
+	ok, err = metaStore.Primary().Add(docID2, expiryValue, []byte(`{"some": "data"}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -2769,10 +2769,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.True(t, added)
 	// verify in primary, not in fallback
 	var readBody map[string]any
-	_, err = primaryStore.Get(addDocID, &readBody)
+	_, err = metaStore.Primary().Get(addDocID, &readBody)
 	require.NoError(t, err)
 	assert.Equal(t, addBody, readBody)
-	_, err = fallbackStore.Get(addDocID, &readBody)
+	_, err = metaStore.Fallback().Get(addDocID, &readBody)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test AddRaw
@@ -2782,10 +2782,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, added)
 	// verify in primary, not in fallback
-	readRawBody, _, err := primaryStore.GetRaw(addRawDocID)
+	readRawBody, _, err := metaStore.Primary().GetRaw(addRawDocID)
 	require.NoError(t, err)
 	assert.Equal(t, addRawBody, readRawBody)
-	_, _, err = fallbackStore.GetRaw(addRawDocID)
+	_, _, err = metaStore.Fallback().GetRaw(addRawDocID)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Set
@@ -2795,10 +2795,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	// verify in primary, not in fallback
 	readBody = nil
-	_, err = primaryStore.Get(setDocID, &readBody)
+	_, err = metaStore.Primary().Get(setDocID, &readBody)
 	require.NoError(t, err)
 	assert.Equal(t, setBody, readBody)
-	_, err = fallbackStore.Get(setDocID, &readBody)
+	_, err = metaStore.Fallback().Get(setDocID, &readBody)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test SetRaw
@@ -2807,10 +2807,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	err = metaStore.SetRaw(setRawDocID, 0, nil, setRawBody)
 	require.NoError(t, err)
 	// verify in primary, not in fallback
-	readRawBody, _, err = primaryStore.GetRaw(setRawDocID)
+	readRawBody, _, err = metaStore.Primary().GetRaw(setRawDocID)
 	require.NoError(t, err)
 	assert.Equal(t, setRawBody, readRawBody)
-	_, _, err = fallbackStore.GetRaw(setRawDocID)
+	_, _, err = metaStore.Fallback().GetRaw(setRawDocID)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test WriteCas
@@ -2821,10 +2821,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.NotZero(t, cas)
 	// verify in primary, not in fallback
 	readBody = nil
-	_, err = primaryStore.Get(writeCasDocID, &readBody)
+	_, err = metaStore.Primary().Get(writeCasDocID, &readBody)
 	require.NoError(t, err)
 	assert.Equal(t, writeCasBody, readBody)
-	_, err = fallbackStore.Get(writeCasDocID, &readBody)
+	_, err = metaStore.Fallback().Get(writeCasDocID, &readBody)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Update
@@ -2836,10 +2836,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 	// verify in primary, not in fallback
-	readRawBody, _, err = primaryStore.GetRaw(updateDocID)
+	readRawBody, _, err = metaStore.Primary().GetRaw(updateDocID)
 	require.NoError(t, err)
 	assert.Equal(t, updateBody, readRawBody)
-	_, _, err = fallbackStore.GetRaw(updateDocID)
+	_, _, err = metaStore.Fallback().GetRaw(updateDocID)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Incr
@@ -2849,11 +2849,11 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	assert.Equal(t, uint64(5), val)
 	// verify in primary, not in fallback
 	var result uint64
-	_, err = primaryStore.Get(incrDocID, &result)
+	_, err = metaStore.Primary().Get(incrDocID, &result)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(5), result)
 	result = 0
-	_, err = fallbackStore.Get(incrDocID, &result)
+	_, err = metaStore.Fallback().Get(incrDocID, &result)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test GetAndTouchRaw
@@ -2867,11 +2867,11 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	assert.Equal(t, getAndTouchBody, readBodyRaw)
 	require.NotZero(t, cas)
 
-	exp, err := primaryStore.GetExpiry(ctx, getAndTouchDocID)
+	exp, err := metaStore.Primary().GetExpiry(ctx, getAndTouchDocID)
 	require.NoError(t, err)
 	assert.True(t, exp > 0)
 
-	_, err = fallbackStore.Get(getAndTouchDocID, nil)
+	_, err = metaStore.Fallback().Get(getAndTouchDocID, nil)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Touch
@@ -2883,11 +2883,11 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	exp, err = primaryStore.GetExpiry(ctx, touchDocID)
+	exp, err = metaStore.Primary().GetExpiry(ctx, touchDocID)
 	require.NoError(t, err)
 	assert.True(t, exp > 0)
 
-	_, err = fallbackStore.Get(touchDocID, nil)
+	_, err = metaStore.Fallback().Get(touchDocID, nil)
 	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Delete
@@ -2897,7 +2897,7 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	err = metaStore.Delete(deleteDocID)
 	require.NoError(t, err)
 	// verify deleted from primary
-	exists, err := primaryStore.Exists(deleteDocID)
+	exists, err := metaStore.Primary().Exists(deleteDocID)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
@@ -2908,7 +2908,28 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	_, err = metaStore.Remove(removeDocID, cas)
 	require.NoError(t, err)
 	// verify removed from primary
-	exists, err = primaryStore.Exists(removeDocID)
+	exists, err = metaStore.Primary().Exists(removeDocID)
 	require.NoError(t, err)
 	assert.False(t, exists)
+}
+
+func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+	metaStore.SetMigrationComplete()
+
+	docID := t.Name()
+	ok, err := metaStore.Fallback().Add(docID, 0, []byte(`{"some": "data"}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	_, err = metaStore.Get(docID, nil)
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
 }

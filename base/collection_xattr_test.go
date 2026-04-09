@@ -1672,13 +1672,13 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	v, xv, _, err := primaryStore.GetWithXattrs(ctx, writeDocID, []string{"_sync"})
+	v, xv, _, err := metaStore.Primary().GetWithXattrs(ctx, writeDocID, []string{"_sync"})
 	require.NoError(t, err)
 	require.Len(t, xv, 1)
 	require.JSONEq(t, string(writeBody), string(v))
 	require.JSONEq(t, string(writeXattrs["_sync"]), string(xv["_sync"]))
 
-	_, _, _, err = fallbackStore.GetWithXattrs(ctx, writeDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Fallback().GetWithXattrs(ctx, writeDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test WriteTombstoneWithXattrs
@@ -1688,18 +1688,18 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	v, xv, _, err = primaryStore.GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
+	v, xv, _, err = metaStore.Primary().GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
 	require.NoError(t, err)
 	assert.Nil(t, v) // tombstone has nil body
 	require.JSONEq(t, string(tombstoneXattrs["_sync"]), string(xv["_sync"]))
 
-	_, _, _, err = fallbackStore.GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Fallback().GetWithXattrs(ctx, tombstoneDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test WriteResurrectionWithXattrs
 	resurrectionDocID := t.Name() + "_resurrection"
 	// Create tombstone first directly on primary
-	_, err = primaryStore.WriteTombstoneWithXattrs(ctx, resurrectionDocID, 0, 0, tombstoneXattrs, nil, false, nil)
+	_, err = metaStore.Primary().WriteTombstoneWithXattrs(ctx, resurrectionDocID, 0, 0, tombstoneXattrs, nil, false, nil)
 	require.NoError(t, err)
 
 	resBody := []byte(`{"val": "res"}`)
@@ -1708,17 +1708,17 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	v, xv, _, err = primaryStore.GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
+	v, xv, _, err = metaStore.Primary().GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
 	require.NoError(t, err)
 	require.JSONEq(t, string(resBody), string(v))
 	require.JSONEq(t, string(resXattrs["_sync"]), string(xv["_sync"]))
 
-	_, _, _, err = fallbackStore.GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Fallback().GetWithXattrs(ctx, resurrectionDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test SetXattrs
 	setXattrsDocID := t.Name() + "_setXattrs"
-	_, err = primaryStore.AddRaw(setXattrsDocID, 0, []byte(`{"val": "init"}`))
+	_, err = metaStore.Primary().AddRaw(setXattrsDocID, 0, []byte(`{"val": "init"}`))
 	require.NoError(t, err)
 
 	xattrToSet := map[string][]byte{"_sync": []byte(`{"rev": "1-set"}`)}
@@ -1726,51 +1726,51 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	xvMap, _, err := primaryStore.GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
+	xvMap, _, err := metaStore.Primary().GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
 	require.NoError(t, err)
 	require.JSONEq(t, string(xattrToSet["_sync"]), string(xvMap["_sync"]))
 
-	_, _, err = fallbackStore.GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
+	_, _, err = metaStore.Fallback().GetXattrs(ctx, setXattrsDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test RemoveXattrs
 	removeXattrsDocID := t.Name() + "_removeXattrs"
-	cas, err = primaryStore.WriteWithXattrs(ctx, removeXattrsDocID, 0, 0, []byte(`{"val": "rem"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	cas, err = metaStore.Primary().WriteWithXattrs(ctx, removeXattrsDocID, 0, 0, []byte(`{"val": "rem"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	err = metaStore.RemoveXattrs(ctx, removeXattrsDocID, []string{"_sync"}, cas)
 	require.NoError(t, err)
 
-	xvMap, _, err = primaryStore.GetXattrs(ctx, removeXattrsDocID, []string{"_sync"})
+	xvMap, _, err = metaStore.Primary().GetXattrs(ctx, removeXattrsDocID, []string{"_sync"})
 	require.Error(t, err)
 	assert.Empty(t, xvMap)
 
 	// Test DeleteSubDocPaths
 	deleteSubDocDocID := t.Name() + "_deleteSubDoc"
-	_, err = primaryStore.WriteWithXattrs(ctx, deleteSubDocDocID, 0, 0, []byte(`{"val": "subdoc"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	_, err = metaStore.Primary().WriteWithXattrs(ctx, deleteSubDocDocID, 0, 0, []byte(`{"val": "subdoc"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	err = metaStore.DeleteSubDocPaths(ctx, deleteSubDocDocID, "_sync.rev")
 	require.NoError(t, err)
 
-	xvMap, _, err = primaryStore.GetXattrs(ctx, deleteSubDocDocID, []string{"_sync"})
+	xvMap, _, err = metaStore.Primary().GetXattrs(ctx, deleteSubDocDocID, []string{"_sync"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string][]byte{"_sync": []byte(`{}`)}, xvMap)
 
 	// Test DeleteWithXattrs
 	deleteXattrsDocID := t.Name() + "_deleteXattrs"
-	_, err = primaryStore.WriteWithXattrs(ctx, deleteXattrsDocID, 0, 0, []byte(`{"val": "del"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	_, err = metaStore.Primary().WriteWithXattrs(ctx, deleteXattrsDocID, 0, 0, []byte(`{"val": "del"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	err = metaStore.DeleteWithXattrs(ctx, deleteXattrsDocID, []string{"_sync"})
 	require.NoError(t, err)
 
-	_, _, _, err = primaryStore.GetWithXattrs(ctx, deleteXattrsDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Primary().GetWithXattrs(ctx, deleteXattrsDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test WriteUpdateWithXattrs
 	writeUpdateDocID := t.Name() + "_writeUpdate"
-	_, err = primaryStore.WriteWithXattrs(ctx, writeUpdateDocID, 0, 0, []byte(`{"val": "writeUp"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	_, err = metaStore.Primary().WriteWithXattrs(ctx, writeUpdateDocID, 0, 0, []byte(`{"val": "writeUp"}`), map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	docBody := []byte(`{"val": "updated"}`)
@@ -1785,18 +1785,18 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	v, xv, _, err = primaryStore.GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
+	v, xv, _, err = metaStore.Primary().GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
 	require.NoError(t, err)
 	require.JSONEq(t, string(docBody), string(v))
 	require.JSONEq(t, string(xattrsToWriteUpdate["_sync"]), string(xv["_sync"]))
 
-	_, _, _, err = fallbackStore.GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Fallback().GetWithXattrs(ctx, writeUpdateDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test UpdateXattrs
 	updateXattrsDocID := t.Name() + "_updateXattrs"
 	updateXattrsBody := []byte(`{"val": "updateX"}`)
-	cas, err = primaryStore.WriteWithXattrs(ctx, updateXattrsDocID, 0, 0, updateXattrsBody, map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
+	cas, err = metaStore.Primary().WriteWithXattrs(ctx, updateXattrsDocID, 0, 0, updateXattrsBody, map[string][]byte{"_sync": []byte(`{"rev": "1-a"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	updatedXattrs := map[string][]byte{"_sync": []byte(`{"rev": "2-update"}`)}
@@ -1804,12 +1804,12 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 
-	v, xv, _, err = primaryStore.GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
+	v, xv, _, err = metaStore.Primary().GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
 	require.NoError(t, err)
 	require.JSONEq(t, string(updateXattrsBody), string(v))
 	require.JSONEq(t, string(updatedXattrs["_sync"]), string(xv["_sync"]))
 
-	_, _, _, err = fallbackStore.GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
+	_, _, _, err = metaStore.Fallback().GetWithXattrs(ctx, updateXattrsDocID, []string{"_sync"})
 	require.True(t, IsDocNotFoundError(err))
 }
 
@@ -1825,7 +1825,7 @@ func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
 
 	// write doc with xattrs to fallback and assert that we fallback to read form this datastore
 	docID := t.Name()
-	_, err := fallbackStore.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": []byte(`{"foo": "bar"}`)}, nil, nil)
+	_, err := metaStore.Fallback().WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo": "bar"}`), map[string][]byte{"xattr1": []byte(`{"foo": "bar"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	xv, cas, err := metaStore.GetXattrs(ctx, docID, []string{"xattr1"})
@@ -1845,7 +1845,7 @@ func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
 
 	// now write another doc to primary and assert this doc is returned
 	docID2 := t.Name() + "2"
-	_, err = primaryStore.WriteWithXattrs(ctx, docID2, 0, 0, []byte(`{"foo": "baz"}`), map[string][]byte{"xattr2": []byte(`{"foo": "bar"}`)}, nil, nil)
+	_, err = metaStore.Primary().WriteWithXattrs(ctx, docID2, 0, 0, []byte(`{"foo": "baz"}`), map[string][]byte{"xattr2": []byte(`{"foo": "bar"}`)}, nil, nil)
 	require.NoError(t, err)
 
 	xv, cas, err = metaStore.GetXattrs(ctx, docID2, []string{"xattr2"})
@@ -1887,7 +1887,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 	// Flow should be Read from primary -> not found -> read from fallback
 	docID := t.Name() + "_fallback"
 	body := []byte(`{"a": "b", "c": {"d": "e"}}`)
-	_, err := fallbackStore.AddRaw(docID, 0, body)
+	_, err := metaStore.Fallback().AddRaw(docID, 0, body)
 	require.NoError(t, err)
 
 	value, cas, err := metaStore.GetSubDocRaw(ctx, docID, "c.d")
@@ -1897,7 +1897,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 
 	// Add new doc to primary store, read from primary and assert
 	docID2 := t.Name() + "_primary"
-	_, err = primaryStore.AddRaw(docID2, 0, body)
+	_, err = metaStore.Primary().AddRaw(docID2, 0, body)
 	require.NoError(t, err)
 
 	value, cas, err = metaStore.GetSubDocRaw(ctx, docID2, "c.d")
@@ -1923,25 +1923,25 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 
 	// Test SubdocInsert
 	insertDocID := t.Name() + "_insert"
-	_, err := primaryStore.AddRaw(insertDocID, 0, []byte(`{"a": "b"}`))
+	_, err := metaStore.Primary().AddRaw(insertDocID, 0, []byte(`{"a": "b"}`))
 	require.NoError(t, err)
 
 	err = metaStore.SubdocInsert(ctx, insertDocID, "c", 0, "d")
 	require.NoError(t, err)
 
 	// primary should have this update
-	value, _, err := primaryStore.GetSubDocRaw(ctx, insertDocID, "c")
+	value, _, err := metaStore.Primary().GetSubDocRaw(ctx, insertDocID, "c")
 	require.NoError(t, err)
 	require.Equal(t, []byte(`"d"`), value)
 
 	// fallback store should not have this document
-	_, _, err = fallbackStore.GetSubDocRaw(ctx, insertDocID, "c")
+	_, _, err = metaStore.Fallback().GetSubDocRaw(ctx, insertDocID, "c")
 	require.Error(t, err)
 	require.True(t, IsDocNotFoundError(err))
 
 	// Test WriteSubDoc
 	writeDocID := t.Name() + "_write"
-	_, err = primaryStore.AddRaw(writeDocID, 0, []byte(`{"a": "b"}`))
+	_, err = metaStore.Primary().AddRaw(writeDocID, 0, []byte(`{"a": "b"}`))
 	require.NoError(t, err)
 
 	cas, err := metaStore.WriteSubDoc(ctx, writeDocID, "a", 0, []byte(`"c"`))
@@ -1949,7 +1949,7 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 	require.NotZero(t, cas)
 
 	// primary should have this update
-	value, _, err = primaryStore.GetSubDocRaw(ctx, writeDocID, "a")
+	value, _, err = metaStore.Primary().GetSubDocRaw(ctx, writeDocID, "a")
 	require.NoError(t, err)
 	require.Equal(t, []byte(`"c"`), value)
 
