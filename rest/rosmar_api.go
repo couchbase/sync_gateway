@@ -67,6 +67,22 @@ func (h *handler) handleRosmarDelete() error {
 
 	bucketkeyspace := h.PathVar("bucketkeyspace")
 	parts := strings.Split(bucketkeyspace, ".")
+	switch len(parts) {
+	case 1:
+		if parts[0] == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid bucketkeyspace format. Expected formats are: 'bucket', 'bucket.scope', or 'bucket.scope.collection'")
+		}
+	case 2:
+		if parts[0] == "" || parts[1] == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid bucketkeyspace format. Expected formats are: 'bucket', 'bucket.scope', or 'bucket.scope.collection'")
+		}
+	case 3:
+		if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid bucketkeyspace format. Expected formats are: 'bucket', 'bucket.scope', or 'bucket.scope.collection'")
+		}
+	default:
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid bucketkeyspace format. Expected formats are: 'bucket', 'bucket.scope', or 'bucket.scope.collection'")
+	}
 	bucketName := parts[0]
 
 	// Check if the bucket exists
