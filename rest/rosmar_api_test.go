@@ -101,8 +101,10 @@ func TestRosmarManagementAPI(t *testing.T) {
 	// DELETE bucket
 	t.Run("DeleteBucket", func(t *testing.T) {
 		newBucketName := "deleteme"
-		_, err := rosmar.OpenBucketIn(rt.ServerContext().Config.Bootstrap.Server, newBucketName, rosmar.CreateOrOpen)
+		b, err := rosmar.OpenBucketIn(rt.ServerContext().Config.Bootstrap.Server, newBucketName, rosmar.CreateOrOpen)
 		require.NoError(t, err)
+		ctx := base.TestCtx(t)
+		defer b.CloseAndDelete(ctx)
 
 		// DELETE /_rosmar/bucket
 		resp := rt.SendAdminRequest(http.MethodDelete, "/_rosmar/"+newBucketName, "")
