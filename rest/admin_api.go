@@ -265,8 +265,8 @@ func (h *handler) handleDbOnline() error {
 			}
 		}()
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.db.DbStateLock.Lock()
-		defer h.db.DbStateLock.Unlock()
+		h.db.AccessLock.Lock()
+		defer h.db.AccessLock.Unlock()
 		if !atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBStarting) {
 			base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.MD(h.db.Name))
 			return
@@ -328,8 +328,8 @@ func (h *handler) handleDbOffline() error {
 	var oldConfig DbConfig
 	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	// Block until all current calls have returned, including _changes feeds
-	h.db.DbStateLock.Lock()
-	defer h.db.DbStateLock.Unlock()
+	h.db.AccessLock.Lock()
+	defer h.db.AccessLock.Unlock()
 
 	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOnline, db.DBStopping) {
 		if !h.server.persistentConfig {

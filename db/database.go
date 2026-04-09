@@ -122,7 +122,8 @@ type DatabaseContext struct {
 	EventMgr                    *EventManager          // Manages notification events
 	AllowEmptyPassword          bool                   // Allow empty passwords?  Defaults to false
 	Options                     DatabaseContextOptions // Database Context Options
-	DbStateLock                 sync.RWMutex           // Allows processes that change db state to block until state is changed, avoiding state changing underneath other requests
+	AccessLock                  sync.RWMutex           // Allows processes that change db state to block until state is changed, avoiding state changing underneath other requests
+	DbCtxCloseLock              sync.RWMutex           // mutex to synchronise request coming into a database when another process is reloading it/closing it
 	State                       uint32                 // The runtime state of the DB from a service perspective
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager

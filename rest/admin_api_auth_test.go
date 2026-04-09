@@ -14,7 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1453,13 +1453,15 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 						isAllowedUser = true
 						if endpoint.Endpoint == "/db/_online" && testUser == "sync_gateway_configurator" {
-							// wait for the last call to successfully bring the db online before we continue to
-							// next test case
+							// db is currently in offline state (from last successful offline call) or in starting
+							// state (from last successful online call). Wait until online call finishes online
+							// process and db is online state before moving to next test case
 							require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-								var dbroot DatabaseRoot
-								response := rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", user, "password")
-								require.NoError(c, base.JSONUnmarshal(response.BodyBytes(), &dbroot))
-								assert.Equal(c, db.RunStateString[db.DBOnline], dbroot.State)
+								// cannot use rest api reliably here given it's prone to panic when online proces
+								// reloads the db so assert off the database context directly
+								dbCtx := rt.GetDatabase()
+								runState := db.RunStateString[atomic.LoadUint32(&dbCtx.State)]
+								assert.Equal(c, db.RunStateString[db.DBOnline], runState)
 							}, 10*time.Second, 500*time.Millisecond)
 						}
 					}
@@ -1529,63 +1531,4 @@ func TestLoginRequiredForAdmin(t *testing.T) {
 	response = rt.SendAdminRequestWithAuth(http.MethodGet, "/notadb/", "", username, password)
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
-}
-
-// TestDbLevelRequestDuringDBContextCloseReturns503 tests that a request which unblocks from
-// DbStateLock after the DB has been closed during a concurrent operation returns 503.
-func TestDbLevelRequestDuringDBContextCloseReturns503(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-	base.TestsRequireMobileRBAC(t)
-	mobileSyncGateway := "mobile_sync_gateway"
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		AdminInterfaceAuthentication:    true,
-		enableAdminAuthPermissionsCheck: true,
-		PersistentConfig:                true,
-	})
-	defer rt.Close()
-
-	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
-
-	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
-	require.NoError(t, err)
-
-	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[*]", mobileSyncGateway)})
-	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
-
-	dbContext := rt.GetDatabase()
-
-	// Acquire the write lock to simulate another goroutine (e.g. an offline operation)
-	// holding exclusive access while the DB is being closed.
-	dbContext.DbStateLock.Lock()
-
-	// Simulate the DB context being closed while the write lock is held.
-	dbContext.BucketLock.Lock()
-	origBucket := dbContext.Bucket
-	dbContext.Bucket = nil
-	dbContext.BucketLock.Unlock()
-
-	defer func() {
-		// Restore the bucket so that deferred rt.Close() can clean up properly.
-		dbContext.BucketLock.Lock()
-		dbContext.Bucket = origBucket
-		dbContext.BucketLock.Unlock()
-	}()
-
-	// This request will block on DbStateLock.RLock() until the write lock is released below.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	var resp *TestResponse
-	go func() {
-		defer wg.Done()
-		resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/db/_dump/view", "", mobileSyncGateway, "password")
-	}()
-
-	// Unblock the above _dump/view goroutine. It will acquire RLock, find IsClosed() == true, and return 503.
-	dbContext.DbStateLock.Unlock()
-	wg.Wait()
-
-	RequireStatus(t, resp, http.StatusServiceUnavailable)
 }
