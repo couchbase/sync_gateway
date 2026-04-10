@@ -21,35 +21,35 @@ import (
 )
 
 const (
-	DefaultFullFilePath    = "./metrics_metadata.json"
-	DefaultDashboardPath   = "./grafana-dashboard.json"
-	FormatMetadata         = "metadata"
-	FormatSupportalGrafana = "supportal-grafana"
-	FormatCapellaGrafana   = "capella-grafana"
+	defaultFullFilePath    = "./metrics_metadata.json"
+	defaultDashboardPath   = "./grafana-dashboard.json"
+	formatMetadata         = "metadata"
+	formatSupportalGrafana = "supportal-grafana"
+	formatCapellaGrafana   = "capella-grafana"
 )
 
 func main() {
 	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to console (stdout) only.")
 	outputFileFlag := flag.String("output", "", "Full file path of outputted JSON file. Defaults to metrics_metadata.json for metadata format or grafana-dashboard.json for grafana formats.")
-	formatFlag := flag.String("format", FormatMetadata, "Output format: metadata, supportal-grafana, or capella-grafana.")
+	formatFlag := flag.String("format", formatMetadata, "Output format: metadata, supportal-grafana, or capella-grafana.")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "", 0)
 
 	// Validate format
 	switch *formatFlag {
-	case FormatMetadata, FormatSupportalGrafana, FormatCapellaGrafana:
+	case formatMetadata, formatSupportalGrafana, formatCapellaGrafana:
 		// Valid format
 	default:
-		logger.Fatalf("invalid format %q: must be one of %s, %s, or %s", *formatFlag, FormatMetadata, FormatSupportalGrafana, FormatCapellaGrafana)
+		logger.Fatalf("invalid format %q: must be one of %s, %s, or %s", *formatFlag, formatMetadata, formatSupportalGrafana, formatCapellaGrafana)
 	}
 
 	// Set default output file based on format
 	outputFile := outputFileFlag
 	if *outputFileFlag == "" {
-		defaultPath := DefaultFullFilePath
-		if *formatFlag != FormatMetadata {
-			defaultPath = DefaultDashboardPath
+		defaultPath := defaultFullFilePath
+		if *formatFlag != formatMetadata {
+			defaultPath = defaultDashboardPath
 		}
 		outputFile = &defaultPath
 	}
@@ -85,9 +85,9 @@ func statsToFile(logger *log.Logger, outputFile *string, format string) error {
 	}
 
 	switch format {
-	case FormatSupportalGrafana:
+	case formatSupportalGrafana:
 		err = writeGrafanaDashboard(stats, supportalConfig, writer)
-	case FormatCapellaGrafana:
+	case formatCapellaGrafana:
 		err = writeGrafanaDashboard(stats, capellaConfig, writer)
 	default:
 		err = writeStats(stats, writer)
@@ -106,7 +106,7 @@ func closeAndLogError(logger *log.Logger, c io.Closer) {
 	}
 }
 
-func getStats(logger *log.Logger) (StatDefinitions, error) {
+func getStats(logger *log.Logger) (statDefinitions, error) {
 	globalStats, dbStats, err := registerStats()
 	if err != nil {
 		return nil, fmt.Errorf("could not register stats: %w", err)
@@ -117,7 +117,7 @@ func getStats(logger *log.Logger) (StatDefinitions, error) {
 	dbStatDefinitions := traverseAndRetrieveStats(logger, dbStats)
 
 	// Merge the two maps
-	stats := make(StatDefinitions, len(globalStatsDefinitions)+len(dbStatDefinitions))
+	stats := make(statDefinitions, len(globalStatsDefinitions)+len(dbStatDefinitions))
 	maps.Copy(stats, globalStatsDefinitions)
 	maps.Copy(stats, dbStatDefinitions)
 
@@ -147,7 +147,7 @@ func registerStats() (*base.GlobalStat, *base.DbStats, error) {
 	return sgStats.GlobalStats, dbStats, nil
 }
 
-func writeStats(stats StatDefinitions, writer io.Writer) error {
+func writeStats(stats statDefinitions, writer io.Writer) error {
 	encoder := json.NewEncoder(writer)
 
 	encoder.SetIndent("", "\t")

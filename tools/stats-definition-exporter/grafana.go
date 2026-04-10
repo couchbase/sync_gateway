@@ -15,8 +15,8 @@ import (
 	"strings"
 )
 
-// GrafanaFormatConfig holds the configuration for generating a Grafana dashboard
-type GrafanaFormatConfig struct {
+// grafanaFormatConfig holds the configuration for generating a Grafana dashboard
+type grafanaFormatConfig struct {
 	MetricPrefix      string // Prefix to add to metric names (e.g., "parsed_" for supportal)
 	DashboardUID      string
 	DashboardTitle    string
@@ -34,18 +34,18 @@ type GrafanaFormatConfig struct {
 	EndpointQuery     string // Query to get endpoint values
 	DataSourceVarName string // Variable name for datasource selection (capella only)
 	DataSourceRegex   string // Regex for datasource selection (capella only)
-	Annotations       []Annotation
-	HiddenVars        []TemplateVariable
+	annotations       []annotation
+	HiddenVars        []templateVariable
 	GlobalLegend      string // Legend format for global stats
 	DBScopedLegend    string // Legend format for database-scoped stats
 	GlobalSelector    string // Label selector for global stats (with variable placeholders)
 	DBScopedSelector  string // Additional selector for database-scoped stats
 }
 
-// Annotation represents a Grafana dashboard annotation
-type Annotation struct {
+// annotation represents a Grafana dashboard annotation
+type annotation struct {
 	BuiltIn     int           `json:"builtIn,omitempty"`
-	Datasource  DatasourceRef `json:"datasource,omitempty"`
+	Datasource  datasourceRef `json:"datasource,omitempty"`
 	Enable      bool          `json:"enable"`
 	Hide        bool          `json:"hide"`
 	IconColor   string        `json:"iconColor,omitempty"`
@@ -56,21 +56,21 @@ type Annotation struct {
 	Type        string        `json:"type,omitempty"`
 }
 
-// Dashboard represents a Grafana dashboard
-type Dashboard struct {
-	Annotations   Annotations `json:"annotations"`
+// dashboard represents a Grafana dashboard
+type dashboard struct {
+	annotations   annotations `json:"annotations"`
 	Editable      bool        `json:"editable"`
 	FiscalYear    int         `json:"fiscalYearStartMonth"`
 	GraphTooltip  int         `json:"graphTooltip"`
-	Links         []Link      `json:"links,omitempty"`
-	Panels        []Panel     `json:"panels"`
+	Links         []link      `json:"links,omitempty"`
+	Panels        []panel     `json:"panels"`
 	Preload       bool        `json:"preload"`
 	Refresh       string      `json:"refresh"`
 	SchemaVersion int         `json:"schemaVersion"`
 	Tags          []string    `json:"tags"`
-	Templating    Templating  `json:"templating"`
-	Time          TimeRange   `json:"time"`
-	Timepicker    Timepicker  `json:"timepicker"`
+	templating    templating  `json:"templating"`
+	Time          timeRange   `json:"time"`
+	timepicker    timepicker  `json:"timepicker"`
 	Timezone      string      `json:"timezone"`
 	Title         string      `json:"title"`
 	UID           string      `json:"uid"`
@@ -78,13 +78,13 @@ type Dashboard struct {
 	WeekStart     string      `json:"weekStart"`
 }
 
-// Annotations contains the list of annotations
-type Annotations struct {
-	List []Annotation `json:"list"`
+// annotations contains the list of annotations
+type annotations struct {
+	List []annotation `json:"list"`
 }
 
-// Link represents a dashboard link
-type Link struct {
+// link represents a dashboard link
+type link struct {
 	AsDropdown  bool     `json:"asDropdown"`
 	Icon        string   `json:"icon"`
 	IncludeVars bool     `json:"includeVars"`
@@ -97,51 +97,51 @@ type Link struct {
 	URL         string   `json:"url"`
 }
 
-// Panel represents a Grafana panel (timeseries or row)
-type Panel struct {
+// panel represents a Grafana panel (timeseries or row)
+type panel struct {
 	Collapsed     *bool          `json:"collapsed,omitempty"`
-	Datasource    *DatasourceRef `json:"datasource,omitempty"`
+	Datasource    *datasourceRef `json:"datasource,omitempty"`
 	Description   string         `json:"description,omitempty"`
-	FieldConfig   *FieldConfig   `json:"fieldConfig,omitempty"`
-	GridPos       GridPos        `json:"gridPos"`
+	fieldConfig   *fieldConfig   `json:"fieldConfig,omitempty"`
+	gridPos       gridPos        `json:"gridPos"`
 	ID            int            `json:"id"`
-	Options       *PanelOptions  `json:"options,omitempty"`
-	Panels        []Panel        `json:"panels,omitempty"`
+	Options       *panelOptions  `json:"options,omitempty"`
+	Panels        []panel        `json:"panels,omitempty"`
 	PluginVersion string         `json:"pluginVersion,omitempty"`
-	Targets       []Target       `json:"targets,omitempty"`
+	Targets       []target       `json:"targets,omitempty"`
 	Title         string         `json:"title"`
 	Type          string         `json:"type"`
 }
 
-// DatasourceRef is a reference to a datasource
-type DatasourceRef struct {
+// datasourceRef is a reference to a datasource
+type datasourceRef struct {
 	Type    string `json:"type"`
 	UID     string `json:"uid"`
 	Default bool   `json:"default,omitempty"`
 }
 
-// FieldConfig contains field configuration
-type FieldConfig struct {
-	Defaults  FieldDefaults `json:"defaults"`
-	Overrides []Override    `json:"overrides"`
+// fieldConfig contains field configuration
+type fieldConfig struct {
+	Defaults  fieldDefaults `json:"defaults"`
+	Overrides []override    `json:"overrides"`
 }
 
-// FieldDefaults contains default field settings
-type FieldDefaults struct {
-	Color      ColorConfig   `json:"color"`
-	Custom     CustomConfig  `json:"custom"`
+// fieldDefaults contains default field settings
+type fieldDefaults struct {
+	Color      colorConfig   `json:"color"`
+	Custom     customConfig  `json:"custom"`
 	Mappings   []interface{} `json:"mappings"`
-	Thresholds Thresholds    `json:"thresholds"`
+	thresholds thresholds    `json:"thresholds"`
 	Unit       string        `json:"unit"`
 }
 
-// ColorConfig contains color settings
-type ColorConfig struct {
+// colorConfig contains color settings
+type colorConfig struct {
 	Mode string `json:"mode"`
 }
 
-// CustomConfig contains custom visualization settings
-type CustomConfig struct {
+// customConfig contains custom visualization settings
+type customConfig struct {
 	AxisBorderShow    bool            `json:"axisBorderShow"`
 	AxisCenteredZero  bool            `json:"axisCenteredZero"`
 	AxisColorMode     string          `json:"axisColorMode"`
@@ -152,104 +152,104 @@ type CustomConfig struct {
 	DrawStyle         string          `json:"drawStyle"`
 	FillOpacity       int             `json:"fillOpacity"`
 	GradientMode      string          `json:"gradientMode"`
-	HideFrom          HideFrom        `json:"hideFrom"`
+	hideFrom          hideFrom        `json:"hideFrom"`
 	InsertNulls       bool            `json:"insertNulls"`
 	LineInterpolation string          `json:"lineInterpolation"`
 	LineWidth         int             `json:"lineWidth"`
 	PointSize         int             `json:"pointSize"`
-	ScaleDistribution ScaleDist       `json:"scaleDistribution"`
+	ScaleDistribution scaleDist       `json:"scaleDistribution"`
 	ShowPoints        string          `json:"showPoints"`
 	ShowValues        bool            `json:"showValues"`
 	SpanNulls         bool            `json:"spanNulls"`
-	Stacking          Stacking        `json:"stacking"`
-	ThresholdsStyle   ThresholdsStyle `json:"thresholdsStyle"`
+	stacking          stacking        `json:"stacking"`
+	thresholdsStyle   thresholdsStyle `json:"thresholdsStyle"`
 }
 
-// HideFrom contains hide settings
-type HideFrom struct {
+// hideFrom contains hide settings
+type hideFrom struct {
 	Legend  bool `json:"legend"`
 	Tooltip bool `json:"tooltip"`
 	Viz     bool `json:"viz"`
 }
 
-// ScaleDist contains scale distribution settings
-type ScaleDist struct {
+// scaleDist contains scale distribution settings
+type scaleDist struct {
 	Type string `json:"type"`
 }
 
-// Stacking contains stacking settings
-type Stacking struct {
+// stacking contains stacking settings
+type stacking struct {
 	Group string `json:"group"`
 	Mode  string `json:"mode"`
 }
 
-// ThresholdsStyle contains thresholds style settings
-type ThresholdsStyle struct {
+// thresholdsStyle contains thresholds style settings
+type thresholdsStyle struct {
 	Mode string `json:"mode"`
 }
 
-// Thresholds contains threshold settings
-type Thresholds struct {
+// thresholds contains threshold settings
+type thresholds struct {
 	Mode  string          `json:"mode"`
-	Steps []ThresholdStep `json:"steps"`
+	Steps []thresholdStep `json:"steps"`
 }
 
-// ThresholdStep is a single threshold step
-type ThresholdStep struct {
+// thresholdStep is a single threshold step
+type thresholdStep struct {
 	Color string      `json:"color"`
 	Value interface{} `json:"value"`
 }
 
-// Override contains field override settings
-type Override struct {
-	Matcher    Matcher    `json:"matcher"`
-	Properties []Property `json:"properties"`
+// override contains field override settings
+type override struct {
+	matcher    matcher    `json:"matcher"`
+	Properties []property `json:"properties"`
 }
 
-// Matcher identifies which fields to override
-type Matcher struct {
+// matcher identifies which fields to override
+type matcher struct {
 	ID      string `json:"id"`
 	Options string `json:"options"`
 }
 
-// Property contains override property settings
-type Property struct {
+// property contains override property settings
+type property struct {
 	ID    string      `json:"id"`
 	Value interface{} `json:"value"`
 }
 
-// GridPos contains panel grid position
-type GridPos struct {
+// gridPos contains panel grid position
+type gridPos struct {
 	H int `json:"h"`
 	W int `json:"w"`
 	X int `json:"x"`
 	Y int `json:"y"`
 }
 
-// PanelOptions contains panel-specific options
-type PanelOptions struct {
-	Legend  LegendOptions  `json:"legend"`
-	Tooltip TooltipOptions `json:"tooltip"`
+// panelOptions contains panel-specific options
+type panelOptions struct {
+	Legend  legendOptions  `json:"legend"`
+	Tooltip tooltipOptions `json:"tooltip"`
 }
 
-// LegendOptions contains legend settings
-type LegendOptions struct {
+// legendOptions contains legend settings
+type legendOptions struct {
 	Calcs       []string `json:"calcs"`
 	DisplayMode string   `json:"displayMode"`
 	Placement   string   `json:"placement"`
 	ShowLegend  bool     `json:"showLegend"`
 }
 
-// TooltipOptions contains tooltip settings
-type TooltipOptions struct {
+// tooltipOptions contains tooltip settings
+type tooltipOptions struct {
 	HideZeros bool   `json:"hideZeros,omitempty"`
 	Mode      string `json:"mode"`
 	Sort      string `json:"sort"`
 }
 
-// Target represents a Prometheus query target
-type Target struct {
-	Datasource   DatasourceRef `json:"datasource"`
+// target represents a Prometheus query target
+type target struct {
+	Datasource   datasourceRef `json:"datasource"`
 	EditorMode   string        `json:"editorMode"`
 	Expr         string        `json:"expr"`
 	Instant      bool          `json:"instant"`
@@ -258,15 +258,15 @@ type Target struct {
 	RefID        string        `json:"refId"`
 }
 
-// Templating contains template variables
-type Templating struct {
-	List []TemplateVariable `json:"list"`
+// templating contains template variables
+type templating struct {
+	List []templateVariable `json:"list"`
 }
 
-// TemplateVariable represents a Grafana template variable
-type TemplateVariable struct {
-	Current     CurrentValue     `json:"current,omitempty"`
-	Datasource  DatasourceRef    `json:"datasource,omitempty"`
+// templateVariable represents a Grafana template variable
+type templateVariable struct {
+	Current     currentValue     `json:"current,omitempty"`
+	Datasource  datasourceRef    `json:"datasource,omitempty"`
 	Definition  string           `json:"definition,omitempty"`
 	Description string           `json:"description,omitempty"`
 	Hide        int              `json:"hide,omitempty"`
@@ -274,46 +274,46 @@ type TemplateVariable struct {
 	Label       string           `json:"label,omitempty"`
 	Multi       bool             `json:"multi,omitempty"`
 	Name        string           `json:"name"`
-	Options     []VariableOption `json:"options,omitempty"`
+	Options     []variableOption `json:"options,omitempty"`
 	Query       interface{}      `json:"query,omitempty"`
 	Refresh     int              `json:"refresh"`
 	Regex       string           `json:"regex,omitempty"`
 	Type        string           `json:"type"`
 }
 
-// CurrentValue represents the current value of a template variable
-type CurrentValue struct {
+// currentValue represents the current value of a template variable
+type currentValue struct {
 	Text  string `json:"text"`
 	Value string `json:"value,omitempty"`
 }
 
-// VariableOption represents an option for a template variable
-type VariableOption struct {
+// variableOption represents an option for a template variable
+type variableOption struct {
 	Text     string `json:"text"`
 	Value    string `json:"value"`
 	Selected bool   `json:"selected,omitempty"`
 }
 
-// VariableQuery represents a variable query
-type VariableQuery struct {
+// variableQuery represents a variable query
+type variableQuery struct {
 	Query   string `json:"query,omitempty"`
 	RefID   string `json:"refId,omitempty"`
 	QryType int    `json:"qryType,omitempty"`
 }
 
-// TimeRange represents the dashboard time range
-type TimeRange struct {
+// timeRange represents the dashboard time range
+type timeRange struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// Timepicker contains time picker settings
-type Timepicker struct {
+// timepicker contains time picker settings
+type timepicker struct {
 	RefreshIntervals []string `json:"refresh_intervals,omitempty"`
 }
 
 // Supportal config for Supportal Grafana dashboards
-var supportalConfig = GrafanaFormatConfig{
+var supportalConfig = grafanaFormatConfig{
 	MetricPrefix:     "parsed_",
 	DashboardUID:     "sync-gateway-all",
 	DashboardTitle:   "Sync Gateway All",
@@ -333,18 +333,18 @@ var supportalConfig = GrafanaFormatConfig{
 	DBScopedLegend:   "{{nodeHostname}} {{database}}",
 	GlobalSelector:   `databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"`,
 	DBScopedSelector: `,database=~"$endpoint"`,
-	Annotations: []Annotation{
+	annotations: []annotation{
 		{
 			BuiltIn:    1,
-			Datasource: DatasourceRef{Type: "grafana", UID: "-- Grafana --"},
+			Datasource: datasourceRef{Type: "grafana", UID: "-- Grafana --"},
 			Enable:     true,
 			Hide:       true,
 			IconColor:  "rgba(0, 211, 255, 1)",
-			Name:       "Annotations & Alerts",
+			Name:       "annotations & Alerts",
 			Type:       "dashboard",
 		},
 		{
-			Datasource:  DatasourceRef{Type: "prometheus", UID: "mimir"},
+			Datasource:  datasourceRef{Type: "prometheus", UID: "mimir"},
 			Enable:      false,
 			Hide:        false,
 			IconColor:   "#5794F2",
@@ -357,7 +357,7 @@ var supportalConfig = GrafanaFormatConfig{
 }
 
 // Capella config for Capella/Cloud Grafana dashboards
-var capellaConfig = GrafanaFormatConfig{
+var capellaConfig = grafanaFormatConfig{
 	MetricPrefix:      "",
 	DashboardUID:      "sync-gateway-all-stats",
 	DashboardTitle:    "Sync Gateway All Stats",
@@ -378,24 +378,24 @@ var capellaConfig = GrafanaFormatConfig{
 	DBScopedLegend:    "{{database}}",
 	GlobalSelector:    `databaseId="$databaseId"`,
 	DBScopedSelector:  `,database=~"$endpoint"`,
-	Annotations: []Annotation{
+	annotations: []annotation{
 		{
 			BuiltIn:    1,
-			Datasource: DatasourceRef{Type: "grafana", UID: "-- Grafana --"},
+			Datasource: datasourceRef{Type: "grafana", UID: "-- Grafana --"},
 			Enable:     true,
 			Hide:       true,
 			IconColor:  "rgba(0, 211, 255, 1)",
-			Name:       "Annotations & Alerts",
+			Name:       "annotations & Alerts",
 			Type:       "dashboard",
 		},
 	},
-	HiddenVars: []TemplateVariable{
+	HiddenVars: []templateVariable{
 		{
 			Name:       "syncgatewayId",
-			Datasource: DatasourceRef{Type: "prometheus", UID: "P5DCFC7561CCDE821"},
+			Datasource: datasourceRef{Type: "prometheus", UID: "P5DCFC7561CCDE821"},
 			Definition: `label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`,
 			Hide:       2,
-			Query:      VariableQuery{Query: `label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`, RefID: "PrometheusVariableQueryEditor-VariableQuery"},
+			Query:      variableQuery{Query: `label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`, RefID: "PrometheusVariableQueryEditor-variableQuery"},
 			Refresh:    1,
 			Type:       "query",
 		},
@@ -451,7 +451,7 @@ func subsystemDisplayName(subsystem string) string {
 }
 
 // statsBySubsystem groups stats by subsystem, returning ordered subsystem keys and a map of subsystem to sorted stat names
-func statsBySubsystem(stats StatDefinitions) ([]string, map[string][]string) {
+func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 	grouped := make(map[string][]string)
 	for name, stat := range stats {
 		grouped[stat.Subsystem] = append(grouped[stat.Subsystem], name)
@@ -470,11 +470,11 @@ func statsBySubsystem(stats StatDefinitions) ([]string, map[string][]string) {
 }
 
 // generateGrafanaDashboard creates a Grafana dashboard from stat definitions
-func generateGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig) Dashboard {
+func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) dashboard {
 	subsystems, grouped := statsBySubsystem(stats)
 
 	// Create panels grouped by subsystem with row panels
-	panels := make([]Panel, 0, len(stats)+len(subsystems))
+	panels := make([]panel, 0, len(stats)+len(subsystems))
 	yPos := 0
 	panelID := 1
 
@@ -482,7 +482,7 @@ func generateGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig)
 		statNames := grouped[subsystem]
 
 		// Create child panels for this subsystem
-		childPanels := make([]Panel, 0, len(statNames))
+		childPanels := make([]panel, 0, len(statNames))
 		childYPos := yPos + 1 // Child panels start after the row
 		for _, name := range statNames {
 			stat := stats[name]
@@ -494,9 +494,9 @@ func generateGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig)
 
 		// Create the row panel (collapsed, containing child panels)
 		collapsed := true
-		rowPanel := Panel{
+		rowPanel := panel{
 			Collapsed: &collapsed,
-			GridPos:   GridPos{H: 1, W: 24, X: 0, Y: yPos},
+			gridPos:   gridPos{H: 1, W: 24, X: 0, Y: yPos},
 			ID:        panelID,
 			Panels:    childPanels,
 			Title:     subsystemDisplayName(subsystem),
@@ -511,12 +511,12 @@ func generateGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig)
 	templateVars := createTemplateVariables(config)
 
 	// Create dashboard
-	dashboard := Dashboard{
-		Annotations:  Annotations{List: config.Annotations},
+	dashboard := dashboard{
+		annotations:  annotations{List: config.annotations},
 		Editable:     true,
 		FiscalYear:   0,
 		GraphTooltip: 1,
-		Links: []Link{
+		Links: []link{
 			{
 				AsDropdown:  false,
 				Icon:        "external link",
@@ -533,24 +533,20 @@ func generateGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig)
 		Refresh:       "",
 		SchemaVersion: config.SchemaVersion,
 		Tags:          []string{"Sync Gateway"},
-		Templating:    Templating{List: templateVars},
-		Time:          TimeRange{From: "now-30d", To: "now"},
-		Timepicker:    Timepicker{},
+		templating:    templating{List: templateVars},
+		Time:          timeRange{From: "now-30d", To: "now"},
+		timepicker:    timepicker{},
 		Timezone:      "browser",
 		Title:         config.DashboardTitle,
 		UID:           config.DashboardUID,
 		WeekStart:     "",
 	}
 
-	if config.PluginVersion != "" {
-		// PluginVersion is set on each panel, not the dashboard
-	}
-
 	return dashboard
 }
 
 // createPanel creates a single panel for a stat
-func createPanel(name string, stat StatDefinition, config GrafanaFormatConfig, id int, yPos int) Panel {
+func createPanel(name string, stat statDefinition, config grafanaFormatConfig, id int, yPos int) panel {
 	metricName := config.MetricPrefix + name
 
 	// Build the Prometheus query expression
@@ -562,19 +558,19 @@ func createPanel(name string, stat StatDefinition, config GrafanaFormatConfig, i
 		legendFormat = config.DBScopedLegend
 	}
 
-	ds := DatasourceRef{
+	ds := datasourceRef{
 		Type: config.DatasourceType,
 		UID:  config.DatasourceUID,
 	}
 
 	// Create the panel
-	panel := Panel{
+	panel := panel{
 		Datasource:  &ds,
 		Description: stat.Help,
-		FieldConfig: &FieldConfig{
-			Defaults: FieldDefaults{
-				Color: ColorConfig{Mode: "palette-classic"},
-				Custom: CustomConfig{
+		fieldConfig: &fieldConfig{
+			Defaults: fieldDefaults{
+				Color: colorConfig{Mode: "palette-classic"},
+				Custom: customConfig{
 					AxisBorderShow:    false,
 					AxisCenteredZero:  false,
 					AxisColorMode:     "text",
@@ -585,52 +581,52 @@ func createPanel(name string, stat StatDefinition, config GrafanaFormatConfig, i
 					DrawStyle:         "line",
 					FillOpacity:       0,
 					GradientMode:      "none",
-					HideFrom:          HideFrom{Legend: false, Tooltip: false, Viz: false},
+					hideFrom:          hideFrom{Legend: false, Tooltip: false, Viz: false},
 					InsertNulls:       false,
 					LineInterpolation: "linear",
 					LineWidth:         1,
 					PointSize:         5,
-					ScaleDistribution: ScaleDist{Type: "linear"},
+					ScaleDistribution: scaleDist{Type: "linear"},
 					ShowPoints:        "auto",
 					ShowValues:        false,
 					SpanNulls:         false,
-					Stacking:          Stacking{Group: "A", Mode: "none"},
-					ThresholdsStyle:   ThresholdsStyle{Mode: "off"},
+					stacking:          stacking{Group: "A", Mode: "none"},
+					thresholdsStyle:   thresholdsStyle{Mode: "off"},
 				},
 				Mappings: []interface{}{},
-				Thresholds: Thresholds{
+				thresholds: thresholds{
 					Mode: "absolute",
-					Steps: []ThresholdStep{
+					Steps: []thresholdStep{
 						{Color: "green", Value: nil},
 					},
 				},
 				Unit: mapUnit(stat.Unit),
 			},
-			Overrides: []Override{},
+			Overrides: []override{},
 		},
-		GridPos: GridPos{
+		gridPos: gridPos{
 			H: 8,
 			W: 24,
 			X: 0,
 			Y: yPos,
 		},
 		ID: id,
-		Options: &PanelOptions{
-			Legend: LegendOptions{
+		Options: &panelOptions{
+			Legend: legendOptions{
 				Calcs:       []string{},
 				DisplayMode: "table",
 				Placement:   "right",
 				ShowLegend:  true,
 			},
-			Tooltip: TooltipOptions{
+			Tooltip: tooltipOptions{
 				HideZeros: false,
 				Mode:      "multi",
 				Sort:      "none",
 			},
 		},
-		Targets: []Target{
+		Targets: []target{
 			{
-				Datasource: DatasourceRef{
+				Datasource: datasourceRef{
 					Type: config.DatasourceType,
 					UID:  config.DatasourceUID,
 				},
@@ -654,7 +650,7 @@ func createPanel(name string, stat StatDefinition, config GrafanaFormatConfig, i
 }
 
 // buildExpr constructs the Prometheus query expression
-func buildExpr(metricName string, stat StatDefinition, config GrafanaFormatConfig) string {
+func buildExpr(metricName string, stat statDefinition, config grafanaFormatConfig) string {
 	var sb strings.Builder
 	sb.WriteString(metricName)
 	sb.WriteString("{")
@@ -667,13 +663,13 @@ func buildExpr(metricName string, stat StatDefinition, config GrafanaFormatConfi
 }
 
 // createTemplateVariables creates the template variables for the dashboard
-func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
-	vars := make([]TemplateVariable, 0, 5)
+func createTemplateVariables(config grafanaFormatConfig) []templateVariable {
+	vars := make([]templateVariable, 0, 5)
 
 	// Add datasource variable for Capella
 	if config.DataSourceVarName != "" {
-		vars = append(vars, TemplateVariable{
-			Current: CurrentValue{
+		vars = append(vars, templateVariable{
+			Current: currentValue{
 				Text:  "ThanosV2",
 				Value: "P5766748FE00546FA",
 			},
@@ -681,7 +677,7 @@ func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
 			IncludeAll: false,
 			Multi:      false,
 			Name:       config.DataSourceVarName,
-			Options:    []VariableOption{},
+			Options:    []variableOption{},
 			Query:      "prometheus",
 			Refresh:    1,
 			Regex:      config.DataSourceRegex,
@@ -695,16 +691,16 @@ func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
 		datasourceUID = "P5DCFC7561CCDE821" // Capella uses a fixed datasource for variable queries
 	}
 
-	clusterVar := TemplateVariable{
-		Datasource:  DatasourceRef{Type: "prometheus", UID: datasourceUID},
+	clusterVar := templateVariable{
+		Datasource:  datasourceRef{Type: "prometheus", UID: datasourceUID},
 		Definition:  config.ClusterQuery,
 		Description: "UUID of the cluster",
 		IncludeAll:  false,
 		Label:       "Cluster",
 		Multi:       false,
 		Name:        config.ClusterVarName,
-		Options:     []VariableOption{},
-		Query:       VariableQuery{Query: config.ClusterQuery, RefID: "PrometheusVariableQueryEditor-VariableQuery"},
+		Options:     []variableOption{},
+		Query:       variableQuery{Query: config.ClusterQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
 		Refresh:     1,
 		Regex:       "",
 		Type:        "query",
@@ -713,20 +709,20 @@ func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
 
 	// Node variable (only for supportal)
 	if config.NodeVarName != "" {
-		nodeVar := TemplateVariable{
-			Current: CurrentValue{
+		nodeVar := templateVariable{
+			Current: currentValue{
 				Text:  "All",
 				Value: "$__all",
 			},
-			Datasource:  DatasourceRef{Type: "prometheus", UID: datasourceUID},
+			Datasource:  datasourceRef{Type: "prometheus", UID: datasourceUID},
 			Definition:  config.NodeQuery,
 			Description: "SG node by hostname",
 			IncludeAll:  true,
 			Label:       "SG Node",
 			Multi:       true,
 			Name:        config.NodeVarName,
-			Options:     []VariableOption{},
-			Query:       VariableQuery{Query: config.NodeQuery, RefID: "PrometheusVariableQueryEditor-VariableQuery"},
+			Options:     []variableOption{},
+			Query:       variableQuery{Query: config.NodeQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
 			Refresh:     1,
 			Regex:       "",
 			Type:        "query",
@@ -740,18 +736,18 @@ func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
 		// For Capella, use the variable reference
 		endpointDatasourceUID = "${" + config.DataSourceVarName + "}"
 	}
-	endpointVar := TemplateVariable{
-		Current: CurrentValue{
+	endpointVar := templateVariable{
+		Current: currentValue{
 			Text:  "All",
 			Value: "$__all",
 		},
-		Datasource: DatasourceRef{Type: "prometheus", UID: endpointDatasourceUID},
+		Datasource: datasourceRef{Type: "prometheus", UID: endpointDatasourceUID},
 		Definition: config.EndpointQuery,
 		IncludeAll: true,
 		Multi:      true,
 		Name:       config.EndpointVarName,
-		Options:    []VariableOption{},
-		Query:      VariableQuery{Query: config.EndpointQuery, RefID: "PrometheusVariableQueryEditor-VariableQuery"},
+		Options:    []variableOption{},
+		Query:      variableQuery{Query: config.EndpointQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
 		Refresh:    1,
 		Regex:      "",
 		Type:       "query",
@@ -765,7 +761,7 @@ func createTemplateVariables(config GrafanaFormatConfig) []TemplateVariable {
 }
 
 // writeGrafanaDashboard writes the Grafana dashboard JSON to the writer
-func writeGrafanaDashboard(stats StatDefinitions, config GrafanaFormatConfig, writer io.Writer) error {
+func writeGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig, writer io.Writer) error {
 	dashboard := generateGrafanaDashboard(stats, config)
 
 	encoder := json.NewEncoder(writer)

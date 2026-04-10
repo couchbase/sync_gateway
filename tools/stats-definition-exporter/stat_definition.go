@@ -12,10 +12,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// StatDefinitions is a map of the stats fully qualified name to a StatDefinition
-type StatDefinitions map[string]StatDefinition
+// statDefinitions is a map of the stats fully qualified name to a statDefinition
+type statDefinitions map[string]statDefinition
 
-type StatDefinition struct {
+type statDefinition struct {
 	Subsystem         string   `json:"subsystem,omitempty"`  // The subsystem/category the stat belongs to such as cache, database, etc
 	Unit              string   `json:"unit,omitempty"`       // What units the stat value is using such as seconds.
 	Labels            []string `json:"labels,omitempty"`     // The labels that Prometheus uses to organise some of the stats such as database, collection, etc
@@ -27,8 +27,8 @@ type StatDefinition struct {
 	Type              string   `json:"type,omitempty"`       // The prometheus.ValueType such as counter, gauge, etc
 }
 
-func newStatDefinition(stat base.SgwStatWrapper) StatDefinition {
-	return StatDefinition{
+func newStatDefinition(stat base.SgwStatWrapper) statDefinition {
+	return statDefinition{
 		Subsystem:    stat.Subsystem(),
 		Unit:         stat.Unit(),
 		Labels:       stat.LabelKeys(),

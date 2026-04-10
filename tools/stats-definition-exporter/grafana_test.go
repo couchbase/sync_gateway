@@ -110,7 +110,7 @@ func TestSupportalGrafanaDashboardGeneration(t *testing.T) {
 
 	// Verify template variables exist
 	varNames := make(map[string]bool)
-	for _, v := range dashboard.Templating.List {
+	for _, v := range dashboard.templating.List {
 		varNames[v.Name] = true
 	}
 	assert.True(t, varNames["databaseUuid"], "databaseUuid variable should exist")
@@ -153,7 +153,7 @@ func TestCapellaGrafanaDashboardGeneration(t *testing.T) {
 
 	// Verify template variables exist
 	varNames := make(map[string]bool)
-	for _, v := range dashboard.Templating.List {
+	for _, v := range dashboard.templating.List {
 		varNames[v.Name] = true
 	}
 	assert.True(t, varNames["databaseId"], "databaseId variable should exist")
@@ -163,7 +163,7 @@ func TestCapellaGrafanaDashboardGeneration(t *testing.T) {
 }
 
 // findChildPanel searches all row panels for a child panel with the given title
-func findChildPanel(dashboard Dashboard, title string) *Panel {
+func findChildPanel(dashboard dashboard, title string) *panel {
 	for i := range dashboard.Panels {
 		for j := range dashboard.Panels[i].Panels {
 			if dashboard.Panels[i].Panels[j].Title == title {
@@ -289,7 +289,7 @@ func TestGrafanaFormatFileOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
 
-	err := statsToFile(logger, &outputFile, FormatSupportalGrafana)
+	err := statsToFile(logger, &outputFile, formatSupportalGrafana)
 	assert.NoError(t, err)
 	assert.Empty(t, buf)
 	assert.FileExists(t, outputFile)
@@ -307,7 +307,7 @@ func TestGrafanaFormatStdOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
 
-	err := statsToFile(logger, nil, FormatCapellaGrafana)
+	err := statsToFile(logger, nil, formatCapellaGrafana)
 	assert.NoError(t, err)
 	assert.Empty(t, buf)
 }
@@ -330,8 +330,8 @@ func TestUnitMappingInPanels(t *testing.T) {
 
 	panel := findChildPanel(dashboard, supportalConfig.MetricPrefix+bytesStatName)
 	require.NotNil(t, panel, "should find panel for bytes stat")
-	require.NotNil(t, panel.FieldConfig)
-	assert.Equal(t, "bytes", panel.FieldConfig.Defaults.Unit)
+	require.NotNil(t, panel.fieldConfig)
+	assert.Equal(t, "bytes", panel.fieldConfig.Defaults.Unit)
 }
 
 func TestDescriptionFromHelp(t *testing.T) {
@@ -368,15 +368,15 @@ func TestRowPanelStructure(t *testing.T) {
 		require.NotNil(t, row.Collapsed, "row should have collapsed field")
 		assert.True(t, *row.Collapsed, "row should be collapsed")
 		assert.NotEmpty(t, row.Panels, "row should contain child panels for %s", row.Title)
-		assert.Equal(t, 24, row.GridPos.W, "row should be full width")
-		assert.Equal(t, 1, row.GridPos.H, "row should have height 1")
+		assert.Equal(t, 24, row.gridPos.W, "row should be full width")
+		assert.Equal(t, 1, row.gridPos.H, "row should have height 1")
 	}
 
 	// Verify child panels have correct dimensions
 	for _, row := range dashboard.Panels {
 		for _, panel := range row.Panels {
-			assert.Equal(t, 24, panel.GridPos.W, "child panel should be full width")
-			assert.Equal(t, 8, panel.GridPos.H, "child panel should have height 8")
+			assert.Equal(t, 24, panel.gridPos.W, "child panel should be full width")
+			assert.Equal(t, 8, panel.gridPos.H, "child panel should have height 8")
 		}
 	}
 }
@@ -416,7 +416,7 @@ func TestSubsystemDisplayNames(t *testing.T) {
 }
 
 // getTestStats retrieves stats for testing
-func getTestStats(t *testing.T) StatDefinitions {
+func getTestStats(t *testing.T) statDefinitions {
 	t.Helper()
 
 	var buf bytes.Buffer
