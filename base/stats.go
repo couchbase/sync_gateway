@@ -904,6 +904,7 @@ type SharedBucketImportStats struct {
 type SgwStatWrapper interface {
 	FormatString() string
 	Name() string
+	Subsystem() string
 	Unit() string
 	Help() string
 	AddedVersion() string
@@ -915,6 +916,7 @@ type SgwStatWrapper interface {
 
 type SgwStat struct {
 	statFQN           string
+	subsystem         string
 	unit              string
 	help              string
 	addedVersion      string
@@ -929,6 +931,12 @@ type SgwStat struct {
 // Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Name() string {
 	return s.statFQN
+}
+
+// Subsystem returns the subsystem/category the stat belongs to (e.g., "cache", "database").
+// Currently only used for the stat metadata exporter tool.
+func (s SgwStat) Subsystem() string {
+	return s.subsystem
 }
 
 // Unit returns the units the stat uses for example, seconds.
@@ -1038,6 +1046,7 @@ func newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersi
 
 	stat := &SgwStat{
 		statFQN:           name,
+		subsystem:         subsystem,
 		unit:              unit,
 		help:              description,
 		addedVersion:      addedVersion,

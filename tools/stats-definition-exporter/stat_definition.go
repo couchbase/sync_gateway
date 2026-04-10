@@ -16,6 +16,7 @@ import (
 type StatDefinitions map[string]StatDefinition
 
 type StatDefinition struct {
+	Subsystem         string   `json:"subsystem,omitempty"`  // The subsystem/category the stat belongs to such as cache, database, etc
 	Unit              string   `json:"unit,omitempty"`       // What units the stat value is using such as seconds.
 	Labels            []string `json:"labels,omitempty"`     // The labels that Prometheus uses to organise some of the stats such as database, collection, etc
 	Help              string   `json:"help,omitempty"`       // A description of what the stat does
@@ -28,6 +29,7 @@ type StatDefinition struct {
 
 func newStatDefinition(stat base.SgwStatWrapper) StatDefinition {
 	return StatDefinition{
+		Subsystem:    stat.Subsystem(),
 		Unit:         stat.Unit(),
 		Labels:       stat.LabelKeys(),
 		Help:         stat.Help(),

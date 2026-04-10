@@ -20,28 +20,52 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const DefaultFullFilePath = "./metrics_metadata.json"
+const (
+	DefaultFullFilePath    = "./metrics_metadata.json"
+	DefaultDashboardPath   = "./grafana-dashboard.json"
+	FormatMetadata         = "metadata"
+	FormatSupportalGrafana = "supportal-grafana"
+	FormatCapellaGrafana   = "capella-grafana"
+)
 
 func main() {
 	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to console (stdout) only.")
-	outputFileFlag := flag.String("output", DefaultFullFilePath, "Full file path of outputted JSON file if flag 'no-file' is false.")
+	outputFileFlag := flag.String("output", "", "Full file path of outputted JSON file. Defaults to metrics_metadata.json for metadata format or grafana-dashboard.json for grafana formats.")
+	formatFlag := flag.String("format", FormatMetadata, "Output format: metadata, supportal-grafana, or capella-grafana.")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "", 0)
 
+	// Validate format
+	switch *formatFlag {
+	case FormatMetadata, FormatSupportalGrafana, FormatCapellaGrafana:
+		// Valid format
+	default:
+		logger.Fatalf("invalid format %q: must be one of %s, %s, or %s", *formatFlag, FormatMetadata, FormatSupportalGrafana, FormatCapellaGrafana)
+	}
+
+	// Set default output file based on format
 	outputFile := outputFileFlag
+	if *outputFileFlag == "" {
+		defaultPath := DefaultFullFilePath
+		if *formatFlag != FormatMetadata {
+			defaultPath = DefaultDashboardPath
+		}
+		outputFile = &defaultPath
+	}
+
 	if *outputConsoleOnlyFlag {
 		outputFile = nil
 	}
 
-	err := statsToFile(logger, outputFile)
+	err := statsToFile(logger, outputFile, *formatFlag)
 	if err != nil {
 		logger.Fatalf("%v", err)
 	}
 }
 
 // Write stats to outputFile unless nil, in which case write to stdout
-func statsToFile(logger *log.Logger, outputFile *string) error {
+func statsToFile(logger *log.Logger, outputFile *string, format string) error {
 	stats, err := getStats(logger)
 	if err != nil {
 		return fmt.Errorf("could not get stats: %w", err)
@@ -60,7 +84,14 @@ func statsToFile(logger *log.Logger, outputFile *string) error {
 		writer = file
 	}
 
-	err = writeStats(stats, writer)
+	switch format {
+	case FormatSupportalGrafana:
+		err = writeGrafanaDashboard(stats, supportalConfig, writer)
+	case FormatCapellaGrafana:
+		err = writeGrafanaDashboard(stats, capellaConfig, writer)
+	default:
+		err = writeStats(stats, writer)
+	}
 	if err != nil {
 		return fmt.Errorf("could not write stats: %w", err)
 	}
