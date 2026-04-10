@@ -35,6 +35,10 @@ func NewMetadataStore(primary, fallback DataStore) *MetadataStore {
 	}
 }
 
+func (ms *MetadataStore) IsDualMetadataStore() bool {
+	return true
+}
+
 // Primary will return the primary data store for dual metadata store type (_system._mobile)
 func (ms *MetadataStore) Primary() DataStore {
 	return ms.primary
@@ -48,6 +52,11 @@ func (ms *MetadataStore) Fallback() DataStore {
 // SetMigrationComplete will set migration complete to true to stop reads falling back to fallback datastore.
 func (ms *MetadataStore) SetMigrationComplete() {
 	ms.migrationComplete.Store(true)
+}
+
+// MigrationComplete reports whether metadata migration has finished.
+func (ms *MetadataStore) MigrationComplete() bool {
+	return ms.migrationComplete.Load()
 }
 
 // readFromFallback returns true when err indicates the key was not found in primary and metadata migration has
