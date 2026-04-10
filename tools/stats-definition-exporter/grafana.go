@@ -17,29 +17,38 @@ import (
 
 // grafanaFormatConfig holds the configuration for generating a Grafana dashboard
 type grafanaFormatConfig struct {
-	MetricPrefix      string // Prefix to add to metric names (e.g., "parsed_" for supportal)
-	DashboardUID      string
-	DashboardTitle    string
-	SchemaVersion     int
-	PluginVersion     string
-	DatasourceType    string
-	DatasourceUID     string
-	ClusterLabel      string // "databaseUuid" for supportal, "databaseId" for capella
-	ClusterVarName    string // Variable name for cluster selection
-	ClusterQuery      string // Query to get cluster values
-	NodeLabel         string // "nodeHostname" for supportal, "" for capella
-	NodeVarName       string // Variable name for node selection (empty if not used)
-	NodeQuery         string // Query to get node values
-	EndpointVarName   string // Variable name for database/endpoint selection
-	EndpointQuery     string // Query to get endpoint values
-	DataSourceVarName string // Variable name for datasource selection (capella only)
-	DataSourceRegex   string // Regex for datasource selection (capella only)
-	annotations       []annotation
-	HiddenVars        []templateVariable
-	GlobalLegend      string // Legend format for global stats
-	DBScopedLegend    string // Legend format for database-scoped stats
-	GlobalSelector    string // Label selector for global stats (with variable placeholders)
-	DBScopedSelector  string // Additional selector for database-scoped stats
+	MetricPrefix   string // Prefix to add to metric names (e.g., "parsed_" for supportal)
+	DashboardUID   string
+	DashboardTitle string
+	SchemaVersion  int
+	PluginVersion  string
+	DatasourceType string
+	DatasourceUID  string
+	annotations    []annotation
+	templateVars   []templateVariable
+	BaseLegend     string // Legend format for stats with no extra labels
+	BaseSelector   string // Label selector applied to all stats (with variable placeholders)
+	// LabelSelectors defines the additional selector fragment and legend suffix
+	// for each Prometheus label, in the order they should appear in legends.
+	LabelSelectors []labelSelector
+	// LabelReplaces defines label_replace() calls to wrap around the PromQL expression.
+	// Applied in order, outermost last.
+	LabelReplaces []labelReplace
+}
+
+// labelSelector defines the additional PromQL selector and legend text for a label.
+type labelSelector struct {
+	Label    string // Prometheus label name to match (e.g. "database", "collection")
+	Selector string // e.g. `,database=~"$endpoint"`
+	Legend   string // e.g. " {{database}}"
+}
+
+// labelReplace defines a PromQL label_replace() operation.
+type labelReplace struct {
+	DstLabel    string // new label name
+	Replacement string // replacement pattern (e.g. "$1")
+	SrcLabel    string // source label to match against
+	Regex       string // regex to apply to source label
 }
 
 // annotation represents a Grafana dashboard annotation
@@ -58,7 +67,7 @@ type annotation struct {
 
 // dashboard represents a Grafana dashboard
 type dashboard struct {
-	annotations   annotations `json:"annotations"`
+	Annotations   annotations `json:"annotations"`
 	Editable      bool        `json:"editable"`
 	FiscalYear    int         `json:"fiscalYearStartMonth"`
 	GraphTooltip  int         `json:"graphTooltip"`
@@ -68,9 +77,9 @@ type dashboard struct {
 	Refresh       string      `json:"refresh"`
 	SchemaVersion int         `json:"schemaVersion"`
 	Tags          []string    `json:"tags"`
-	templating    templating  `json:"templating"`
+	Templating    templating  `json:"templating"`
 	Time          timeRange   `json:"time"`
-	timepicker    timepicker  `json:"timepicker"`
+	Timepicker    timepicker  `json:"timepicker"`
 	Timezone      string      `json:"timezone"`
 	Title         string      `json:"title"`
 	UID           string      `json:"uid"`
@@ -102,8 +111,8 @@ type panel struct {
 	Collapsed     *bool          `json:"collapsed,omitempty"`
 	Datasource    *datasourceRef `json:"datasource,omitempty"`
 	Description   string         `json:"description,omitempty"`
-	fieldConfig   *fieldConfig   `json:"fieldConfig,omitempty"`
-	gridPos       gridPos        `json:"gridPos"`
+	FieldConfig   *fieldConfig   `json:"fieldConfig,omitempty"`
+	GridPos       gridPos        `json:"gridPos"`
 	ID            int            `json:"id"`
 	Options       *panelOptions  `json:"options,omitempty"`
 	Panels        []panel        `json:"panels,omitempty"`
@@ -131,7 +140,7 @@ type fieldDefaults struct {
 	Color      colorConfig   `json:"color"`
 	Custom     customConfig  `json:"custom"`
 	Mappings   []interface{} `json:"mappings"`
-	thresholds thresholds    `json:"thresholds"`
+	Thresholds thresholds    `json:"thresholds"`
 	Unit       string        `json:"unit"`
 }
 
@@ -152,7 +161,7 @@ type customConfig struct {
 	DrawStyle         string          `json:"drawStyle"`
 	FillOpacity       int             `json:"fillOpacity"`
 	GradientMode      string          `json:"gradientMode"`
-	hideFrom          hideFrom        `json:"hideFrom"`
+	HideFrom          hideFrom        `json:"hideFrom"`
 	InsertNulls       bool            `json:"insertNulls"`
 	LineInterpolation string          `json:"lineInterpolation"`
 	LineWidth         int             `json:"lineWidth"`
@@ -161,8 +170,8 @@ type customConfig struct {
 	ShowPoints        string          `json:"showPoints"`
 	ShowValues        bool            `json:"showValues"`
 	SpanNulls         bool            `json:"spanNulls"`
-	stacking          stacking        `json:"stacking"`
-	thresholdsStyle   thresholdsStyle `json:"thresholdsStyle"`
+	Stacking          stacking        `json:"stacking"`
+	ThresholdsStyle   thresholdsStyle `json:"thresholdsStyle"`
 }
 
 // hideFrom contains hide settings
@@ -202,7 +211,7 @@ type thresholdStep struct {
 
 // override contains field override settings
 type override struct {
-	matcher    matcher    `json:"matcher"`
+	Matcher    matcher    `json:"matcher"`
 	Properties []property `json:"properties"`
 }
 
@@ -312,96 +321,6 @@ type timepicker struct {
 	RefreshIntervals []string `json:"refresh_intervals,omitempty"`
 }
 
-// Supportal config for Supportal Grafana dashboards
-var supportalConfig = grafanaFormatConfig{
-	MetricPrefix:     "parsed_",
-	DashboardUID:     "sync-gateway-all",
-	DashboardTitle:   "Sync Gateway All",
-	SchemaVersion:    42,
-	PluginVersion:    "12.4.2",
-	DatasourceType:   "prometheus",
-	DatasourceUID:    "mimir",
-	ClusterLabel:     "databaseUuid",
-	ClusterVarName:   "databaseUuid",
-	ClusterQuery:     "label_values(databaseUuid)",
-	NodeLabel:        "nodeHostname",
-	NodeVarName:      "nodeHostname",
-	NodeQuery:        "label_values(parsed_sgw_resource_utilization_uptime{databaseUuid=\"$databaseUuid\"},nodeHostname)",
-	EndpointVarName:  "endpoint",
-	EndpointQuery:    "label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid=\"$databaseUuid\"},database)",
-	GlobalLegend:     "{{nodeHostname}}",
-	DBScopedLegend:   "{{nodeHostname}} {{database}}",
-	GlobalSelector:   `databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"`,
-	DBScopedSelector: `,database=~"$endpoint"`,
-	annotations: []annotation{
-		{
-			BuiltIn:    1,
-			Datasource: datasourceRef{Type: "grafana", UID: "-- Grafana --"},
-			Enable:     true,
-			Hide:       true,
-			IconColor:  "rgba(0, 211, 255, 1)",
-			Name:       "annotations & Alerts",
-			Type:       "dashboard",
-		},
-		{
-			Datasource:  datasourceRef{Type: "prometheus", UID: "mimir"},
-			Enable:      false,
-			Hide:        false,
-			IconColor:   "#5794F2",
-			Name:        "Show Restarts",
-			Expr:        `parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"} <= 1200000000000`,
-			TextFormat:  "SG Restart: {{nodeHostname}}",
-			TitleFormat: "SG Restart: {{nodeHostname}}",
-		},
-	},
-}
-
-// Capella config for Capella/Cloud Grafana dashboards
-var capellaConfig = grafanaFormatConfig{
-	MetricPrefix:      "",
-	DashboardUID:      "sync-gateway-all-stats",
-	DashboardTitle:    "Sync Gateway All Stats",
-	SchemaVersion:     38,
-	DatasourceType:    "prometheus",
-	DatasourceUID:     "${DataSource}",
-	ClusterLabel:      "databaseId",
-	ClusterVarName:    "databaseId",
-	ClusterQuery:      "label_values(sgw_up,databaseId)",
-	NodeLabel:         "",
-	NodeVarName:       "",
-	NodeQuery:         "",
-	EndpointVarName:   "endpoint",
-	EndpointQuery:     "label_values(sgw_database_doc_writes_bytes{databaseId=\"$databaseId\"},database)",
-	DataSourceVarName: "DataSource",
-	DataSourceRegex:   "(ThanosV2|Thanos)",
-	GlobalLegend:      "{{databaseId}}",
-	DBScopedLegend:    "{{database}}",
-	GlobalSelector:    `databaseId="$databaseId"`,
-	DBScopedSelector:  `,database=~"$endpoint"`,
-	annotations: []annotation{
-		{
-			BuiltIn:    1,
-			Datasource: datasourceRef{Type: "grafana", UID: "-- Grafana --"},
-			Enable:     true,
-			Hide:       true,
-			IconColor:  "rgba(0, 211, 255, 1)",
-			Name:       "annotations & Alerts",
-			Type:       "dashboard",
-		},
-	},
-	HiddenVars: []templateVariable{
-		{
-			Name:       "syncgatewayId",
-			Datasource: datasourceRef{Type: "prometheus", UID: "P5DCFC7561CCDE821"},
-			Definition: `label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`,
-			Hide:       2,
-			Query:      variableQuery{Query: `label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:    1,
-			Type:       "query",
-		},
-	},
-}
-
 // unitMapping maps Sync Gateway stat units to Grafana units
 var unitMapping = map[string]string{
 	"":               "none",
@@ -420,34 +339,9 @@ func mapUnit(sgUnit string) string {
 	return "none"
 }
 
-// hasDatabaseLabel checks if the stat has a database label
-func hasDatabaseLabel(labels []string) bool {
-	return slices.Contains(labels, "database")
-}
-
-// subsystemDisplayNames maps subsystem keys to human-readable display names for row panels
-var subsystemDisplayNames = map[string]string{
-	"audit":                "Audit",
-	"cache":                "Cache",
-	"collection":           "Collection",
-	"config":               "Config",
-	"database":             "Database",
-	"delta_sync":           "Delta Sync",
-	"gsi_views":            "GSI Views",
-	"replication":          "Replication (ISGR)",
-	"replication_pull":     "Replication Pull",
-	"replication_push":     "Replication Push",
-	"resource_utilization": "Resource Utilization",
-	"security":             "Security",
-	"shared_bucket_import": "Shared Bucket Import",
-}
-
-// subsystemDisplayName returns the display name for a subsystem
-func subsystemDisplayName(subsystem string) string {
-	if name, ok := subsystemDisplayNames[subsystem]; ok {
-		return name
-	}
-	return subsystem
+// hasLabel checks if the stat has a specific label
+func hasLabel(labels []string, label string) bool {
+	return slices.Contains(labels, label)
 }
 
 // statsBySubsystem groups stats by subsystem, returning ordered subsystem keys and a map of subsystem to sorted stat names
@@ -496,10 +390,10 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 		collapsed := true
 		rowPanel := panel{
 			Collapsed: &collapsed,
-			gridPos:   gridPos{H: 1, W: 24, X: 0, Y: yPos},
+			GridPos:   gridPos{H: 1, W: 24, X: 0, Y: yPos},
 			ID:        panelID,
 			Panels:    childPanels,
-			Title:     subsystemDisplayName(subsystem),
+			Title:     subsystem,
 			Type:      "row",
 		}
 		panels = append(panels, rowPanel)
@@ -507,12 +401,9 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 		yPos++ // Row panels take 1 unit of height when collapsed
 	}
 
-	// Create template variables
-	templateVars := createTemplateVariables(config)
-
 	// Create dashboard
 	dashboard := dashboard{
-		annotations:  annotations{List: config.annotations},
+		Annotations:  annotations{List: config.annotations},
 		Editable:     true,
 		FiscalYear:   0,
 		GraphTooltip: 1,
@@ -533,9 +424,9 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 		Refresh:       "",
 		SchemaVersion: config.SchemaVersion,
 		Tags:          []string{"Sync Gateway"},
-		templating:    templating{List: templateVars},
-		Time:          timeRange{From: "now-30d", To: "now"},
-		timepicker:    timepicker{},
+		Templating:    templating{List: config.templateVars},
+		Time:          timeRange{From: "now-7d", To: "now"},
+		Timepicker:    timepicker{},
 		Timezone:      "browser",
 		Title:         config.DashboardTitle,
 		UID:           config.DashboardUID,
@@ -553,10 +444,7 @@ func createPanel(name string, stat statDefinition, config grafanaFormatConfig, i
 	expr := buildExpr(metricName, stat, config)
 
 	// Determine legend format
-	legendFormat := config.GlobalLegend
-	if hasDatabaseLabel(stat.Labels) {
-		legendFormat = config.DBScopedLegend
-	}
+	legendFormat := legendForLabels(stat.Labels, config)
 
 	ds := datasourceRef{
 		Type: config.DatasourceType,
@@ -567,7 +455,7 @@ func createPanel(name string, stat statDefinition, config grafanaFormatConfig, i
 	panel := panel{
 		Datasource:  &ds,
 		Description: stat.Help,
-		fieldConfig: &fieldConfig{
+		FieldConfig: &fieldConfig{
 			Defaults: fieldDefaults{
 				Color: colorConfig{Mode: "palette-classic"},
 				Custom: customConfig{
@@ -581,7 +469,7 @@ func createPanel(name string, stat statDefinition, config grafanaFormatConfig, i
 					DrawStyle:         "line",
 					FillOpacity:       0,
 					GradientMode:      "none",
-					hideFrom:          hideFrom{Legend: false, Tooltip: false, Viz: false},
+					HideFrom:          hideFrom{Legend: false, Tooltip: false, Viz: false},
 					InsertNulls:       false,
 					LineInterpolation: "linear",
 					LineWidth:         1,
@@ -590,11 +478,11 @@ func createPanel(name string, stat statDefinition, config grafanaFormatConfig, i
 					ShowPoints:        "auto",
 					ShowValues:        false,
 					SpanNulls:         false,
-					stacking:          stacking{Group: "A", Mode: "none"},
-					thresholdsStyle:   thresholdsStyle{Mode: "off"},
+					Stacking:          stacking{Group: "A", Mode: "none"},
+					ThresholdsStyle:   thresholdsStyle{Mode: "off"},
 				},
 				Mappings: []interface{}{},
-				thresholds: thresholds{
+				Thresholds: thresholds{
 					Mode: "absolute",
 					Steps: []thresholdStep{
 						{Color: "green", Value: nil},
@@ -604,7 +492,7 @@ func createPanel(name string, stat statDefinition, config grafanaFormatConfig, i
 			},
 			Overrides: []override{},
 		},
-		gridPos: gridPos{
+		GridPos: gridPos{
 			H: 8,
 			W: 24,
 			X: 0,
@@ -654,110 +542,30 @@ func buildExpr(metricName string, stat statDefinition, config grafanaFormatConfi
 	var sb strings.Builder
 	sb.WriteString(metricName)
 	sb.WriteString("{")
-	sb.WriteString(config.GlobalSelector)
-	if hasDatabaseLabel(stat.Labels) {
-		sb.WriteString(config.DBScopedSelector)
+	sb.WriteString(config.BaseSelector)
+	for _, ls := range config.LabelSelectors {
+		if hasLabel(stat.Labels, ls.Label) && ls.Selector != "" {
+			sb.WriteString(ls.Selector)
+		}
 	}
 	sb.WriteString("}")
-	return sb.String()
+
+	expr := sb.String()
+	for _, lr := range config.LabelReplaces {
+		expr = `label_replace(` + expr + `, "` + lr.DstLabel + `", "` + lr.Replacement + `", "` + lr.SrcLabel + `", "` + lr.Regex + `")`
+	}
+	return expr
 }
 
-// createTemplateVariables creates the template variables for the dashboard
-func createTemplateVariables(config grafanaFormatConfig) []templateVariable {
-	vars := make([]templateVariable, 0, 5)
-
-	// Add datasource variable for Capella
-	if config.DataSourceVarName != "" {
-		vars = append(vars, templateVariable{
-			Current: currentValue{
-				Text:  "ThanosV2",
-				Value: "P5766748FE00546FA",
-			},
-			Hide:       0,
-			IncludeAll: false,
-			Multi:      false,
-			Name:       config.DataSourceVarName,
-			Options:    []variableOption{},
-			Query:      "prometheus",
-			Refresh:    1,
-			Regex:      config.DataSourceRegex,
-			Type:       "datasource",
-		})
-	}
-
-	// Cluster variable (databaseUuid or databaseId)
-	datasourceUID := config.DatasourceUID
-	if config.DataSourceVarName != "" {
-		datasourceUID = "P5DCFC7561CCDE821" // Capella uses a fixed datasource for variable queries
-	}
-
-	clusterVar := templateVariable{
-		Datasource:  datasourceRef{Type: "prometheus", UID: datasourceUID},
-		Definition:  config.ClusterQuery,
-		Description: "UUID of the cluster",
-		IncludeAll:  false,
-		Label:       "Cluster",
-		Multi:       false,
-		Name:        config.ClusterVarName,
-		Options:     []variableOption{},
-		Query:       variableQuery{Query: config.ClusterQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-		Refresh:     1,
-		Regex:       "",
-		Type:        "query",
-	}
-	vars = append(vars, clusterVar)
-
-	// Node variable (only for supportal)
-	if config.NodeVarName != "" {
-		nodeVar := templateVariable{
-			Current: currentValue{
-				Text:  "All",
-				Value: "$__all",
-			},
-			Datasource:  datasourceRef{Type: "prometheus", UID: datasourceUID},
-			Definition:  config.NodeQuery,
-			Description: "SG node by hostname",
-			IncludeAll:  true,
-			Label:       "SG Node",
-			Multi:       true,
-			Name:        config.NodeVarName,
-			Options:     []variableOption{},
-			Query:       variableQuery{Query: config.NodeQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:     1,
-			Regex:       "",
-			Type:        "query",
+// legendForLabels builds the legend format string for a stat based on its labels
+func legendForLabels(labels []string, config grafanaFormatConfig) string {
+	legend := config.BaseLegend
+	for _, ls := range config.LabelSelectors {
+		if hasLabel(labels, ls.Label) {
+			legend += ls.Legend
 		}
-		vars = append(vars, nodeVar)
 	}
-
-	// Endpoint variable (database)
-	endpointDatasourceUID := datasourceUID
-	if config.DataSourceVarName != "" {
-		// For Capella, use the variable reference
-		endpointDatasourceUID = "${" + config.DataSourceVarName + "}"
-	}
-	endpointVar := templateVariable{
-		Current: currentValue{
-			Text:  "All",
-			Value: "$__all",
-		},
-		Datasource: datasourceRef{Type: "prometheus", UID: endpointDatasourceUID},
-		Definition: config.EndpointQuery,
-		IncludeAll: true,
-		Multi:      true,
-		Name:       config.EndpointVarName,
-		Options:    []variableOption{},
-		Query:      variableQuery{Query: config.EndpointQuery, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-		Refresh:    1,
-		Regex:      "",
-		Type:       "query",
-	}
-	vars = append(vars, endpointVar)
-
-	// Add hidden variables (for Capella)
-	vars = append(vars, config.HiddenVars...)
-
-	return vars
+	return legend
 }
 
 // writeGrafanaDashboard writes the Grafana dashboard JSON to the writer
