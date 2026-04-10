@@ -199,15 +199,15 @@ func newGlobalStat() (*GlobalStat, error) {
 func (g *GlobalStat) initConfigStats() error {
 	configStat := &ConfigStat{}
 	var err error
-	configStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mismatches", StatUnitBytes, DatabaseBucketMismatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	configStat.DatabaseBucketMismatches, err = NewIntStat(ConfigSubsystem, "database_config_bucket_mismatches", StatUnitNoUnits, DatabaseBucketMismatchesDesc, StatAddedVersion3dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	configStat.DatabaseRollbackCollectionCollisions, err = NewIntStat(ConfigSubsystem, "database_config_collection_conflicts", StatUnitBytes, DatabaseCollectionConflictDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	configStat.DatabaseRollbackCollectionCollisions, err = NewIntStat(ConfigSubsystem, "database_config_collection_conflicts", StatUnitNoUnits, DatabaseCollectionConflictDesc, StatAddedVersion3dot1dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
-	configStat.XattrFormatMismatches, err = NewIntStat(ConfigSubsystem, "xattr_format_mismatches", StatUnitBytes, XattrFormatMismatchesDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
+	configStat.XattrFormatMismatches, err = NewIntStat(ConfigSubsystem, "xattr_format_mismatches", StatUnitNoUnits, XattrFormatMismatchesDesc, StatAddedVersion3dot2dot4, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, nil, nil, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
