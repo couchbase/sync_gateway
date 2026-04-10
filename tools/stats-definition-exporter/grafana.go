@@ -344,11 +344,22 @@ func hasLabel(labels []string, label string) bool {
 	return slices.Contains(labels, label)
 }
 
+// grafanaSubsystemName normalizes subsystem names used as Grafana row titles so
+// stats that intentionally omit a subsystem are still grouped under a navigable,
+// non-empty dashboard section.
+func grafanaSubsystemName(subsystem string) string {
+	if strings.TrimSpace(subsystem) == "" {
+		return "general"
+	}
+	return subsystem
+}
+
 // statsBySubsystem groups stats by subsystem, returning ordered subsystem keys and a map of subsystem to sorted stat names
 func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 	grouped := make(map[string][]string)
 	for name, stat := range stats {
-		grouped[stat.Subsystem] = append(grouped[stat.Subsystem], name)
+		subsystem := grafanaSubsystemName(stat.Subsystem)
+		grouped[subsystem] = append(grouped[subsystem], name)
 	}
 
 	// Sort stat names within each subsystem

@@ -29,7 +29,7 @@ const (
 )
 
 func main() {
-	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output stat metadata to console (stdout) only.")
+	outputConsoleOnlyFlag := flag.Bool("no-file", false, "Output to stdout instead of writing a file.")
 	outputFileFlag := flag.String("output", "", "Full file path of outputted JSON file. Defaults to metrics_metadata.json for metadata format or grafana-dashboard.json for grafana formats.")
 	formatFlag := flag.String("format", formatMetadata, "Output format: metadata, supportal-grafana, or capella-grafana.")
 	flag.Parse()
