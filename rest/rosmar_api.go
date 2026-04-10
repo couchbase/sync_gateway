@@ -45,7 +45,7 @@ func (h *handler) handleRosmarGet() error {
 
 		dsNames, err := bucket.ListDataStores()
 		if err != nil {
-			continue
+			return err
 		}
 
 		result[bucketName] = base.NewCollectionNames(dsNames...)

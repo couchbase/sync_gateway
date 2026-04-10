@@ -12,7 +12,7 @@ delete:
     Deletes the specified bucket, scope, or collection in the connected Rosmar server.
     The resource must follow one of these formats: 'bucket', 'bucket.scope', or 'bucket.scope.collection'.
 
-    Deleting a non existing scope or collection will 404 but deleting a non existing bucket returns 200.
+    Deleting a non existing bucket or collection will 404 but deleting a non existing collection returns 200.
   parameters:
     - name: bucketkeyspace
       in: path
@@ -25,7 +25,7 @@ delete:
     '400':
       description: Invalid bucketkeyspace format, or server is not a Rosmar bucket, or requires persistent config
     '404':
-      description: The specified scope, or collection was not found
+      description: The specified bucket or scope was not found
     '500':
       description: Internal Server Error
   tags:
