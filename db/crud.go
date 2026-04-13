@@ -819,34 +819,6 @@ func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *
 	return nil, "", nil, ErrMissing
 }
 
-// Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
-func (db *DatabaseCollectionWithUser) getAvailable1xRev(ctx context.Context, doc *Document, revid string) ([]byte, error) {
-	bodyBytes, ancestorRevID, attachments, err := db.getAvailableRev(ctx, doc, revid)
-	if err != nil {
-		return nil, err
-	}
-
-	kvPairs := []base.KVPair{
-		{Key: BodyId, Val: doc.ID},
-		{Key: BodyRev, Val: ancestorRevID},
-	}
-
-	if ancestorRev, ok := doc.History[ancestorRevID]; ok && ancestorRev != nil && ancestorRev.Deleted {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
-	}
-
-	if len(attachments) > 0 {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: attachments})
-	}
-
-	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
-	if err != nil {
-		return nil, err
-	}
-
-	return bodyBytes, nil
-}
-
 // Returns the attachments of the asked-for revision or the most recent available ancestor.
 // Returns nil if no attachments or ancestors are found.
 func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Context, doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
