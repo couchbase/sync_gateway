@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.5
 	github.com/coder/websocket v1.8.14
-	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/couchbase/cbgt v1.4.14
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
@@ -37,7 +37,7 @@ require (
 	golang.org/x/crypto v0.49.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/net v0.52.0
-	golang.org/x/oauth2 v0.35.0
+	golang.org/x/oauth2 v0.36.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
