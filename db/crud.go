@@ -1202,8 +1202,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		if conflictErr != nil {
 			if db.ForceAPIForbiddenErrors() {
 				// Make sure the user has permission to modify the document before confirming doc existence
-				//mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
-				mutableBody, metaMap, newRevID, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, false, false)
+				mutableBody, metaMap, newRevID, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, false, newDoc.Deleted)
 				if err != nil {
 					base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
 					return nil, nil, false, nil, ErrForbidden
@@ -2198,7 +2197,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, doc *Document, body Body, revId string, getAncestor bool, tombstone bool) (mutableBody Body, metaMap map[string]any, newRevId string, err error) {
+func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, doc *Document, body Body, revID string, getAncestor bool, tombstone bool) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
 	metaMap, err = doc.GetMetaMap(db.UserXattrKey())
 	if err != nil {
 		return
@@ -2207,7 +2206,7 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 	if getAncestor {
 		var bodyBytes []byte
 		var ancestorRevID string
-		bodyBytes, ancestorRevID, _, err = db.getAvailableRev(ctx, doc, revId)
+		bodyBytes, ancestorRevID, _, err = db.getAvailableRev(ctx, doc, revID)
 		if err != nil {
 			return
 		}
@@ -2229,38 +2228,10 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 		}
 	}
 
-	newRevId = revId
-
-	mutableBody[BodyId] = doc.ID
-	mutableBody[BodyRev] = newRevId
-
-	return
-}
-
-func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
-	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
-	metaMap, err = doc.GetMetaMap(db.UserXattrKey())
-	if err != nil {
-		return
-	}
-
-	mutableBody, err = newDoc.GetDeepMutableBody()
-	if err != nil {
-		return
-	}
-
-	err = validateNewBody(mutableBody)
-	if err != nil {
-		return
-	}
-
-	newRevID = newDoc.RevID
+	newRevID = revID
 
 	mutableBody[BodyId] = doc.ID
 	mutableBody[BodyRev] = newRevID
-	if newDoc.Deleted {
-		mutableBody[BodyDeleted] = true
-	}
 
 	return
 }
@@ -2287,7 +2258,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	//
 	//var curBody Body
 	//err = curBody.Unmarshal(curBodyBytes)
-	curBody, _, _, err := db.prepareDocForSyncFn(ctx, doc, doc.Body(ctx), doc.GetRevTreeID(), true, false)
+	curBody, _, _, err := db.prepareDocForSyncFn(ctx, doc, nil, doc.GetRevTreeID(), true, false)
 	if err != nil {
 		return
 	}
@@ -2548,8 +2519,6 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	if err != nil {
 		return
 	}
-
-	//mutableBody, metaMap, newRevID, err := col.prepareSyncFn(doc, newDoc)
 
 	mutableBody, metaMap, newRevID, err := col.prepareDocForSyncFn(ctx, doc, mutableBodyForSyncFn, newDoc.RevID, false, newDoc.Deleted)
 	if err != nil {

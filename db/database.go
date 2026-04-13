@@ -1768,7 +1768,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		//delete(body, BodyAttachments)
 		//delete(body, BodyRevisions)
 
-		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, doc.Body(ctx), rev.ID, true, false)
+		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, nil, rev.ID, true, false)
 
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
