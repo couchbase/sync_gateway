@@ -2223,21 +2223,10 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
 
-	//curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
-	//if err != nil {
-	//	return
-	//}
-	//
-	//var curBody Body
-	//err = curBody.Unmarshal(curBodyBytes)
 	curBody, _, _, err := db.prepareDocForSyncFn(ctx, doc, nil, doc.GetRevTreeID(), true, false)
 	if err != nil {
 		return
 	}
-
-	// removing _attachments, as attachments are not required to be passed
-	// into sync function
-	//delete(curBody, BodyAttachments)
 
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
