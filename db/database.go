@@ -1750,23 +1750,25 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
 	doc.History.forEachLeaf(func(rev *RevInfo) {
-		bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
-		if err != nil {
-			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
-		}
-		var body Body
-		if err := body.Unmarshal(bodyBytes); err != nil {
-			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-			return
-		}
-		metaMap, err := doc.GetMetaMap(db.UserXattrKey())
-		if err != nil {
-			return
-		}
+		//bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
+		//if err != nil {
+		//	base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+		//}
+		//var body Body
+		//if err := body.Unmarshal(bodyBytes); err != nil {
+		//	base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+		//	return
+		//}
+		//metaMap, err := doc.GetMetaMap(db.UserXattrKey())
+		//if err != nil {
+		//	return
+		//}
+		//
+		//// removing the following fields as these fields are not required for sync function
+		//delete(body, BodyAttachments)
+		//delete(body, BodyRevisions)
 
-		// removing the following fields as these fields are not required for sync function
-		delete(body, BodyAttachments)
-		delete(body, BodyRevisions)
+		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, doc.Body(ctx), rev.ID, true, false)
 
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
