@@ -2189,18 +2189,20 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 		if ancestorRev, ok := doc.History[ancestorRevID]; ok && ancestorRev != nil && ancestorRev.Deleted {
 			mutableBody[BodyDeleted] = true
 		}
+		newRevID = ancestorRevID
 	} else {
 		err = validateNewBody(body)
 		if err != nil {
 			return
 		}
 		mutableBody = body.DeepCopy(ctx)
+		newRevID = revID
 		if tombstone {
 			mutableBody[BodyDeleted] = true
 		}
 	}
 
-	newRevID = revID
+	//newRevID = revID
 
 	mutableBody[BodyId] = doc.ID
 	mutableBody[BodyRev] = newRevID
