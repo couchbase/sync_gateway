@@ -1752,6 +1752,10 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	doc.History.forEachLeaf(func(rev *RevInfo) {
 
 		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, nil, rev.ID, true, false)
+		if err != nil {
+			base.WarnfCtx(ctx, "Unable to prepare doc for rev %d: %v", rev.ID, err)
+			return
+		}
 
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
