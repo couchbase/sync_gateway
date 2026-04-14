@@ -393,7 +393,7 @@ const (
 const (
 	ImportCancelCASDesc = "The total number of imports cancelled due to cas failure."
 
-	ImportCountDesc = "The total number of docs imported."
+	ImportCountDesc = "The total number of docs imported across all collections in the bucket. For a per-collection breakdown see the collection-scoped import_count."
 
 	ImportErrorCountDesc = "The total number of errors arising as a result of a document import."
 
