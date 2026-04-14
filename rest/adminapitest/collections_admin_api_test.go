@@ -320,12 +320,13 @@ func TestRequireResync(t *testing.T) {
 
 // getDBConfigCas looks at the db config in the bucket and returns the cas value for a database
 func getDBConfigCas(rt *rest.RestTester, dbName string) uint64 {
+	var config rest.DatabaseConfig
 	cas, err := rt.ServerContext().BootstrapContext.GetConfig(
 		rt.Context(),
 		rt.Bucket().GetName(),
 		rt.ServerContext().Config.Bootstrap.ConfigGroupID,
 		dbName,
-		nil,
+		&config,
 	)
 	require.NoError(rt.TB(), err)
 	require.NotZero(rt.TB(), cas)
