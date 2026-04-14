@@ -2195,14 +2195,12 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 		if err != nil {
 			return
 		}
-		mutableBody = body.DeepCopy(ctx)
+		mutableBody = body
 		newRevID = revID
 		if tombstone {
 			mutableBody[BodyDeleted] = true
 		}
 	}
-
-	//newRevID = revID
 
 	mutableBody[BodyId] = doc.ID
 	mutableBody[BodyRev] = newRevID
@@ -2476,7 +2474,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	// Ensure _rawBody is initialized for downstream revision backup paths, and use
+	// Ensure _rawBody is initialized for downstream paths, and use
 	// the raw-body-backed mutable body to preserve previous validation behavior.
 	mutableBodyForSyncFn, err := newDoc.GetDeepMutableBody()
 	if err != nil {
