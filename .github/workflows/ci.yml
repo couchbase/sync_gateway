@@ -248,21 +248,24 @@ jobs:
         with:
           go-version: *go_version
       - name: Build
-        run: go build -v "./tools/stats-definition-exporter"
+        working-directory: tools/stats-definition-exporter
+        run: go build -v ./...
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
+        working-directory: tools/stats-definition-exporter
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 ./...
         shell: bash
       - name: Test Summary
         if: always()
         shell: bash
-        run: .github/scripts/test-summary.sh
+        working-directory: tools/stats-definition-exporter
+        run: ${{ github.workspace }}/.github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
         uses: *go_test_annotations_version
         with:
-          test-results: test.json
+          test-results: tools/stats-definition-exporter/test.json
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool
