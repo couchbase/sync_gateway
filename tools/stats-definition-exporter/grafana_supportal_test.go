@@ -108,19 +108,21 @@ func TestSupportalExprGeneration(t *testing.T) {
 	require.NotNil(t, dbScopedPanel, "should find database-scoped stat panel")
 	require.NotNil(t, collectionPanel, "should find collection-scoped stat panel")
 
-	// Verify global stat expression
+	// Verify global stat expression. Check for `$endpoint`/`$collection` rather than
+	// the bare label names, since a metric name itself can contain those words
+	// (e.g. `database_config_collection_conflicts`).
 	require.Len(t, globalPanel.Targets, 1)
 	assert.Contains(t, globalPanel.Targets[0].Expr, `databaseUuid="$databaseUuid"`)
 	assert.Contains(t, globalPanel.Targets[0].Expr, `nodeHostname=~"$nodeHostname"`)
-	assert.NotContains(t, globalPanel.Targets[0].Expr, "endpoint")
-	assert.NotContains(t, globalPanel.Targets[0].Expr, "collection")
+	assert.NotContains(t, globalPanel.Targets[0].Expr, "$endpoint")
+	assert.NotContains(t, globalPanel.Targets[0].Expr, "$collection")
 	assert.Equal(t, "{{nodeHostname}}", globalPanel.Targets[0].LegendFormat)
 
 	// Verify database-scoped stat expression
 	require.Len(t, dbScopedPanel.Targets, 1)
 	assert.Contains(t, dbScopedPanel.Targets[0].Expr, `databaseUuid="$databaseUuid"`)
 	assert.Contains(t, dbScopedPanel.Targets[0].Expr, `database=~"$endpoint"`)
-	assert.NotContains(t, dbScopedPanel.Targets[0].Expr, "collection")
+	assert.NotContains(t, dbScopedPanel.Targets[0].Expr, "$collection")
 	assert.Equal(t, "{{nodeHostname}} {{database}}", dbScopedPanel.Targets[0].LegendFormat)
 
 	// Verify collection-scoped stat expression and legend
