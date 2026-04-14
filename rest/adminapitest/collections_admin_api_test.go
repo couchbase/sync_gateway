@@ -11,8 +11,8 @@ package adminapitest
 import (
 	"fmt"
 	"net/http"
-	"slices"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -233,41 +233,46 @@ func TestRequireResync(t *testing.T) {
 	resp = rt.CreateDatabase(db2Name, db2Config)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
+	dbConfigCas1 := getDBConfigCas(rt, db2Name)
+
 	// Get status, verify offline
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	dbRootResponse := rest.DatabaseRoot{}
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	dbRootResponse := rt.GetDatabaseRoot(db2Name)
 	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
 	require.Equal(t, []string{scopeAndCollection1Name.String()}, dbRootResponse.RequireResync)
 
 	// Call _online, verify it doesn't override offline when resync is still required.
-	// The online call is async, but subsequent get to status should remain offline
 	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOffline])
 
+	// The status will transition from: offline -> starting -> offline, so wait for requireResync: true and offline state.
+	//
+	// - /db/_online transitions state to Starting
+	// - Database written to bucket with a new cas value
+	// - requiresResync is set to true
+	// - Database transitions back to Offline
 	needsResync := []string{scope + "." + collection1}
-	rest.WaitAndAssertCondition(t, func() bool {
-		resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-		dbRootResponse = rest.DatabaseRoot{}
-		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-		return slices.Equal(needsResync, dbRootResponse.RequireResync)
-	}, "expected %+v but got %+v for requireResync", needsResync, dbRootResponse.RequireResync)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, dbConfigCas1, getDBConfigCas(rt, db2Name))
+		assert.False(c, rt.ServerContext().DatabaseInitManager.HasActiveInitialization(db2Name))
+		dbRootResponse := rt.GetDatabaseRoot(db2Name)
+		assert.Equal(c, needsResync, dbRootResponse.RequireResync)
+		assert.Equal(c, db.RunStateString[db.DBOffline], dbRootResponse.State)
+	}, 10*time.Second, 50*time.Millisecond)
 
-	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	var allDBsSummary []rest.DbSummary
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &allDBsSummary))
-	require.Len(t, allDBsSummary, 2)
-	// databases sorted alphabetically
-	require.Equal(t, db1Name, allDBsSummary[0].DBName)
-	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
-	require.Equal(t, false, allDBsSummary[0].RequireResync)
-	require.Equal(t, db2Name, allDBsSummary[1].DBName)
-	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
-	require.Equal(t, true, allDBsSummary[1].RequireResync)
+	allDBsSummary := rt.GetAllDBsVerbose()
+	require.Equal(t, []rest.DbSummary{
+		rest.DbSummary{
+			DBName: db1Name,
+			Bucket: rt.Bucket().GetName(),
+			State:  db.RunStateString[db.DBOnline],
+		},
+		rest.DbSummary{
+			DBName:        db2Name,
+			Bucket:        rt.Bucket().GetName(),
+			State:         db.RunStateString[db.DBOffline],
+			RequireResync: true,
+		},
+	}, allDBsSummary)
 
 	// Run resync for collection
 	resyncCollections := base.NewCollectionNames(scopeAndCollection1Name)
@@ -282,23 +287,23 @@ func TestRequireResync(t *testing.T) {
 	require.NoError(t, err)
 	db.RequireBackgroundManagerState(t, db2.ResyncManager, db.BackgroundProcessStateCompleted)
 
-	resp = rt.SendAdminRequest("GET", "/_all_dbs?verbose=true", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	allDBsSummary = nil
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &allDBsSummary))
-	require.Len(t, allDBsSummary, 2)
-	// databases sorted alphabetically
-	require.Equal(t, db1Name, allDBsSummary[0].DBName)
-	require.Equal(t, db.RunStateString[db.DBOnline], allDBsSummary[0].State)
-	require.Equal(t, false, allDBsSummary[0].RequireResync)
-	require.Equal(t, db2Name, allDBsSummary[1].DBName)
-	require.Equal(t, db.RunStateString[db.DBOffline], allDBsSummary[1].State)
-	require.Equal(t, false, allDBsSummary[1].RequireResync)
+	allDBsSummary = rt.GetAllDBsVerbose()
+	require.Equal(t, []rest.DbSummary{
+		rest.DbSummary{
+			DBName:        db1Name,
+			Bucket:        rt.Bucket().GetName(),
+			State:         db.RunStateString[db.DBOnline],
+			RequireResync: false,
+		},
+		rest.DbSummary{
+			DBName:        db2Name,
+			Bucket:        rt.Bucket().GetName(),
+			State:         db.RunStateString[db.DBOffline],
+			RequireResync: false,
+		},
+	}, allDBsSummary)
 
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	dbRootResponse = rest.DatabaseRoot{}
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	dbRootResponse = rt.GetDatabaseRoot(db2Name)
 	assert.Nil(t, dbRootResponse.RequireResync)
 
 	// Attempt online again, should now succeed
@@ -306,13 +311,23 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
 	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
 
-	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	dbRootResponse = rest.DatabaseRoot{}
-	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-	assert.Nil(t, dbRootResponse.RequireResync)
+	dbRootResponse = rt.GetDatabaseRoot(db2Name)
 	assert.Nil(t, dbRootResponse.RequireResync)
 
 	resp = rt.SendAdminRequest("GET", "/"+ks_db2_c1+"/testDoc1", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+}
+
+// getDBConfigCas looks at the db config in the bucket and returns the cas value for a database
+func getDBConfigCas(rt *rest.RestTester, dbName string) uint64 {
+	cas, err := rt.ServerContext().BootstrapContext.GetConfig(
+		rt.Context(),
+		rt.Bucket().GetName(),
+		rt.ServerContext().Config.Bootstrap.ConfigGroupID,
+		dbName,
+		nil,
+	)
+	require.NoError(rt.TB(), err)
+	require.NotZero(rt.TB(), cas)
+	return cas
 }
