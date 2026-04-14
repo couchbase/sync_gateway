@@ -23,7 +23,8 @@ func TestSupportalGrafanaDashboardGeneration(t *testing.T) {
 	stats := getTestStats(t)
 	config := supportalConfig
 
-	dashboard := generateGrafanaDashboard(stats, config)
+	dashboard, err := generateGrafanaDashboard(stats, config)
+	require.NoError(t, err)
 
 	// Verify dashboard metadata
 	require.NotNil(t, dashboard.Uid)
@@ -113,7 +114,8 @@ func TestSupportalExprGeneration(t *testing.T) {
 	require.NotEmpty(t, dbScopedStatName, "should find a database-scoped stat")
 	require.NotEmpty(t, collectionStatName, "should find a collection-scoped stat")
 
-	dashboard := generateGrafanaDashboard(stats, config)
+	dashboard, err := generateGrafanaDashboard(stats, config)
+	require.NoError(t, err)
 
 	globalPanel := findChildPanel(dashboard, config.metricPrefix+globalStatName)
 	dbScopedPanel := findChildPanel(dashboard, config.metricPrefix+dbScopedStatName)
@@ -206,7 +208,8 @@ func TestUnitMappingInPanels(t *testing.T) {
 
 	require.NotEmpty(t, bytesStatName, "should find a stat with bytes unit")
 
-	dashboard := generateGrafanaDashboard(stats, supportalConfig)
+	dashboard, err := generateGrafanaDashboard(stats, supportalConfig)
+	require.NoError(t, err)
 
 	panel := findChildPanel(dashboard, supportalConfig.metricPrefix+bytesStatName)
 	require.NotNil(t, panel, "should find panel for bytes stat")
@@ -233,7 +236,8 @@ func TestDescriptionFromHelp(t *testing.T) {
 
 	require.NotEmpty(t, statWithHelp, "should find a stat with help text")
 
-	dashboard := generateGrafanaDashboard(stats, supportalConfig)
+	dashboard, err := generateGrafanaDashboard(stats, supportalConfig)
+	require.NoError(t, err)
 
 	panel := findChildPanel(dashboard, supportalConfig.metricPrefix+statWithHelp)
 	require.NotNil(t, panel, "should find panel with help text")
@@ -244,7 +248,8 @@ func TestDescriptionFromHelp(t *testing.T) {
 
 func TestRowPanelStructure(t *testing.T) {
 	stats := getTestStats(t)
-	dashboard := generateGrafanaDashboard(stats, supportalConfig)
+	dashboard, err := generateGrafanaDashboard(stats, supportalConfig)
+	require.NoError(t, err)
 
 	// Verify all top-level panels are collapsed rows
 	require.NotEmpty(t, dashboard.Panels)

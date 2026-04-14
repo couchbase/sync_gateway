@@ -14,13 +14,28 @@ import (
 	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
 )
 
+// Capella Grafana datasource identifiers. These UIDs come from the Capella
+// Grafana instance provisioning and must match those UIDs for generated
+// dashboards to bind to the correct datasources at import time.
+const (
+	// capellaPrimaryDatasourceUID is the template-variable placeholder that
+	// resolves to the user-selected Prometheus/Thanos datasource at view time.
+	capellaPrimaryDatasourceUID = "${DataSource}"
+	// capellaThanosV2UID is the literal UID of the ThanosV2 datasource; it is
+	// the default value selected into the `DataSource` template variable.
+	capellaThanosV2UID = "P5766748FE00546FA"
+	// capellaGlobalPromUID is the literal UID of the global (cluster-discovery)
+	// Prometheus datasource used to populate cluster-scoped template variables.
+	capellaGlobalPromUID = "P5DCFC7561CCDE821"
+)
+
 var capellaConfig = grafanaFormatConfig{
 	metricPrefix:   "",
 	dashboardUID:   "sync-gateway-all-stats",
 	dashboardTitle: "Sync Gateway All Stats",
 	schemaVersion:  38,
 	datasourceType: "prometheus",
-	datasourceUID:  "${DataSource}",
+	datasourceUID:  capellaPrimaryDatasourceUID,
 	baseLegend:     "{{node}}",
 	baseSelector:   `databaseId="$databaseId",couchbaseNode=~"$couchbaseNode"`,
 	labelSelectors: []labelSelector{
@@ -50,7 +65,7 @@ var capellaConfig = grafanaFormatConfig{
 			Type("dashboard"),
 		sdkdashboard.NewAnnotationQueryBuilder().
 			Name("Show Restarts").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("${DataSource}")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaPrimaryDatasourceUID)}).
 			Enable(false).
 			Hide(false).
 			IconColor("#5794F2").
@@ -60,21 +75,21 @@ var capellaConfig = grafanaFormatConfig{
 		sdkdashboard.NewDatasourceVariableBuilder("DataSource").
 			Current(sdkdashboard.VariableOption{
 				Text:  sdkdashboard.StringOrArrayOfString{String: ptr("ThanosV2")},
-				Value: sdkdashboard.StringOrArrayOfString{String: ptr("P5766748FE00546FA")},
+				Value: sdkdashboard.StringOrArrayOfString{String: ptr(capellaThanosV2UID)},
 			}).
 			Type("prometheus").
 			Regex("(ThanosV2|Thanos)"),
 		sdkdashboard.NewQueryVariableBuilder("databaseId").
 			Label("Cluster").
 			Description("UUID of the cluster").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("P5DCFC7561CCDE821")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaGlobalPromUID)}).
 			Definition("label_values(sgw_up,databaseId)").
 			Query(varQueryPrometheus("label_values(sgw_up,databaseId)")).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("couchbaseNode").
 			Label("SG Node").
 			Description("SG node by hostname").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("${DataSource}")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaPrimaryDatasourceUID)}).
 			Definition(`label_values(sgw_resource_utilization_uptime{databaseId="$databaseId"},couchbaseNode)`).
 			Query(varQueryPrometheus(`label_values(sgw_resource_utilization_uptime{databaseId="$databaseId"},couchbaseNode)`)).
 			Current(selectAll()).
@@ -82,7 +97,7 @@ var capellaConfig = grafanaFormatConfig{
 			Multi(true).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("endpoint").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("${DataSource}")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaPrimaryDatasourceUID)}).
 			Definition(`label_values(sgw_database_doc_writes_bytes{databaseId="$databaseId"},database)`).
 			Query(varQueryPrometheus(`label_values(sgw_database_doc_writes_bytes{databaseId="$databaseId"},database)`)).
 			Current(selectAll()).
@@ -90,7 +105,7 @@ var capellaConfig = grafanaFormatConfig{
 			Multi(true).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("collection").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("${DataSource}")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaPrimaryDatasourceUID)}).
 			Definition(`label_values(sgw_collection_sync_function_count{databaseId="$databaseId"},collection)`).
 			Query(varQueryPrometheus(`label_values(sgw_collection_sync_function_count{databaseId="$databaseId"},collection)`)).
 			Current(selectAll()).
@@ -98,7 +113,7 @@ var capellaConfig = grafanaFormatConfig{
 			Multi(true).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("syncgatewayId").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("P5DCFC7561CCDE821")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(capellaGlobalPromUID)}).
 			Definition(`label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`).
 			Query(varQueryPrometheus(`label_values(sgw_up{databaseId=~"$databaseId"},syncgatewayId)`)).
 			Hide(sdkdashboard.VariableHideHideVariable).

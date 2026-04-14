@@ -100,7 +100,8 @@ func TestBuildExprCapellaLabelReplace(t *testing.T) {
 func TestGenerateDashboardEmptyStats(t *testing.T) {
 	// Empty stats should still produce a valid dashboard shell — all
 	// annotations / template vars intact — just with zero row panels.
-	d := generateGrafanaDashboard(statDefinitions{}, supportalConfig)
+	d, err := generateGrafanaDashboard(statDefinitions{}, supportalConfig)
+	require.NoError(t, err)
 	assert.Empty(t, d.Panels)
 	assert.NotEmpty(t, d.Templating.List)
 	require.NotNil(t, d.Uid)

@@ -14,12 +14,17 @@ import (
 	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
 )
 
+// Supportal Grafana datasource identifier. This UID must match the
+// Prometheus/Mimir datasource provisioned in the Supportal Grafana instance
+// for imported dashboards to bind correctly.
+const supportalPromDatasourceUID = "mimir"
+
 var supportalConfig = grafanaFormatConfig{
 	metricPrefix:   "parsed_",
 	dashboardUID:   "sync-gateway-all",
 	dashboardTitle: "Sync Gateway All",
 	datasourceType: "prometheus",
-	datasourceUID:  "mimir",
+	datasourceUID:  supportalPromDatasourceUID,
 	baseLegend:     "{{nodeHostname}}",
 	baseSelector:   `databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"`,
 	labelSelectors: []labelSelector{
@@ -41,7 +46,7 @@ var supportalConfig = grafanaFormatConfig{
 			Type("dashboard"),
 		sdkdashboard.NewAnnotationQueryBuilder().
 			Name("Show Restarts").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(supportalPromDatasourceUID)}).
 			Enable(false).
 			Hide(false).
 			IconColor("#5794F2").
@@ -51,14 +56,14 @@ var supportalConfig = grafanaFormatConfig{
 		sdkdashboard.NewQueryVariableBuilder("databaseUuid").
 			Label("Cluster").
 			Description("UUID of the cluster").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(supportalPromDatasourceUID)}).
 			Definition("label_values(databaseUuid)").
 			Query(varQueryPrometheus("label_values(databaseUuid)")).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("nodeHostname").
 			Label("SG Node").
 			Description("SG node by hostname").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(supportalPromDatasourceUID)}).
 			Definition(`label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`).
 			Query(varQueryPrometheus(`label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`)).
 			Current(selectAll()).
@@ -66,7 +71,7 @@ var supportalConfig = grafanaFormatConfig{
 			Multi(true).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("endpoint").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(supportalPromDatasourceUID)}).
 			Definition(`label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`).
 			Query(varQueryPrometheus(`label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`)).
 			Current(selectAll()).
@@ -74,7 +79,7 @@ var supportalConfig = grafanaFormatConfig{
 			Multi(true).
 			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 		sdkdashboard.NewQueryVariableBuilder("collection").
-			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr(supportalPromDatasourceUID)}).
 			Definition(`label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`).
 			Query(varQueryPrometheus(`label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`)).
 			Current(selectAll()).

@@ -159,7 +159,7 @@ func selectAll() sdkdashboard.VariableOption {
 }
 
 // generateGrafanaDashboard creates a Grafana dashboard from stat definitions.
-func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) sdkdashboard.Dashboard {
+func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) (sdkdashboard.Dashboard, error) {
 	datasource := common.DataSourceRef{
 		Type: ptr(config.datasourceType),
 		Uid:  ptr(config.datasourceUID),
@@ -195,14 +195,12 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 
 	d, err := b.Build()
 	if err != nil {
-		// Builder errors indicate a programmer mistake in this file, not bad
-		// user input; panicking is the simplest way to surface them.
-		panic(err)
+		return sdkdashboard.Dashboard{}, fmt.Errorf("build dashboard %q: %w", config.dashboardUID, err)
 	}
 	if config.schemaVersion != 0 {
 		d.SchemaVersion = config.schemaVersion
 	}
-	return d
+	return d, nil
 }
 
 // createPanel creates a single timeseries panel builder for a stat. Grid
@@ -273,7 +271,10 @@ func legendForLabels(labels []string, config grafanaFormatConfig) string {
 
 // writeGrafanaDashboard writes the Grafana dashboard JSON to the writer.
 func writeGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig, writer io.Writer) error {
-	dashboard := generateGrafanaDashboard(stats, config)
+	dashboard, err := generateGrafanaDashboard(stats, config)
+	if err != nil {
+		return err
+	}
 
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "\t")

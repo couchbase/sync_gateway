@@ -22,7 +22,8 @@ func TestCapellaGrafanaDashboardGeneration(t *testing.T) {
 	stats := getTestStats(t)
 	config := capellaConfig
 
-	dashboard := generateGrafanaDashboard(stats, config)
+	dashboard, err := generateGrafanaDashboard(stats, config)
+	require.NoError(t, err)
 
 	// Verify dashboard metadata
 	require.NotNil(t, dashboard.Uid)
@@ -92,7 +93,8 @@ func TestCapellaExprGeneration(t *testing.T) {
 	require.NotEmpty(t, dbScopedStatName, "should find a database-scoped stat")
 	require.NotEmpty(t, collectionStatName, "should find a collection-scoped stat")
 
-	dashboard := generateGrafanaDashboard(stats, config)
+	dashboard, err := generateGrafanaDashboard(stats, config)
+	require.NoError(t, err)
 
 	globalPanel := findChildPanel(dashboard, globalStatName)
 	dbScopedPanel := findChildPanel(dashboard, dbScopedStatName)
