@@ -342,6 +342,12 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_all_dbs",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs, handlerOptions{sgcollect: true})).Methods("GET", "HEAD")
 
+	// Rosmar bucket management API
+	if sc.Config.Unsupported.RosmarBucketManagement != nil && *sc.Config.Unsupported.RosmarBucketManagement {
+		r.Handle("/_rosmar/", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleRosmarGet)).Methods("GET")
+		r.Handle("/_rosmar/{bucketkeyspace}", makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleRosmarDelete)).Methods("DELETE")
+	}
+
 	return r
 }
 

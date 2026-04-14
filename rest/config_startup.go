@@ -166,6 +166,7 @@ type UnsupportedConfig struct {
 	DiagnosticInterface     string                   `json:"diagnostic_interface,omitempty"    help:"Network interface to bind diagnostic API to"`
 	EffectiveUserHeaderName *string                  `json:"effective_user_header_name,omitempty" help:"HTTP header name to get effective user id from"`
 	AuditInfoProvider       *AuditInfoProviderConfig `json:"audit_info_provider,omitempty"     help:"Configuration for audit info provider"`
+	RosmarBucketManagement  *bool                    `json:"rosmar_bucket_management,omitempty" help:"Enable Rosmar bucket management REST API"`
 }
 
 type AuditInfoProviderConfig struct {

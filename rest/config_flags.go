@@ -163,7 +163,9 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.audit_info_provider.global_info_env_var_name": {config: &config.Unsupported.AuditInfoProvider.GlobalInfoEnvVarName, flagValue: fs.String("unsupported.audit_info_provider.global_info_env_var_name", "", "Environment variable name to get global audit event info from")},
 		"unsupported.audit_info_provider.request_info_header_name": {config: &config.Unsupported.AuditInfoProvider.RequestInfoHeaderName, flagValue: fs.String("unsupported.audit_info_provider.request_info_header_name", "", "Header name to get request audit event info from")},
 		"unsupported.effective_user_header_name":                   {config: &config.Unsupported.EffectiveUserHeaderName, flagValue: fs.String("unsupported.effective_user_header_name", "", "HTTP header name to get effective user id from")},
-
+		"unsupported.rosmar_bucket_management": {
+			config: &config.Unsupported.RosmarBucketManagement, flagValue: fs.Bool("unsupported.rosmar_bucket_management", false, "Allow API to manage rosmar buckets"),
+		},
 		// Note: These flags are X.509-only. Username/passwords are rejected if specified, as we are not allowing them to be used in the command line flags, only the config file.
 		"database_credentials": {config: &config.DatabaseCredentials, flagValue: fs.String("database_credentials", "null", "JSON-encoded per-database credentials (X.509 only), that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {config: &config.BucketCredentials, flagValue: fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials (X.509 only), that can be used instead of the bootstrap ones.")},

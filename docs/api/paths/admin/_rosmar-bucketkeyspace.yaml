@@ -1,0 +1,33 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+delete:
+  x-internal: true
+  summary: Delete a Rosmar bucket, scope, or collection
+  description: |-
+    Deletes the specified bucket, scope, or collection in the connected Rosmar server.
+    The resource must follow one of these formats: 'bucket', 'bucket.scope', or 'bucket.scope.collection'.
+
+    Deleting a non existing bucket or collection will 404 but deleting a non existing collection returns 200.
+  parameters:
+    - name: bucketkeyspace
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    '200':
+      description: Successfully deleted the bucket, scope, or collection
+    '400':
+      description: Invalid bucketkeyspace format, or server is not a Rosmar bucket, or requires persistent config
+    '404':
+      description: The specified bucket or scope was not found
+    '500':
+      description: Internal Server Error
+  tags:
+    - Unsupported
+  operationId: delete__rosmar_bucketkeyspace
