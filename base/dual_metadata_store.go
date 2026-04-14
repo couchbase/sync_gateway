@@ -121,7 +121,7 @@ func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32
 
 func (ms *MetadataStore) Exists(k string) (exists bool, err error) {
 	exists, err = ms.primary.Exists(k)
-	if err != nil && !ms.readFromFallback(nil, err) {
+	if err != nil && !ms.readFromFallback(context.TODO(), err) {
 		return false, err
 	}
 	if exists || ms.migrationComplete.Load() {
