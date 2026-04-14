@@ -10,36 +10,50 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
+
+	"github.com/grafana/grafana-foundation-sdk/go/cog"
+	"github.com/grafana/grafana-foundation-sdk/go/common"
+	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
+	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
+	"github.com/grafana/grafana-foundation-sdk/go/timeseries"
 )
 
-// grafanaFormatConfig holds the configuration for generating a Grafana dashboard
+// The dashboard generator uses builders from the official
+// grafana-foundation-sdk (github.com/grafana/grafana-foundation-sdk/go). See
+// that module's package docs for the authoritative schema of each type.
+
+// grafanaFormatConfig holds the configuration for generating a Grafana dashboard.
 type grafanaFormatConfig struct {
-	MetricPrefix   string // Prefix to add to metric names (e.g., "parsed_" for supportal)
-	DashboardUID   string
-	DashboardTitle string
-	SchemaVersion  int
-	PluginVersion  string
-	DatasourceType string
-	DatasourceUID  string
-	annotations    []annotation
-	templateVars   []templateVariable
-	BaseLegend     string // Legend format for stats with no extra labels
-	BaseSelector   string // Label selector applied to all stats (with variable placeholders)
-	// LabelSelectors defines the additional selector fragment and legend suffix
+	metricPrefix   string // Prefix to add to metric names (e.g., "parsed_" for supportal)
+	dashboardUID   string
+	dashboardTitle string
+	schemaVersion  uint16 // Grafana dashboard JSON schema version to pin (0 = SDK default).
+	datasourceType string
+	datasourceUID  string
+	annotations    []*sdkdashboard.AnnotationQueryBuilder
+	templateVars   []cog.Builder[sdkdashboard.VariableModel]
+	baseLegend     string // Legend format for stats with no extra labels
+	baseSelector   string // Label selector applied to all stats (with variable placeholders)
+	// labelSelectors defines the additional selector fragment and legend suffix
 	// for each Prometheus label, in the order they should appear in legends.
-	LabelSelectors []labelSelector
-	// LabelReplaces defines label_replace() calls to wrap around the PromQL expression.
+	labelSelectors []labelSelector
+	// labelReplaces defines label_replace() calls to wrap around the PromQL expression.
 	// Applied in order, outermost last.
-	LabelReplaces []labelReplace
+	labelReplaces []labelReplace
 }
 
 // labelSelector defines the additional PromQL selector and legend text for a label.
+// An empty Selector is legal and means "append to legend but do not filter"; this
+// is used for labels (e.g. "replication") that have no matching template
+// variable on the dashboard, so we surface them in legends without trying to
+// filter by them.
 type labelSelector struct {
 	Label    string // Prometheus label name to match (e.g. "database", "collection")
-	Selector string // e.g. `,database=~"$endpoint"`
+	Selector string // e.g. `,database=~"$endpoint"`; empty = legend only, no filter
 	Legend   string // e.g. " {{database}}"
 }
 
@@ -51,279 +65,12 @@ type labelReplace struct {
 	Regex       string // regex to apply to source label
 }
 
-// annotation represents a Grafana dashboard annotation
-type annotation struct {
-	BuiltIn     int           `json:"builtIn,omitempty"`
-	Datasource  datasourceRef `json:"datasource,omitempty"`
-	Enable      bool          `json:"enable"`
-	Hide        bool          `json:"hide"`
-	IconColor   string        `json:"iconColor,omitempty"`
-	Name        string        `json:"name,omitempty"`
-	Expr        string        `json:"expr,omitempty"`
-	TextFormat  string        `json:"textFormat,omitempty"`
-	TitleFormat string        `json:"titleFormat,omitempty"`
-	Type        string        `json:"type,omitempty"`
-}
-
-// dashboard represents a Grafana dashboard
-type dashboard struct {
-	Annotations   annotations `json:"annotations"`
-	Editable      bool        `json:"editable"`
-	FiscalYear    int         `json:"fiscalYearStartMonth"`
-	GraphTooltip  int         `json:"graphTooltip"`
-	Links         []link      `json:"links,omitempty"`
-	Panels        []panel     `json:"panels"`
-	Preload       bool        `json:"preload"`
-	Refresh       string      `json:"refresh"`
-	SchemaVersion int         `json:"schemaVersion"`
-	Tags          []string    `json:"tags"`
-	Templating    templating  `json:"templating"`
-	Time          timeRange   `json:"time"`
-	Timepicker    timepicker  `json:"timepicker"`
-	Timezone      string      `json:"timezone"`
-	Title         string      `json:"title"`
-	UID           string      `json:"uid"`
-	Version       int         `json:"version,omitempty"`
-	WeekStart     string      `json:"weekStart"`
-}
-
-// annotations contains the list of annotations
-type annotations struct {
-	List []annotation `json:"list"`
-}
-
-// link represents a dashboard link
-type link struct {
-	AsDropdown  bool     `json:"asDropdown"`
-	Icon        string   `json:"icon"`
-	IncludeVars bool     `json:"includeVars"`
-	KeepTime    bool     `json:"keepTime"`
-	Tags        []string `json:"tags,omitempty"`
-	TargetBlank bool     `json:"targetBlank"`
-	Title       string   `json:"title"`
-	Tooltip     string   `json:"tooltip"`
-	Type        string   `json:"type"`
-	URL         string   `json:"url"`
-}
-
-// panel represents a Grafana panel (timeseries or row)
-type panel struct {
-	Collapsed     *bool          `json:"collapsed,omitempty"`
-	Datasource    *datasourceRef `json:"datasource,omitempty"`
-	Description   string         `json:"description,omitempty"`
-	FieldConfig   *fieldConfig   `json:"fieldConfig,omitempty"`
-	GridPos       gridPos        `json:"gridPos"`
-	ID            int            `json:"id"`
-	Options       *panelOptions  `json:"options,omitempty"`
-	Panels        []panel        `json:"panels,omitempty"`
-	PluginVersion string         `json:"pluginVersion,omitempty"`
-	Targets       []target       `json:"targets,omitempty"`
-	Title         string         `json:"title"`
-	Type          string         `json:"type"`
-}
-
-// datasourceRef is a reference to a datasource
-type datasourceRef struct {
-	Type    string `json:"type"`
-	UID     string `json:"uid"`
-	Default bool   `json:"default,omitempty"`
-}
-
-// fieldConfig contains field configuration
-type fieldConfig struct {
-	Defaults  fieldDefaults `json:"defaults"`
-	Overrides []override    `json:"overrides"`
-}
-
-// fieldDefaults contains default field settings
-type fieldDefaults struct {
-	Color      colorConfig   `json:"color"`
-	Custom     customConfig  `json:"custom"`
-	Mappings   []interface{} `json:"mappings"`
-	Thresholds thresholds    `json:"thresholds"`
-	Unit       string        `json:"unit"`
-}
-
-// colorConfig contains color settings
-type colorConfig struct {
-	Mode string `json:"mode"`
-}
-
-// customConfig contains custom visualization settings
-type customConfig struct {
-	AxisBorderShow    bool            `json:"axisBorderShow"`
-	AxisCenteredZero  bool            `json:"axisCenteredZero"`
-	AxisColorMode     string          `json:"axisColorMode"`
-	AxisLabel         string          `json:"axisLabel"`
-	AxisPlacement     string          `json:"axisPlacement"`
-	BarAlignment      int             `json:"barAlignment"`
-	BarWidthFactor    float64         `json:"barWidthFactor,omitempty"`
-	DrawStyle         string          `json:"drawStyle"`
-	FillOpacity       int             `json:"fillOpacity"`
-	GradientMode      string          `json:"gradientMode"`
-	HideFrom          hideFrom        `json:"hideFrom"`
-	InsertNulls       bool            `json:"insertNulls"`
-	LineInterpolation string          `json:"lineInterpolation"`
-	LineWidth         int             `json:"lineWidth"`
-	PointSize         int             `json:"pointSize"`
-	ScaleDistribution scaleDist       `json:"scaleDistribution"`
-	ShowPoints        string          `json:"showPoints"`
-	ShowValues        bool            `json:"showValues"`
-	SpanNulls         bool            `json:"spanNulls"`
-	Stacking          stacking        `json:"stacking"`
-	ThresholdsStyle   thresholdsStyle `json:"thresholdsStyle"`
-}
-
-// hideFrom contains hide settings
-type hideFrom struct {
-	Legend  bool `json:"legend"`
-	Tooltip bool `json:"tooltip"`
-	Viz     bool `json:"viz"`
-}
-
-// scaleDist contains scale distribution settings
-type scaleDist struct {
-	Type string `json:"type"`
-}
-
-// stacking contains stacking settings
-type stacking struct {
-	Group string `json:"group"`
-	Mode  string `json:"mode"`
-}
-
-// thresholdsStyle contains thresholds style settings
-type thresholdsStyle struct {
-	Mode string `json:"mode"`
-}
-
-// thresholds contains threshold settings
-type thresholds struct {
-	Mode  string          `json:"mode"`
-	Steps []thresholdStep `json:"steps"`
-}
-
-// thresholdStep is a single threshold step
-type thresholdStep struct {
-	Color string      `json:"color"`
-	Value interface{} `json:"value"`
-}
-
-// override contains field override settings
-type override struct {
-	Matcher    matcher    `json:"matcher"`
-	Properties []property `json:"properties"`
-}
-
-// matcher identifies which fields to override
-type matcher struct {
-	ID      string `json:"id"`
-	Options string `json:"options"`
-}
-
-// property contains override property settings
-type property struct {
-	ID    string      `json:"id"`
-	Value interface{} `json:"value"`
-}
-
-// gridPos contains panel grid position
-type gridPos struct {
-	H int `json:"h"`
-	W int `json:"w"`
-	X int `json:"x"`
-	Y int `json:"y"`
-}
-
-// panelOptions contains panel-specific options
-type panelOptions struct {
-	Legend  legendOptions  `json:"legend"`
-	Tooltip tooltipOptions `json:"tooltip"`
-}
-
-// legendOptions contains legend settings
-type legendOptions struct {
-	Calcs       []string `json:"calcs"`
-	DisplayMode string   `json:"displayMode"`
-	Placement   string   `json:"placement"`
-	ShowLegend  bool     `json:"showLegend"`
-}
-
-// tooltipOptions contains tooltip settings
-type tooltipOptions struct {
-	HideZeros bool   `json:"hideZeros,omitempty"`
-	Mode      string `json:"mode"`
-	Sort      string `json:"sort"`
-}
-
-// target represents a Prometheus query target
-type target struct {
-	Datasource   datasourceRef `json:"datasource"`
-	EditorMode   string        `json:"editorMode"`
-	Expr         string        `json:"expr"`
-	Instant      bool          `json:"instant"`
-	LegendFormat string        `json:"legendFormat"`
-	Range        bool          `json:"range"`
-	RefID        string        `json:"refId"`
-}
-
-// templating contains template variables
-type templating struct {
-	List []templateVariable `json:"list"`
-}
-
-// templateVariable represents a Grafana template variable
-type templateVariable struct {
-	Current     currentValue     `json:"current,omitempty"`
-	Datasource  datasourceRef    `json:"datasource,omitempty"`
-	Definition  string           `json:"definition,omitempty"`
-	Description string           `json:"description,omitempty"`
-	Hide        int              `json:"hide,omitempty"`
-	IncludeAll  bool             `json:"includeAll,omitempty"`
-	Label       string           `json:"label,omitempty"`
-	Multi       bool             `json:"multi,omitempty"`
-	Name        string           `json:"name"`
-	Options     []variableOption `json:"options,omitempty"`
-	Query       interface{}      `json:"query,omitempty"`
-	Refresh     int              `json:"refresh"`
-	Regex       string           `json:"regex,omitempty"`
-	Type        string           `json:"type"`
-}
-
-// currentValue represents the current value of a template variable
-type currentValue struct {
-	Text  string `json:"text"`
-	Value string `json:"value,omitempty"`
-}
-
-// variableOption represents an option for a template variable
-type variableOption struct {
-	Text     string `json:"text"`
-	Value    string `json:"value"`
-	Selected bool   `json:"selected,omitempty"`
-}
-
-// variableQuery represents a variable query
-type variableQuery struct {
-	Query   string `json:"query,omitempty"`
-	RefID   string `json:"refId,omitempty"`
-	QryType int    `json:"qryType,omitempty"`
-}
-
-// timeRange represents the dashboard time range
-type timeRange struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
-// timepicker contains time picker settings
-type timepicker struct {
-	RefreshIntervals []string `json:"refresh_intervals,omitempty"`
-}
-
-// unitMapping maps Sync Gateway stat units to Grafana units
+// unitMapping maps Sync Gateway stat units to Grafana units.
+// Stats without an explicit unit default to Grafana's "locale" unit, which
+// renders values with the viewer's locale-appropriate thousands separator
+// (e.g. 1,000,000 on en-US) instead of a single long run of digits.
 var unitMapping = map[string]string{
-	"":               "none",
+	"":               "locale",
 	"bytes":          "bytes",
 	"nanoseconds":    "ns",
 	"percent":        "percent",
@@ -331,15 +78,15 @@ var unitMapping = map[string]string{
 	"unix timestamp": "dateTimeAsIso",
 }
 
-// mapUnit converts a Sync Gateway unit to a Grafana unit
+// mapUnit converts a Sync Gateway unit to a Grafana unit.
 func mapUnit(sgUnit string) string {
 	if grafanaUnit, ok := unitMapping[sgUnit]; ok {
 		return grafanaUnit
 	}
-	return "none"
+	return "locale"
 }
 
-// hasLabel checks if the stat has a specific label
+// hasLabel checks if the stat has a specific label.
 func hasLabel(labels []string, label string) bool {
 	return slices.Contains(labels, label)
 }
@@ -354,7 +101,7 @@ func grafanaSubsystemName(subsystem string) string {
 	return subsystem
 }
 
-// statsBySubsystem groups stats by subsystem, returning ordered subsystem keys and a map of subsystem to sorted stat names
+// statsBySubsystem groups stats by subsystem, returning ordered subsystem keys and a map of subsystem to sorted stat names.
 func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 	grouped := make(map[string][]string)
 	for name, stat := range stats {
@@ -362,7 +109,6 @@ func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 		grouped[subsystem] = append(grouped[subsystem], name)
 	}
 
-	// Sort stat names within each subsystem
 	subsystems := make([]string, 0, len(grouped))
 	for subsystem, names := range grouped {
 		slices.Sort(names)
@@ -374,187 +120,133 @@ func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 	return subsystems, grouped
 }
 
-// generateGrafanaDashboard creates a Grafana dashboard from stat definitions
-func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) dashboard {
+// ptr returns a pointer to v — a small convenience for the few remaining
+// places a pointer literal is the most readable option.
+func ptr[T any](v T) *T { return &v }
+
+// describeStat produces the panel description text shown in the Grafana UI:
+// the stat's help text followed by a "---" separator and the Sync Gateway
+// version range the stat is available in.
+func describeStat(stat statDefinition) string {
+	desc := stat.Help
+	if stat.AddedVersion != "" {
+		desc += "\n---\nSGW " + stat.AddedVersion + "+"
+		if stat.DeprecatedVersion != "" {
+			desc += " (deprecated " + stat.DeprecatedVersion + ")"
+		}
+	}
+	return desc
+}
+
+// varQueryPrometheus wraps a raw PromQL variable query in the {query,refId}
+// shape Grafana's Prometheus variable editor persists.
+func varQueryPrometheus(query string) sdkdashboard.StringOrMap {
+	return sdkdashboard.StringOrMap{
+		Map: map[string]any{
+			"query": query,
+			"refId": "PrometheusVariableQueryEditor-variableQuery",
+		},
+	}
+}
+
+// selectAll returns a VariableOption pre-populated with Grafana's "All"
+// selection for multi-value template variables.
+func selectAll() sdkdashboard.VariableOption {
+	return sdkdashboard.VariableOption{
+		Text:  sdkdashboard.StringOrArrayOfString{String: ptr("All")},
+		Value: sdkdashboard.StringOrArrayOfString{String: ptr("$__all")},
+	}
+}
+
+// generateGrafanaDashboard creates a Grafana dashboard from stat definitions.
+func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) sdkdashboard.Dashboard {
+	datasource := common.DataSourceRef{
+		Type: ptr(config.datasourceType),
+		Uid:  ptr(config.datasourceUID),
+	}
+
+	b := sdkdashboard.NewDashboardBuilder(config.dashboardTitle).
+		Uid(config.dashboardUID).
+		Tags([]string{"Sync Gateway"}).
+		Tooltip(sdkdashboard.DashboardCursorSyncCrosshair).
+		Time("now-7d", "now").
+		Link(sdkdashboard.NewDashboardLinkBuilder("Sync Gateway").
+			Type(sdkdashboard.DashboardLinkTypeDashboards).
+			Icon("external link").
+			Tags([]string{"Sync Gateway"}).
+			IncludeVars(true).
+			KeepTime(true))
+
+	for _, a := range config.annotations {
+		b = b.Annotation(a)
+	}
+	for _, v := range config.templateVars {
+		b = b.WithVariable(v)
+	}
+
 	subsystems, grouped := statsBySubsystem(stats)
-
-	// Create panels grouped by subsystem with row panels
-	panels := make([]panel, 0, len(stats)+len(subsystems))
-	yPos := 0
-	panelID := 1
-
 	for _, subsystem := range subsystems {
-		statNames := grouped[subsystem]
-
-		// Create child panels for this subsystem
-		childPanels := make([]panel, 0, len(statNames))
-		childYPos := yPos + 1 // Child panels start after the row
-		for _, name := range statNames {
-			stat := stats[name]
-			panel := createPanel(name, stat, config, panelID, childYPos)
-			childPanels = append(childPanels, panel)
-			panelID++
-			childYPos += 8
+		row := sdkdashboard.NewRowBuilder(subsystem)
+		for _, name := range grouped[subsystem] {
+			row = row.WithPanel(createPanel(name, stats[name], datasource, config))
 		}
-
-		// Create the row panel (collapsed, containing child panels)
-		collapsed := true
-		rowPanel := panel{
-			Collapsed: &collapsed,
-			GridPos:   gridPos{H: 1, W: 24, X: 0, Y: yPos},
-			ID:        panelID,
-			Panels:    childPanels,
-			Title:     subsystem,
-			Type:      "row",
-		}
-		panels = append(panels, rowPanel)
-		panelID++
-		yPos++ // Row panels take 1 unit of height when collapsed
+		b = b.WithRow(row)
 	}
 
-	// Create dashboard
-	dashboard := dashboard{
-		Annotations:  annotations{List: config.annotations},
-		Editable:     true,
-		FiscalYear:   0,
-		GraphTooltip: 1,
-		Links: []link{
-			{
-				AsDropdown:  false,
-				Icon:        "external link",
-				IncludeVars: true,
-				KeepTime:    true,
-				Tags:        []string{"Sync Gateway"},
-				TargetBlank: false,
-				Title:       "Sync Gateway",
-				Type:        "dashboards",
-			},
-		},
-		Panels:        panels,
-		Preload:       false,
-		Refresh:       "",
-		SchemaVersion: config.SchemaVersion,
-		Tags:          []string{"Sync Gateway"},
-		Templating:    templating{List: config.templateVars},
-		Time:          timeRange{From: "now-7d", To: "now"},
-		Timepicker:    timepicker{},
-		Timezone:      "browser",
-		Title:         config.DashboardTitle,
-		UID:           config.DashboardUID,
-		WeekStart:     "",
+	d, err := b.Build()
+	if err != nil {
+		// Builder errors indicate a programmer mistake in this file, not bad
+		// user input; panicking is the simplest way to surface them.
+		panic(err)
 	}
-
-	return dashboard
+	if config.schemaVersion != 0 {
+		d.SchemaVersion = config.schemaVersion
+	}
+	return d
 }
 
-// createPanel creates a single panel for a stat
-func createPanel(name string, stat statDefinition, config grafanaFormatConfig, id int, yPos int) panel {
-	metricName := config.MetricPrefix + name
+// createPanel creates a single timeseries panel builder for a stat. Grid
+// position is left for the enclosing DashboardBuilder.WithRow to assign.
+func createPanel(name string, stat statDefinition, datasource common.DataSourceRef, config grafanaFormatConfig) *timeseries.PanelBuilder {
+	metricName := config.metricPrefix + name
 
-	// Build the Prometheus query expression
-	expr := buildExpr(metricName, stat, config)
+	b := timeseries.NewPanelBuilder().
+		Title(metricName).
+		Description(describeStat(stat)).
+		Datasource(datasource).
+		Span(24).
+		Height(8).
+		Unit(mapUnit(stat.Unit)).
+		ColorScheme(sdkdashboard.NewFieldColorBuilder().Mode(sdkdashboard.FieldColorModeIdPaletteClassic)).
+		Legend(common.NewVizLegendOptionsBuilder().
+			DisplayMode(common.LegendDisplayModeTable).
+			Placement(common.LegendPlacementRight).
+			ShowLegend(true)).
+		Tooltip(common.NewVizTooltipOptionsBuilder().
+			Mode(common.TooltipDisplayModeMulti).
+			Sort(common.SortOrderNone)).
+		WithTarget(prometheus.NewDataqueryBuilder().
+			RefId("A").
+			Expr(buildExpr(metricName, stat, config)).
+			LegendFormat(legendForLabels(stat.Labels, config)).
+			EditorMode(prometheus.QueryEditorModeCode).
+			Range())
 
-	// Determine legend format
-	legendFormat := legendForLabels(stat.Labels, config)
-
-	ds := datasourceRef{
-		Type: config.DatasourceType,
-		UID:  config.DatasourceUID,
+	// Force integer y-axis ticks for stats whose underlying values are whole numbers.
+	if stat.Format == "int" || stat.Format == "uint64" {
+		b = b.Decimals(0)
 	}
 
-	// Create the panel
-	panel := panel{
-		Datasource:  &ds,
-		Description: stat.Help,
-		FieldConfig: &fieldConfig{
-			Defaults: fieldDefaults{
-				Color: colorConfig{Mode: "palette-classic"},
-				Custom: customConfig{
-					AxisBorderShow:    false,
-					AxisCenteredZero:  false,
-					AxisColorMode:     "text",
-					AxisLabel:         "",
-					AxisPlacement:     "auto",
-					BarAlignment:      0,
-					BarWidthFactor:    0.6,
-					DrawStyle:         "line",
-					FillOpacity:       0,
-					GradientMode:      "none",
-					HideFrom:          hideFrom{Legend: false, Tooltip: false, Viz: false},
-					InsertNulls:       false,
-					LineInterpolation: "linear",
-					LineWidth:         1,
-					PointSize:         5,
-					ScaleDistribution: scaleDist{Type: "linear"},
-					ShowPoints:        "auto",
-					ShowValues:        false,
-					SpanNulls:         false,
-					Stacking:          stacking{Group: "A", Mode: "none"},
-					ThresholdsStyle:   thresholdsStyle{Mode: "off"},
-				},
-				Mappings: []interface{}{},
-				Thresholds: thresholds{
-					Mode: "absolute",
-					Steps: []thresholdStep{
-						{Color: "green", Value: nil},
-					},
-				},
-				Unit: mapUnit(stat.Unit),
-			},
-			Overrides: []override{},
-		},
-		GridPos: gridPos{
-			H: 8,
-			W: 24,
-			X: 0,
-			Y: yPos,
-		},
-		ID: id,
-		Options: &panelOptions{
-			Legend: legendOptions{
-				Calcs:       []string{},
-				DisplayMode: "table",
-				Placement:   "right",
-				ShowLegend:  true,
-			},
-			Tooltip: tooltipOptions{
-				HideZeros: false,
-				Mode:      "multi",
-				Sort:      "none",
-			},
-		},
-		Targets: []target{
-			{
-				Datasource: datasourceRef{
-					Type: config.DatasourceType,
-					UID:  config.DatasourceUID,
-				},
-				EditorMode:   "code",
-				Expr:         expr,
-				Instant:      false,
-				LegendFormat: legendFormat,
-				Range:        true,
-				RefID:        "A",
-			},
-		},
-		Title: metricName,
-		Type:  "timeseries",
-	}
-
-	if config.PluginVersion != "" {
-		panel.PluginVersion = config.PluginVersion
-	}
-
-	return panel
+	return b
 }
 
-// buildExpr constructs the Prometheus query expression
+// buildExpr constructs the Prometheus query expression.
 func buildExpr(metricName string, stat statDefinition, config grafanaFormatConfig) string {
 	var sb strings.Builder
 	sb.WriteString(metricName)
 	sb.WriteString("{")
-	sb.WriteString(config.BaseSelector)
-	for _, ls := range config.LabelSelectors {
+	sb.WriteString(config.baseSelector)
+	for _, ls := range config.labelSelectors {
 		if hasLabel(stat.Labels, ls.Label) && ls.Selector != "" {
 			sb.WriteString(ls.Selector)
 		}
@@ -562,16 +254,16 @@ func buildExpr(metricName string, stat statDefinition, config grafanaFormatConfi
 	sb.WriteString("}")
 
 	expr := sb.String()
-	for _, lr := range config.LabelReplaces {
-		expr = `label_replace(` + expr + `, "` + lr.DstLabel + `", "` + lr.Replacement + `", "` + lr.SrcLabel + `", "` + lr.Regex + `")`
+	for _, lr := range config.labelReplaces {
+		expr = fmt.Sprintf(`label_replace(%s, "%s", "%s", "%s", "%s")`, expr, lr.DstLabel, lr.Replacement, lr.SrcLabel, lr.Regex)
 	}
 	return expr
 }
 
-// legendForLabels builds the legend format string for a stat based on its labels
+// legendForLabels builds the legend format string for a stat based on its labels.
 func legendForLabels(labels []string, config grafanaFormatConfig) string {
-	legend := config.BaseLegend
-	for _, ls := range config.LabelSelectors {
+	legend := config.baseLegend
+	for _, ls := range config.labelSelectors {
 		if hasLabel(labels, ls.Label) {
 			legend += ls.Legend
 		}
@@ -579,16 +271,11 @@ func legendForLabels(labels []string, config grafanaFormatConfig) string {
 	return legend
 }
 
-// writeGrafanaDashboard writes the Grafana dashboard JSON to the writer
+// writeGrafanaDashboard writes the Grafana dashboard JSON to the writer.
 func writeGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig, writer io.Writer) error {
 	dashboard := generateGrafanaDashboard(stats, config)
 
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "\t")
-	err := encoder.Encode(dashboard)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return encoder.Encode(dashboard)
 }

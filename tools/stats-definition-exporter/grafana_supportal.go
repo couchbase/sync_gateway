@@ -8,91 +8,78 @@
 
 package main
 
+import (
+	"github.com/grafana/grafana-foundation-sdk/go/cog"
+	"github.com/grafana/grafana-foundation-sdk/go/common"
+	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
+)
+
 var supportalConfig = grafanaFormatConfig{
-	MetricPrefix:   "parsed_",
-	DashboardUID:   "sync-gateway-all",
-	DashboardTitle: "Sync Gateway All",
-	SchemaVersion:  42,
-	PluginVersion:  "12.4.2",
-	DatasourceType: "prometheus",
-	DatasourceUID:  "mimir",
-	BaseLegend:     "{{nodeHostname}}",
-	BaseSelector:   `databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"`,
-	LabelSelectors: []labelSelector{
+	metricPrefix:   "parsed_",
+	dashboardUID:   "sync-gateway-all",
+	dashboardTitle: "Sync Gateway All",
+	datasourceType: "prometheus",
+	datasourceUID:  "mimir",
+	baseLegend:     "{{nodeHostname}}",
+	baseSelector:   `databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"`,
+	labelSelectors: []labelSelector{
 		{Label: "database", Selector: `,database=~"$endpoint"`, Legend: " {{database}}"},
 		{Label: "collection", Selector: `,collection=~"$collection"`, Legend: " {{collection}}"},
+		// No Selector: there is no $replication template variable on the
+		// Supportal dashboard, so we only surface replication IDs in the
+		// legend and do not attempt to filter by them.
 		{Label: "replication", Legend: " {{replication}}"},
 	},
-	annotations: []annotation{
-		{
-			BuiltIn:    1,
-			Datasource: datasourceRef{Type: "grafana", UID: "-- Grafana --"},
-			Enable:     true,
-			Hide:       true,
-			IconColor:  "rgba(0, 211, 255, 1)",
-			Name:       "annotations & Alerts",
-			Type:       "dashboard",
-		},
-		{
-			Datasource:  datasourceRef{Type: "prometheus", UID: "mimir"},
-			Enable:      false,
-			Hide:        false,
-			IconColor:   "#5794F2",
-			Name:        "Show Restarts",
-			Expr:        `parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"} <= 1200000000000`,
-			TextFormat:  "SG Restart: {{nodeHostname}}",
-			TitleFormat: "SG Restart: {{nodeHostname}}",
-		},
+	annotations: []*sdkdashboard.AnnotationQueryBuilder{
+		sdkdashboard.NewAnnotationQueryBuilder().
+			Name("annotations & Alerts").
+			Datasource(common.DataSourceRef{Type: ptr("grafana"), Uid: ptr("-- Grafana --")}).
+			Enable(true).
+			Hide(true).
+			IconColor("rgba(0, 211, 255, 1)").
+			BuiltIn(1).
+			Type("dashboard"),
+		sdkdashboard.NewAnnotationQueryBuilder().
+			Name("Show Restarts").
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Enable(false).
+			Hide(false).
+			IconColor("#5794F2").
+			Expr(`parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"} <= 1200000000000`),
 	},
-	templateVars: []templateVariable{
-		{
-			Datasource:  datasourceRef{Type: "prometheus", UID: "mimir"},
-			Definition:  "label_values(databaseUuid)",
-			Description: "UUID of the cluster",
-			Label:       "Cluster",
-			Name:        "databaseUuid",
-			Options:     []variableOption{},
-			Query:       variableQuery{Query: "label_values(databaseUuid)", RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:     1,
-			Type:        "query",
-		},
-		{
-			Current:     currentValue{Text: "All", Value: "$__all"},
-			Datasource:  datasourceRef{Type: "prometheus", UID: "mimir"},
-			Definition:  `label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`,
-			Description: "SG node by hostname",
-			IncludeAll:  true,
-			Label:       "SG Node",
-			Multi:       true,
-			Name:        "nodeHostname",
-			Options:     []variableOption{},
-			Query:       variableQuery{Query: `label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:     1,
-			Type:        "query",
-		},
-		{
-			Current:    currentValue{Text: "All", Value: "$__all"},
-			Datasource: datasourceRef{Type: "prometheus", UID: "mimir"},
-			Definition: `label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`,
-			IncludeAll: true,
-			Multi:      true,
-			Name:       "endpoint",
-			Options:    []variableOption{},
-			Query:      variableQuery{Query: `label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:    1,
-			Type:       "query",
-		},
-		{
-			Current:    currentValue{Text: "All", Value: "$__all"},
-			Datasource: datasourceRef{Type: "prometheus", UID: "mimir"},
-			Definition: `label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`,
-			IncludeAll: true,
-			Multi:      true,
-			Name:       "collection",
-			Options:    []variableOption{},
-			Query:      variableQuery{Query: `label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`, RefID: "PrometheusVariableQueryEditor-variableQuery"},
-			Refresh:    1,
-			Type:       "query",
-		},
+	templateVars: []cog.Builder[sdkdashboard.VariableModel]{
+		sdkdashboard.NewQueryVariableBuilder("databaseUuid").
+			Label("Cluster").
+			Description("UUID of the cluster").
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Definition("label_values(databaseUuid)").
+			Query(varQueryPrometheus("label_values(databaseUuid)")).
+			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
+		sdkdashboard.NewQueryVariableBuilder("nodeHostname").
+			Label("SG Node").
+			Description("SG node by hostname").
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Definition(`label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`).
+			Query(varQueryPrometheus(`label_values(parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid"},nodeHostname)`)).
+			Current(selectAll()).
+			IncludeAll(true).
+			Multi(true).
+			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
+		sdkdashboard.NewQueryVariableBuilder("endpoint").
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Definition(`label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`).
+			Query(varQueryPrometheus(`label_values(parsed_sgw_database_doc_writes_bytes{databaseUuid="$databaseUuid"},database)`)).
+			Current(selectAll()).
+			IncludeAll(true).
+			Multi(true).
+			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
+		sdkdashboard.NewQueryVariableBuilder("collection").
+			Datasource(common.DataSourceRef{Type: ptr("prometheus"), Uid: ptr("mimir")}).
+			Definition(`label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`).
+			Query(varQueryPrometheus(`label_values(parsed_sgw_collection_sync_function_count{databaseUuid="$databaseUuid"},collection)`)).
+			Current(selectAll()).
+			IncludeAll(true).
+			Multi(true).
+			Refresh(sdkdashboard.VariableRefreshOnDashboardLoad),
 	},
 }

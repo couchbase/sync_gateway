@@ -29,13 +29,14 @@ type statDefinition struct {
 
 func newStatDefinition(stat base.SgwStatWrapper) statDefinition {
 	return statDefinition{
-		Subsystem:    stat.Subsystem(),
-		Unit:         stat.Unit(),
-		Labels:       stat.LabelKeys(),
-		Help:         stat.Help(),
-		AddedVersion: stat.AddedVersion(),
-		Stability:    stat.Stability(),
-		Format:       stat.FormatString(),
-		Type:         stat.ValueTypeString(),
+		Subsystem:         stat.Subsystem(),
+		Unit:              stat.Unit(),
+		Labels:            stat.LabelKeys(),
+		Help:              stat.Help(),
+		AddedVersion:      stat.AddedVersion(),
+		DeprecatedVersion: stat.DeprecatedVersion(),
+		Stability:         stat.Stability(),
+		Format:            stat.FormatString(),
+		Type:              stat.ValueTypeString(),
 	}
 }

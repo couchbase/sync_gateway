@@ -13,6 +13,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,29 +25,34 @@ func TestCapellaGrafanaDashboardGeneration(t *testing.T) {
 	dashboard := generateGrafanaDashboard(stats, config)
 
 	// Verify dashboard metadata
-	assert.Equal(t, "sync-gateway-all-stats", dashboard.UID)
-	assert.Equal(t, "Sync Gateway All Stats", dashboard.Title)
-	assert.Equal(t, 38, dashboard.SchemaVersion)
+	require.NotNil(t, dashboard.Uid)
+	require.NotNil(t, dashboard.Title)
+	assert.Equal(t, "sync-gateway-all-stats", *dashboard.Uid)
+	assert.Equal(t, "Sync Gateway All Stats", *dashboard.Title)
+	assert.Equal(t, uint16(38), dashboard.SchemaVersion)
 
 	// Top-level panels should all be row panels
-	for _, panel := range dashboard.Panels {
-		assert.Equal(t, "row", panel.Type)
+	for _, p := range dashboard.Panels {
+		require.NotNil(t, p.RowPanel)
+		assert.Equal(t, "row", p.RowPanel.Type)
 	}
 
 	// Count total child panels
 	totalChildPanels := 0
-	for _, row := range dashboard.Panels {
-		totalChildPanels += len(row.Panels)
+	for _, p := range dashboard.Panels {
+		totalChildPanels += len(p.RowPanel.Panels)
 	}
 	assert.Equal(t, len(stats), totalChildPanels)
 
 	// Verify child panels use correct datasource
 	for _, row := range dashboard.Panels {
-		for _, panel := range row.Panels {
+		for _, panel := range row.RowPanel.Panels {
 			assert.Equal(t, "timeseries", panel.Type)
 			require.NotNil(t, panel.Datasource)
-			assert.Equal(t, "prometheus", panel.Datasource.Type)
-			assert.Equal(t, "${DataSource}", panel.Datasource.UID)
+			require.NotNil(t, panel.Datasource.Type)
+			require.NotNil(t, panel.Datasource.Uid)
+			assert.Equal(t, "prometheus", *panel.Datasource.Type)
+			assert.Equal(t, "${DataSource}", *panel.Datasource.Uid)
 		}
 	}
 
@@ -98,24 +104,38 @@ func TestCapellaExprGeneration(t *testing.T) {
 
 	// All Capella expressions should be wrapped in label_replace for node short hostname
 	require.Len(t, globalPanel.Targets, 1)
-	assert.Contains(t, globalPanel.Targets[0].Expr, "label_replace(")
-	assert.Contains(t, globalPanel.Targets[0].Expr, "couchbaseNode")
-	assert.Contains(t, globalPanel.Targets[0].Expr, `databaseId="$databaseId"`)
-	assert.NotContains(t, globalPanel.Targets[0].Expr, "nodeHostname")
+	globalQ := promQuery(t, globalPanel.Targets[0])
+	assert.Contains(t, globalQ.Expr, "label_replace(")
+	assert.Contains(t, globalQ.Expr, "couchbaseNode")
+	assert.Contains(t, globalQ.Expr, `databaseId="$databaseId"`)
+	assert.NotContains(t, globalQ.Expr, "nodeHostname")
 
 	// Verify global stat legend uses short node name
-	assert.Equal(t, "{{node}}", globalPanel.Targets[0].LegendFormat)
+	require.NotNil(t, globalQ.LegendFormat)
+	assert.Equal(t, "{{node}}", *globalQ.LegendFormat)
 
 	// Verify database-scoped stat
 	require.Len(t, dbScopedPanel.Targets, 1)
-	assert.Contains(t, dbScopedPanel.Targets[0].Expr, `database=~"$endpoint"`)
-	assert.Equal(t, "{{node}} {{database}}", dbScopedPanel.Targets[0].LegendFormat)
+	dbQ := promQuery(t, dbScopedPanel.Targets[0])
+	assert.Contains(t, dbQ.Expr, `database=~"$endpoint"`)
+	require.NotNil(t, dbQ.LegendFormat)
+	assert.Equal(t, "{{node}} {{database}}", *dbQ.LegendFormat)
 
 	// Verify collection-scoped stat
 	require.Len(t, collectionPanel.Targets, 1)
-	assert.Contains(t, collectionPanel.Targets[0].Expr, `collection=~"$collection"`)
-	assert.Contains(t, collectionPanel.Targets[0].LegendFormat, "{{collection}}")
-	assert.Contains(t, collectionPanel.Targets[0].LegendFormat, "{{database}}")
+	collQ := promQuery(t, collectionPanel.Targets[0])
+	assert.Contains(t, collQ.Expr, `collection=~"$collection"`)
+	require.NotNil(t, collQ.LegendFormat)
+	assert.Contains(t, *collQ.LegendFormat, "{{collection}}")
+	assert.Contains(t, *collQ.LegendFormat, "{{database}}")
+}
+
+// promQuery extracts the prometheus.Dataquery from a panel target for assertion.
+func promQuery(t *testing.T, target interface{}) prometheus.Dataquery {
+	t.Helper()
+	q, ok := target.(prometheus.Dataquery)
+	require.True(t, ok, "panel target is not a prometheus.Dataquery: %T", target)
+	return q
 }
 
 func TestGrafanaFormatStdOutput(t *testing.T) {
