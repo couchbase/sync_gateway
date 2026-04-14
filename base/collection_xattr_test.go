@@ -1833,14 +1833,14 @@ func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
 
 	xv, cas, err := metaStore.GetXattrs(ctx, docID, []string{"xattr1"})
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+	require.Zero(t, cas)
 	require.Len(t, xv, 1)
 	_, ok := xv["xattr1"]
 	assert.True(t, ok)
 
 	bodyVal, xv, cas, err := metaStore.GetWithXattrs(ctx, docID, []string{"xattr1"})
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+	require.Zero(t, cas)
 	require.JSONEq(t, `{"foo": "bar"}`, string(bodyVal))
 	require.Len(t, xv, 1)
 	_, ok = xv["xattr1"]
@@ -1899,7 +1899,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 
 	value, cas, err := metaStore.GetSubDocRaw(ctx, docID, "c.d")
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+	require.Zero(t, cas)
 	require.Equal(t, []byte(`"e"`), value)
 
 	// Add new doc to primary store, read from primary and assert

@@ -2709,12 +2709,12 @@ func TestMetadataStoreKVStoreReadOperations(t *testing.T) {
 	var val map[string]any
 	cas, err := metaStore.Get(docID, &val)
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+	require.Zero(t, cas)
 	require.Equal(t, map[string]any{"some": "data"}, val)
 
 	valBytes, cas, err := metaStore.GetRaw(docID)
 	require.NoError(t, err)
-	require.NotZero(t, cas)
+	require.Zero(t, cas)
 	require.Equal(t, []byte(`{"some": "data"}`), valBytes)
 
 	exp, err := metaStore.GetExpiry(ctx, docID)
@@ -2835,12 +2835,10 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotZero(t, cas)
-	// verify in primary, not in fallback
-	readRawBody, _, err = metaStore.Primary().GetRaw(updateDocID)
+	// CBG-5291: update currently writes to fallback
+	readRawBody, _, err = metaStore.Fallback().GetRaw(updateDocID)
 	require.NoError(t, err)
 	assert.Equal(t, updateBody, readRawBody)
-	_, _, err = metaStore.Fallback().GetRaw(updateDocID)
-	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Incr
 	incrDocID := t.Name() + "_incr"

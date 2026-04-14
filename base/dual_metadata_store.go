@@ -61,8 +61,12 @@ func (ms *MetadataStore) MigrationComplete() bool {
 
 // readFromFallback returns true when err indicates the key was not found in primary and metadata migration has
 // not yet complete, meaning the operation should be retried against the fallback DataStore.
-func (ms *MetadataStore) readFromFallback(err error) bool {
-	return IsDocNotFoundError(err) && !ms.migrationComplete.Load()
+func (ms *MetadataStore) readFromFallback(ctx context.Context, err error) bool {
+	if IsDocNotFoundError(err) && !ms.migrationComplete.Load() {
+		DebugfCtx(ctx, KeyCRUD, "falling back to fallback datastore for read")
+		return true
+	}
+	return false
 }
 
 // ---- DataStoreName ----
@@ -93,23 +97,23 @@ func (ms *MetadataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 
 func (ms *MetadataStore) Get(k string, rv any) (cas uint64, err error) {
 	cas, err = ms.primary.Get(k, rv)
-	if ms.readFromFallback(err) {
-		cas, err = ms.fallback.Get(k, rv)
+	if ms.readFromFallback(context.TODO(), err) {
+		_, err = ms.fallback.Get(k, rv)
 	}
 	return cas, err
 }
 
 func (ms *MetadataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	v, cas, err = ms.primary.GetRaw(k)
-	if ms.readFromFallback(err) {
-		v, cas, err = ms.fallback.GetRaw(k)
+	if ms.readFromFallback(context.TODO(), err) {
+		v, _, err = ms.fallback.GetRaw(k)
 	}
 	return v, cas, err
 }
 
 func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32, err error) {
 	expiry, err = ms.primary.GetExpiry(ctx, k)
-	if ms.readFromFallback(err) {
+	if ms.readFromFallback(ctx, err) {
 		expiry, err = ms.fallback.GetExpiry(ctx, k)
 	}
 	return expiry, err
@@ -117,13 +121,13 @@ func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32
 
 func (ms *MetadataStore) Exists(k string) (exists bool, err error) {
 	exists, err = ms.primary.Exists(k)
-	if err == nil && exists {
-		return true, nil
+	if err != nil && !ms.readFromFallback(nil, err) {
+		return false, err
 	}
-	if ms.readFromFallback(err) || (!exists && err == nil && !ms.migrationComplete.Load()) {
-		return ms.fallback.Exists(k)
+	if exists || ms.migrationComplete.Load() {
+		return exists, err
 	}
-	return exists, err
+	return ms.fallback.Exists(k)
 }
 
 // ---- KVStore – write operations (primary only) ----
@@ -165,7 +169,8 @@ func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error)
 }
 
 func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
-	return ms.primary.Update(k, exp, callback)
+	// CBG-5291: turn into insert operation for primary datastore.
+	return ms.fallback.Update(k, exp, callback)
 }
 
 func (ms *MetadataStore) Incr(k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
@@ -176,16 +181,16 @@ func (ms *MetadataStore) Incr(k string, amt, def uint64, exp uint32) (casOut uin
 
 func (ms *MetadataStore) GetXattrs(ctx context.Context, k string, xattrKeys []string) (xattrs map[string][]byte, cas uint64, err error) {
 	xattrs, cas, err = ms.primary.GetXattrs(ctx, k, xattrKeys)
-	if ms.readFromFallback(err) {
-		xattrs, cas, err = ms.fallback.GetXattrs(ctx, k, xattrKeys)
+	if ms.readFromFallback(ctx, err) {
+		xattrs, _, err = ms.fallback.GetXattrs(ctx, k, xattrKeys)
 	}
 	return xattrs, cas, err
 }
 
 func (ms *MetadataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) (v []byte, xv map[string][]byte, cas uint64, err error) {
 	v, xv, cas, err = ms.primary.GetWithXattrs(ctx, k, xattrKeys)
-	if ms.readFromFallback(err) {
-		v, xv, cas, err = ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
+	if ms.readFromFallback(ctx, err) {
+		v, xv, _, err = ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
 	}
 	return v, xv, cas, err
 }
@@ -232,8 +237,8 @@ func (ms *MetadataStore) UpdateXattrs(ctx context.Context, k string, exp uint32,
 
 func (ms *MetadataStore) GetSubDocRaw(ctx context.Context, k string, subdocKey string) (value []byte, casOut uint64, err error) {
 	value, casOut, err = ms.primary.GetSubDocRaw(ctx, k, subdocKey)
-	if ms.readFromFallback(err) {
-		value, casOut, err = ms.fallback.GetSubDocRaw(ctx, k, subdocKey)
+	if ms.readFromFallback(ctx, err) {
+		value, _, err = ms.fallback.GetSubDocRaw(ctx, k, subdocKey)
 	}
 	return value, casOut, err
 }
