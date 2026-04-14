@@ -80,6 +80,11 @@ type ServerContext struct {
 	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext
 	_databasesLock      sync.RWMutex                      // Lock for _databases and other db-specific maps above
 
+	// serverCtx is cancelled by Close() to broadcast server shutdown to all background
+	// goroutines that hold a reference to this ServerContext (e.g. handleDbOnline).
+	serverCtx       context.Context
+	serverCtxCancel context.CancelCauseFunc
+
 	statsContext      *statsContext
 	BootstrapContext  *bootstrapContext
 	HTTPClient        *http.Client
@@ -162,7 +167,7 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string
 }
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
-
+	serverCtx, serverCtxCancel := context.WithCancelCause(context.Background())
 	sc := &ServerContext{
 		Config:              config,
 		persistentConfig:    persistentConfig,
@@ -177,6 +182,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
 		SGCollect:           newSGCollect(ctx),
+		serverCtx:           serverCtx,
+		serverCtxCancel:     serverCtxCancel,
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
@@ -267,6 +274,11 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close(ctx context.Context) {
+	// Cancel the server's lifetime context first so that any background goroutines
+	// watching serverCtx.Done() (e.g. handleDbOnline) can exit promptly rather than
+	// continuing work against a server that is tearing down.
+	sc.serverCtxCancel(errors.New("server context is closing"))
+
 	// stop HTTP servers - prevents any further requests from coming in before we continue with tearing down everything else
 	sc.stopHTTPServers(ctx)
 

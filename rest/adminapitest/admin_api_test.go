@@ -1527,12 +1527,6 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 // TestHandleDbOnlineRaceWithClose is a regression test for a panic caused by a race between
 // the background goroutine spawned by handleDbOnline and sc.Close() nilling sc._databases.
-//
-// handleDbOnline returns 200 immediately but spawns a goroutine that sleeps for the requested
-// delay before acquiring _databasesLock to reload the database. If rt.Close() runs during
-// that sleep window it acquires _databasesLock, sets sc._databases = nil, and releases the lock.
-// The goroutine then acquires the lock and panics with "assignment to entry in nil map" at
-// server_context.go:1050 (sc._databases[dbcontext.Name] = dbcontext).
 func TestHandleDbOnlineRaceWithClose(t *testing.T) {
 	base.LongRunningTest(t)
 
