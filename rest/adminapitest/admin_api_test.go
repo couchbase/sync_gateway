@@ -1525,6 +1525,38 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	rt.WaitForDBOnline()
 }
 
+// TestHandleDbOnlineRaceWithClose is a regression test for a panic caused by a race between
+// the background goroutine spawned by handleDbOnline and sc.Close() nilling sc._databases.
+//
+// handleDbOnline returns 200 immediately but spawns a goroutine that sleeps for the requested
+// delay before acquiring _databasesLock to reload the database. If rt.Close() runs during
+// that sleep window it acquires _databasesLock, sets sc._databases = nil, and releases the lock.
+// The goroutine then acquires the lock and panics with "assignment to entry in nil map" at
+// server_context.go:1050 (sc._databases[dbcontext.Name] = dbcontext).
+func TestHandleDbOnlineRaceWithClose(t *testing.T) {
+	base.LongRunningTest(t)
+
+	rt := rest.NewRestTester(t, nil)
+	// Intentionally not using defer — we call rt.Close() explicitly to control timing.
+
+	// Start with an online DB; take it offline so _online will trigger a reload.
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_offline", ""), http.StatusOK)
+
+	// POST _online with a 1-second delay. The handler returns 200 immediately and
+	// spawns a background goroutine that will sleep 1s before attempting to reload.
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_online", `{"delay":1}`), http.StatusOK)
+
+	// Close the server context before the goroutine's 1-second sleep elapses.
+	// sc.Close() acquires _databasesLock, closes all databases, sets sc._databases = nil,
+	// then releases the lock. After the 1s delay the goroutine acquires the lock and
+	// tries to write to the now-nil map, producing the panic.
+	rt.Close()
+
+	// Keep the test goroutine alive long enough for the background goroutine to wake
+	// and attempt the reload against the closed server context.
+	time.Sleep(2 * time.Second)
+}
+
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 

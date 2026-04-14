@@ -697,6 +697,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
+	// Guard against a race where sc.Close() has already nilled _databases (e.g. a background
+	// goroutine spawned by handleDbOnline outlives the server context). We hold _databasesLock
+	// here, so this check is definitive: if Close() ran first the map is nil; if we got here
+	// first the map is valid and Close() will wait for us to release the lock before proceeding.
+	if sc._databases == nil {
+		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "server context is closed")
+	}
+
 	previousDatabase := sc._databases[dbName]
 	if previousDatabase != nil {
 		if options.useExisting {
