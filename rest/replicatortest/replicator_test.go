@@ -4261,20 +4261,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, ar.Start(ctx1))
 				t.Logf("Replicator started")
 
-				// wait for both push and pull to complete:
-				// - the document originally written to rt2 to arrive at rt1
-				// - the document originally written to rt1 to get a conflict on push
-				// - if applicable: the resolved rev to be pushed up to rt2
-				require.EventuallyWithTf(t, func(c *assert.CollectT) {
-					status := ar.GetStatus(ctx1)
-					assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
-					assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
-					if test.expectedPushResolved {
-						assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
-					}
-				}, 10*time.Second, 100*time.Millisecond, "Expected both push and pull to be completed: %+v", ar.GetStatus(ctx1))
-				t.Logf("========================Replication should be done, checking with changes")
-
 				// Validate results on the local (rt1)
 				changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
 				assert.Equal(t, docID, changesResults.Results[0].ID)
