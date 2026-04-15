@@ -99,3 +99,5 @@ require (
 )
 
 replace github.com/coder/websocket => github.com/couchbasedeps/websocket v1.8.15-0.20260116134543-30951104b23a
+
+replace github.com/couchbase/gocbcore/v10 => github.com/bbrks/gocbcore/v10 v10.9.2-0.20260415143947-d4278c73ce62
