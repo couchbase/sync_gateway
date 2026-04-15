@@ -631,7 +631,11 @@ func (db *DatabaseCollection) getRevisionChannels(ctx context.Context, docID, re
 	}
 
 	// Rev tree ID: extract channels directly from the revision tree.
-	revChannels, _ := doc.channelsForRevTreeID(rev)
+	revChannels, ok := doc.channelsForRevTreeID(rev)
+	if !ok {
+		// can't find rev (it was either an unknown rev, or an old non-leaf revision that we can't determine channels for)
+		return nil, false, nil
+	}
 	revInfo, revExists := doc.History[rev]
 	if revExists {
 		deleted = revInfo.Deleted
