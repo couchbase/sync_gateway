@@ -247,6 +247,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: *go_version
+          cache-dependency-path: tools/stats-definition-exporter/go.sum
       - name: Build
         working-directory: tools/stats-definition-exporter
         run: go build -v ./...
