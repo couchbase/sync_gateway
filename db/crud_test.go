@@ -1807,7 +1807,9 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.Value)
-	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
+	docBytes, err := doc.BodyBytes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), docBytes)
 
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and
@@ -1926,7 +1928,9 @@ func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
 	// assert on returned CV value
 	assert.Equal(t, "test", cv.SourceID)
 	assert.Equal(t, incomingVersion, cv.Value)
-	assert.Equal(t, []byte(`{"key1":"value2"}`), doc._rawBody)
+	docBytes, err := doc.BodyBytes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`{"key1":"value2"}`), docBytes)
 
 	// assert on the sync data from the above update to the doc
 	// CV should be equal to CV of update on client but the cvCAS should be updated with the new update and

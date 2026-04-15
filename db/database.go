@@ -1751,9 +1751,23 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	changed := 0
 	doc.History.forEachLeaf(func(rev *RevInfo) {
 
-		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, nil, rev.ID, true, false)
+		revBodyBytes, _, _, err := db.getRevision(ctx, doc, rev.ID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Unable to prepare doc %s for rev %s: %v", doc.ID, rev.ID, err)
+			base.WarnfCtx(ctx, "Unable to retrieve body for doc %s rev %s: %v", base.UD(doc.ID), rev.ID, err)
+			return
+		}
+		var mutableBody Body
+		if err := mutableBody.Unmarshal(revBodyBytes); err != nil {
+			base.WarnfCtx(ctx, "Unable to unmarshal body for doc %s rev %s: %v", base.UD(doc.ID), rev.ID, err)
+			return
+		}
+		var isTombstone bool
+		if ancestorRev, ok := doc.History[rev.ID]; ok && ancestorRev != nil && ancestorRev.Deleted {
+			isTombstone = true
+		}
+		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, rev.ID, isTombstone)
+		if err != nil {
+			base.WarnfCtx(ctx, "Unable to prepare doc %s for rev %s: %v", base.UD(doc.ID), rev.ID, err)
 			return
 		}
 
@@ -1820,7 +1834,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs()
+		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs(ctx)
 		updatedDoc := sgbucket.UpdatedDoc{
 			Doc: nil, // Resync does not require document body update
 			Xattrs: map[string][]byte{

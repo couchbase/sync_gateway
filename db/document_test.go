@@ -365,7 +365,7 @@ func TestRevAndVersion(t *testing.T) {
 				Version:  base.HexCasToUint64(test.version),
 			}
 
-			marshalledDoc, marshalledXattr, marshalledVvXattr, _, _, err := document.MarshalWithXattrs()
+			marshalledDoc, marshalledXattr, marshalledVvXattr, _, _, err := document.MarshalWithXattrs(ctx)
 			require.NoError(t, err)
 
 			newDocument := NewDocument("docID")

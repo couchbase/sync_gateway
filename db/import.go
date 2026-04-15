@@ -103,7 +103,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 				}
 			}
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs()
+			existingBucketDoc.Body, existingBucketDoc.Xattrs[base.SyncXattrName], existingBucketDoc.Xattrs[base.VvXattrName], existingBucketDoc.Xattrs[base.MouXattrName], existingBucketDoc.Xattrs[base.GlobalXattrName], err = existingDoc.MarshalWithXattrs(ctx)
 		}
 	}
 
@@ -405,7 +405,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Persist the document in xattr format
-	value, syncXattr, vvXattr, _, globalXattr, marshalErr := doc.MarshalWithXattrs()
+	value, syncXattr, vvXattr, _, globalXattr, marshalErr := doc.MarshalWithXattrs(ctx)
 	if marshalErr != nil {
 		return nil, marshalErr
 	}

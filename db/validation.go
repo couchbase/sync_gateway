@@ -51,7 +51,7 @@ func validateAPIDocUpdate(body Body) error {
 
 // validateImportBody validates incoming import bodies
 func validateImportBody(body Body) error {
-	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
+	if _, ok := body[BodyPurged].(bool); ok {
 		return base.ErrImportCancelledPurged
 	}
 
