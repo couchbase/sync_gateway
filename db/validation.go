@@ -51,7 +51,9 @@ func validateAPIDocUpdate(body Body) error {
 
 // validateImportBody validates incoming import bodies
 func validateImportBody(body Body) error {
-	if _, ok := body[BodyPurged].(bool); ok {
+	// Treat any occurrence of _purged as a purge/import-cancel signal so malformed
+	// values can't bypass reserved-property validation and get silently stripped later.
+	if _, ok := body[BodyPurged]; ok {
 		return base.ErrImportCancelledPurged
 	}
 

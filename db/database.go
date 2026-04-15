@@ -1753,12 +1753,12 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 
 		revBodyBytes, _, _, err := db.getRevision(ctx, doc, rev.ID)
 		if err != nil {
-			base.WarnfCtx(ctx, "Unable to retrieve body for doc %s rev %s: %v", base.UD(doc.ID), rev.ID, err)
+			base.WarnfCtx(ctx, "Unable to retrieve body for doc %s rev %s: %v", base.UD(doc.ID), base.UD(rev.ID), err)
 			return
 		}
 		var mutableBody Body
 		if err := mutableBody.Unmarshal(revBodyBytes); err != nil {
-			base.WarnfCtx(ctx, "Unable to unmarshal body for doc %s rev %s: %v", base.UD(doc.ID), rev.ID, err)
+			base.WarnfCtx(ctx, "Unable to unmarshal body for doc %s rev %s: %v", base.UD(doc.ID), base.UD(rev.ID), err)
 			return
 		}
 		var isTombstone bool
@@ -1767,7 +1767,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		}
 		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, rev.ID, isTombstone)
 		if err != nil {
-			base.WarnfCtx(ctx, "Unable to prepare doc %s for rev %s: %v", base.UD(doc.ID), rev.ID, err)
+			base.WarnfCtx(ctx, "Unable to prepare doc %s for rev %s: %v", base.UD(doc.ID), base.UD(rev.ID), err)
 			return
 		}
 

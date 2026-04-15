@@ -2176,6 +2176,12 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 	}
 
 	mutableBody = body.DeepCopy(ctx)
+	if mutableBody == nil {
+		// Fail fast when DeepCopy cannot produce a writable body. Returning an error here avoids
+		// panicking on the metadata assignments below and preserves the original body semantics.
+		err = fmt.Errorf("failed to deep copy document body for sync function")
+		return
+	}
 	err = validateNewBody(mutableBody)
 	if err != nil {
 		return
@@ -2924,7 +2930,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	if db.UseXattrs() && backupRev {
 		newBodyWithAtts, err := doc.BodyBytes(ctx)
 		if err != nil {
-			base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.GetRevTreeID(), doc.HLV.GetCurrentVersionString(), err)
+			base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), base.UD(doc.GetRevTreeID()), base.UD(doc.HLV.GetCurrentVersionString()), err)
 
 		}
 		if len(doc.Attachments()) > 0 {
@@ -2934,7 +2940,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 				Val: doc.Attachments(),
 			})
 			if err != nil {
-				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), doc.GetRevTreeID(), doc.HLV.GetCurrentVersionString(), err)
+				base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), base.UD(doc.GetRevTreeID()), base.UD(doc.HLV.GetCurrentVersionString()), err)
 				return doc
 			}
 		}
