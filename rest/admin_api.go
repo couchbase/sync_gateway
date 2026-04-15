@@ -264,7 +264,6 @@ func (h *handler) handleDbOnline() error {
 				atomic.StoreUint32(&h.db.State, db.DBOffline)
 			}
 		}()
-		time.Sleep(time.Duration(input.Delay) * time.Second)
 		// If the server was closed during the delay, skip the reload entirely.
 		// The nil-guard in _getOrAddDatabaseFromConfig is the definitive safety net,
 		// but this early check avoids acquiring locks and doing expensive work
@@ -273,7 +272,8 @@ func (h *handler) handleDbOnline() error {
 		case <-h.server.serverCtx.Done():
 			base.InfofCtx(ctx.Ctx, base.KeyCRUD, "Database %v online cancelled: server context closed", base.MD(h.db.Name))
 			return
-		default:
+		case <-time.After(time.Duration(input.Delay) * time.Second):
+			// continue
 		}
 		h.db.AccessLock.Lock()
 		defer h.db.AccessLock.Unlock()
