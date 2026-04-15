@@ -137,6 +137,12 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 				a.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
 			}
 			if err != nil {
+				// if dcpClient is nil, then dcpClient.GetMetadataKeyPrefix() will panic. This isn't a rollback
+				// error, this is a non retryable error.
+				if dcpClient == nil {
+					return false, err, nil
+				}
+
 				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, dcpClient.GetMetadataKeyPrefix())
 			}
 			return shouldRetry, err, nil
