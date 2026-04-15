@@ -888,7 +888,7 @@
         },
 
         "manifest/default.xml": {
-            "go_version": "1.25.9",
+            "go_version": "1.26.2",
             "interval": 30,
             "production": true,
             "release": "4.1.0",

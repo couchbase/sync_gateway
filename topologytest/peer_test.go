@@ -287,6 +287,17 @@ const (
 	PeerReplicationDirectionPull
 )
 
+func (r PeerReplicationDirection) String() string {
+	switch r {
+	case PeerReplicationDirectionPush:
+		return "push"
+	case PeerReplicationDirectionPull:
+		return "pull"
+	default:
+		return fmt.Sprintf("unknown replication direction %d", r)
+	}
+}
+
 // PeerReplicationConfig represents the configuration for a given replication.
 type PeerReplicationConfig struct {
 	direction PeerReplicationDirection
