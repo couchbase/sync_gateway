@@ -4,6 +4,11 @@ go 1.25.9
 
 replace github.com/couchbase/sync_gateway => ../../
 
+// The stats exporter only builds CE code paths, which never compile files that
+// import go-fleecedelta. Replace it with a local stub so builds don't need to
+// fetch the private couchbaselabs/go-fleecedelta module.
+replace github.com/couchbaselabs/go-fleecedelta => ./internal/fleecedelta-stub
+
 require (
 	github.com/couchbase/sync_gateway v0.0.0-00010101000000-000000000000
 	github.com/grafana/grafana-foundation-sdk/go v0.0.12
@@ -54,7 +59,6 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f // indirect
-	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
