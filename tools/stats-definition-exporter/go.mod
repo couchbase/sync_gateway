@@ -30,7 +30,7 @@ require (
 	github.com/couchbase/gomemcached v0.2.1 // indirect
 	github.com/couchbase/goprotostellar v1.0.5 // indirect
 	github.com/couchbase/goutils v0.1.2 // indirect
-	github.com/couchbase/sg-bucket v0.0.0-20260318163448-98d99b4d9cd0 // indirect
+	github.com/couchbase/sg-bucket v0.0.0-20260410142618-49435afc5258 // indirect
 	github.com/couchbase/tools-common/cloud/v8 v8.1.3 // indirect
 	github.com/couchbase/tools-common/fs v1.0.3 // indirect
 	github.com/couchbase/tools-common/testing v1.0.3 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338 // indirect
 	github.com/couchbaselabs/gocbconnstr v1.0.5 // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0 // indirect
-	github.com/couchbaselabs/rosmar v0.0.0-20260326114257-7d426e469ef0 // indirect
+	github.com/couchbaselabs/rosmar v0.0.0-20260413100711-3dc08faf7e1f // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -68,11 +68,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	google.golang.org/grpc v1.80.0 // indirect
