@@ -125,12 +125,13 @@ func statsBySubsystem(stats statDefinitions) ([]string, map[string][]string) {
 func ptr[T any](v T) *T { return &v }
 
 // describeStat produces the panel description text shown in the Grafana UI:
-// the stat's help text followed by a "---" separator and the Sync Gateway
-// version range the stat is available in.
+// the stat's help text followed by a horizontal rule and the Sync Gateway
+// version range the stat is available in. Blank lines around the "---"
+// keep Markdown from interpreting it as a setext heading underline.
 func describeStat(stat statDefinition) string {
 	desc := stat.Help
 	if stat.AddedVersion != "" {
-		desc += "\n---\nSGW " + stat.AddedVersion + "+"
+		desc += "\n\n---\n\nSGW " + stat.AddedVersion + "+"
 		if stat.DeprecatedVersion != "" {
 			desc += " (deprecated " + stat.DeprecatedVersion + ")"
 		}

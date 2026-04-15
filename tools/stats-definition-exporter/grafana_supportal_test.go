@@ -222,7 +222,7 @@ func TestDescriptionFromHelp(t *testing.T) {
 	stats := getTestStats(t)
 
 	// Find a stat with help text and verify the panel description starts with it.
-	// The exporter appends a "\n---\nSGW X.Y.Z+" version suffix to panel
+	// The exporter appends a "\n\n---\n\nSGW X.Y.Z+" version suffix to panel
 	// descriptions, so exact equality no longer holds.
 	var statWithHelp string
 	var helpText string
@@ -243,7 +243,7 @@ func TestDescriptionFromHelp(t *testing.T) {
 	require.NotNil(t, panel, "should find panel with help text")
 	require.NotNil(t, panel.Description)
 	assert.Contains(t, *panel.Description, helpText)
-	assert.Contains(t, *panel.Description, "\n---\nSGW ")
+	assert.Contains(t, *panel.Description, "\n\n---\n\nSGW ")
 }
 
 func TestRowPanelStructure(t *testing.T) {
