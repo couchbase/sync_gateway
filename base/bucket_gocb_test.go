@@ -2672,3 +2672,262 @@ func TestGetCCVStartingCAS(t *testing.T) {
 		require.NotEqual(t, uint64(0), cas, "Expected non-zero starting CAS for vbucket %d", vbNo)
 	}
 }
+
+func TestMetadataStoreIdentity(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	assert.Equal(t, fmt.Sprintf("%s.%s.%s", bucket.GetName(), SystemScope, SystemCollectionMobile), metaStore.GetName())
+	assert.Equal(t, SystemScope, metaStore.ScopeName())
+	assert.Equal(t, SystemCollectionMobile, metaStore.CollectionName())
+	assert.Equal(t, metaStore.Primary().GetCollectionID(), metaStore.GetCollectionID())
+}
+
+func TestMetadataStoreKVStoreReadOperations(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	docID := t.Name()
+	expiryValue := uint32(time.Now().Add(20 * time.Minute).Unix())
+	// add doc to fallback datastore, perform reads and assert items are returned from fallback store
+	// Flow should be Read from primary -> not found -> read from fallback
+	ok, err := metaStore.Fallback().Add(docID, expiryValue, []byte(`{"some": "data"}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+	var val map[string]any
+	cas, err := metaStore.Get(docID, &val)
+	require.NoError(t, err)
+	require.Zero(t, cas)
+	require.Equal(t, map[string]any{"some": "data"}, val)
+
+	valBytes, cas, err := metaStore.GetRaw(docID)
+	require.NoError(t, err)
+	require.Zero(t, cas)
+	require.Equal(t, []byte(`{"some": "data"}`), valBytes)
+
+	exp, err := metaStore.GetExpiry(ctx, docID)
+	require.NoError(t, err)
+	require.NotZero(t, exp)
+
+	exist, err := metaStore.Exists(docID)
+	require.NoError(t, err)
+	require.True(t, exist)
+
+	// now add new doc to primary and fetch that doc, assert each operation finds it
+	docID2 := t.Name() + "2"
+	ok, err = metaStore.Primary().Add(docID2, expiryValue, []byte(`{"some": "data"}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	val = make(map[string]any) // clear val
+	cas, err = metaStore.Get(docID2, &val)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Equal(t, map[string]any{"some": "data"}, val)
+
+	valBytes, cas, err = metaStore.GetRaw(docID2)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	require.Equal(t, []byte(`{"some": "data"}`), valBytes)
+
+	exp, err = metaStore.GetExpiry(ctx, docID2)
+	require.NoError(t, err)
+	require.NotZero(t, exp)
+
+	exist, err = metaStore.Exists(docID2)
+	require.NoError(t, err)
+	require.True(t, exist)
+}
+
+func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+
+	// Test Add
+	addDocID := t.Name() + "_add"
+	addBody := map[string]any{"val": "add"}
+	added, err := metaStore.Add(addDocID, 0, addBody)
+	require.NoError(t, err)
+	require.True(t, added)
+	// verify in primary, not in fallback
+	var readBody map[string]any
+	_, err = metaStore.Primary().Get(addDocID, &readBody)
+	require.NoError(t, err)
+	assert.Equal(t, addBody, readBody)
+	_, err = metaStore.Fallback().Get(addDocID, &readBody)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test AddRaw
+	addRawDocID := t.Name() + "_addRaw"
+	addRawBody := []byte(`{"val": "addRaw"}`)
+	added, err = metaStore.AddRaw(addRawDocID, 0, addRawBody)
+	require.NoError(t, err)
+	require.True(t, added)
+	// verify in primary, not in fallback
+	readRawBody, _, err := metaStore.Primary().GetRaw(addRawDocID)
+	require.NoError(t, err)
+	assert.Equal(t, addRawBody, readRawBody)
+	_, _, err = metaStore.Fallback().GetRaw(addRawDocID)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test Set
+	setDocID := t.Name() + "_set"
+	setBody := map[string]any{"val": "set"}
+	err = metaStore.Set(setDocID, 0, nil, setBody)
+	require.NoError(t, err)
+	// verify in primary, not in fallback
+	readBody = nil
+	_, err = metaStore.Primary().Get(setDocID, &readBody)
+	require.NoError(t, err)
+	assert.Equal(t, setBody, readBody)
+	_, err = metaStore.Fallback().Get(setDocID, &readBody)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test SetRaw
+	setRawDocID := t.Name() + "_setRaw"
+	setRawBody := []byte(`{"val": "setRaw"}`)
+	err = metaStore.SetRaw(setRawDocID, 0, nil, setRawBody)
+	require.NoError(t, err)
+	// verify in primary, not in fallback
+	readRawBody, _, err = metaStore.Primary().GetRaw(setRawDocID)
+	require.NoError(t, err)
+	assert.Equal(t, setRawBody, readRawBody)
+	_, _, err = metaStore.Fallback().GetRaw(setRawDocID)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test WriteCas
+	writeCasDocID := t.Name() + "_writeCas"
+	writeCasBody := map[string]any{"val": "writeCas"}
+	cas, err := metaStore.WriteCas(writeCasDocID, 0, 0, writeCasBody, 0)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	// verify in primary, not in fallback
+	readBody = nil
+	_, err = metaStore.Primary().Get(writeCasDocID, &readBody)
+	require.NoError(t, err)
+	assert.Equal(t, writeCasBody, readBody)
+	_, err = metaStore.Fallback().Get(writeCasDocID, &readBody)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test Update
+	updateDocID := t.Name() + "_update"
+	updateBody := []byte(`{"val": "update"}`)
+	cas, err = metaStore.Update(updateDocID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		return updateBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	// CBG-5291: update currently writes to fallback
+	readRawBody, _, err = metaStore.Fallback().GetRaw(updateDocID)
+	require.NoError(t, err)
+	assert.Equal(t, updateBody, readRawBody)
+
+	// Test Incr
+	incrDocID := t.Name() + "_incr"
+	val, err := metaStore.Incr(incrDocID, 1, 5, 0)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(5), val)
+	// verify in primary, not in fallback
+	var result uint64
+	_, err = metaStore.Primary().Get(incrDocID, &result)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(5), result)
+	result = 0
+	_, err = metaStore.Fallback().Get(incrDocID, &result)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test GetAndTouchRaw
+	getAndTouchDocID := t.Name() + "_getAndTouch"
+	getAndTouchBody := []byte(`{"val": "getAndTouch"}`)
+	_, err = metaStore.AddRaw(getAndTouchDocID, 0, getAndTouchBody)
+	require.NoError(t, err)
+
+	readBodyRaw, cas, err := metaStore.GetAndTouchRaw(getAndTouchDocID, 30)
+	require.NoError(t, err)
+	assert.Equal(t, getAndTouchBody, readBodyRaw)
+	require.NotZero(t, cas)
+
+	exp, err := metaStore.Primary().GetExpiry(ctx, getAndTouchDocID)
+	require.NoError(t, err)
+	assert.True(t, exp > 0)
+
+	_, err = metaStore.Fallback().Get(getAndTouchDocID, nil)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test Touch
+	touchDocID := t.Name() + "_touch"
+	_, err = metaStore.AddRaw(touchDocID, 0, []byte(`{}`))
+	require.NoError(t, err)
+
+	cas, err = metaStore.Touch(touchDocID, 30)
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+
+	exp, err = metaStore.Primary().GetExpiry(ctx, touchDocID)
+	require.NoError(t, err)
+	assert.True(t, exp > 0)
+
+	_, err = metaStore.Fallback().Get(touchDocID, nil)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
+
+	// Test Delete
+	deleteDocID := t.Name() + "_delete"
+	_, err = metaStore.Add(deleteDocID, 0, map[string]any{"val": "delete"})
+	require.NoError(t, err)
+	err = metaStore.Delete(deleteDocID)
+	require.NoError(t, err)
+	// verify deleted from primary
+	exists, err := metaStore.Primary().Exists(deleteDocID)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// Test Remove
+	removeDocID := t.Name() + "_remove"
+	cas, err = metaStore.WriteCas(removeDocID, 0, 0, map[string]any{"val": "remove"}, 0)
+	require.NoError(t, err)
+	_, err = metaStore.Remove(removeDocID, cas)
+	require.NoError(t, err)
+	// verify removed from primary
+	exists, err = metaStore.Primary().Exists(removeDocID)
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	fallbackStore := bucket.DefaultDataStore()
+	primaryStore := bucket.GetMobileSystemDataStore()
+
+	metaStore := NewMetadataStore(primaryStore, fallbackStore)
+	metaStore.SetMigrationComplete()
+
+	docID := t.Name()
+	ok, err := metaStore.Fallback().Add(docID, 0, []byte(`{"some": "data"}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	_, err = metaStore.Get(docID, nil)
+	require.Error(t, err)
+	require.True(t, IsDocNotFoundError(err))
+}
