@@ -1109,3 +1109,37 @@ func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context,
 	value.store(docRev)
 	cache.revisionCache.revCacheMemoryBasedEviction(ctx)
 }
+
+// InitializeDualMetadataStoreIndexes initializes the principal indexes (IndexSyncDocs,
+// IndexUser, IndexRole) on both the primary and fallback datastores of a MetadataStore.
+// This is required during metadata migration when user and role documents may be present in
+// both datastores and both must be queryable via N1QL.
+//
+// options.MetadataIndexes is forced to IndexesMetadataOnly for primary store so that only
+// metadata-specific principal indexes are created given user non metadata docs cannot be stored here.
+// Fallback store initialises whatever is passed.
+// This is test only function, metadata store indexes for databases are created during Database Init
+func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metadataStore *base.MetadataStore, options InitializeIndexOptions) error {
+	t.Helper()
+	primaryOptions := options
+
+	primaryN1QL, ok := base.AsN1QLStore(metadataStore.Primary())
+	if !ok {
+		return fmt.Errorf("primary datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Primary())
+	}
+	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
+	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
+	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
+		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
+	}
+
+	fallbackN1QL, ok := base.AsN1QLStore(metadataStore.Fallback())
+	if !ok {
+		return fmt.Errorf("fallback datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Fallback())
+	}
+	fallbackCtx := base.CollectionLogCtx(ctx, metadataStore.Fallback().ScopeName(), metadataStore.Fallback().CollectionName())
+	if err := InitializeIndexes(fallbackCtx, fallbackN1QL, options); err != nil {
+		return fmt.Errorf("initializing indexes on fallback metadata store: %w", err)
+	}
+	return nil
+}

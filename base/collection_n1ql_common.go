@@ -703,7 +703,7 @@ func WaitForSystemCollectionIndexesOnline(ctx context.Context, store N1QLStore, 
 			return false, err, nil
 		}
 		for _, idx := range currIndexes {
-			if idx.State == IndexStateOnline && slices.Contains(indexNames, idx.Name) {
+			if idx.State == IndexStateOnline {
 				if !onlineIndexes[idx.Name] {
 					InfofCtx(ctx, KeyAll, "Index %s on %s is online", MD(idx.Name), MD(keyspace))
 					onlineIndexes[idx.Name] = true

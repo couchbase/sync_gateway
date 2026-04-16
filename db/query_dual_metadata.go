@@ -55,11 +55,7 @@ func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryNam
 		return nil, fmt.Errorf("fallback datastore (%T) does not support N1QL", ms.Fallback())
 	}
 
-	unionStatement := buildDualMetadataUnionStatement(
-		statement,
-		primaryN1QL.EscapedKeyspace(), ms.Primary().GetName(),
-		fallbackN1QL.EscapedKeyspace(), ms.Fallback().GetName(),
-	)
+	unionStatement := buildDualMetadataUnionStatement(statement, primaryN1QL.EscapedKeyspace(), fallbackN1QL.EscapedKeyspace())
 
 	// Execute against the fallback (default) store. Both keyspaces are fully-qualified in the
 	// statement, so the fallback store's query_context does not restrict which keyspaces are
@@ -92,7 +88,7 @@ func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryNam
 //	(SELECT name, META(alias).id, 1 AS sort_order
 //	   FROM `bucket`.`_default`.`_default` AS alias WHERE ...)
 //	ORDER BY sort_order, id
-func buildDualMetadataUnionStatement(statement, primaryEscapedKeyspace, primaryFullPath, fallbackEscapedKeyspace, fallbackFullPath string) string {
+func buildDualMetadataUnionStatement(statement, primaryEscapedKeyspace, fallbackEscapedKeyspace string) string {
 	// Strip the inner ORDER BY so the outer ORDER BY governs the full merged result.
 	// Any LIMIT clause is re-attached to each arm so it continues to bound each sub-query.
 	coreStmt, innerOrderBy, limitClause := splitStatement(statement)
@@ -166,7 +162,7 @@ func splitStatement(stmt string) (core, orderByColumns, limitClause string) {
 // are returned before any fallback-keyspace rows (sort_order=1). As a result, "first seen
 // wins" always selects the primary-store version when the same document exists in both
 // keystores. The sort_order column injected by buildDualMetadataUnionStatement
-// are present in each emitted row but are harmlessly ignored by callers that unmarshal into
+// is present in each emitted row but are harmlessly ignored by callers that unmarshal into
 // typed structs.
 type unionDedupIterator struct {
 	iter    sgbucket.QueryResultIterator
@@ -192,7 +188,7 @@ func (u *unionDedupIterator) NextBytes() []byte {
 			return nil
 		}
 		id := extractRowID(raw)
-		if _, seen := u.seenIDs[id]; seen {
+		if _, exists := u.seenIDs[id]; exists {
 			continue
 		}
 		u.seenIDs[id] = struct{}{}

@@ -45,7 +45,7 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 		MetadataIndexes:            db.IndexesAll,
 	}
-	require.NoError(t, db.InitializeDualMetadataStoreIndexes(ctx, ms, indexOptions))
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(t, ctx, ms, indexOptions))
 
 	// Determine the expected principal index names
 	expectedIndexes := []string{
@@ -116,7 +116,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}
-	require.NoError(t, db.InitializeDualMetadataStoreIndexes(ctx, ms, indexOptions))
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(t, ctx, ms, indexOptions))
 
 	// Build a DatabaseContext that uses the dual MetadataStore with the default collection for
 	// sync metadata
@@ -242,7 +242,7 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}
-	require.NoError(t, db.InitializeDualMetadataStoreIndexes(ctx, ms, indexOptions))
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(t, ctx, ms, indexOptions))
 
 	// Build a DatabaseContext that uses the dual MetadataStore with the default collection for
 	// sync metadata.

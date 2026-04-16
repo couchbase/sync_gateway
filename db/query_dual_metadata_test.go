@@ -309,9 +309,7 @@ func TestExtractRowID(t *testing.T) {
 // literal injection, inner ORDER BY stripping, and outer ORDER BY construction.
 func TestBuildDualMetadataUnionStatement(t *testing.T) {
 	primaryKS := "`bucket`.`_system`.`_mobile`"
-	primaryPath := "bucket._system._mobile"
 	fallbackKS := "`bucket`.`_default`.`_default`"
-	fallbackPath := "bucket._default._default"
 	alias := base.KeyspaceQueryAlias
 
 	tests := []struct {
@@ -363,11 +361,7 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := buildDualMetadataUnionStatement(
-				tc.statement,
-				primaryKS, primaryPath,
-				fallbackKS, fallbackPath,
-			)
+			result := buildDualMetadataUnionStatement(tc.statement, primaryKS, fallbackKS)
 
 			assert.True(t, strings.HasPrefix(result, "("), "should start with opening paren")
 			assert.Contains(t, result, ") UNION ALL (", "should contain UNION ALL joining the sub-queries")
@@ -379,9 +373,6 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 			// Both keyspaces should appear in the output.
 			assert.Contains(t, result, tc.wantPrimaryKSInQ, "primary keyspace should be in result")
 			assert.Contains(t, result, tc.wantFallbackKSInQ, "fallback keyspace should be in result")
-
-			// full_path must not appear in the output.
-			assert.NotContains(t, result, "AS full_path", "full_path column must not be injected")
 
 			// sort_order literals 0 (primary) and 1 (fallback) must both be injected.
 			assert.Contains(t, result, "0 AS "+dualMetadataSortOrderKey, "primary arm must have sort_order=0")
@@ -473,4 +464,3 @@ func TestSplitStatement(t *testing.T) {
 		})
 	}
 }
-
