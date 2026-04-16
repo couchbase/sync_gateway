@@ -577,7 +577,10 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
 
-	// N1QL Query
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery(ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	}
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -591,7 +594,10 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 
 	queryStatement, params := context.BuildUsersQuery(startKey, limit)
 
-	// N1QL Query
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery(ctx, ms, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	}
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -634,7 +640,10 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 
 	queryStatement, params := context.BuildRolesQuery(startKey, limit)
 
-	// N1QL Query
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery(ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	}
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -681,7 +690,10 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
 
-	// N1QL Query
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery(ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	}
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 

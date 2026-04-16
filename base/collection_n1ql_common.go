@@ -632,6 +632,101 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 	return err
 }
 
+// GetSystemCollectionIndexesMeta queries system:all_indexes (which, unlike system:indexes, includes
+// indexes on system-scope collections such as _system._mobile) and returns state metadata for the
+// named indexes.  bucketName, scopeName, and collectionName identify the target keyspace.
+func GetSystemCollectionIndexesMeta(ctx context.Context, store N1QLStore, scopeName, collectionName string, indexNames []string) (map[string]IndexMeta, error) {
+	if len(indexNames) == 0 {
+		return nil, fmt.Errorf("must specify at least one index name")
+	}
+
+	quotedNames := make([]string, 0, len(indexNames))
+	for _, name := range indexNames {
+		quotedNames = append(quotedNames, strconv.Quote(name))
+	}
+
+	statement := fmt.Sprintf(
+		"SELECT name, state FROM system:all_indexes WHERE bucket_id = '%s' AND scope_id = '%s' AND keyspace_id = '%s' AND name IN [%s]",
+		store.BucketName(),
+		scopeName,
+		collectionName,
+		strings.Join(quotedNames, ","),
+	)
+
+	results, err := store.executeQuery(statement)
+	if store.IsErrNoResults(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := results.Close(); closeErr != nil {
+			WarnfCtx(ctx, "Error closing results from GetSystemCollectionIndexesMeta: %v", closeErr)
+		}
+	}()
+
+	indexes := make(map[string]IndexMeta)
+	var meta IndexMeta
+	for results.Next(ctx, &meta) {
+		indexes[meta.Name] = meta
+	}
+	return indexes, nil
+}
+
+// WaitForSystemCollectionIndexesOnline waits for the named indexes to come online on a
+// system-scope collection (e.g. _system._mobile).  CBS omits system-scope indexes from
+// system:indexes, so this function queries system:all_indexes instead.  store is used only
+// to run the query; scopeName and collectionName identify the target keyspace within the
+// store's bucket.
+func WaitForSystemCollectionIndexesOnline(ctx context.Context, store N1QLStore, scopeName, collectionName string, indexNames []string, waitOption WaitForIndexesOnlineOption) error {
+	var retrySleeper RetrySleeper
+	initialWaitTime := 100
+	maxSleepTime := 5000
+	switch waitOption {
+	case WaitForIndexesDefault:
+		retrySleeper = CreateMaxDoublingSleeperFunc(180, initialWaitTime, maxSleepTime)
+	case WaitForIndexesFailfast:
+		retrySleeper = CreateFastFailRetrySleeperFunc()
+	case WaitForIndexesInfinite:
+		retrySleeper = CreateIndefiniteMaxDoublingSleeperFunc(initialWaitTime, maxSleepTime)
+	default:
+		return fmt.Errorf("invalid WaitForIndexesOnlineOption: %d", waitOption)
+	}
+
+	onlineIndexes := make(map[string]bool)
+	keyspace := strings.Join([]string{store.BucketName(), scopeName, collectionName}, ".")
+
+	err, _ := RetryLoop(ctx, "WaitForSystemCollectionIndexesOnline", func() (shouldRetry bool, err error, _ any) {
+		watchedOnlineIndexCount := 0
+		currIndexes, err := GetSystemCollectionIndexesMeta(ctx, store, scopeName, collectionName, indexNames)
+		if err != nil {
+			return false, err, nil
+		}
+		for _, idx := range currIndexes {
+			if idx.State == IndexStateOnline && slices.Contains(indexNames, idx.Name) {
+				if !onlineIndexes[idx.Name] {
+					InfofCtx(ctx, KeyAll, "Index %s on %s is online", MD(idx.Name), MD(keyspace))
+					onlineIndexes[idx.Name] = true
+				}
+			}
+		}
+		var offlineIndexes []string
+		for _, name := range indexNames {
+			if onlineIndexes[name] {
+				watchedOnlineIndexCount++
+			} else {
+				offlineIndexes = append(offlineIndexes, name)
+			}
+		}
+		if watchedOnlineIndexCount == len(indexNames) {
+			return false, nil, nil
+		}
+		DebugfCtx(ctx, KeyAll, "Indexes %s on %s not ready - retrying...", strings.Join(offlineIndexes, ", "), MD(keyspace))
+		return true, nil, nil
+	}, retrySleeper)
+	return err
+}
+
 func GetAllIndexes(mgr *indexManager) (indexes []string, err error) {
 	indexes = []string{}
 	indexInfo, err := mgr.GetAllIndexes()
