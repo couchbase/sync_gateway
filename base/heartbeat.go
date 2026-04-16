@@ -23,7 +23,7 @@ import (
 const (
 	defaultHeartbeatSendInterval  = 1 * time.Second
 	defaultHeartbeatExpirySeconds = 10
-	defaultHeartbeatPollInterval  = 2 * time.Second
+	DefaultHeartbeatPollInterval  = 2 * time.Second
 )
 
 // Heartbeater defines the interface for heartbeat management
@@ -93,7 +93,7 @@ func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (h
 		heartbeatListeners:     make(map[string]HeartbeatListener),
 		heartbeatSendInterval:  defaultHeartbeatSendInterval,
 		heartbeatExpirySeconds: defaultHeartbeatExpirySeconds,
-		heartbeatPollInterval:  defaultHeartbeatPollInterval,
+		heartbeatPollInterval:  DefaultHeartbeatPollInterval,
 	}
 
 	return heartbeater, err

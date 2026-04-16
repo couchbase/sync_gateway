@@ -510,7 +510,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
 	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(ctx, metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID), false)
+		sgCfg, err := base.NewCfgSG(ctx, metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID), false, 0)
 		if err != nil {
 			return nil, err
 		}
