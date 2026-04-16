@@ -275,12 +275,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 
 		if err != nil {
+			cancel(fmt.Errorf("resync run function failed: %w", err))
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
+		} else {
+			cancel(fmt.Errorf("resync run ended with error: %v", err))
 		}
 		defer func() {
 			resyncCbgtContext.Stop(ctx)
 			resyncHB.Stop(ctx)
-			cancel(fmt.Errorf("resync run ended with error: %v", err))
 		}()
 	} else {
 

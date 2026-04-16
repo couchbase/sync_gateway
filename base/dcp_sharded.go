@@ -595,6 +595,10 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 	return shardedDCPHeartbeatListener, nil
 }
 
+// cfgNodePoller is a companion to a cbgt.Cfg instance that polls a datastore for changes to selected document keys.
+//
+// cfgNodePoller.Register is used to listen for changes to keys.
+// fireEvent is called whenever a document's cas value changes. This should map to cbgt.Cfg.FireEvent function.
 type cfgNodePoller struct {
 	ctx          context.Context
 	keyWatcher   map[string]uint64
@@ -604,6 +608,7 @@ type cfgNodePoller struct {
 	pollInterval time.Duration
 }
 
+// newCfgNodePoller constructs a poller instance on the datastore. fireEvent is a cbgt.Cfg.FireEvent function called whenever a document cas changes.
 func newCfgNodePoller(ctx context.Context, datastore DataStore, fireEvent CfgEventNotifyFunc, pollInterval time.Duration) *cfgNodePoller {
 
 	p := &cfgNodePoller{
@@ -614,10 +619,24 @@ func newCfgNodePoller(ctx context.Context, datastore DataStore, fireEvent CfgEve
 		pollInterval: pollInterval,
 	}
 
-	p.StartPolling(ctx)
+	p.startPolling(ctx)
 	return p
 }
 
+// getWatcher returns a copy of the keyWatcher map containing the current CAS values for all registered keys.
+// This method is thread-safe and creates a new map to avoid external modifications to the internal state.
+func (p *cfgNodePoller) getWatcher() map[string]uint64 {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	watcher := make(map[string]uint64, len(p.keyWatcher))
+	for key, cas := range p.keyWatcher {
+		watcher[key] = cas
+	}
+	return watcher
+}
+
+// Register adds a key to the poller's watch list. The current CAS value of the key is retrieved from the datastore
+// and stored. If the key does not exist, it is registered with a CAS value of 0. This method is thread-safe.
 func (p *cfgNodePoller) Register(key string) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -630,25 +649,38 @@ func (p *cfgNodePoller) Register(key string) error {
 	return nil
 }
 
-func (p *cfgNodePoller) Poll() {
+// poll checks all registered keys for CAS changes. For each key whose CAS value has changed since the last check,
+// the fireEvent callback is invoked with the key, new CAS value, and nil error. The keyWatcher is updated with
+// the new CAS values. This method is thread-safe and uses optimistic locking to avoid blocking during I/O operations.
+func (p *cfgNodePoller) poll() {
 
-	for key, oldCas := range p.keyWatcher {
+	watcher := p.getWatcher()
+
+	for key, oldCas := range watcher {
 		newCas, err := p.datastore.Get(key, nil)
 		if err != nil && !IsDocNotFoundError(err) {
-			WarnfCtx(p.ctx, "error reading doc: %s %v", key, err)
+			WarnfCtx(p.ctx, "error reading doc: %s %v", UD(key), err)
 			continue
 		}
-		if oldCas != newCas {
-			p.lock.Lock()
-			defer p.lock.Unlock()
-			p.keyWatcher[key] = newCas
-
-			p.fireEvent(key, newCas, nil)
+		if oldCas == newCas {
+			continue
 		}
+		p.lock.Lock()
+		currentCas, ok := p.keyWatcher[key]
+		if !ok || currentCas != oldCas {
+			p.lock.Unlock()
+			continue
+		}
+		p.keyWatcher[key] = newCas
+		p.lock.Unlock()
+		p.fireEvent(key, newCas, nil)
 	}
 }
 
-func (p *cfgNodePoller) StartPolling(ctx context.Context) {
+// startPolling begins periodic polling for changes to registered keys at the configured poll interval.
+// Polling continues until the provided context is cancelled. This method starts a goroutine that calls
+// Poll() on each tick of the interval timer.
+func (p *cfgNodePoller) startPolling(ctx context.Context) {
 	ticker := time.NewTicker(p.pollInterval)
 	go func() {
 		defer FatalPanicHandler()
@@ -658,7 +690,7 @@ func (p *cfgNodePoller) StartPolling(ctx context.Context) {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				p.Poll()
+				p.poll()
 			}
 		}
 	}()

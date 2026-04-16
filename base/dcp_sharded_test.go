@@ -463,8 +463,8 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			// Call Poll
-			poller.Poll()
+			// Call poll
+			poller.poll()
 
 			// Verify fired events
 			eventLock.Lock()
@@ -532,7 +532,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call Poll
-		poller.Poll()
+		poller.poll()
 
 		// Verify event parameters
 		require.True(t, eventCalled, "fireEvent should have been called")
@@ -574,15 +574,15 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// First poll - should fire event
-		poller.Poll()
+		poller.poll()
 		require.Equal(t, 1, eventCount, "first poll should fire one event")
 
 		// Second poll without changes - should NOT fire event
-		poller.Poll()
+		poller.poll()
 		require.Equal(t, 1, eventCount, "second poll should not fire event since CAS unchanged")
 
 		// Third poll without changes - should still NOT fire event
-		poller.Poll()
+		poller.poll()
 		require.Equal(t, 1, eventCount, "third poll should not fire event since CAS unchanged")
 	})
 
@@ -625,7 +625,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call Poll
-		poller.Poll()
+		poller.poll()
 
 		// Verify event was fired
 		require.True(t, eventFired, "event should be fired for deleted document")
@@ -678,7 +678,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		_, err = datastore.Remove(key, cas)
 		require.NoError(t, err)
 
-		poller.Poll()
+		poller.poll()
 
 		// Verify event was fired
 		require.True(t, eventFired, "event should be fired for purged document")
@@ -689,6 +689,84 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.Equal(t, uint64(0), poller.keyWatcher[key], "keyWatcher should have cas=0 after purge")
 		poller.lock.Unlock()
 	})
+
+	// Verify poll handles multiple document changes in a single poll cycle (race condition test)
+	t.Run("poll_detects_multiple_document_changes", func(t *testing.T) {
+		firedEvents := make(map[string]uint64)
+		var eventLock sync.Mutex
+
+		poller := &cfgNodePoller{
+			ctx:        ctx,
+			keyWatcher: make(map[string]uint64),
+			datastore:  datastore,
+			fireEvent: func(docID string, cas uint64, err error) {
+				eventLock.Lock()
+				firedEvents[docID] = cas
+				eventLock.Unlock()
+			},
+		}
+
+		key1 := "race_condition_doc1"
+		key2 := "race_condition_doc2"
+
+		// Create both documents
+		added, err := datastore.Add(key1, 0, []byte(`{"test": true}`))
+		require.NoError(t, err)
+		require.True(t, added)
+
+		added, err = datastore.Add(key2, 0, []byte(`{"test": true}`))
+		require.NoError(t, err)
+		require.True(t, added)
+
+		t.Cleanup(func() {
+			_ = datastore.Delete(key1)
+			_ = datastore.Delete(key2)
+		})
+
+		// Register both keys
+		err = poller.Register(key1)
+		require.NoError(t, err)
+
+		err = poller.Register(key2)
+		require.NoError(t, err)
+
+		// Change first document
+		err = datastore.Set(key1, 0, nil, []byte(`{"updated": true}`))
+		require.NoError(t, err)
+
+		// Change second document
+		err = datastore.Set(key2, 0, nil, []byte(`{"updated": true}`))
+		require.NoError(t, err)
+
+		// Run poll - should detect both changes
+		poller.poll()
+
+		// Verify both events were fired
+		eventLock.Lock()
+		require.Len(t, firedEvents, 2, "both documents should trigger events")
+		_, fired1 := firedEvents[key1]
+		require.True(t, fired1, "event should be fired for first document")
+		_, fired2 := firedEvents[key2]
+		require.True(t, fired2, "event should be fired for second document")
+		eventLock.Unlock()
+
+		// Verify both keyWatcher CAS values were updated
+		poller.lock.Lock()
+		defer poller.lock.Unlock()
+
+		require.NotEqual(t, uint64(0), poller.keyWatcher[key1], "first document should have non-zero cas after poll")
+		require.NotEqual(t, uint64(0), poller.keyWatcher[key2], "second document should have non-zero cas after poll")
+
+		// Verify CAS matches current datastore values
+		currentCas1, err := datastore.Get(key1, nil)
+		require.NoError(t, err)
+		require.Equal(t, currentCas1, poller.keyWatcher[key1], "first document CAS should match datastore")
+
+		currentCas2, err := datastore.Get(key2, nil)
+		require.NoError(t, err)
+		require.Equal(t, currentCas2, poller.keyWatcher[key2], "second document CAS should match datastore")
+	})
+
 }
 
 func TestCfgNodePoller_StartPolling(t *testing.T) {
@@ -722,7 +800,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		err = poller.Register(key)
 		require.NoError(t, err)
 
-		poller.StartPolling(ctx)
+		poller.startPolling(ctx)
 
 		// Wait for at least one poll cycle
 		time.Sleep(20 * time.Millisecond)
@@ -767,7 +845,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		err := poller.Register(key)
 		require.NoError(t, err)
 
-		poller.StartPolling(ctx)
+		poller.startPolling(ctx)
 
 		// Create document - should be detected on next poll
 		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
@@ -811,7 +889,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		err = poller.Register(key)
 		require.NoError(t, err)
 
-		poller.StartPolling(ctx)
+		poller.startPolling(ctx)
 
 		// First update
 		err = datastore.Set(key, 0, nil, []byte(`{"version": 2}`))
@@ -859,7 +937,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		err := poller.Register(key)
 		require.NoError(t, err)
 
-		poller.StartPolling(ctx)
+		poller.startPolling(ctx)
 		cancel()
 
 		// Wait for goroutine to stop

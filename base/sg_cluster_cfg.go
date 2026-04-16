@@ -40,11 +40,10 @@ type CfgEventNotifyFunc func(docID string, cas uint64, err error)
 var ErrCfgCasError = &cbgt.CfgCASError{}
 
 // NewCfgSG returns a Cfg implementation that reads/writes its entries
-// from/to a couchbase bucket, using DCP streams to subscribe to
-// changes.
+// from/to a couchbase datastore. All document names will start with keyPrefix.
+// If useNodePoller is true, then any document changes are received by node polling. If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
 //
-// urlStr: single URL or multiple URLs delimited by ';'
-// bucket: couchbase bucket name
+// The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
 func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
@@ -59,7 +58,7 @@ func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	}
 
 	if useNodePoller {
-		c.nodePoller = newCfgNodePoller(ctx, datastore, c.FireEvent, defaultHeartbeatPollInterval)
+		c.nodePoller = newCfgNodePoller(loggingCtx, datastore, c.FireEvent, defaultHeartbeatPollInterval)
 	}
 
 	return c, nil
@@ -132,6 +131,7 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Subscribe, key: %s", cfgKey)
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	a, exists := c.subscriptions[cfgKey]
 	if !exists || a == nil {
 		a = make([]chan<- cbgt.CfgEvent, 0)
@@ -145,7 +145,6 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 		}
 	}
 
-	c.lock.Unlock()
 
 	return nil
 }
