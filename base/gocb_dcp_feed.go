@@ -95,7 +95,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 			}
 		}
 	}
-	options := DCPClientOptions{
+	options := GoCBDCPClientOptions{
 		MetadataStoreType: metadataStoreType,
 		DbStats:           dbStats,
 		CollectionIDs:     collectionIDs,
@@ -113,7 +113,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 		options.InitialMetadata = metadata
 	}
 
-	dcpClient, err := NewDCPClient(
+	dcpClient, err := NewGocbDCPClient(
 		ctx,
 		callback,
 		options,
