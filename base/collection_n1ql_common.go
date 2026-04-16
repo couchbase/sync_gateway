@@ -645,6 +645,9 @@ func GetSystemCollectionIndexesMeta(ctx context.Context, store N1QLStore, scopeN
 		quotedNames = append(quotedNames, strconv.Quote(name))
 	}
 
+	// bucket_id, scope_id, and keyspace_id are trusted internal values originating from the
+	// CBS cluster topology (not user input), so direct interpolation is safe here.
+	// Index names are escaped via strconv.Quote above.
 	statement := fmt.Sprintf(
 		"SELECT name, state FROM system:all_indexes WHERE bucket_id = '%s' AND scope_id = '%s' AND keyspace_id = '%s' AND name IN [%s]",
 		store.BucketName(),
