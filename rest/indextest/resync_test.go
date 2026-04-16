@@ -50,10 +50,10 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
 	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()-warningsBeforeResync)
 
-	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
-	require.True(t, ok)
-
 	if !base.TestsDisableGSI() {
+		defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+		require.True(t, ok)
+
 		numIndexes, err := defaultDataStore.GetIndexes()
 		require.NoError(t, err)
 		if rt.GetDatabase().UseLegacySyncDocsIndex() {

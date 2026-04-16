@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -193,6 +194,30 @@ func (m *DatabaseInitManager) Cancel(dbName string, reason string) {
 		return
 	}
 	worker.Stop(reason)
+}
+
+func (m *DatabaseInitManager) Close(ctx context.Context) error {
+	m.cancelWorkers()
+	err, _ := base.RetryLoop(ctx, "Wait for DatabaseInitManager to shutdown",
+		func() (shouldRetry bool, err error, _ any) {
+			m.workersLock.Lock()
+			defer m.workersLock.Unlock()
+			for dbName := range m.workers {
+				return true, fmt.Errorf("DatabaseInitManager still has active initialization for database %s", dbName), nil
+			}
+			return false, nil, nil
+		},
+		base.CreateLinearSleeperFunc(1*time.Minute, 50*time.Millisecond),
+	)
+	return err
+}
+
+func (m *DatabaseInitManager) cancelWorkers() {
+	m.workersLock.Lock()
+	defer m.workersLock.Unlock()
+	for _, worker := range m.workers {
+		worker.Stop("DatabaseInitManager is shutting down, cancelling database initialization.")
+	}
 }
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
