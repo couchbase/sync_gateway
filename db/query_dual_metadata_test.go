@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -19,7 +20,7 @@ import (
 )
 
 // mockQueryResultIterator is an in-memory QueryResultIterator backed by a slice of raw JSON
-// byte slices, used to test mergeDedupIterator without a real database.
+// byte slices, used to test unionDedupIterator without a real database.
 type mockQueryResultIterator struct {
 	rows     [][]byte
 	pos      int
@@ -60,7 +61,8 @@ func (m *mockQueryResultIterator) Close() error {
 	return m.closeErr
 }
 
-// marshalRow builds a minimal principal-row JSON byte slice from id and name fields.
+// marshalRow builds a minimal principal-row JSON byte slice with id and name fields,
+// mimicking a row from the UNION ALL query used by buildDualMetadataUnionStatement.
 func marshalRow(id, name string) []byte {
 	row, err := base.JSONMarshal(map[string]string{"id": id, "name": name})
 	if err != nil {
@@ -69,17 +71,17 @@ func marshalRow(id, name string) []byte {
 	return row
 }
 
-// TestMergeDedupIterator_PrimaryOnly verifies that all primary rows are emitted when the
-// fallback iterator is empty.
-func TestMergeDedupIteratorPrimaryOnly(t *testing.T) {
+// TestUnionDedupIteratorPrimaryOnly verifies that all primary rows are emitted when there are
+// no fallback rows in the UNION ALL stream.
+func TestUnionDedupIteratorPrimaryOnly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	primary := newMockIterator([][]byte{
+	// Simulate UNION ALL output with only primary rows (no fallback rows).
+	stream := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
-	fallback := newMockIterator(nil)
 
-	iter := newMergeDedupIterator(primary, fallback)
+	iter := newUnionDedupIterator(stream)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -94,17 +96,17 @@ func TestMergeDedupIteratorPrimaryOnly(t *testing.T) {
 	assert.Equal(t, "_sync:user:bob", rows[1].Id)
 }
 
-// TestMergeDedupIterator_FallbackOnly verifies that all fallback rows are emitted when the
-// primary iterator is empty.
-func TestMergeDedupIteratorFallbackOnly(t *testing.T) {
+// TestUnionDedupIteratorFallbackOnly verifies that all fallback rows are emitted when there
+// are no primary rows in the UNION ALL stream.
+func TestUnionDedupIteratorFallbackOnly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	primary := newMockIterator(nil)
-	fallback := newMockIterator([][]byte{
+	// Simulate UNION ALL output with only fallback rows.
+	stream := newMockIterator([][]byte{
 		marshalRow("_sync:user:carol", "carol"),
 		marshalRow("_sync:role:editor", "editor"),
 	})
 
-	iter := newMergeDedupIterator(primary, fallback)
+	iter := newUnionDedupIterator(stream)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -119,31 +121,31 @@ func TestMergeDedupIteratorFallbackOnly(t *testing.T) {
 	assert.Equal(t, "_sync:role:editor", rows[1].Id)
 }
 
-// TestMergeDedupIterator_BothEmpty verifies that an empty merged stream is handled cleanly.
-func TestMergeDedupIteratorBothEmpty(t *testing.T) {
-	iter := newMergeDedupIterator(newMockIterator(nil), newMockIterator(nil))
+// TestUnionDedupIteratorEmpty verifies that an empty UNION ALL stream is handled cleanly.
+func TestUnionDedupIteratorEmpty(t *testing.T) {
+	iter := newUnionDedupIterator(newMockIterator(nil))
 	var row principalRow
 	assert.False(t, iter.Next(context.Background(), &row))
 	require.NoError(t, iter.Close())
 }
 
-// TestMergeDedupIterator_DeduplicatesPrimaryPreferred verifies that when the same META().id
-// appears in both primary and fallback, only the primary version is emitted.  The Name field
-// is deliberately different between stores to confirm which version was chosen.
-func TestMergeDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
+// TestUnionDedupIteratorDeduplicatesPrimaryPreferred verifies that when the same META().id
+// appears in both the primary and fallback sections of the UNION ALL stream, only the primary
+// version (which appears first) is emitted. The Name field is different per store so the test
+// can confirm which copy was chosen.
+func TestUnionDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 	ctx := base.TestCtx(t)
-	primary := newMockIterator([][]byte{
+	// Primary rows appear first in the UNION ALL stream, fallback rows second.
+	stream := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice-primary"),
 		marshalRow("_sync:user:bob", "bob-primary"),
-	})
-	// fallback has the same two IDs plus one new one
-	fallback := newMockIterator([][]byte{
+		// Fallback section: alice and bob are duplicates, carol is new.
 		marshalRow("_sync:user:alice", "alice-fallback"),
 		marshalRow("_sync:user:bob", "bob-fallback"),
 		marshalRow("_sync:user:carol", "carol-fallback"),
 	})
 
-	iter := newMergeDedupIterator(primary, fallback)
+	iter := newUnionDedupIterator(stream)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -163,15 +165,19 @@ func TestMergeDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 	assert.Equal(t, "carol-fallback", rows[2].Name, "fallback-only doc should be emitted")
 }
 
-// TestMergeDedupIterator_AllDuplicates verifies that when every fallback doc is a duplicate
-// of a primary doc, only the primary docs are returned (no extras).
-func TestMergeDedupIteratorAllDuplicates(t *testing.T) {
+// TestUnionDedupIteratorAllDuplicates verifies that when every fallback doc is a duplicate of
+// a primary doc, only the primary docs are returned (no extras).
+func TestUnionDedupIteratorAllDuplicates(t *testing.T) {
 	ctx := base.TestCtx(t)
-	rows := [][]byte{
+	stream := newMockIterator([][]byte{
+		// Primary section.
+		marshalRow("_sync:user:alice", "alice-primary"),
+		marshalRow("_sync:user:bob", "bob-primary"),
+		// Fallback section — identical IDs.
 		marshalRow("_sync:user:alice", "alice"),
 		marshalRow("_sync:user:bob", "bob"),
-	}
-	iter := newMergeDedupIterator(newMockIterator(rows), newMockIterator(rows))
+	})
+	iter := newUnionDedupIterator(stream)
 	var result []principalRow
 	for {
 		var row principalRow
@@ -182,20 +188,24 @@ func TestMergeDedupIteratorAllDuplicates(t *testing.T) {
 	}
 	require.NoError(t, iter.Close())
 	require.Len(t, result, 2)
+	assert.Equal(t, "_sync:user:alice", result[0].Id)
+	assert.Equal(t, "_sync:user:bob", result[1].Id)
+	assert.Equal(t, "alice-primary", result[0].Name)
+	assert.Equal(t, "bob-primary", result[1].Name)
 }
 
-// TestMergeDedupIterator_NextBytes verifies that NextBytes returns raw JSON and that
+// TestUnionDedupIteratorNextBytes verifies that NextBytes returns raw JSON and that
 // deduplication still works through the raw-bytes path.
-func TestMergeDedupIteratorNextBytes(t *testing.T) {
-	primary := newMockIterator([][]byte{
+func TestUnionDedupIteratorNextBytes(t *testing.T) {
+	stream := newMockIterator([][]byte{
+		// Primary section.
 		marshalRow("_sync:user:alice", "alice"),
-	})
-	fallback := newMockIterator([][]byte{
+		// Fallback section: alice is a duplicate, bob is new.
 		marshalRow("_sync:user:alice", "alice-dup"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newMergeDedupIterator(primary, fallback)
+	iter := newUnionDedupIterator(stream)
 	var rawRows [][]byte
 	for {
 		raw := iter.NextBytes()
@@ -210,41 +220,35 @@ func TestMergeDedupIteratorNextBytes(t *testing.T) {
 	assert.Contains(t, string(rawRows[1]), "bob")
 }
 
-// TestMergeDedupIterator_CloseBothIterators verifies that Close is called on both underlying
-// iterators, even after partial iteration.
-func TestMergeDedupIteratorCloseBothIterators(t *testing.T) {
+// TestUnionDedupIteratorClosesProperly verifies that Close propagates to the underlying
+// iterator, even after partial iteration.
+func TestUnionDedupIteratorClosesProperly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	primary := newMockIterator([][]byte{
+	mock := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
-	})
-	fallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newMergeDedupIterator(primary, fallback)
-	// Read one row then close without exhausting the iterators.
+	iter := newUnionDedupIterator(mock)
 	var row principalRow
 	require.True(t, iter.Next(ctx, &row))
 	require.NoError(t, iter.Close())
-	assert.True(t, primary.closed, "primary iterator should be closed")
-	assert.True(t, fallback.closed, "fallback iterator should be closed")
+	assert.True(t, mock.closed, "underlying iterator should be closed")
 }
 
-// TestMergeDedupIterator_One verifies the One helper returns the first row and closes both
-// underlying iterators.
-func TestMergeDedupIteratorOne(t *testing.T) {
+// TestUnionDedupIteratorOne verifies the One helper returns the first row and closes the
+// underlying iterator.
+func TestUnionDedupIteratorOne(t *testing.T) {
 	ctx := base.TestCtx(t)
-	primary := newMockIterator([][]byte{
+	mock := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
 	})
-	fallback := newMockIterator(nil)
 
-	iter := newMergeDedupIterator(primary, fallback)
+	iter := newUnionDedupIterator(mock)
 	var row principalRow
 	require.NoError(t, iter.One(ctx, &row))
 	assert.Equal(t, "_sync:user:alice", row.Id)
-	assert.True(t, primary.closed)
-	assert.True(t, fallback.closed)
+	assert.True(t, mock.closed)
 }
 
 // TestExtractRowID verifies that extractRowID correctly extracts the META().id value from
@@ -285,6 +289,11 @@ func TestExtractRowID(t *testing.T) {
 			raw:      nil,
 			expected: "",
 		},
+		{
+			name:     "row with sort_order column",
+			raw:      []byte(`{"id":"_sync:user:alice","name":"alice","sort_order":0}`),
+			expected: "_sync:user:alice",
+		},
 	}
 
 	for _, tc := range tests {
@@ -294,3 +303,174 @@ func TestExtractRowID(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildDualMetadataUnionStatement verifies that buildDualMetadataUnionStatement produces
+// well-formed UNION ALL N1QL statements with the correct keyspace substitutions, sort_order
+// literal injection, inner ORDER BY stripping, and outer ORDER BY construction.
+func TestBuildDualMetadataUnionStatement(t *testing.T) {
+	primaryKS := "`bucket`.`_system`.`_mobile`"
+	primaryPath := "bucket._system._mobile"
+	fallbackKS := "`bucket`.`_default`.`_default`"
+	fallbackPath := "bucket._default._default"
+	alias := base.KeyspaceQueryAlias
+
+	tests := []struct {
+		name              string
+		statement         string
+		wantPrimaryKSInQ  string
+		wantFallbackKSInQ string
+		wantOuterOrderBy  string // expected suffix after "ORDER BY"
+		wantLimitInArm    string // expected LIMIT token present in each arm (empty = no LIMIT)
+	}{
+		{
+			name: "basic query without ORDER BY",
+			statement: "SELECT META($_keyspace).id AS id, name " +
+				"FROM $_keyspace WHERE type = 'user'",
+			wantPrimaryKSInQ:  primaryKS,
+			wantFallbackKSInQ: fallbackKS,
+			wantOuterOrderBy:  dualMetadataSortOrderKey,
+		},
+		{
+			name: "query with alias, no ORDER BY",
+			statement: "SELECT META(sgQueryKeyspaceAlias).id AS id, name " +
+				"FROM $_keyspace AS sgQueryKeyspaceAlias WHERE type = 'role'",
+			wantPrimaryKSInQ:  primaryKS,
+			wantFallbackKSInQ: fallbackKS,
+			wantOuterOrderBy:  dualMetadataSortOrderKey,
+		},
+		{
+			name: "query with ORDER BY META(alias).id",
+			statement: fmt.Sprintf(
+				"SELECT META(%s).id, name FROM $_keyspace AS %s WHERE type = 'user' ORDER BY META(%s).id",
+				alias, alias, alias,
+			),
+			wantPrimaryKSInQ:  primaryKS,
+			wantFallbackKSInQ: fallbackKS,
+			wantOuterOrderBy:  dualMetadataSortOrderKey + ", id",
+		},
+		{
+			name: "query with ORDER BY META(alias).id and LIMIT",
+			statement: fmt.Sprintf(
+				"SELECT META(%s).id, name FROM $_keyspace AS %s WHERE type = 'user' ORDER BY META(%s).id LIMIT 10",
+				alias, alias, alias,
+			),
+			wantPrimaryKSInQ:  primaryKS,
+			wantFallbackKSInQ: fallbackKS,
+			wantOuterOrderBy:  dualMetadataSortOrderKey + ", id",
+			wantLimitInArm:    "LIMIT 10",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := buildDualMetadataUnionStatement(
+				tc.statement,
+				primaryKS, primaryPath,
+				fallbackKS, fallbackPath,
+			)
+
+			assert.True(t, strings.HasPrefix(result, "("), "should start with opening paren")
+			assert.Contains(t, result, ") UNION ALL (", "should contain UNION ALL joining the sub-queries")
+
+			// The result must end with the outer ORDER BY clause.
+			assert.True(t, strings.HasSuffix(result, " ORDER BY "+tc.wantOuterOrderBy),
+				"result should end with outer ORDER BY %q; got: %s", tc.wantOuterOrderBy, result)
+
+			// Both keyspaces should appear in the output.
+			assert.Contains(t, result, tc.wantPrimaryKSInQ, "primary keyspace should be in result")
+			assert.Contains(t, result, tc.wantFallbackKSInQ, "fallback keyspace should be in result")
+
+			// full_path must not appear in the output.
+			assert.NotContains(t, result, "AS full_path", "full_path column must not be injected")
+
+			// sort_order literals 0 (primary) and 1 (fallback) must both be injected.
+			assert.Contains(t, result, "0 AS "+dualMetadataSortOrderKey, "primary arm must have sort_order=0")
+			assert.Contains(t, result, "1 AS "+dualMetadataSortOrderKey, "fallback arm must have sort_order=1")
+
+			// KeyspaceQueryToken must not appear in the output.
+			assert.NotContains(t, result, base.KeyspaceQueryToken, "token must be fully replaced")
+
+			// Split on UNION ALL to inspect each arm individually.
+			// The second part will include the trailing outer ORDER BY; both arms must contain
+			// the correct FROM clause.
+			parts := strings.SplitN(result, " UNION ALL ", 2)
+			require.Len(t, parts, 2, "should have exactly two UNION ALL arms")
+			assert.Contains(t, parts[0], "FROM "+tc.wantPrimaryKSInQ)
+			assert.Contains(t, parts[1], "FROM "+tc.wantFallbackKSInQ)
+
+			// Inner ORDER BY must not appear inside either arm (it was lifted to outer scope).
+			assert.NotContains(t, parts[0], " ORDER BY ", "primary arm must not contain inner ORDER BY")
+			// parts[1] includes the outer ORDER BY suffix; strip it before checking.
+			armTwo := strings.TrimSuffix(parts[1], " ORDER BY "+tc.wantOuterOrderBy)
+			assert.NotContains(t, armTwo, " ORDER BY ", "fallback arm must not contain inner ORDER BY")
+
+			// If the original statement had a LIMIT it must be re-attached to each arm.
+			if tc.wantLimitInArm != "" {
+				assert.Contains(t, parts[0], tc.wantLimitInArm, "primary arm must contain LIMIT")
+				assert.Contains(t, armTwo, tc.wantLimitInArm, "fallback arm must contain LIMIT")
+			}
+		})
+	}
+}
+
+// TestSplitStatement verifies that splitStatement correctly separates the core query, ORDER BY
+// columns, and LIMIT clause for a variety of input shapes.
+func TestSplitStatement(t *testing.T) {
+	tests := []struct {
+		name            string
+		stmt            string
+		wantCore        string
+		wantOrderBy     string
+		wantLimitClause string
+	}{
+		{
+			name:        "no ORDER BY, no LIMIT",
+			stmt:        "SELECT name FROM ks WHERE type = 'user'",
+			wantCore:    "SELECT name FROM ks WHERE type = 'user'",
+			wantOrderBy: "",
+		},
+		{
+			name:        "ORDER BY only",
+			stmt:        "SELECT name FROM ks WHERE type = 'user' ORDER BY META(alias).id",
+			wantCore:    "SELECT name FROM ks WHERE type = 'user'",
+			wantOrderBy: "META(alias).id",
+		},
+		{
+			name:            "ORDER BY and LIMIT",
+			stmt:            "SELECT name FROM ks WHERE type = 'user' ORDER BY META(alias).id LIMIT 100",
+			wantCore:        "SELECT name FROM ks WHERE type = 'user'",
+			wantOrderBy:     "META(alias).id",
+			wantLimitClause: " LIMIT 100",
+		},
+		{
+			name:            "bare LIMIT, no ORDER BY",
+			stmt:            "SELECT name FROM ks LIMIT 50",
+			wantCore:        "SELECT name FROM ks",
+			wantOrderBy:     "",
+			wantLimitClause: " LIMIT 50",
+		},
+		{
+			name:            "ORDER BY with multiple columns and LIMIT",
+			stmt:            "SELECT a, b FROM ks ORDER BY a, b DESC LIMIT 10",
+			wantCore:        "SELECT a, b FROM ks",
+			wantOrderBy:     "a, b DESC",
+			wantLimitClause: " LIMIT 10",
+		},
+		{
+			name:        "case-insensitive ORDER BY",
+			stmt:        "SELECT name FROM ks order by name",
+			wantCore:    "SELECT name FROM ks",
+			wantOrderBy: "name",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			core, orderBy, limit := splitStatement(tc.stmt)
+			assert.Equal(t, tc.wantCore, core)
+			assert.Equal(t, tc.wantOrderBy, orderBy)
+			assert.Equal(t, tc.wantLimitClause, limit)
+		})
+	}
+}
+

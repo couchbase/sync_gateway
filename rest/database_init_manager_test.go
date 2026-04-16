@@ -519,7 +519,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				},
 			},
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -530,7 +531,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				},
 			},
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -542,6 +544,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
@@ -554,6 +557,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
 			},
 		},

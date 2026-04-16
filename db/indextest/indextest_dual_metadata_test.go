@@ -13,10 +13,10 @@
 package indextest
 
 import (
-	"fmt"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -43,14 +43,14 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 		UseXattrs:                  base.TestUseXattrs(),
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+		MetadataIndexes:            db.IndexesAll,
 	}
 	require.NoError(t, db.InitializeDualMetadataStoreIndexes(ctx, ms, indexOptions))
 
-	// Determine the expected principal index names based on xattr mode.
-	suffix := "x1"
+	// Determine the expected principal index names
 	expectedIndexes := []string{
-		fmt.Sprintf("sg_users_%s", suffix),
-		fmt.Sprintf("sg_roles_%s", suffix),
+		"sg_users_x1",
+		"sg_roles_x1",
 	}
 
 	gocbBucket, err := base.AsGocbV2Bucket(bucket.Bucket)
@@ -199,4 +199,106 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		assert.Equal(t, "bob-primary", results[bobKey].Name,
 			"primary datastore version of bob should be preferred")
 	})
+}
+
+// TestQueryUsersRealDocsDualMetadataStore is a higher-level integration test that creates real
+// user documents via auth.Authenticator on both the primary (_system._mobile) and fallback
+// (_default._default) stores, then calls QueryUsers directly (the same code path as the
+// /_user/ REST endpoint) and asserts that:
+//
+//   - All users from both stores appear in the results.
+//   - The same username present in both stores is deduplicated to a single entry.
+//   - The primary-store version is preferred when a duplicate exists.
+//
+// Test data:
+//   - "alice": primary store only  (email="alice@primary.example")
+//   - "bob":   both stores; primary has email="bob@primary.example", fallback has "bob@fallback.example"
+//   - "carol": fallback store only (email="carol@fallback.example")
+//
+// Expected: three unique results with bob's email originating from the primary store.
+func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+
+	// GetMobileSystemDataStore skips if the backing store does not support system collections.
+	primaryStore := bucket.GetMobileSystemDataStore()
+	fallbackStore := bucket.DefaultDataStore()
+	ms := base.NewMetadataStore(primaryStore, fallbackStore)
+
+	// Initialise data indexes on the default collection (used as the CBL sync data scope).
+	setupIndexes(t, bucket, testIndexCreationOptions{
+		numPartitions:          db.DefaultNumIndexPartitions,
+		useLegacySyncDocsIndex: false,
+		useXattrs:              true,
+	})
+
+	// Initialise principal indexes on BOTH the primary and fallback metadata stores.
+	indexOptions := db.InitializeIndexOptions{
+		NumReplicas:                0,
+		LegacySyncDocsIndex:        false,
+		UseXattrs:                  true,
+		NumPartitions:              db.DefaultNumIndexPartitions,
+		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+	}
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(ctx, ms, indexOptions))
+
+	// Build a DatabaseContext that uses the dual MetadataStore with the default collection for
+	// sync metadata.
+	dbOptions := getDatabaseContextOptions(false)
+	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
+	dbOptions.EnableXattr = true
+	dbOptions.MetadataStore = ms
+
+	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)
+	t.Cleanup(func() { database.Close(dbCtx) })
+
+	// authOpts mirrors the core options used by DatabaseContext.Authenticator() but targeting
+	// an individual store directly. channelComputer is nil because channel computation is not
+	// exercised in this test.
+	authOpts := auth.AuthenticatorOptions{
+		LogCtx:   ctx,
+		MetaKeys: base.DefaultMetadataKeys,
+	}
+
+	// createAndSaveUser writes a real user document to the given datastore via
+	// auth.Authenticator, producing the full document structure that QueryUsers expects.
+	// A store-specific email is used to distinguish which version is returned after
+	// deduplication.
+	createAndSaveUser := func(t *testing.T, store base.DataStore, username, email string) {
+		t.Helper()
+		authr := auth.NewAuthenticator(store, nil, authOpts)
+		user, err := authr.NewUser(username, "password", nil)
+		require.NoError(t, err)
+		require.NoError(t, user.SetEmail(email))
+		require.NoError(t, authr.Save(user))
+	}
+
+	createAndSaveUser(t, primaryStore, "alice", "alice@primary.example")   // alice: primary only
+	createAndSaveUser(t, primaryStore, "bob", "bob@primary.example")       // bob: written to primary
+	createAndSaveUser(t, fallbackStore, "bob", "bob@fallback.example")     // bob: also in fallback (duplicate)
+	createAndSaveUser(t, fallbackStore, "carol", "carol@fallback.example") // carol: fallback only
+
+	// QueryUsers is called by the /_user/ REST endpoint. Calling it directly here exercises
+	// the full dual-store query and deduplication path without the HTTP layer.
+	iter, err := database.QueryUsers(dbCtx, "", 0)
+	require.NoError(t, err)
+
+	results := make(map[string]db.QueryUsersRow)
+	var row db.QueryUsersRow
+	for iter.Next(dbCtx, &row) {
+		results[row.Name] = row
+		row = db.QueryUsersRow{} // reset for next iteration
+	}
+	require.NoError(t, iter.Close())
+
+	require.Len(t, results, 3, "expected exactly 3 unique users after deduplication across both datastores")
+	require.Contains(t, results, "alice", "alice (primary store only) should be present")
+	require.Contains(t, results, "bob", "bob should appear exactly once after deduplication")
+	require.Contains(t, results, "carol", "carol (fallback store only) should be present")
+
+	// The primary-store version of bob must take precedence over the fallback-store version.
+	assert.Equal(t, "bob@primary.example", results["bob"].Email,
+		"primary datastore version of bob should be preferred over fallback")
 }

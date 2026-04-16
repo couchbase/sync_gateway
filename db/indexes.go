@@ -482,7 +482,7 @@ func InitializeDualMetadataStoreIndexes(ctx context.Context, metadataStore *base
 	}
 	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
 	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
-	if err := InitializeIndexes(primaryCtx, primaryN1QL, options); err != nil {
+	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
 		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
 	}
 
