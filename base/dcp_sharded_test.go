@@ -1146,9 +1146,9 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			failedNodeEvents = eventsB
 		}
 
-		require.EventuallyWithT(t, func(t *assert.CollectT){
+		require.EventuallyWithT(t, func(t *assert.CollectT) {
 			select {
-			case event := <- failedNodeEvents:
+			case event := <-failedNodeEvents:
 				assert.Equal(t, key, event.Key)
 				assert.Equal(t, successCas, event.CAS, "should detect the winner's CAS")
 				assert.NoError(t, event.Error)
