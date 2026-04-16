@@ -145,7 +145,6 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 		}
 	}
 
-
 	return nil
 }
 
