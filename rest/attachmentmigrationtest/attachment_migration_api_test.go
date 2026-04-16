@@ -24,10 +24,6 @@ import (
 )
 
 func TestAttachmentMigrationAPI(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -81,10 +77,6 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 }
 
 func TestAttachmentMigrationAbort(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -119,10 +111,6 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 }
 
 func TestAttachmentMigrationReset(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -169,9 +157,6 @@ func TestAttachmentMigrationReset(t *testing.T) {
 }
 
 func TestAttachmentMigrationMultiNode(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
