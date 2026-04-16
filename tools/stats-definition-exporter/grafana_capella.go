@@ -9,6 +9,9 @@
 package main
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/grafana/grafana-foundation-sdk/go/cog"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
@@ -28,6 +31,11 @@ const (
 	// Prometheus datasource used to populate cluster-scoped template variables.
 	capellaGlobalPromUID = "P5DCFC7561CCDE821"
 )
+
+// capellaRestartMask suppresses the "Show Restarts" annotation for the first
+// window of a node's uptime. Capella's scrape can miss early samples after a
+// node starts, so we allow a larger grace period than Supportal.
+const capellaRestartMask = 10 * time.Minute
 
 var capellaConfig = grafanaFormatConfig{
 	metricPrefix:   "",
@@ -69,7 +77,7 @@ var capellaConfig = grafanaFormatConfig{
 			Enable(false).
 			Hide(false).
 			IconColor("#5794F2").
-			Expr(`sgw_resource_utilization_uptime{databaseId=~"$databaseId",couchbaseNode=~"$couchbaseNode"} <= 600000000000`),
+			Expr(fmt.Sprintf(`sgw_resource_utilization_uptime{databaseId=~"$databaseId",couchbaseNode=~"$couchbaseNode"} <= %d`, capellaRestartMask.Nanoseconds())),
 	},
 	templateVars: []cog.Builder[sdkdashboard.VariableModel]{
 		sdkdashboard.NewDatasourceVariableBuilder("DataSource").

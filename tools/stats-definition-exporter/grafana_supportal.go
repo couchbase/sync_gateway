@@ -9,6 +9,9 @@
 package main
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/grafana/grafana-foundation-sdk/go/cog"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
@@ -18,6 +21,11 @@ import (
 // Prometheus/Mimir datasource provisioned in the Supportal Grafana instance
 // for imported dashboards to bind correctly.
 const supportalPromDatasourceUID = "mimir"
+
+// supportalRestartMask suppresses the "Show Restarts" annotation for the first
+// window of a node's uptime. Supportal scrape gaps are up to ~60s, so we use
+// 2x headroom.
+const supportalRestartMask = 2 * time.Minute
 
 var supportalConfig = grafanaFormatConfig{
 	metricPrefix:   "parsed_",
@@ -50,7 +58,7 @@ var supportalConfig = grafanaFormatConfig{
 			Enable(false).
 			Hide(false).
 			IconColor("#5794F2").
-			Expr(`parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"} <= 1200000000000`),
+			Expr(fmt.Sprintf(`parsed_sgw_resource_utilization_uptime{databaseUuid="$databaseUuid",nodeHostname=~"$nodeHostname"} <= %d`, supportalRestartMask.Nanoseconds())),
 	},
 	templateVars: []cog.Builder[sdkdashboard.VariableModel]{
 		sdkdashboard.NewQueryVariableBuilder("databaseUuid").
