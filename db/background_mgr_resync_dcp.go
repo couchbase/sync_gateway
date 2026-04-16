@@ -133,6 +133,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	if !ok {
 		return errors.New("collections option is required and must be of type CollectionNames")
 	}
+	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 
 	var doneChan chan error
@@ -289,7 +290,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			_ = dcpClient.Close()
 			return err
 		}
-		base.DebugfCtx(ctx, base.KeyAll, "DCP client started.")
+		base.DebugfCtx(ctx, base.KeyAll, "Resync DCP client started.")
 
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
