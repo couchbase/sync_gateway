@@ -134,6 +134,9 @@ type LeakyBucketConfig struct {
 
 	PostN1QLQueryCallback func()
 
+	// PreUpdatedCallback issues a callback prior to running Update func.
+	PreUpdateCallback func(key string)
+
 	// UpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)

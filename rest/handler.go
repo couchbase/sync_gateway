@@ -969,6 +969,7 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
 			if updates.Name != nil {
+				// <--- this call will nil h.user
 				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
 			}
 			return err

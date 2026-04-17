@@ -2965,3 +2965,33 @@ func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAuthWhileDeleted(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
+	leakyDataStore, ok := base.AsLeakyDataStore(leakyBucket.DefaultDataStore())
+	require.True(t, ok)
+
+	const username = "alice"
+	auth := NewTestAuthenticator(t, leakyDataStore, nil, DefaultAuthenticatorOptions(ctx))
+	user, err := auth.NewUser(username, "", nil)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
+	docID := auth.DocIDForUser(username)
+	leakyDataStore.SetPreUpdateCallback(func(key string) {
+		if key == docID {
+			require.NoError(t, leakyDataStore.Delete(docID))
+		}
+	})
+
+	// Get user, but delete it on the way
+	user, err = auth.GetUser("alice")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+
+}
