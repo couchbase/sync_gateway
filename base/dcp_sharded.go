@@ -375,7 +375,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   avoids file system usage, in conjunction with managerLoadDataDir=false in options.
 	dataDir := ""
 
-	eventHandlersCtx, eventHandlersCancel := context.WithCancel(ctx)
+	eventHandlersCtx, eventHandlersCancel := context.WithCancelCause(ctx)
 	eventHandlers := &sgMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
 
 	// Specify one feed per pindex
@@ -522,7 +522,7 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 // Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
 func (c *CbgtContext) Stop(ctx context.Context) {
 	if c.eventHandlers != nil {
-		c.eventHandlers.ctxCancel()
+		c.eventHandlers.ctxCancel(errors.New("CbgtContext is stopping, cancelling event handlers"))
 	}
 
 	if c.heartbeatListener != nil {
@@ -628,11 +628,14 @@ func newCfgNodePoller(ctx context.Context, datastore DataStore, fireEvent CfgEve
 func (p *cfgNodePoller) getWatcher() map[string]uint64 {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	watcher := make(map[string]uint64, len(p.keyWatcher))
-	for key, cas := range p.keyWatcher {
-		watcher[key] = cas
-	}
+	watcher := maps.Clone(p.keyWatcher)
 	return watcher
+}
+
+func (p *cfgNodePoller) updateCas(key string, newCas uint64) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.keyWatcher[key] = newCas
 }
 
 // Register adds a key to the poller's watch list. The current CAS value of the key is retrieved from the datastore
@@ -659,20 +662,13 @@ func (p *cfgNodePoller) poll() {
 	for key, oldCas := range watcher {
 		newCas, err := p.datastore.Get(key, nil)
 		if err != nil && !IsDocNotFoundError(err) {
-			WarnfCtx(p.ctx, "error reading doc: %s %v", UD(key), err)
+			WarnfCtx(p.ctx, "cfgNodePoller: error polling doc: %s %v, skipping polling", UD(key), err)
 			continue
 		}
 		if oldCas == newCas {
 			continue
 		}
-		p.lock.Lock()
-		currentCas, ok := p.keyWatcher[key]
-		if !ok || currentCas != oldCas {
-			p.lock.Unlock()
-			continue
-		}
-		p.keyWatcher[key] = newCas
-		p.lock.Unlock()
+		p.updateCas(key, newCas)
 		p.fireEvent(key, newCas, nil)
 	}
 }
@@ -873,7 +869,7 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 
 type sgMgrEventHandlers struct {
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 	manager   *cbgt.Manager
 }
 

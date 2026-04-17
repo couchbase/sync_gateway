@@ -246,16 +246,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		// CFG creation:
-		ctx, cancel := context.WithCancelCause(ctx)
-		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
+		resyncCtx, cancelResync := context.WithCancelCause(ctx)
+		defer cancelResync(nil)
+		resyncCfg, err := base.NewCfgSG(resyncCtx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
-			cancel(fmt.Errorf("resync run ended with error: %v", err))
+			cancelResync(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
 		indexName, err := base.GenerateCBGTIndexName(db.Name, base.ShardedDCPFeedTypeResync)
 		if err != nil {
-			cancel(fmt.Errorf("resync run ended with error: %v", err))
+			cancelResync(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 		opts := base.ShardedDCPOptions{
@@ -273,12 +274,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			FeedType:      base.ShardedDCPFeedTypeResync,
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
-
 		if err != nil {
-			cancel(fmt.Errorf("resync run function failed: %w", err))
+			cancelResync(fmt.Errorf("resync run function failed: %w", err))
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
-		} else {
-			cancel(fmt.Errorf("resync run ended with error: %v", err))
 		}
 		defer func() {
 			resyncCbgtContext.Stop(ctx)

@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -776,7 +777,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 	// Polling should stop when context is cancelled
 	t.Run("start_polling_stops_on_context_cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
+		ctx, cancel := context.WithCancelCause(t.Context())
 
 		var eventCount atomic.Int32
 		poller := &cfgNodePoller{
@@ -806,7 +807,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// Cancel context to stop polling
-		cancel()
+		cancel(errors.New("test: stopping polling"))
 
 		// Wait for goroutine to stop
 		time.Sleep(20 * time.Millisecond)
@@ -828,8 +829,8 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 	// Changes should be detected within the poll interval
 	t.Run("start_polling_polls_at_interval", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
+		ctx, cancel := context.WithCancelCause(t.Context())
+		defer cancel(nil)
 
 		var eventCount atomic.Int32
 		poller := &cfgNodePoller{
@@ -864,8 +865,8 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 	// Multiple sequential changes should all be detected over time
 	t.Run("start_polling_detects_changes_over_time", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
+		ctx, cancel := context.WithCancelCause(t.Context())
+		defer cancel(nil)
 
 		var eventCount atomic.Int32
 		poller := &cfgNodePoller{
@@ -921,7 +922,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 	// No polling should occur after context is cancelled
 	t.Run("start_polling_no_poll_after_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
+		ctx, cancel := context.WithCancelCause(t.Context())
 
 		var eventCount atomic.Int32
 		poller := &cfgNodePoller{
@@ -938,7 +939,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		require.NoError(t, err)
 
 		poller.startPolling(ctx)
-		cancel()
+		cancel(errors.New("test: stopping polling"))
 
 		// Wait for goroutine to stop
 		time.Sleep(20 * time.Millisecond)
