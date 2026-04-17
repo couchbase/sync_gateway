@@ -233,7 +233,7 @@ func createPanel(name string, stat statDefinition, datasource common.DataSourceR
 
 	// Force integer y-axis ticks for stats whose underlying values are whole numbers.
 	if stat.Format == "int" || stat.Format == "uint64" {
-		b = b.Decimals(0)
+		b = b.Decimals(2)
 	}
 
 	return b
