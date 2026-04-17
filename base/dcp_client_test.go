@@ -831,7 +831,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					require.NoError(t, err)
 					defer func() {
 						assert.NoError(t, dcpClient.Close())
-						<-doneChan
+						RequireChanRecv(t, doneChan)
 					}()
 
 					if live {
