@@ -158,6 +158,9 @@ func (lds *LeakyDataStore) WriteCas(k string, exp uint32, cas uint64, v any, opt
 	return lds.dataStore.WriteCas(k, exp, cas, v, opt)
 }
 func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+	if lds.config.PreUpdateCallback != nil {
+		lds.config.PreUpdateCallback(k)
+	}
 	if lds.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			updated, expiry, isDelete, err = callback(current)
@@ -354,6 +357,10 @@ func (lds *LeakyDataStore) SetPostN1QLQueryCallback(callback func()) {
 
 func (lds *LeakyDataStore) SetPostUpdateCallback(callback func(key string)) {
 	lds.config.PostUpdateCallback = callback
+}
+
+func (lds *LeakyDataStore) SetPreUpdateCallback(callback func(key string)) {
+	lds.config.PreUpdateCallback = callback
 }
 
 func (lds *LeakyDataStore) SetUpdateCallback(callback func(key string)) {
