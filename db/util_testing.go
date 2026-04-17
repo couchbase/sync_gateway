@@ -279,7 +279,6 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 	doneChan, err := dcpClient.Start()
 
 	if err != nil {
-		_ = dcpClient.Close()
 		return fmt.Errorf("error starting purge DCP feed: %w", err)
 	}
 	// wait for feed to complete
@@ -290,7 +289,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 			tbp.Logf(ctx, "purgeDCPFeed finished with error: %v", err)
 		}
 	case <-timeout:
-		_ = dcpClient.Close()
+		dcpClient.Close()
 		return fmt.Errorf("timeout waiting for purge DCP feed to complete")
 	}
 

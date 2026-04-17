@@ -22,8 +22,8 @@ import (
 type DCPClient interface {
 	// Start will start the DCP feed. It returns a channel marking the end of the feed.
 	Start() (chan error, error)
-	// Close will shut down the DCP feed.
-	Close() error
+	// Close will shut down the DCP feed and wait for termination.
+	Close()
 	// GetMetadata returns the current DCP metadata.
 	GetMetadata() []DCPMetadata
 	// GetMetadataKeyPrefix returns the key prefix used for storing any persistent data.
@@ -152,11 +152,7 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (do
 	doneChan, err = client.Start()
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
-		_ = client.Close()
-		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
-		if doneChan != nil {
-			<-doneChan
-		}
+		client.Close()
 		return nil, err
 	}
 	InfofCtx(ctx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
@@ -170,12 +166,7 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (do
 			break
 		case <-opts.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
-			// client.Close will always show error over doneChan
-			_ = client.Close()
-			dcpCloseErr := <-doneChan
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
-			}
+			client.Close()
 			break
 		}
 	}()

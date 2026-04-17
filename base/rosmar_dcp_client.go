@@ -17,12 +17,13 @@ import (
 
 // RosmarDCPClient implements a DCPClient for rosmar buckets.
 type RosmarDCPClient struct {
-	ctx        context.Context
-	bucket     Bucket
-	opts       DCPClientOptions
-	doneChan   chan struct{}
-	closeOnce  sync.Once
-	terminator chan bool
+	ctx              context.Context
+	bucket           Bucket
+	opts             DCPClientOptions
+	internalDoneChan chan struct{}
+	doneChan         chan struct{}
+	closeOnce        sync.Once
+	terminator       chan bool
 }
 
 // NewRosmarDCPClient creates a new DCPClient for a rosmar bucket.
@@ -37,6 +38,7 @@ func NewRosmarDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOption
 // Start a DCP feed, returns a channel that will be closed when the feed is done.
 func (dc *RosmarDCPClient) Start() (chan error, error) {
 	doneChan := make(chan error)
+	dc.internalDoneChan = make(chan struct{})
 	dc.doneChan = make(chan struct{})
 	dc.terminator = make(chan bool)
 	feedArgs := sgbucket.FeedArguments{
@@ -58,26 +60,29 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 
 	err := dc.bucket.StartDCPFeed(dc.ctx, feedArgs, dc.opts.Callback, nil)
 	if err != nil {
-		close(doneChan)
+		close(dc.internalDoneChan)
+		close(dc.doneChan)
+		dc.terminator = nil
 		return nil, err
 	}
 	// This extra goroutine can be removed if sgbucket.FeedArguments.DoneChan is changed to chan error
 	go func() {
 		<-dc.doneChan
 		close(doneChan)
+		close(dc.internalDoneChan)
 	}()
 	return doneChan, nil
 }
 
 // Close the DCP feed. This is a non blocking operation to allow for use in a callback function.
-func (dc *RosmarDCPClient) Close() error {
+func (dc *RosmarDCPClient) Close() {
 	dc.closeOnce.Do(func() {
 		if dc.terminator != nil {
 			close(dc.terminator)
 			dc.terminator = nil
 		}
+		<-dc.internalDoneChan
 	})
-	return nil
 }
 
 func (dc *RosmarDCPClient) GetMetadata() []DCPMetadata {

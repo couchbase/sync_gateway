@@ -292,7 +292,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		doneChan, err = dcpClient.Start()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
-			_ = dcpClient.Close()
 			return err
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
@@ -303,11 +302,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
-		err := dcpClient.Close()
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-			return err
-		}
 
 		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
@@ -372,17 +366,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	case <-terminator.Done():
 		if !r.Distributed {
 			base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
-			err := dcpClient.Close()
-			if err != nil {
-				base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
-				return err
-			}
-
-			err = <-doneChan
-			if err != nil {
-				return err
-			}
-
+			dcpClient.Close()
 			base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 		}
 	}

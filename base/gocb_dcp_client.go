@@ -51,21 +51,22 @@ type GoCBDCPClient struct {
 	supportsCollections        bool                           // Whether the target data store supports collections
 	numVbuckets                uint16                         // number of vbuckets on target data store
 	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
-	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
-	metadata                   DCPMetadataStore               // Implementation of DCPMetadataStore for metadata persistence
-	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
-	activeVbucketLock          sync.Mutex                     // Synchronization for activeVbuckets
-	oneShot                    bool                           // Whether DCP feed should be one-shot
-	closing                    AtomicBool                     // Set when the client is closing (either due to internal or external request)
-	closeError                 error                          // Will be set to a non-nil value for unexpected error
-	closeErrorLock             sync.Mutex                     // Synchronization on close error
-	failOnRollback             bool                           // When true, close when rollback detected
-	checkpointPrefix           string                         // DCP checkpoint key prefix
-	checkpointPersistFrequency *time.Duration                 // Used to override the default checkpoint persistence frequency
-	dbStats                    *expvar.Map                    // Stats for database
-	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
-	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
-	feedContent                sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
+	internalDoneChannel        chan struct{}
+	doneChannel                chan error                // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
+	metadata                   DCPMetadataStore          // Implementation of DCPMetadataStore for metadata persistence
+	activeVbuckets             map[uint16]struct{}       // vbuckets that have an open stream
+	activeVbucketLock          sync.Mutex                // Synchronization for activeVbuckets
+	oneShot                    bool                      // Whether DCP feed should be one-shot
+	closing                    AtomicBool                // Set when the client is closing (either due to internal or external request)
+	closeError                 error                     // Will be set to a non-nil value for unexpected error
+	closeErrorLock             sync.Mutex                // Synchronization on close error
+	failOnRollback             bool                      // When true, close when rollback detected
+	checkpointPrefix           string                    // DCP checkpoint key prefix
+	checkpointPersistFrequency *time.Duration            // Used to override the default checkpoint persistence frequency
+	dbStats                    *expvar.Map               // Stats for database
+	agentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
+	collectionIDs              []uint32                  // collectionIDs used by gocbcore, if empty, uses default collections
+	feedContent                sgbucket.FeedContent      // feedContent specifies whether the DCP feed should include values, xattrs, or both
 }
 
 // GoCBDCPClientOptions contains options specific for starting a DCP client backed by gocb.
@@ -145,6 +146,7 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
 		terminator:          make(chan bool),
 		doneChannel:         make(chan error, 1),
+		internalDoneChannel: make(chan struct{}),
 		failOnRollback:      options.FailOnRollback,
 		checkpointPrefix:    options.CheckpointPrefix,
 		dbStats:             options.DbStats,
@@ -279,7 +281,7 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 	return nil
 }
 
-// Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
+// Start returns an error and a channel to indicate when the DCPClient is done.
 func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
@@ -288,7 +290,8 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	if dc.oneShot {
 		err = dc.configureOneShot()
 		if err != nil {
-			return dc.doneChannel, err
+			dc.Close()
+			return nil, err
 		}
 	}
 	dc.startWorkers(dc.ctx)
@@ -296,16 +299,16 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
-			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			dc.Close()
+			return nil, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
 		}
 	}
 	return dc.doneChannel, nil
 }
 
-// Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
-func (dc *GoCBDCPClient) Close() error {
+// Close is used externally to stop the DCP client.
+func (dc *GoCBDCPClient) Close() {
 	dc.close()
-	return dc.getCloseError()
 }
 
 // GetMetadata returns metadata for all vbuckets
@@ -341,6 +344,7 @@ func (dc *GoCBDCPClient) close() {
 		dc.workersWg.Wait()
 		dc.doneChannel <- dc.getCloseError()
 		close(dc.doneChannel)
+		close(dc.internalDoneChannel)
 	}()
 }
 
