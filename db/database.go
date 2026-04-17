@@ -1765,7 +1765,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if ancestorRev, ok := doc.History[rev.ID]; ok && ancestorRev != nil && ancestorRev.Deleted {
 			isTombstone = true
 		}
-		body, metaMap, _, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, rev.ID, isTombstone)
+		body, metaMap, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, rev.ID, isTombstone)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to prepare doc %s for rev %s: %v", base.UD(doc.ID), base.UD(rev.ID), err)
 			return
@@ -1834,7 +1834,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs(ctx)
+		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs()
 		updatedDoc := sgbucket.UpdatedDoc{
 			Doc: nil, // Resync does not require document body update
 			Xattrs: map[string][]byte{

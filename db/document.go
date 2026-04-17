@@ -1401,15 +1401,11 @@ func (doc *Document) UnmarshalWithXattrs(ctx context.Context, data, syncXattrDat
 }
 
 // MarshalWithXattrs marshals the Document into body, and sync, vv and mou xattrs for persistence.
-func (doc *Document) MarshalWithXattrs(ctx context.Context) (data, syncXattr, vvXattr, mouXattr, globalXattr []byte, err error) {
+func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, globalXattr []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
-	docBytes, err := doc.BodyBytes(ctx)
-	if err != nil {
-		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
-	}
-	if docBytes != nil {
+	if doc._rawBody != nil {
 		if !doc.IsDeleted() {
-			data = docBytes
+			data = doc._rawBody
 		}
 	} else {
 		body := doc._body

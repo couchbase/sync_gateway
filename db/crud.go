@@ -1174,13 +1174,13 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		if conflictErr != nil {
 			if db.ForceAPIForbiddenErrors() {
 				// Make sure the user has permission to modify the document before confirming doc existence
-				mutableBody, metaMap, newRevID, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
+				mutableBody, metaMap, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
 				if err != nil {
 					base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
 					return nil, nil, false, nil, ErrForbidden
 				}
 
-				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newDoc.RevID)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
 					return nil, nil, false, nil, ErrForbidden
@@ -1623,7 +1623,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 // access map for users, roles, handler errors and sync fn exceptions.
 // If syncFn is provided, it will be used instead of the one configured on the database.
 func (db *DatabaseCollectionWithUser) SyncFnDryRun(ctx context.Context, newDoc, oldDoc *Document, userMeta, syncOptions map[string]any, syncFn string, errorLogFunc, infoLogFunc func(string)) (*channels.ChannelMapperOutput, error) {
-	mutableBody, metaMap, _, err := db.prepareDocForSyncFn(ctx, oldDoc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
+	mutableBody, metaMap, err := db.prepareDocForSyncFn(ctx, oldDoc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyDiagnostic, "Failed to prepare to run sync function: %v", err)
 		return nil, err
@@ -2150,8 +2150,14 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		}
 		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage(), oldDocHasAttachments)
 	}
-	// Store the new revision body into the doc:
+	// Store the new revision body into the doc. For tombstones, newDoc._body is an empty Body{}
+	// placeholder — copying it causes MarshalWithXattrs to serialize it as "{}", writing a spurious
+	// 2-byte body. Tombstones carry no body, so clear it instead.
+	//if !newDoc.Deleted {
 	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
+	//} else {
+	//	doc.RemoveBody()
+	//}
 	doc.SetAttachments(newDoc.Attachments())
 	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
@@ -2169,7 +2175,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, doc *Document, body Body, revID string, tombstone bool) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, doc *Document, body Body, revID string, tombstone bool) (mutableBody Body, metaMap map[string]any, err error) {
 	metaMap, err = doc.GetMetaMap(db.UserXattrKey())
 	if err != nil {
 		return
@@ -2186,10 +2192,9 @@ func (db *DatabaseCollectionWithUser) prepareDocForSyncFn(ctx context.Context, d
 	if err != nil {
 		return
 	}
-	newRevID = revID
 
 	mutableBody[BodyId] = doc.ID
-	mutableBody[BodyRev] = newRevID
+	mutableBody[BodyRev] = revID
 	if tombstone {
 		mutableBody[BodyDeleted] = true
 	}
@@ -2225,7 +2230,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	if ancestorRev, ok := doc.History[ancestorRevID]; ok && ancestorRev != nil && ancestorRev.Deleted {
 		isTombstone = true
 	}
-	curBody, _, _, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, doc.GetRevTreeID(), isTombstone)
+	curBody, _, err := db.prepareDocForSyncFn(ctx, doc, mutableBody, doc.GetRevTreeID(), isTombstone)
 	if err != nil {
 		return
 	}
@@ -2476,7 +2481,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	mutableBody, metaMap, newRevID, err := col.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
+	newRevID := newDoc.RevID
+	mutableBody, metaMap, err := col.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
 	if err != nil {
 		return
 	}
@@ -2683,7 +2689,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			doc.SetCrc32cUserXattrHash()
 
 			var rawSyncXattr, rawMouXattr, rawVvXattr, rawGlobalSync, rawDocBody []byte
-			rawDocBody, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalSync, err = doc.MarshalWithXattrs(ctx)
+			rawDocBody, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalSync, err = doc.MarshalWithXattrs()
 			if err != nil {
 				return updatedDoc, err
 			}
@@ -2928,14 +2934,14 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
 	if db.UseXattrs() && backupRev {
+
 		newBodyWithAtts, err := doc.BodyBytes(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q cv=%q err=%v ", base.UD(doc.ID), base.UD(doc.GetRevTreeID()), base.UD(doc.HLV.GetCurrentVersionString()), err)
 
 		}
 		if len(doc.Attachments()) > 0 {
-			var err error
-			newBodyWithAtts, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
+			newBodyWithAtts, err = base.InjectJSONProperties(newBodyWithAtts, base.KVPair{
 				Key: BodyAttachments,
 				Val: doc.Attachments(),
 			})

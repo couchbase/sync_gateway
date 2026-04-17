@@ -227,13 +227,13 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t testing.TB, ctx context.C
 		if conflictErr != nil {
 			if db.ForceAPIForbiddenErrors() {
 				// Make sure the user has permission to modify the document before confirming doc existence
-				mutableBody, metaMap, newRevID, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
+				mutableBody, metaMap, err := db.prepareDocForSyncFn(ctx, doc, newDoc.Body(ctx), newDoc.RevID, newDoc.Deleted)
 				if err != nil {
 					base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
 					return nil, nil, false, nil, ErrForbidden
 				}
 
-				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newDoc.RevID)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
 					return nil, nil, false, nil, ErrForbidden
