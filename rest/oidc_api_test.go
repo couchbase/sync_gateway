@@ -2880,3 +2880,92 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)
 	resp.RequireStatus(http.StatusCreated)
 }
+
+func TestOIDCDeleteUserDuringAuth(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAuth, base.KeyHTTP)
+	const (
+		defaultProvider = "foo"
+		username        = "foo_noah"
+	)
+	providers := auth.OIDCProviderMap{
+		defaultProvider: mockProviderWith(defaultProvider, mockProviderRegister{}, mockProviderUserPrefix{defaultProvider}),
+	}
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(providers, mockAuthServer.URL)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				OIDCConfig: &auth.OIDCOptions{
+					Providers:       providers,
+					DefaultProvider: base.Ptr(defaultProvider),
+				},
+			},
+		},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
+	defer rt.Close()
+
+	token, err := mockAuthServer.makeToken(claimsAuthentic())
+	require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+	require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+
+	resp := rt.SendRequestWithHeaders(
+		http.MethodPut,
+		"/{{.keyspace}}/doc1",
+		`{"foo":"bar"}`,
+		map[string]string{"Authorization": BearerToken + " " + token},
+	)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	metadataStore := rt.LeakyMetadataStore()
+
+	updates := 0
+	/* From handler.go:
+	    // <--- Update 1
+		h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
+		if h.user == nil || err != nil {
+			return auditFields, ErrInvalidLogin
+		}
+		if issuer := h.user.JWTIssuer(); issuer != "" {
+			auditFields["oidc_issuer"] = issuer
+		}
+		if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
+			updates = updates.Merge(*changes)
+		}
+	    // <--- Update 2
+		_, _, err = dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+		if err != nil {
+			return auditFields, fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
+		}
+		// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
+		if updates.Name != nil {
+	    	// <--- Update 3
+			h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+		}
+	*/
+	// first update:
+	metadataStore.SetUpdateCallback(func(key string) {
+		if strings.HasSuffix(key, ":user:foo_noah") {
+			updates++
+			fmt.Printf("updates=%d\n", updates)
+			if updates != 2 {
+				return
+			}
+			RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, ""), http.StatusOK)
+		}
+	})
+
+	resp = rt.SendRequestWithHeaders(
+		http.MethodGet,
+		"/{{.keyspace}}/doc1",
+		``,
+		map[string]string{"Authorization": BearerToken + " " + token},
+	)
+	RequireStatus(t, resp, http.StatusForbidden)
+
+}

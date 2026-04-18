@@ -998,6 +998,7 @@ func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFie
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
 			if updates.Name != nil {
+				// CBG-5298 comment out this line to have test "pass"
 				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
 			}
 			return auditFields, err

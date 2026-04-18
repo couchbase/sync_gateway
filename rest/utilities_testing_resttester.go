@@ -517,6 +517,13 @@ func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
 	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
 }
 
+// LeakyMetadataStore returns a LeakyDataStore that can be used to inject errors at the metadata store level. If the RestTester isn't configured with a leaky bucket, this will not work.
+func (rt *RestTester) LeakyMetadataStore() *base.LeakyDataStore {
+	ds, ok := base.AsLeakyDataStore(rt.GetDatabase().MetadataStore)
+	require.True(rt.TB(), ok, "Metadata store is not a leaky data store - cannot inject errors")
+	return ds
+}
+
 type RawDocResponse struct {
 	Xattrs RawDocXattrs `json:"_xattrs"`
 }
