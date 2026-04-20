@@ -200,7 +200,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.InfofCtx(ctx, base.KeyAll, "running resync against specified collections: %s", base.MD(resyncCollections))
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "Starting DCP resync", base.UD(db.Bucket.GetName()))
+	base.InfofCtx(ctx, base.KeyAll, "Starting DCP resync")
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
@@ -298,7 +298,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged.Value(), r.DocsProcessed.Value())
-		err = dcpClient.Close()
+		err := dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 			return err
