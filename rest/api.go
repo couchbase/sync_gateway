@@ -41,11 +41,12 @@ const (
 )
 
 type rootResponse struct {
-	Admin            bool   `json:"ADMIN,omitempty"`
-	CouchDB          string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
-	Vendor           vendor `json:"vendor"`
-	Version          string `json:"version,omitempty"`
-	PersistentConfig bool   `json:"persistent_config"`
+	Admin                bool   `json:"ADMIN,omitempty"`
+	CouchDB              string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
+	Vendor               vendor `json:"vendor"`
+	Version              string `json:"version,omitempty"`
+	PersistentConfig     bool   `json:"persistent_config"`
+	ClusterCompatVersion string `json:"cluster_compat_version,omitempty"`
 }
 
 type vendor struct {
@@ -67,6 +68,11 @@ func (h *handler) handleRoot() error {
 	if h.shouldShowProductVersion() {
 		resp.Version = base.LongVersionString
 		resp.Vendor.Version = base.ProductAPIVersion
+		if h.server.ClusterCompat != nil {
+			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
+				resp.ClusterCompatVersion = v.String()
+			}
+		}
 	}
 
 	h.writeJSON(resp)
