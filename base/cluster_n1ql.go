@@ -217,6 +217,12 @@ func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *
 }
 
 func (cl *ClusterOnlyN1QLStore) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
+	// CBS omits _system scope indexes from system:indexes (used by the gocb CollectionQueryIndexManager
+	// backing indexManager.GetAllIndexes), so for system-scope collections we must use
+	// WaitForSystemCollectionIndexesOnline which queries system:all_indexes instead.
+	if cl.scopeName == SystemScope {
+		return WaitForSystemCollectionIndexesOnline(ctx, cl, cl.scopeName, cl.collectionName, indexNames, option)
+	}
 	keyspace := strings.Join([]string{cl.bucketName, cl.scopeName, cl.collectionName}, ".")
 	return WaitForIndexesOnline(ctx, keyspace, cl.indexManager(cl.scopeName, cl.collectionName), indexNames, option)
 }

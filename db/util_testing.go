@@ -356,6 +356,27 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 
 	tbp.Logf(ctx, "Starting bucket init function")
 
+	mobileSystemDataStore, err := b.NamedDataStore(base.MobileSystemScopeAndCollectionName())
+	if err != nil {
+		return err
+	}
+	systemCollectionInitOptions := InitializeIndexOptions{
+		UseXattrs:                  true,
+		NumReplicas:                0,
+		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+		LegacySyncDocsIndex:        false,
+		MetadataIndexes:            IndexesMetadataOnly,
+		NumPartitions:              DefaultNumIndexPartitions,
+	}
+	systemN1QLStore, ok := base.AsN1QLStore(mobileSystemDataStore)
+	if !ok {
+		return fmt.Errorf("bucket %T was not a N1QL store", b)
+	}
+
+	if err := InitializeIndexes(ctx, systemN1QLStore, systemCollectionInitOptions); err != nil {
+		return err
+	}
+
 	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
