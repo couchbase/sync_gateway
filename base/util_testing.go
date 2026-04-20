@@ -1037,3 +1037,28 @@ func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.D
 		return *new(T) // unreachable
 	}
 }
+
+// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in time.
+func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) {
+	t.Helper()
+	for {
+		select {
+		case _, ok := <-ch:
+			// drain the channel until it's closed, but fail if it isn't closed within the timeout
+			if ok {
+				continue
+			}
+			return
+		case <-time.After(timeout):
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+		}
+	}
+}
+
+// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in TestChanTimeout.
+func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
+	t.Helper()
+	RequireChanClosedWithTimeout(t, ch, TestChanTimeout)
+}

@@ -65,6 +65,7 @@ func TestOneShotDCP(t *testing.T) {
 
 	defer func() {
 		_ = dcpClient.Close()
+		RequireChanClosed(t, doneChan)
 	}()
 
 	// Add additional documents in a separate goroutine, to verify one-shot behaviour
@@ -392,17 +393,18 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// function to force the rollback of some vBuckets
 	dcpClient1.forceRollbackvBucket(vbUUID)
 
-	_, startErr = dcpClient1.Start()
+	doneChan, startErr := dcpClient1.Start()
 	require.NoError(t, startErr)
+
+	defer func() {
+		assert.NoError(t, dcpClient1.Close())
+		RequireChanClosed(t, doneChan)
+	}()
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
 	// In continuous rollback the streams should not close after they're finished.
 	numVBuckets := len(dcpClient1.activeVbuckets)
 	require.Equal(t, dcpClient1.numVbuckets, uint16(numVBuckets))
-
-	defer func() {
-		assert.NoError(t, dcpClient1.Close())
-	}()
 
 }
 
@@ -591,6 +593,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	require.NoError(t, startErr)
 	defer func() {
 		assert.NoError(t, dcpClient.Close())
+		RequireChanClosed(t, doneChan)
 	}()
 
 	select {
@@ -683,6 +686,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 
 	defer func() {
 		_ = dcpClient.Close() // extra close in case of early exit
+		RequireChanClosed(t, doneChan)
 	}()
 	xattrName := "_xattr1"
 	xattrBody := []byte(`{"an": "xattr"}`)
@@ -706,7 +710,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	case <-timeout:
 		t.Fatalf("timeout waiting for doc deletion")
 	}
-	require.NoError(t, <-doneChan)
+	RequireChanClosed(t, doneChan)
 
 	xattrs, _, err := collection.GetXattrs(ctx, docID, []string{"_xattr1"})
 	require.NoError(t, err)
@@ -827,10 +831,11 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					}
 					dcpClient, err := NewDCPClient(ctx, bucket, feedArgs)
 					require.NoError(t, err)
-					_, err = dcpClient.Start()
+					doneChan, err := dcpClient.Start()
 					require.NoError(t, err)
 					defer func() {
 						assert.NoError(t, dcpClient.Close())
+						RequireChanClosed(t, doneChan)
 					}()
 
 					if live {

@@ -16,8 +16,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-func traverseAndRetrieveStats(logger *log.Logger, s any) StatDefinitions {
-	stats := make(StatDefinitions)
+func traverseAndRetrieveStats(logger *log.Logger, s any) statDefinitions {
+	stats := make(statDefinitions)
 
 	topLevel := reflect.ValueOf(s)
 	if topLevel.IsNil() {

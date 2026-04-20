@@ -38,6 +38,18 @@ All the available flags can be printed to console by running:
 ./stats-definition-exporter -help
 ```
 
+## Grafana Dashboard Output
+The tool can generate complete Grafana dashboard JSON files from the stat definitions, with one panel per stat grouped into collapsible rows by subsystem. Two target environments are supported:
+
+- **`supportal-grafana`** — for Supportal dashboards. Uses a `parsed_` metric prefix, and includes `databaseUuid` / `nodeHostname` template variables.
+- **`capella-grafana`** — for Capella/Cloud dashboards. No metric prefix, uses `databaseId` with a configurable Thanos datasource variable.
+
+Example:
+```bash
+./stats-definition-exporter -format supportal-grafana -output supportal-dashboard.json
+./stats-definition-exporter -format capella-grafana -output capella-dashboard.json
+```
+
 ## Output
 ### To File
 By default, this tool will output to a file named `metrics_metadata.json` in the current working directory. The output file will be overwritten if it already exists.

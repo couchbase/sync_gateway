@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -72,17 +73,19 @@ type CbgtContext struct {
 
 // ShardedDCPOptions contains options for starting a DCP feed for cbgt.
 type ShardedDCPOptions struct {
-	Bucket            Bucket          // bucket to target
-	Cfg               cbgt.Cfg        // cbgt cfg used to coordinate cbgt documents
-	Collections       CollectionNames // collection names to target
-	DBName            string          // database name is used to look up credentials
-	DestKey           string          // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
-	Heartbeater       Heartbeater     // heartbeater to use to find nodes
-	IndexName         string          // cbgt.Manger.IndexName, used to uniquely identify the index
-	IndexType         string          // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
-	NumPartitions     uint16          // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
-	PreviousIndexName string          // previous index name. If specified, marks IndexName as as a replacement for this name.
-	UUID              string          // database uuid, used to uniquely identify nodes
+	Bucket            Bucket             // bucket to target
+	Cfg               cbgt.Cfg           // cbgt cfg used to coordinate cbgt documents
+	Collections       CollectionNames    // collection names to target
+	DBName            string             // database name is used to look up credentials
+	DestKey           string             // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
+	Heartbeater       Heartbeater        // heartbeater to use to find nodes
+	IndexName         string             // cbgt.Manger.IndexName, used to uniquely identify the index
+	IndexType         string             // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
+	NumPartitions     uint16             // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
+	PreviousIndexName string             // previous index name. If specified, marks IndexName as as a replacement for this name.
+	UUID              string             // database uuid, used to uniquely identify nodes
+	Datastore         DataStore          // datastore to perform KV ops
+	FeedType          ShardedDCPFeedType // type of sharded DCP feed to start
 }
 
 // Validate makes sure that all options are specified.
@@ -110,6 +113,12 @@ func (opts ShardedDCPOptions) Validate() error {
 	}
 	if opts.DestKey == "" {
 		return fmt.Errorf("destKey must be provided to start sharded DCP feed")
+	}
+	if opts.Datastore == nil {
+		return fmt.Errorf("datastore must be provided to start sharded DCP feed")
+	}
+	if opts.FeedType != ShardedDCPFeedTypeImport && opts.FeedType != ShardedDCPFeedTypeResync {
+		return fmt.Errorf("unknown feed type %s", opts.FeedType)
 	}
 	if len(opts.Collections) == 0 {
 		return fmt.Errorf("at least one collection must be specified to start a sharded DCP feed")
@@ -170,7 +179,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 
 	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext)
+	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext, opts.Datastore, opts.FeedType)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +575,7 @@ func DestKey(dbName string, scope string, collections []string, feedType Sharded
 	return destKey
 }
 
-func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext) (*shardedDCPHeartbeatListener, error) {
+func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbgtContext *CbgtContext, datastore DataStore, feedType ShardedDCPFeedType) (*shardedDCPHeartbeatListener, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
 		return nil, errors.New("Unable to register heartbeat listener with nil manager, cfg or heartbeater")
@@ -584,6 +593,103 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 	}
 
 	return shardedDCPHeartbeatListener, nil
+}
+
+// cfgNodePoller is a companion to a cbgt.Cfg instance that polls a datastore for changes to selected document keys.
+//
+// cfgNodePoller.Register is used to listen for changes to keys.
+// fireEvent is called whenever a document's cas value changes. This should map to cbgt.Cfg.FireEvent function.
+type cfgNodePoller struct {
+	ctx          context.Context
+	keyWatcher   map[string]uint64
+	datastore    DataStore
+	fireEvent    CfgEventNotifyFunc
+	lock         sync.Mutex
+	pollInterval time.Duration
+}
+
+// newCfgNodePoller constructs a poller instance on the datastore. fireEvent is a cbgt.Cfg.FireEvent function called whenever a document cas changes.
+func newCfgNodePoller(ctx context.Context, datastore DataStore, fireEvent CfgEventNotifyFunc, pollInterval time.Duration) *cfgNodePoller {
+
+	p := &cfgNodePoller{
+		ctx:          ctx,
+		keyWatcher:   make(map[string]uint64),
+		datastore:    datastore,
+		fireEvent:    fireEvent,
+		pollInterval: pollInterval,
+	}
+
+	p.startPolling(ctx)
+	return p
+}
+
+// getWatcher returns a copy of the keyWatcher map containing the current CAS values for all registered keys.
+// This method is thread-safe and creates a new map to avoid external modifications to the internal state.
+func (p *cfgNodePoller) getWatcher() map[string]uint64 {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	watcher := maps.Clone(p.keyWatcher)
+	return watcher
+}
+
+func (p *cfgNodePoller) updateCas(key string, newCas uint64) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.keyWatcher[key] = newCas
+}
+
+// Register adds a key to the poller's watch list. The current CAS value of the key is retrieved from the datastore
+// and stored. If the key does not exist, it is registered with a CAS value of 0. This method is thread-safe.
+func (p *cfgNodePoller) Register(key string) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	cas, err := p.datastore.Get(key, nil)
+	if err != nil && !IsDocNotFoundError(err) {
+		return err
+	}
+	p.keyWatcher[key] = cas
+	return nil
+}
+
+// poll checks all registered keys for CAS changes. For each key whose CAS value has changed since the last check,
+// the fireEvent callback is invoked with the key, new CAS value, and nil error. The keyWatcher is updated with
+// the new CAS values. This method is thread-safe and uses optimistic locking to avoid blocking during I/O operations.
+func (p *cfgNodePoller) poll() {
+
+	watcher := p.getWatcher()
+
+	for key, oldCas := range watcher {
+		newCas, err := p.datastore.Get(key, nil)
+		if err != nil && !IsDocNotFoundError(err) {
+			WarnfCtx(p.ctx, "cfgNodePoller: error polling doc: %s %v, skipping polling", UD(key), err)
+			continue
+		}
+		if oldCas == newCas {
+			continue
+		}
+		p.updateCas(key, newCas)
+		p.fireEvent(key, newCas, nil)
+	}
+}
+
+// startPolling begins periodic polling for changes to registered keys at the configured poll interval.
+// Polling continues until the provided context is cancelled. This method starts a goroutine that calls
+// Poll() on each tick of the interval timer.
+func (p *cfgNodePoller) startPolling(ctx context.Context) {
+	ticker := time.NewTicker(p.pollInterval)
+	go func() {
+		defer FatalPanicHandler()
+		for {
+			select {
+			case <-ctx.Done():
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				p.poll()
+			}
+		}
+	}()
 }
 
 // shardedDCPHeartbeatListener uses cbgt's cfg to manage node list
