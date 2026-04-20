@@ -904,6 +904,7 @@ type SharedBucketImportStats struct {
 type SgwStatWrapper interface {
 	FormatString() string
 	Name() string
+	Subsystem() string
 	Unit() string
 	Help() string
 	AddedVersion() string
@@ -915,6 +916,7 @@ type SgwStatWrapper interface {
 
 type SgwStat struct {
 	statFQN           string
+	subsystem         string
 	unit              string
 	help              string
 	addedVersion      string
@@ -929,6 +931,12 @@ type SgwStat struct {
 // Currently only used for the stat metadata exporter tool.
 func (s SgwStat) Name() string {
 	return s.statFQN
+}
+
+// Subsystem returns the subsystem/category the stat belongs to (e.g., "cache", "database").
+// Currently only used for the stat metadata exporter tool.
+func (s SgwStat) Subsystem() string {
+	return s.subsystem
 }
 
 // Unit returns the units the stat uses for example, seconds.
@@ -1005,15 +1013,6 @@ type SgwFloatStat struct {
 	Val uint64
 }
 
-// Just a bool wrapper. Prometheus doesn't support boolean metrics and so this just goes to expvars
-type SgwBoolStat struct {
-	Val bool
-}
-
-func (s *SgwBoolStat) FormatString() string {
-	return StatFormatBool
-}
-
 func newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersion, stability string, labelKeys, labelVals []string, statValueType prometheus.ValueType) (*SgwStat, error) {
 	// Validate required fields have been specified
 	if description == "" {
@@ -1038,6 +1037,7 @@ func newSGWStat(subsystem, key, unit, description, addedVersion, deprecatedVersi
 
 	stat := &SgwStat{
 		statFQN:           name,
+		subsystem:         subsystem,
 		unit:              unit,
 		help:              description,
 		addedVersion:      addedVersion,
@@ -1512,7 +1512,7 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.RevisionCacheTotalMemory, err = NewIntStat(SubsystemCacheKey, "revision_cache_total_memory", StatUnitNoUnits, RevCacheMemoryDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	resUtil.RevisionCacheTotalMemory, err = NewIntStat(SubsystemCacheKey, "revision_cache_total_memory", StatUnitBytes, RevCacheMemoryDesc, StatAddedVersion3dot2dot1, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
 	}
@@ -2241,11 +2241,11 @@ func NewCollectionStats(dbName, scopeAndCollectionName string) (stats *Collectio
 	if err != nil {
 		return nil, err
 	}
-	stats.ResyncNumProcessed, err = NewIntStat(SubsystemCollection, "resync_num_processed", StatUnitBytes, ResyncNumProcessedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	stats.ResyncNumProcessed, err = NewIntStat(SubsystemCollection, "resync_num_processed", StatUnitNoUnits, ResyncNumProcessedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return nil, err
 	}
-	stats.ResyncNumChanged, err = NewIntStat(SubsystemCollection, "resync_num_changed", StatUnitBytes, ResyncNumChangedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	stats.ResyncNumChanged, err = NewIntStat(SubsystemCollection, "resync_num_changed", StatUnitNoUnits, ResyncNumChangedCollDesc, StatAddedVersion3dot3dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return nil, err
 	}
