@@ -135,6 +135,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
+	ctx, cancelResync := context.WithCancelCause(ctx)
+	defer func() {
+		if err != nil {
+			cancelResync(err)
+		} else {
+			cancelResync(errors.New("resync ended normally"))
+		}
+	}()
 
 	var doneChan chan error
 	var dcpClient base.DCPClient
@@ -244,17 +252,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		defer resyncHB.Stop(ctx)
 
-		// CFG creation:
-		resyncCtx, cancelResync := context.WithCancelCause(ctx)
-		defer func() {
-			if err != nil {
-				cancelResync(err)
-			} else {
-				cancelResync(errors.New("resync ended normally"))
-			}
-		}()
-		defer cancelResync(nil)
-		resyncCfg, err := base.NewCfgSG(resyncCtx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
+		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
