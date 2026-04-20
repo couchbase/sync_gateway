@@ -334,7 +334,15 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	}
 
 	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
+	arc.publishTerminalErrorAndStop(retryErr)
 	arc.replicationStats.NumReconnectsAborted.Add(1)
+}
+
+// publishTerminalErrorAndStop transitions the replicator to its terminal Error
+// state, publishes the status, and cancels the replicator context. Must be
+// called without holding arc.lock. Callers should increment NumReconnectsAborted
+// after this returns so observers of the stat can rely on state == Error.
+func (arc *activeReplicatorCommon) publishTerminalErrorAndStop(retryErr error) {
 	arc.lock.Lock()
 	defer arc.lock.Unlock()
 	// use setState to preserve last error from retry loop set by setLastError

@@ -2454,14 +2454,17 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 
 		expectedErrMsg := "unexpected status code 401 from target database"
 		require.ErrorContains(t, ar.Start(activeRT.Context()), expectedErrMsg)
+		// Wait for the reconnect loop to fully abort before asserting on state:
+		// during the retry loop, state transiently flips to Reconnecting and back
+		// to Error. NumReconnectsAborted is only incremented after the terminal
+		// Error state is published (see publishTerminalErrorAndStop).
+		base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
 		activeRT.WaitForReplicationStatus(id, db.ReplicationStateError)
 
 		status, err := activeRT.GetDatabase().SGReplicateMgr.GetReplicationStatus(activeRT.Context(), id, db.DefaultReplicationStatusOptions())
 		require.NoError(t, err)
 		require.Equal(t, db.ReplicationStateError, status.Status)
 		require.Equal(t, expectedErrMsg, status.ErrorMessage)
-		// state is updated by the reconnect loop slightly before NumReconnectsAborted is set
-		base.RequireWaitForStat(t, ar.Push.GetStats().NumReconnectsAborted.Value, 1)
 		firstNumConnectAttempts := ar.Push.GetStats().NumConnectAttempts.Value()
 		require.GreaterOrEqual(t, firstNumConnectAttempts, int64(1))
 
