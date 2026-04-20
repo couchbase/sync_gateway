@@ -57,7 +57,11 @@ func (re *RedactableError) Redact() string {
 	return fmt.Errorf(re.fmt, redactedArgs...).Error()
 }
 
+// Is returns true if any error in the chain matches the target error.
 func (re *RedactableError) Is(target error) bool {
+	if errors.Is(re, target) {
+		return true
+	}
 	for _, arg := range re.args {
 		err, ok := arg.(error)
 		if !ok {
@@ -70,7 +74,11 @@ func (re *RedactableError) Is(target error) bool {
 	return false
 }
 
+// As returns true if any error in the chain matches the target type and sets target as the value.
 func (re *RedactableError) As(target any) bool {
+	if errors.As(re, target) {
+		return true
+	}
 	for _, arg := range re.args {
 		err, ok := arg.(error)
 		if !ok {
