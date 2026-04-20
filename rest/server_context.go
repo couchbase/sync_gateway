@@ -103,8 +103,10 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
-	SGCollect                     *sgCollect      // singleton instance for this server's sgcollect_info process
-	connectToBucketFn             db.OpenBucketFn // supply a custom function for buckets, used for testing only
+	SGCollect                     *sgCollect                // singleton instance for this server's sgcollect_info process
+	NodeUUID                      string                    // Unique identifier for this SG node - ideally not ephemeral and persists restarts
+	ClusterCompat                 base.ClusterCompatChecker // Tracks cluster-wide minimum SG version for compat gating
+	connectToBucketFn             db.OpenBucketFn           // supply a custom function for buckets, used for testing only
 }
 
 type ActiveReplicationsCounter struct {
@@ -213,6 +215,14 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		}
 	}
 
+	// TODO: CBG-5138 - Persist or deterministically generate NodeUUID so that across restarts entries are reused instead of leaving a stale entry.
+	nodeUUID, err := base.GenerateRandomID()
+	if err != nil {
+		base.WarnfCtx(ctx, "Failed to generate node UUID: %v — using LogContextID as fallback", err)
+		nodeUUID = sc.LogContextID
+	}
+	sc.NodeUUID = nodeUUID
+
 	sc.startStatsLogger(ctx)
 
 	return sc
@@ -290,6 +300,11 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	// stop the config polling
 	if err := base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait); err != nil {
 		base.AssertfCtx(ctx, "Couldn't stop background config update worker: %v", err)
+	}
+
+	// deregister this node from cluster compat tracking before closing bootstrap connection
+	if ccm, ok := sc.ClusterCompat.(*clusterCompatManager); ok {
+		ccm.Stop(ctx)
 	}
 
 	// close cached bootstrap bucket connections for config polling
@@ -2178,6 +2193,12 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 		base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
 	}
 
+	ccm := &clusterCompatManager{sc: sc}
+	if err := ccm.Start(ctx); err != nil {
+		base.WarnfCtx(ctx, "Failed to start cluster compat manager: %v", err)
+	}
+	sc.ClusterCompat = ccm
+
 	if sc.Config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 		sc.BootstrapContext.terminator = make(chan struct{})
 		sc.BootstrapContext.doneChan = make(chan struct{})
@@ -2201,6 +2222,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					if count > 0 {
 						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 					}
+					ccm.Refresh(ctx)
 				}
 			}
 		}()

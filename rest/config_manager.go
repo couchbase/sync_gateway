@@ -672,6 +672,68 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 	return nil
 }
 
+// RegisterNodeVersion registers or updates a node's version and heartbeat in the given bucket's registry.
+// Also prunes stale nodes using the given expiry duration. Uses CAS retry on conflict.
+// Returns the updated registry for min-version computation.
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUUID string, version base.ClusterCompatVersion, heartbeatExpiry time.Duration) (*GatewayRegistry, error) {
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get registry for node registration: %w", err)
+		}
+		if registry.Nodes == nil {
+			registry.Nodes = make(map[string]*RegistryNode)
+		}
+		registry.Nodes[nodeUUID] = &RegistryNode{
+			Version:     version,
+			HeartbeatAt: time.Now().UTC(),
+		}
+		pruned := registry.PruneStaleNodes(heartbeatExpiry)
+		if len(pruned) > 0 {
+			base.InfofCtx(ctx, base.KeyConfig, "Pruned stale nodes from registry in bucket %s: %v", base.MD(bucketName), pruned)
+		}
+		err = b.setGatewayRegistry(ctx, bucketName, registry)
+		if err != nil {
+			if base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, configUpdateMaxRetryAttempts)
+				continue
+			}
+			return nil, fmt.Errorf("failed to write registry for node registration: %w", err)
+		}
+		return registry, nil
+	}
+	return nil, fmt.Errorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", configUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
+// DeregisterNodeVersion removes a node's version entry from the given bucket's registry.
+// Best-effort with CAS retry — errors are logged but not fatal.
+func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName, nodeUUID string) {
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to get registry for node deregistration from bucket %s: %v", base.MD(bucketName), err)
+			return
+		}
+		if registry.Nodes == nil {
+			return
+		}
+		if _, exists := registry.Nodes[nodeUUID]; !exists {
+			return
+		}
+		delete(registry.Nodes, nodeUUID)
+		err = b.setGatewayRegistry(ctx, bucketName, registry)
+		if err != nil {
+			if base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, configUpdateMaxRetryAttempts)
+				continue
+			}
+			base.WarnfCtx(ctx, "Failed to deregister node from bucket %s: %v", base.MD(bucketName), err)
+		}
+		return
+	}
+	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", configUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
 // getRegistryAndDatabase retrieves both the gateway registry and database config for the specified dbName and groupID.
 // If registry is not found, returns ErrNotFound
 // If registry exists but database is not found, returns err=nil and config=nil
