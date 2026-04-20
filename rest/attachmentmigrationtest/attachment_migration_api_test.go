@@ -39,7 +39,8 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	var migrationStatus db.AttachmentMigrationManagerResponse
 	err := base.JSONUnmarshal(resp.BodyBytes(), &migrationStatus)
 	require.NoError(t, err)
-	require.Equal(t, db.BackgroundProcessStateRunning, migrationStatus.State)
+	// could be running or completed depending on timing of when GET is performed
+	require.Contains(t, []db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateCompleted}, migrationStatus.State)
 	assert.Equal(t, int64(0), migrationStatus.DocsChanged)
 	assert.Equal(t, int64(0), migrationStatus.DocsProcessed)
 	assert.Empty(t, migrationStatus.LastErrorMessage)
