@@ -748,7 +748,7 @@ func TestGetDeleted(t *testing.T) {
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
-	collection.user, err = authenticator.GetUser("")
+	collection.user, err = authenticator.GetGuestUser()
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
 
@@ -827,7 +827,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	// Try again with a user who doesn't have access to this revision
 	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions(ctx))
-	collection.user, err = authenticator.GetUser("")
+	collection.user, err = authenticator.GetGuestUser()
 	assert.NoError(t, err, "GetUser")
 
 	var chans channels.TimedSet
@@ -1884,7 +1884,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
-	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, PrincipalTypeUser, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence(ctx)
@@ -1895,7 +1895,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, PrincipalTypeUser, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence(ctx)
@@ -1976,7 +1976,7 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 			totalCASRetries.Store(test.numCASRetries)
 			sequenceReleasedCountBefore := db.sequences.dbStats.SequenceReleasedCount.Value()
 
-			_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+			_, _, err = db.UpdatePrincipal(ctx, userInfo, PrincipalTypeUser, true)
 			if test.expectError {
 				require.ErrorContains(t, err, "cas mismatch")
 			} else {

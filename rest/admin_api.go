@@ -1956,7 +1956,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	// change them, return error.
 	internalName := internalUserName(*newInfo.Name)
 	var unchanged bool
-	user, _ := h.db.Authenticator(h.ctx()).GetUser(internalName)
+	user, _ := h.getUserFromName(*newInfo.Name)
 	if user != nil {
 		newInfo, unchanged = checkUserAPIReadOnlyFields(newInfo, user)
 		if !unchanged {
@@ -1969,7 +1969,17 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	}
 
 	newInfo.Name = &internalName
-	replaced, princ, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, isUser, h.rq.Method != "POST")
+	var principalType db.PrincipalType
+	if isUser {
+		if internalName == "" {
+			principalType = db.PrincipalTypeGuestUser
+		} else {
+			principalType = db.PrincipalTypeUser
+		}
+	} else {
+		principalType = db.PrincipalTypeRole
+	}
+	replaced, princ, err := h.db.UpdatePrincipal(h.ctx(), &newInfo, principalType, h.rq.Method != "POST")
 	if err != nil {
 		return err
 	} else if replaced {
@@ -2091,11 +2101,14 @@ func (h *handler) deleteRole() error {
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
 	username := internalUserName(mux.Vars(h.rq)["name"])
-	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
+	var user auth.User
+	var err error
+	if username == "" {
+		user, err = h.db.Authenticator(h.ctx()).GetGuestUser()
+	} else {
+		user, err = h.db.Authenticator(h.ctx()).GetUser(username)
+	}
+	if err != nil {
 		return err
 	}
 	// If not specified will default to false

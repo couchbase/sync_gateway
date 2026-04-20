@@ -223,7 +223,7 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 		docID: auth.DocIDForRole(name),
 	}
 	existingRole, err := auth.GetRoleIncDeleted(name)
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		return nil, err
 	}
 
@@ -246,7 +246,7 @@ func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
 		docID: auth.DocIDForRole(name),
 	}
 	existingRole, err := auth.GetRoleIncDeleted(name)
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		return nil, err
 	}
 

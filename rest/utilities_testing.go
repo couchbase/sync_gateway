@@ -632,7 +632,7 @@ func (rt *RestTester) WaitForPendingChanges() {
 func (rt *RestTester) SetAdminParty(partyTime bool) {
 	ctx := rt.Context()
 	a := rt.GetDatabase().Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	require.NoError(rt.TB(), err)
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet

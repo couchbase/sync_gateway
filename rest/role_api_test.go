@@ -56,7 +56,7 @@ func TestRolePurge(t *testing.T) {
 
 	// Ensure role is purged, can't access at all
 	role, err = rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
-	assert.Nil(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	assert.Nil(t, role)
 
 	// Ensure role returns 404 via REST call
@@ -254,7 +254,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -307,7 +307,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	require.NoError(t, err)
 
 	guest.SetDisabled(false)

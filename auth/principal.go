@@ -160,6 +160,8 @@ type User interface {
 	UserCollectionChannelAPI
 
 	UserCollectionAccess
+
+	IsGuest() bool
 }
 
 // PrincipalConfig represents a user/role as a JSON object.

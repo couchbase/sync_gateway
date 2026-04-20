@@ -182,7 +182,8 @@ func TestSerializeRole(t *testing.T) {
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
-	role, _ := auth.NewRole("froods", ch.BaseSetOf(t, "hoopy", "public"))
+	role, err := auth.NewRole("froods", ch.BaseSetOf(t, "hoopy", "public"))
+	require.NoError(t, err)
 	encoded := base.MustJSONMarshal(t, role)
 	require.NotNil(t, encoded)
 	log.Printf("Marshaled Role as: %s", encoded)
@@ -262,10 +263,10 @@ func TestGetMissingUser(t *testing.T) {
 	dataStore := bucket.GetSingleDataStore()
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	user, err := auth.GetUser("noSuchUser")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	require.Nil(t, user)
 	user, err = auth.GetUserByEmail("noreply@example.com")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	require.Nil(t, user)
 }
 
@@ -277,7 +278,7 @@ func TestGetMissingRole(t *testing.T) {
 	dataStore := bucket.GetSingleDataStore()
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	role, err := auth.GetRole("noSuchRole")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	require.Nil(t, role)
 }
 
@@ -287,7 +288,7 @@ func TestGetGuestUser(t *testing.T) {
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
-	user, err := auth.GetUser("")
+	user, err := auth.GetGuestUser()
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	assert.Equal(t, auth.defaultGuestUser(), user)
@@ -602,7 +603,7 @@ func TestRegisterUser(t *testing.T) {
 	assert.Equal(t, "bar@example.com", user.Email())
 
 	user, err = auth.GetUser("UnknownName")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	require.Nil(t, user)
 
 	user, err = auth.GetUserByEmail("bar@example.com")
@@ -621,7 +622,7 @@ func TestRegisterUser(t *testing.T) {
 	assert.Equal(t, "", user.Email())
 	// Make sure we can't retrieve 01234567890 by supplying empty email.
 	user, err = auth.GetUserByEmail("")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, base.ErrNotFound)
 	require.Nil(t, user)
 
 	// Try to register a user based on invalid email
@@ -886,7 +887,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		token, err := builder.Serialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
 		user, _, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
-		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		require.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
 	})

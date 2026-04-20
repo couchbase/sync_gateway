@@ -98,7 +98,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	assert.NoError(t, a.Save(guest))

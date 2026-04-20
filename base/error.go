@@ -119,12 +119,13 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return 200, "OK"
 	}
 
+	if errorIsOneOf(err, ErrNotFound, gocb.ErrDocumentNotFound) {
+		return http.StatusNotFound, "missing"
+	}
 	unwrappedErr := pkgerrors.Cause(err)
 
 	// Check for SGErrors
 	switch unwrappedErr {
-	case gocb.ErrDocumentNotFound, ErrNotFound:
-		return http.StatusNotFound, "missing"
 	case gocb.ErrDocumentExists, ErrAlreadyExists:
 		return http.StatusConflict, "Conflict"
 	case gocb.ErrTimeout:
@@ -410,4 +411,13 @@ func (e *ImportFilterDryRunError) Unwrap() error {
 		return nil
 	}
 	return e.Err
+}
+
+func errorIsOneOf(err error, errs ...error) bool {
+	for _, matchErr := range errs {
+		if errors.Is(err, matchErr) {
+			return true
+		}
+	}
+	return false
 }

@@ -68,7 +68,12 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		http.SetCookie(response, cookie)
 	}
 
-	user, err := auth.GetUser(session.Username)
+	var user User
+	if session.Username == "" {
+		user, err = auth.GetGuestUser()
+	} else {
+		user, err = auth.GetUser(session.Username)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -167,12 +172,14 @@ func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, er
 	if err != nil {
 		return nil, nil, err
 	}
-	user, err := auth.GetUser(session.Username)
+	var user User
+	if session.Username == "" {
+		user, err = auth.GetGuestUser()
+	} else {
+		user, err = auth.GetUser(session.Username)
+	}
 	if err != nil {
 		return nil, nil, err
-	}
-	if user == nil {
-		return nil, nil, base.ErrNotFound
 	}
 	if session.SessionUUID != user.GetSessionUUID() {
 		return nil, nil, base.ErrNotFound

@@ -96,7 +96,11 @@ func (h *handler) getUserFromSessionRequestBody() (auth.User, error) {
 	}
 
 	var user auth.User
-	user, err = h.db.Authenticator(h.ctx()).GetUser(params.Name)
+	if params.Name != "" {
+		user, err = h.db.Authenticator(h.ctx()).GetUser(params.Name)
+	} else {
+		user, err = h.db.Authenticator(h.ctx()).GetGuestUser()
+	}
 	if err != nil {
 		return nil, err
 	}

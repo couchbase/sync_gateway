@@ -2430,10 +2430,12 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	return nil
 }
 
-func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[string]*auth.PrincipalConfig, what string) error {
+func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[string]*auth.PrincipalConfig, what PrincipalType) error {
 	for name, princ := range spec {
+		princType := what
 		isGuest := name == base.GuestUsername
 		if isGuest {
+			princType = PrincipalTypeGuestUser
 			internalName := ""
 			princ.Name = &internalName
 		} else {
@@ -2443,7 +2445,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 
 		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value any) {
-			_, _, err = dbc.UpdatePrincipal(ctx, princ, (what == "user"), isGuest)
+			_, _, err = dbc.UpdatePrincipal(ctx, princ, princType, isGuest)
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
@@ -2459,7 +2461,7 @@ func (dbc *DatabaseContext) InstallPrincipals(ctx context.Context, spec map[stri
 				}
 
 				// Unexpected error, return error don't retry
-				return false, err, nil
+				return false, base.RedactErrorf("Could not add principal %s: %w", base.UD(name), err), nil
 			}
 
 			// No errors, assume it worked

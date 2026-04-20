@@ -407,7 +407,7 @@ func TestGuestUser(t *testing.T) {
 
 	// Check that the actual User object is correct:
 	ctx := rt.Context()
-	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("")
+	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetGuestUser()
 	assert.Empty(t, user.Name())
 	assert.Nil(t, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Disabled())

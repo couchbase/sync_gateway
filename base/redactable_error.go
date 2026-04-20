@@ -10,7 +10,10 @@ licenses/APL2.txt.
 
 package base
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // RedactableError is an error that can be used as a drop-in replacement for an error,
 // which has the ability to redact any sensitive data by calling redact() on all of its args.
@@ -34,6 +37,19 @@ func RedactErrorf(format string, args ...any) *RedactableError {
 		fmt:  format,
 		args: args,
 	}
+}
+
+func (re *RedactableError) Is(err error) bool {
+	for _, arg := range re.args {
+		e, ok := arg.(error)
+		if !ok {
+			continue
+		}
+		if errors.Is(e, err) {
+			return true
+		}
+	}
+	return false
 }
 
 // Error satisfies the error interface

@@ -3087,6 +3087,7 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 	}
 
 	if reloadActiveUser {
+		// FIXME, handle guest user, deleted user
 		user, err := db.Authenticator(ctx).GetUser(db.user.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)

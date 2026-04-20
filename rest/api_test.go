@@ -235,7 +235,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
@@ -1371,7 +1371,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -1476,7 +1476,7 @@ func TestOldDocHandling(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)

@@ -195,14 +195,22 @@ func getHistoricRoleChanEntryOverlap(roleEntries []auth.GrantHistorySequencePair
 	return overlapEntries
 }
 
+// getUserFromName is a helper function to get user from path variable and handle errors in a consistent way. This is
+// used to return a user when
+func (h *handler) getUserFromName(username string) (auth.User, error) {
+	internalName := internalUserName(username)
+	if internalName == "" {
+		return h.db.Authenticator(h.ctx()).GetGuestUser()
+	}
+	return h.db.Authenticator(h.ctx()).GetUser(internalName)
+}
+
 func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	name := mux.Vars(h.rq)["name"]
+	user, err := h.getUserFromName(name)
 	if err != nil {
-		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
-	}
-	if user == nil {
-		return kNotFoundError
+		return base.RedactErrorf("could not get user %s: %w", base.UD(name), err)
 	}
 
 	resp, err := h.getAllUserChannelsResponse(user)
@@ -221,12 +229,10 @@ func (h *handler) handleGetAllChannels() error {
 
 func (h *handler) handleGetUserDocAccessSpan() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	username := mux.Vars(h.rq)["name"]
+	user, err := h.getUserFromName(username)
 	if err != nil {
-		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
-	}
-	if user == nil {
-		return kNotFoundError
+		return fmt.Errorf("could not get user %s: %w", username, err)
 	}
 	ks := h.PathVar("keyspace")
 

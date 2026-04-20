@@ -272,12 +272,15 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	if c.user == nil {
 		return nil
 	}
-	user, err := c.Authenticator(ctx).GetUser(c.user.Name())
+	var user auth.User
+	var err error
+	if c.user.IsGuest() {
+		user, err = c.Authenticator(ctx).GetGuestUser()
+	} else {
+		user, err = c.Authenticator(ctx).GetUser(c.user.Name())
+	}
 	if err != nil {
 		return err
-	}
-	if user == nil {
-		return fmt.Errorf("User not found during reload")
 	}
 	c.user = user
 	return nil

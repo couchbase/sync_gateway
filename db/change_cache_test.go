@@ -853,7 +853,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, userInfo)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
-	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
+	_, _, err = db.UpdatePrincipal(ctx, userInfo, PrincipalTypeUser, true)
 	require.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(t, collection, []string{"PBS"}, 9)

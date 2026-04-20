@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"golang.org/x/oauth2"
 )
 
@@ -272,7 +273,7 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 		return "", "", ErrInvalidLogin
 	}
 
-	_, _, err = h.db.UpdatePrincipal(h.ctx(), &updates, true, true)
+	_, _, err = h.db.UpdatePrincipal(h.ctx(), &updates, db.PrincipalTypeUser, true)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to update user: %w", err)
 	}

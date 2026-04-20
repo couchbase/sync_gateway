@@ -10,6 +10,7 @@ package auth
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -585,7 +586,9 @@ func (user *userImpl) GetRoles() ([]Role, error) {
 		deletedRoles := make([]Role, 0)
 		for name := range user.RoleNames() {
 			role, err := user.auth.GetRoleIncDeleted(name)
-			if err != nil {
+			if errors.Is(err, base.ErrNotFound) {
+				continue
+			} else if err != nil {
 				return nil, base.RedactErrorf("Error getting user role %q: %w", base.UD(name), err)
 			} else if role != nil {
 				if role.IsDeleted() {
@@ -789,4 +792,8 @@ func (user *userImpl) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+func (user *userImpl) IsGuest() bool {
+	return user.Name() == ""
 }

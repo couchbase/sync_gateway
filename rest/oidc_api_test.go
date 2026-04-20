@@ -2966,6 +2966,6 @@ func TestOIDCDeleteUserDuringAuth(t *testing.T) {
 		``,
 		map[string]string{"Authorization": BearerToken + " " + token},
 	)
-	RequireStatus(t, resp, http.StatusForbidden)
+	RequireStatus(t, resp, http.StatusNotFound)
 
 }

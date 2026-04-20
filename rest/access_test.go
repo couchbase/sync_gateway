@@ -79,7 +79,7 @@ func TestStarAccess(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -93,7 +93,7 @@ func TestStarAccess(t *testing.T) {
 	// document added to no channel should only end up available to users with * access
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc6", `{"channels":[]}`), 201)
 
-	guest, err = a.GetUser("")
+	guest, err = a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(true)
 	err = a.Save(guest)
@@ -518,7 +518,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
@@ -552,7 +552,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	// Create some docs:
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
 	a.Collections = rt.GetDatabase().CollectionNames
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -564,7 +564,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["CBS"]}`), 201)
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":[]}`), 201)
 
-	guest, err = a.GetUser("")
+	guest, err = a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(true)
 	err = a.Save(guest)
@@ -769,7 +769,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -932,7 +932,7 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	guest, err := a.GetUser("")
+	guest, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
@@ -982,7 +982,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
@@ -1044,7 +1044,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	scopeName := dataStore.ScopeName()
 	collectionName := dataStore.CollectionName()
 
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
@@ -1136,7 +1136,7 @@ func TestPublicChannel(t *testing.T) {
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	require.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)

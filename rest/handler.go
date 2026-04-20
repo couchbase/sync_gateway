@@ -533,7 +533,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if h.user != nil && h.user.JWTIssuer() != "" {
 		updates := checkJWTIssuerStillValid(h.ctx(), dbContext, h.user)
 		if updates != nil {
-			_, _, err := dbContext.UpdatePrincipal(h.ctx(), updates, true, true)
+			_, _, err := dbContext.UpdatePrincipal(h.ctx(), updates, db.PrincipalTypeUser, true)
 			if err != nil {
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
@@ -992,7 +992,7 @@ func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFie
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
 			}
-			_, _, err = dbCtx.UpdatePrincipal(h.ctx(), &updates, true, true)
+			_, _, err = dbCtx.UpdatePrincipal(h.ctx(), &updates, db.PrincipalTypeUser, true)
 			if err != nil {
 				return auditFields, fmt.Errorf("failed to update OIDC user after sign-in: %w", err)
 			}
@@ -1065,7 +1065,7 @@ func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFie
 
 	// No auth given -- check guest access
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "guest"}
-	if h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(""); err != nil {
+	if h.user, err = dbCtx.Authenticator(h.ctx()).GetGuestUser(); err != nil {
 		return auditFields, err
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
@@ -1485,6 +1485,7 @@ func (h *handler) taggedEffectiveUserName() string {
 	}
 
 	if h.user == nil {
+		//base.AssertfCtx(h.ctx(), "HTTP request is running without privileges")
 		return ""
 	}
 

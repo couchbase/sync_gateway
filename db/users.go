@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -19,6 +20,14 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+)
+
+type PrincipalType string
+
+const (
+	PrincipalTypeUser      PrincipalType = "user"
+	PrincipalTypeGuestUser               = "guest_user"
+	PrincipalTypeRole                    = "role"
 )
 
 func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
@@ -42,7 +51,7 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 }
 
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.
-func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, princ auth.Principal, err error) {
+func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.PrincipalConfig, principalType PrincipalType, allowReplace bool) (replaced bool, princ auth.Principal, err error) {
 	// Sanity checking
 	if !base.AllOrNoneNil(updates.JWTIssuer, updates.JWTRoles, updates.JWTChannels) {
 		return false, princ, fmt.Errorf("must either specify all OIDC properties or none")
@@ -55,13 +64,25 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 	// Retry handling for cas failure during principal update.  Limiting retry attempts
 	// to PrincipalUpdateMaxCasRetries defensively to avoid unexpected retry loops.
 	for i := 1; i <= auth.PrincipalUpdateMaxCasRetries; i++ {
-		if isUser {
+		switch principalType {
+		case PrincipalTypeUser:
 			user, err = authenticator.GetUser(*updates.Name)
 			princ = user
-		} else {
+		case PrincipalTypeGuestUser:
+			user, err = authenticator.GetGuestUser()
+			princ = user
+		case PrincipalTypeRole:
 			princ, err = authenticator.GetRole(*updates.Name)
+			// For backwards compatibility with pre-2.9.0 versions of SG, if we don't find a role with the given name, also check for a user with that name (since roles were previously stored as users).
+			if errors.Is(err, base.ErrNotFound) {
+				user, err = authenticator.GetUser(*updates.Name)
+				princ = user
+			}
+		default:
+			err := fmt.Errorf("Invalid principal type: %s", principalType)
+			return false, princ, err
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, base.ErrNotFound) {
 			return replaced, princ, err
 		}
 
@@ -72,7 +93,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				return replaced, princ, fmt.Errorf("UpdatePrincipal: cannot create principal with empty name")
 			}
 			// If user/role didn't exist already, instantiate a new one:
-			if isUser {
+			if principalType != PrincipalTypeRole {
 				isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 				if !isValid {
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
@@ -91,7 +112,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		} else if !allowReplace {
 			err = base.HTTPErrorf(http.StatusConflict, "Already exists")
 			return
-		} else if isUser && updates.Password != nil {
+		} else if principalType != PrincipalTypeRole && updates.Password != nil {
 			isValid, reason := updates.IsPasswordValid(dbc.AllowEmptyPassword)
 			if !isValid {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Error updating user/role: %s", reason)
@@ -126,7 +147,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		var updatedExplicitRoles, updatedJWTRoles, updatedJWTChannels ch.TimedSet
 
 		// Then the user-specific fields like roles:
-		if isUser {
+		if principalType != PrincipalTypeRole {
 			if updates.Email != nil && *updates.Email != user.Email() {
 				if err := user.SetEmail(*updates.Email); err != nil {
 					base.WarnfCtx(ctx, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(updates.Name), base.UD(*updates.Email))
@@ -198,7 +219,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
 		}
 
-		if isUser {
+		if principalType != PrincipalTypeRole {
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
 			}

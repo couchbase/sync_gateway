@@ -120,6 +120,14 @@ func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, er
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(name string) (User, error) {
+	if name == "" {
+		err := "Can not call GetUser on an empty username"
+		base.AssertfCtx(auth.LogCtx, "%s", err)
+	}
+	return auth.getUser(name)
+}
+
+func (auth *Authenticator) getUser(name string) (User, error) {
 	princ, err := auth.getPrincipal(auth.DocIDForUser(name), func() Principal {
 		return &userImpl{
 			roleImpl: roleImpl{
@@ -138,6 +146,18 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 	}
 	princ.(*userImpl).auth = auth
 	return princ.(User), err
+}
+
+func (auth *Authenticator) GetGuestUser() (User, error) {
+	u, err := auth.getUser("")
+	if err == nil {
+		return u, nil
+	} else if !errors.Is(err, base.ErrNotFound) {
+		return nil, err
+	}
+	princ := auth.defaultGuestUser()
+	princ.(*userImpl).auth = auth
+	return princ.(User), nil
 }
 
 // Looks up the information for a role.
@@ -169,7 +189,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
-			return nil, nil, false, base.ErrUpdateCancel
+			return nil, nil, false, base.ErrNotFound
 		}
 
 		princ = factory()
@@ -211,14 +231,17 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 	})
 
-	if err != nil && err != base.ErrUpdateCancel {
+	if err != nil && !errors.Is(err, base.ErrUpdateCancel) {
 		return nil, err
 	}
 
 	// If a principal was found, set the cas
-	if princ != nil {
-		princ.SetCas(cas)
+	if princ == nil {
+		err := errors.New("Expected error to be ErrNotFound if principal is nil")
+		base.AssertfCtx(auth.LogCtx, "%s", err)
+		return nil, err
 	}
+	princ.SetCas(cas)
 
 	return princ, nil
 }
@@ -394,7 +417,7 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
 	_, err := auth.datastore.Get(auth.MetaKeys.UserEmailKey(email), &info)
 	if base.IsDocNotFoundError(err) {
-		return nil, nil
+		return nil, base.ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
@@ -907,7 +930,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	}
 
 	user, err = auth.GetUser(username)
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), err)
 		return nil, PrincipalConfig{}, time.Time{}, err
 	}

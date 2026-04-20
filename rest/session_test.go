@@ -38,7 +38,7 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	}
 
 	response := rt.SendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
-	RequireStatus(t, response, 401)
+	RequireStatus(t, response, 404)
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
 	assertGatewayStatus(t, response, 401)
@@ -294,7 +294,7 @@ func TestCustomCookieName(t *testing.T) {
 
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
@@ -337,13 +337,13 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions(rt.Context()))
-	user, err := a.GetUser("")
+	user, err := a.GetGuestUser()
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
 	assert.NoError(t, err)
 
-	user, err = a.GetUser("")
+	user, err = a.GetGuestUser()
 	assert.NoError(t, err)
 	assert.True(t, user.Disabled())
 
