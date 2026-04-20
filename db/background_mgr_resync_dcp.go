@@ -113,7 +113,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 }
 
 // Run starts a DCP feed to process documents for resync.
-func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db, ok := options["database"].(*Database)
 	if !ok {
 		return errors.New("database option is required and must be of type *Database")
@@ -244,19 +244,25 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}
+		defer resyncHB.Stop(ctx)
 
 		// CFG creation:
 		resyncCtx, cancelResync := context.WithCancelCause(ctx)
+		defer func() {
+			if err != nil {
+				cancelResync(err)
+			} else {
+				cancelResync(errors.New("resync ended normally"))
+			}
+		}()
 		defer cancelResync(nil)
 		resyncCfg, err := base.NewCfgSG(resyncCtx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
-			cancelResync(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
 
 		indexName, err := base.GenerateCBGTIndexName(db.Name, base.ShardedDCPFeedTypeResync)
 		if err != nil {
-			cancelResync(fmt.Errorf("resync run ended with error: %v", err))
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 		opts := base.ShardedDCPOptions{
@@ -275,13 +281,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
 		if err != nil {
-			cancelResync(fmt.Errorf("resync run function failed: %w", err))
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
-		defer func() {
-			resyncCbgtContext.Stop(ctx)
-			resyncHB.Stop(ctx)
-		}()
+		defer resyncCbgtContext.Stop(ctx)
 	} else {
 
 		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.collectionIDs, false)
