@@ -481,8 +481,12 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 	for _, feedType := range []ShardedDCPFeedType{ShardedDCPFeedTypeImport, ShardedDCPFeedTypeResync} {
 
+		useNodePoller := false
+		if feedType == ShardedDCPFeedTypeResync {
+			useNodePoller = true
+		}
 		// Use a bucket-backed cfg
-		cfg, err := NewCfgSG(ctx, dataStore, "")
+		cfg, err := NewCfgSG(ctx, dataStore, "", useNodePoller)
 		require.NoError(t, err)
 
 		// Define index type for db name

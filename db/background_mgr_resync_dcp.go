@@ -120,7 +120,7 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 }
 
 // Run starts a DCP feed to process documents for resync.
-func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db, ok := options["database"].(*Database)
 	if !ok {
 		return errors.New("database option is required and must be of type *Database")
@@ -246,9 +246,19 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}
+		defer resyncHB.Stop(ctx)
 
 		// CFG creation:
-		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix())
+		resyncCtx, cancelResync := context.WithCancelCause(ctx)
+		defer func() {
+			if err != nil {
+				cancelResync(err)
+			} else {
+				cancelResync(errors.New("resync ended normally"))
+			}
+		}()
+		defer cancelResync(nil)
+		resyncCfg, err := base.NewCfgSG(resyncCtx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
@@ -268,16 +278,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			IndexType:     base.CBGTIndexTypeSyncGatewayResync,
 			DestKey:       resyncDestKey,
 			IndexName:     indexName,
+			Datastore:     db.MetadataStore,
+			FeedType:      base.ShardedDCPFeedTypeResync,
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
-
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
-		defer func() {
-			resyncCbgtContext.Stop(ctx)
-			resyncHB.Stop(ctx)
-		}()
+		defer resyncCbgtContext.Stop(ctx)
 	} else {
 
 		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
