@@ -427,11 +427,12 @@ func SetUpTestGoroutineDump(m *testing.M) (teardownFn func()) {
 	}
 
 	return func() {
-		if n := runtime.NumGoroutine(); n > numExpected {
-			if err := pprof.Lookup("goroutine").WriteTo(os.Stderr, 2); err != nil {
+		goroutines := pprof.Lookup("goroutine")
+		if n := goroutines.Count(); n > numExpected {
+			if err := goroutines.WriteTo(os.Stderr, 2); err != nil {
 				panic(err)
 			}
-			if err := pprof.Lookup("goroutine").WriteTo(file, 0); err != nil {
+			if err := goroutines.WriteTo(file, 0); err != nil {
 				panic(err)
 			}
 			log.Printf(color("\n"+
