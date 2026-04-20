@@ -170,6 +170,10 @@ func TestResyncDCPInit(t *testing.T) {
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	docsToCreate := 1000
+	if base.UnitTestUrlIsWalrus() {
+		// rosmar runs too quickly, increase doc count
+		docsToCreate *= 5
+	}
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
