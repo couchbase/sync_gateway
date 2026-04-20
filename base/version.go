@@ -29,6 +29,9 @@ var (
 	// ProductVersion describes the specific version information of the build.
 	ProductVersion *ComparableBuildVersion
 
+	// NodeClusterCompatVersion is the major.minor version of this node for cluster compat gating.
+	NodeClusterCompatVersion ClusterCompatVersion
+
 	// VersionString appears in the "Server:" header of HTTP responses.
 	// CBL 1.x parses the header to determine whether it's talking to Sync Gateway (vs. CouchDB) and what version.
 	// This determines what replication API features it will use (E.g: bulk get and POST _changes that are CB-Mobile only features.)
@@ -90,6 +93,11 @@ func init() {
 
 	var err error
 	ProductVersion, err = NewComparableBuildVersion(majorStr, minorStr, patchStr, otherStr, buildStr, editionStr)
+	if err != nil {
+		panic(err)
+	}
+
+	NodeClusterCompatVersion, err = ParseClusterCompatVersion(ProductAPIVersion)
 	if err != nil {
 		panic(err)
 	}
