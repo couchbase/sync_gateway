@@ -53,3 +53,8 @@ func (re *RedactableError) Redact() string {
 	// can't use Sprintf as it doesn't support `%w`
 	return fmt.Errorf(re.fmt, redactedArgs...).Error()
 }
+
+// Unwrap returns the underlying error(s) created by fmt.Errorf. Allows use of errors.As, errors.AsType, errors.Is
+func (re *RedactableError) Unwrap() error {
+	return fmt.Errorf(re.fmt, re.args...)
+}
