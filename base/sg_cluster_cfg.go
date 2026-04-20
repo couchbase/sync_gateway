@@ -46,7 +46,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 // If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
 //
 // The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
-func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool, pollInterval time.Duration) (*CfgSG, error) {
+func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool, pollInterval time.Duration) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	// should this inherit DB context?
@@ -64,6 +64,14 @@ func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	}
 
 	return c, nil
+}
+
+func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
+	pollInterval := DefaultHeartbeatPollInterval
+	if !useNodePoller {
+		pollInterval = 0
+	}
+	return newCfgSG(ctx, datastore, keyPrefix, useNodePoller, pollInterval)
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {

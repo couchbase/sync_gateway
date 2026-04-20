@@ -111,6 +111,14 @@ func (ms *MetadataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	return v, cas, err
 }
 
+func (ms *MetadataStore) GetCas(k string) (cas uint64, err error) {
+	cas, err = ms.primary.GetCas(k)
+	if ms.readFromFallback(context.TODO(), err) {
+		cas, err = ms.fallback.GetCas(k)
+	}
+	return cas, err
+}
+
 func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32, err error) {
 	expiry, err = ms.primary.GetExpiry(ctx, k)
 	if ms.readFromFallback(ctx, err) {

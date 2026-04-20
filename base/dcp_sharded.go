@@ -660,7 +660,7 @@ func (p *cfgNodePoller) poll() {
 	watcher := p.getWatcher()
 
 	for key, oldCas := range watcher {
-		newCas, err := p.datastore.Get(key, nil)
+		newCas, err := p.datastore.GetCas(key)
 		if err != nil && !IsDocNotFoundError(err) {
 			WarnfCtx(p.ctx, "cfgNodePoller: error polling doc: %s %v, skipping polling", UD(key), err)
 			continue

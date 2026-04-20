@@ -106,6 +106,10 @@ func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	}
 	return lds.dataStore.GetRaw(k)
 }
+
+func (lds *LeakyDataStore) GetCas(k string) (cas uint64, err error) {
+	return lds.dataStore.GetCas(k)
+}
 func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) (body []byte, xattrs map[string][]byte, cas uint64, err error) {
 	if lds.config.GetWithXattrCallback != nil {
 		if err := lds.config.GetWithXattrCallback(k); err != nil {

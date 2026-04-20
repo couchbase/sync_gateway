@@ -486,7 +486,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 			useNodePoller = true
 		}
 		// Use a bucket-backed cfg
-		cfg, err := NewCfgSG(ctx, dataStore, "", useNodePoller, 10*time.Millisecond)
+		cfg, err := newCfgSG(ctx, dataStore, "", useNodePoller, 10*time.Millisecond)
 		require.NoError(t, err)
 
 		// Define index type for db name
