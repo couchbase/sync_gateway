@@ -89,8 +89,12 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 	// Wait for run on startup to complete
 	_ = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
+	numDocs := 20
+	if base.UnitTestUrlIsWalrus() {
+		numDocs *= 10
+	}
 	// add some docs to arrive over dcp
-	for i := range 20 {
+	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		docBody := db.Body{
 			"value": 1234,
