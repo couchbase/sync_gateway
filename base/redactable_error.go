@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -57,30 +56,14 @@ func (re *RedactableError) Redact() string {
 	return fmt.Errorf(re.fmt, redactedArgs...).Error()
 }
 
-// Is returns true if any error in the chain matches the target error.
-func (re *RedactableError) Is(target error) bool {
+// Unwrap returns the underlying error(s).
+func (re *RedactableError) Unwrap() []error {
+	var errs []error
 	for _, arg := range re.args {
 		err, ok := arg.(error)
-		if !ok {
-			continue
-		}
-		if errors.Is(err, target) {
-			return true
+		if ok {
+			errs = append(errs, err)
 		}
 	}
-	return false
-}
-
-// As returns true if any error in the chain matches the target type and sets target as the value.
-func (re *RedactableError) As(target any) bool {
-	for _, arg := range re.args {
-		err, ok := arg.(error)
-		if !ok {
-			continue
-		}
-		if errors.As(err, target) {
-			return true
-		}
-	}
-	return false
+	return errs
 }
