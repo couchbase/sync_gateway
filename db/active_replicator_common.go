@@ -158,7 +158,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 
 	err := arc.replicatorConnectFn()
 	if err != nil {
-		base.WarnfCtx(arc.ctx, "Couldn't connect: %s", err)
+		base.InfofCtx(arc.ctx, base.KeyReplicate, "Couldn't connect: %s", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
 			arc.setError(err)
 			base.WarnfCtx(arc.ctx, "Stopping replication connection attempt")
