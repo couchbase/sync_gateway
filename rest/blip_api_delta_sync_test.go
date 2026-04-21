@@ -53,6 +53,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		// Push first rev
 		version := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(`{"key":"val"}`))
 
+		rt.WaitForVersion(docID, version)
 		// Push second rev with an attachment (no delta yet)
 		attData := base64.StdEncoding.EncodeToString([]byte("attach"))
 
@@ -60,17 +61,12 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 		rt.WaitForVersion(docID, version)
 
-		// CBG-4766 this is not intentional, and maybe should be fixed. However, neither CBL nor SG since 3.0 use revpos, so a fix is low priority
-		revpos := 2
-		if btc.UseHLV() {
-			revpos = 1
-		}
 		syncData := db.GetRawSyncXattr(t, rt.GetSingleDataStore(), docID)
 		require.Empty(t, syncData.AttachmentsPre4dot0)
 		require.Equal(t, db.AttachmentMap{
 			"myAttachment": {
 				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
-				Revpos:  revpos,
+				Revpos:  2,
 				Length:  6,
 				Stub:    true,
 				Version: 2,
@@ -97,7 +93,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 			"myAttachment": {
 				Digest:  "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=",
 				Length:  6,
-				Revpos:  revpos,
+				Revpos:  2,
 				Stub:    true,
 				Version: 2,
 			},
