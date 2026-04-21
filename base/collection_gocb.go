@@ -138,30 +138,6 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 	return rv, uint64(getAndTouchRawResult.Cas()), err
 }
 
-func (c *Collection) GetCas(k string) (cas uint64, err error) {
-	c.Bucket.waitForAvailKvOp()
-	defer c.Bucket.releaseKvOp()
-
-	result, err := c.Collection.LookupIn(k, []gocb.LookupInSpec{
-		gocb.GetSpec("$document", &gocb.GetSpecOptions{IsXattr: true}),
-	}, &gocb.LookupInOptions{
-		Internal: struct {
-			DocFlags gocb.SubdocDocFlag
-			User     string
-		}{DocFlags: gocb.SubdocDocFlagAccessDeleted},
-	})
-	if err != nil {
-		// result is non-nil when the document exists as a tombstone but a spec-level
-		// path lookup failed; the document CAS is still valid in that case.
-		if result != nil {
-			return uint64(result.Cas()), nil
-		}
-		return 0, err
-	}
-
-	return uint64(result.Cas()), nil
-}
-
 func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()

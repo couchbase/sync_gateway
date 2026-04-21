@@ -1095,11 +1095,9 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		var casANew, casBNew uint64
 
 		wg.Go(func() {
-			defer wg.Done()
 			casANew, errA = nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 2}`), cas)
 		})
 		wg.Go(func() {
-			defer wg.Done()
 			casBNew, errB = nodeB.Set(key, []byte(`{"source": "nodeB", "ver": 2}`), cas)
 		})
 		wg.Wait()
@@ -1154,7 +1152,6 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		assert.NoError(t, eventB.Error)
 
 		// Node A deletes the document
-		//err = nodeA.Del(key, initialCas)
 		delCas, err := dataStore.Remove(nodeA.sgCfgBucketKey(key), initialCas)
 		require.NoError(t, err)
 

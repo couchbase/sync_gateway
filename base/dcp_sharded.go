@@ -660,7 +660,7 @@ func (p *cfgNodePoller) poll(ctx context.Context) {
 	watcher := p.getWatcher()
 
 	for key, oldCas := range watcher {
-		_, newCas, err := p.datastore.GetXattrs(ctx, key, []string{"$document.CAS"})
+		_, newCas, err := p.datastore.GetXattrs(ctx, key, []string{VirtualDocumentXattrCAS})
 		if err != nil && !IsDocNotFoundError(err) {
 			WarnfCtx(p.ctx, "cfgNodePoller: error polling doc: %s %v, skipping polling", UD(key), err)
 			continue

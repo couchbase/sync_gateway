@@ -40,12 +40,6 @@ type CfgEventNotifyFunc func(docID string, cas uint64, err error)
 
 var ErrCfgCasError = &cbgt.CfgCASError{}
 
-// NewCfgSG returns a Cfg implementation that reads/writes its entries
-// from/to a couchbase datastore. All document names will start with keyPrefix.
-// If useNodePoller is true, then any document changes are received by node polling with the specified pollInterval.
-// If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
-//
-// The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
 func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool, pollInterval time.Duration) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
@@ -60,12 +54,23 @@ func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	}
 
 	if useNodePoller {
+		// Validate the interval here so invalid input is rejected before the poller
+		// reaches ticker creation, which would otherwise panic for non-positive values.
+		if pollInterval <= 0 {
+			return nil, fmt.Errorf("pollInterval must be greater than zero when useNodePoller is enabled")
+		}
 		c.nodePoller = newCfgNodePoller(loggingCtx, datastore, c.FireEvent, pollInterval)
 	}
 
 	return c, nil
 }
 
+// NewCfgSG returns a Cfg implementation that reads/writes its entries
+// from/to a couchbase datastore. All document names will start with keyPrefix.
+// If useNodePoller is true, then any document changes are received by node polling with the specified pollInterval.
+// If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
+//
+// The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
 func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
 	pollInterval := DefaultHeartbeatPollInterval
 	if !useNodePoller {
