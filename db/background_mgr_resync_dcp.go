@@ -99,7 +99,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		// use the resync ID from the status doc to resume
 		r.ResyncID = statusDoc.ResyncID
 		r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
-		base.InfofCtx(ctx, base.KeyAll, "Resync: Resuming resync with ID: %q", r.ResyncID)
+		base.InfofCtx(ctx, base.KeyAll, "Resuming resync with ID: %q", r.ResyncID)
 		return nil
 	}
 
@@ -108,7 +108,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		return err
 	}
 	r.ResyncID = newID.String()
-	base.InfofCtx(ctx, base.KeyAll, "Resync: Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
+	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
 	return nil
 }
 
@@ -133,8 +133,16 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	if !ok {
 		return errors.New("collections option is required and must be of type CollectionNames")
 	}
-
-	resyncLoggingID := "Resync: " + r.ResyncID
+	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
+	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
+	ctx, cancelResync := context.WithCancelCause(ctx)
+	defer func() {
+		if err != nil {
+			cancelResync(err)
+		} else {
+			cancelResync(errors.New("resync ended normally"))
+		}
+	}()
 
 	var doneChan chan error
 	var dcpClient base.DCPClient
@@ -142,7 +150,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to persist cluster status on-demand for resync operation: %v", resyncLoggingID, err)
+			base.WarnfCtx(ctx, "Failed to persist cluster status on-demand for resync operation: %v", err)
 		}
 	}
 	defer persistClusterStatus()
@@ -151,7 +159,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
-		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
+		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
 
 		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
 		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
@@ -173,38 +181,37 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
-		collectionCtx := databaseCollection.AddCollectionContext(ctx)
+		ctx := databaseCollection.AddCollectionContext(ctx)
 		doc, err := bucketDocumentFromFeed(event)
 		if err != nil {
-			base.WarnfCtx(collectionCtx, "[%s] Error getting document from DCP event for doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "Resync: Error getting document from DCP event for doc %q: %v", base.UD(docID), err)
 			return false
 		}
 		err = (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).ResyncDocument(collectionCtx, docID, doc, regenerateSequences)
+		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
 
 		if err == nil {
 			r.DocsChanged.Add(1)
 			db.DbStats.Database().ResyncNumChanged.Add(1)
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
-			base.WarnfCtx(collectionCtx, "[%s] Error updating doc %q: %v", resyncLoggingID, base.UD(docID), err)
+			base.WarnfCtx(ctx, "Resync: Error updating doc %q: %v", base.UD(docID), err)
 			return false
 		}
 		return true
 	}
 
 	if r.hasAllCollections {
-		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
+		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
-		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
+		base.InfofCtx(ctx, base.KeyAll, "running resync against specified collections: %s", base.MD(resyncCollections))
 	}
 
+	base.InfofCtx(ctx, base.KeyAll, "Starting DCP resync")
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
-
-		loggingCtx := db.AddBucketUserLogContext(ctx)
 
 		if !db.useShardedDCP() {
 			return fmt.Errorf("running distributed resync is not supported")
@@ -223,18 +230,15 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, err := base.NewDCPDest(loggingCtx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
+			resyncDest, err := base.NewDCPDest(ctx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}
 			return resyncDest, nil
 		}
 
-		base.StoreDestFactory(loggingCtx, resyncDestKey, resyncDestFunc)
+		base.StoreDestFactory(ctx, resyncDestKey, resyncDestFunc)
 		defer base.RemoveDestFactory(resyncDestKey)
-
-		// TODO: Update logging for distributed resync. CBG-5243
-		base.InfofCtx(loggingCtx, base.KeyAll, "ResyncID: %s Starting DCP resync for bucket: %q ", resyncLoggingID, base.UD(db.Bucket.GetName()))
 
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix()
@@ -248,17 +252,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		defer resyncHB.Stop(ctx)
 
-		// CFG creation:
-		resyncCtx, cancelResync := context.WithCancelCause(ctx)
-		defer func() {
-			if err != nil {
-				cancelResync(err)
-			} else {
-				cancelResync(errors.New("resync ended normally"))
-			}
-		}()
-		defer cancelResync(nil)
-		resyncCfg, err := base.NewCfgSG(resyncCtx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
+		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
 			return fmt.Errorf("Error creating resync cfg: %v", err)
 		}
@@ -281,7 +275,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			Datastore:     db.MetadataStore,
 			FeedType:      base.ShardedDCPFeedTypeResync,
 		}
-		resyncCbgtContext, err := base.StartShardedDCPFeed(loggingCtx, opts)
+		resyncCbgtContext, err := base.StartShardedDCPFeed(ctx, opts)
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
@@ -292,28 +286,27 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		var err error
 		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
+			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
 		}
 
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for resync", resyncLoggingID)
 		doneChan, err = dcpClient.Start()
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
+			base.WarnfCtx(ctx, "Failed to start resync DCP feed! %v", err)
 			_ = dcpClient.Close()
 			return err
 		}
-		base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
+		base.DebugfCtx(ctx, base.KeyAll, "Resync DCP client started.")
 
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
 
 	select {
 	case <-doneChan:
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
+		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged.Value(), r.DocsProcessed.Value())
 		err := dcpClient.Close()
 		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 			return err
 		}
 
@@ -361,10 +354,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			for _, collectionID := range r.collectionIDs {
 				dbc, ok := db.CollectionByID[collectionID]
 				if !ok {
-					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v (not found)", resyncLoggingID, collectionID)
+					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
 				}
 				if err := base.SetSyncInfoMetadataID(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
-					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v: %v", resyncLoggingID, collectionID, err)
+					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
 				}
 				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
 			}
@@ -379,10 +372,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 	case <-terminator.Done():
 		if !r.Distributed {
-			base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
+			base.DebugfCtx(ctx, base.KeyAll, "Terminator closed. Ending Resync process.")
 			err := dcpClient.Close()
 			if err != nil {
-				base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
+				base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 				return err
 			}
 
@@ -391,7 +384,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 				return err
 			}
 
-			base.InfofCtx(ctx, base.KeyAll, "[%s] resync was terminated. Docs changed: %d Docs Processed: %d", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
+			base.InfofCtx(ctx, base.KeyAll, "resync was terminated. Docs changed: %d Docs Processed: %d", r.DocsChanged.Value(), r.DocsProcessed.Value())
 		}
 	}
 
