@@ -467,7 +467,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 			}
 
 			// Call poll
-			poller.poll()
+			poller.poll(t.Context())
 
 			// Verify fired events
 			eventLock.Lock()
@@ -535,7 +535,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call Poll
-		poller.poll()
+		poller.poll(t.Context())
 
 		// Verify event parameters
 		require.True(t, eventCalled, "fireEvent should have been called")
@@ -577,15 +577,15 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// First poll - should fire event
-		poller.poll()
+		poller.poll(t.Context())
 		require.Equal(t, 1, eventCount, "first poll should fire one event")
 
 		// Second poll without changes - should NOT fire event
-		poller.poll()
+		poller.poll(t.Context())
 		require.Equal(t, 1, eventCount, "second poll should not fire event since CAS unchanged")
 
 		// Third poll without changes - should still NOT fire event
-		poller.poll()
+		poller.poll(t.Context())
 		require.Equal(t, 1, eventCount, "third poll should not fire event since CAS unchanged")
 	})
 
@@ -628,7 +628,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call Poll
-		poller.poll()
+		poller.poll(t.Context())
 
 		// Verify event was fired
 		require.True(t, eventFired, "event should be fired for deleted document")
@@ -681,7 +681,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		_, err = datastore.Remove(key, cas)
 		require.NoError(t, err)
 
-		poller.poll()
+		poller.poll(t.Context())
 
 		// Verify event was fired
 		require.True(t, eventFired, "event should be fired for purged document")
@@ -742,7 +742,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Run poll - should detect both changes
-		poller.poll()
+		poller.poll(t.Context())
 
 		// Verify both events were fired
 		eventLock.Lock()
