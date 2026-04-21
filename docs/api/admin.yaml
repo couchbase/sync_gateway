@@ -77,6 +77,8 @@ paths:
     $ref: ./paths/admin/_cluster_info.yaml
   /_status:
     $ref: ./paths/admin/_status.yaml
+  /_cluster_compat:
+    $ref: ./paths/admin/_cluster_compat.yaml
   /_sgcollect_info:
     $ref: ./paths/admin/_sgcollect_info.yaml
   /_debug/pprof/goroutine:

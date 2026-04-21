@@ -3264,6 +3264,71 @@ CORS:
         type: string
       example: ["https://example.com"]
   title: Cors Configuration
+NodeVersion:
+  description: |-
+    Sync Gateway version associated with this node UUID
+  type: string
+  example: '4.1'
+  title: Sync Gateway Node Version
+ClusterCompatVersion:
+  description: |-
+    A Sync Gateway cluster compatibility version, represented as a `"major.minor"` string (e.g. `"4.1"`).
+
+    This is the minimum version across all nodes in the cluster and is used to gate new metadata formats
+    until all nodes have been upgraded.
+  type: string
+  example: '4.1'
+  title: Cluster Compatibility Version
+ClusterCompatRegistryNode:
+  description: A single Sync Gateway node's version registration in the cluster.
+  type: object
+  properties:
+    version:
+      description: The cluster compatibility version reported by this node.
+      $ref: '#/NodeVersion'
+    heartbeat_at:
+      description: The time at which this node last registered its version (ISO 8601).
+      type: string
+      format: date-time
+      example: '2026-04-21T15:00:00Z'
+  title: Cluster Compatibility Registry Node
+ClusterCompatBucketNodes:
+  description: Per-bucket node registration details for a single Couchbase bucket.
+  type: object
+  properties:
+    nodes:
+      description: Map of node UUID to node registration details.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: nodeUUID
+        $ref: '#/ClusterCompatRegistryNode'
+  title: Cluster Compatibility Bucket Nodes
+ClusterCompatResponse:
+  description: Response body for the `GET /_cluster_compat` endpoint.
+  type: object
+  properties:
+    cluster_compat_version:
+      description: |-
+        The minimum cluster compatibility version across all nodes in the cluster.
+
+        This is `null` when no version has been computed yet (e.g. on first startup before all
+        nodes have registered).
+      nullable: true
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+    nodes:
+      description: Map of node UUID to the cluster compatibility version reported by that node.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: nodeUUID
+        $ref: '#/NodeVersion'
+    buckets:
+      description: Per-bucket breakdown of node registrations.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: bucketName
+        $ref: '#/ClusterCompatBucketNodes'
+  title: Cluster Compatibility Response
 DiagnosticFunctionException:
   description: The exception thrown during evaluation (if any).
   type: string
