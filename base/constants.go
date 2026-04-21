@@ -139,6 +139,9 @@ const (
 	// VirtualDocumentXattr is used to fetch the documents virtual xattr
 	VirtualDocumentXattr = "$document"
 
+	// VirtualDocumentXattrCAS is used to fetch the documents virtual xattr with CAS
+	VirtualDocumentXattrCAS = "$document.CAS"
+
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"
 
