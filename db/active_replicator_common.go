@@ -337,13 +337,13 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	}
 
 	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
+	arc.replicationStats.NumReconnectsAborted.Add(1)
 	arc.lock.Lock()
+	defer arc.lock.Unlock()
 	// use setState to preserve last error from retry loop set by setLastError
 	arc.setState(ReplicationStateError)
 	arc._publishStatus()
 	arc._stop("stopping after failed reconnect attempts: " + retryErr.Error())
-	arc.lock.Unlock()
-	arc.replicationStats.NumReconnectsAborted.Add(1)
 }
 
 // disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
