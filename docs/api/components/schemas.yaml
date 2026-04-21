@@ -2297,7 +2297,7 @@ Startup-config:
           type: string
         node_heartbeat_expiry_multiplier:
           description: Number of missed heartbeats before a node is considered stale. Staleness threshold = ConfigUpdateFrequency * multiplier. Default is 10
-          type: int
+          type: integer
       readOnly: true
       required:
         - server
@@ -3277,6 +3277,7 @@ ClusterCompatVersion:
     This is the minimum version across all nodes in the cluster and is used to gate new metadata formats
     until all nodes have been upgraded.
   type: string
+  nullable: true
   example: '4.1'
   title: Cluster Compatibility Version
 ClusterCompatRegistryNode:
@@ -3313,7 +3314,6 @@ ClusterCompatResponse:
 
         This is `null` when no version has been computed yet (e.g. on first startup before all
         nodes have registered).
-      nullable: true
       allOf:
         - $ref: '#/ClusterCompatVersion'
     nodes:
