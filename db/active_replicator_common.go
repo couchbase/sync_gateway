@@ -158,12 +158,15 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 
 	err := arc.replicatorConnectFn()
 	if err != nil {
-		arc.setError(err)
 		base.WarnfCtx(arc.ctx, "Couldn't connect: %s", err)
 		if errors.Is(err, fatalReplicatorConnectError) {
+			arc.setError(err)
 			base.WarnfCtx(arc.ctx, "Stopping replication connection attempt")
 			defer arc.ctxCancel(errors.New("stopping after fatal replicator connection error"))
 		} else {
+			// record the error but keep state out of the terminal Error bucket -
+			// the reconnect loop below will transition to Reconnecting.
+			arc.setLastError(err)
 			base.InfofCtx(arc.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			arc.reconnect()
 		}
@@ -334,21 +337,13 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	}
 
 	base.WarnfCtx(ctx, "aborting reconnect loop: %v", retryErr)
-	arc.publishTerminalErrorAndStop(retryErr)
-	arc.replicationStats.NumReconnectsAborted.Add(1)
-}
-
-// publishTerminalErrorAndStop transitions the replicator to its terminal Error
-// state, publishes the status, and cancels the replicator context. Must be
-// called without holding arc.lock. Callers should increment NumReconnectsAborted
-// after this returns so observers of the stat can rely on state == Error.
-func (arc *activeReplicatorCommon) publishTerminalErrorAndStop(retryErr error) {
 	arc.lock.Lock()
-	defer arc.lock.Unlock()
 	// use setState to preserve last error from retry loop set by setLastError
 	arc.setState(ReplicationStateError)
 	arc._publishStatus()
 	arc._stop("stopping after failed reconnect attempts: " + retryErr.Error())
+	arc.lock.Unlock()
+	arc.replicationStats.NumReconnectsAborted.Add(1)
 }
 
 // disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
