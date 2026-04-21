@@ -222,7 +222,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			scopeName = sn
 		}
 
-		collectionNamesByScope := db.collectionNames()
+		collectionNamesByScope := r.ResyncedCollections
 
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
