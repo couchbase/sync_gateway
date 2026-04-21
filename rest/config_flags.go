@@ -31,16 +31,17 @@ type configFlag struct {
 // (which stores the corresponding config field pointer and flag value).
 func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFlag {
 	return map[string]configFlag{
-		"bootstrap.group_id":                {config: &config.Bootstrap.ConfigGroupID, flagValue: fs.String("bootstrap.group_id", "", "The config group ID to use when discovering databases. Allows for non-homogenous configuration")},
-		"bootstrap.config_update_frequency": {config: &config.Bootstrap.ConfigUpdateFrequency, flagValue: fs.String("bootstrap.config_update_frequency", persistentConfigDefaultUpdateFrequency.String(), "How often to poll Couchbase Server for new config changes")},
-		"bootstrap.server":                  {config: &config.Bootstrap.Server, flagValue: fs.String("bootstrap.server", "", "Couchbase Server connection string/URL")},
-		"bootstrap.username":                {config: &config.Bootstrap.Username, flagValue: fs.String("bootstrap.username", "", "Username for authenticating to server")},
-		"bootstrap.password":                {config: nil, disabled: true, disabledErrorMessage: "Use config file to specify bootstrap password, or use X.509 cert/key path flags instead.", flagValue: fs.String("bootstrap.password", "", "Deprecated and disabled. Do not use. Use config file or X.509 auth.")},
-		"bootstrap.ca_cert_path":            {config: &config.Bootstrap.CACertPath, flagValue: fs.String("bootstrap.ca_cert_path", "", "Root CA cert path for TLS connection")},
-		"bootstrap.server_tls_skip_verify":  {config: &config.Bootstrap.ServerTLSSkipVerify, flagValue: fs.Bool("bootstrap.server_tls_skip_verify", false, "Allow empty server CA Cert Path without attempting to use system root pool")},
-		"bootstrap.x509_cert_path":          {config: &config.Bootstrap.X509CertPath, flagValue: fs.String("bootstrap.x509_cert_path", "", "Cert path (public key) for X.509 bucket auth")},
-		"bootstrap.x509_key_path":           {config: &config.Bootstrap.X509KeyPath, flagValue: fs.String("bootstrap.x509_key_path", "", "Key path (private key) for X.509 bucket auth")},
-		"bootstrap.use_tls_server":          {config: &config.Bootstrap.UseTLSServer, flagValue: fs.Bool("bootstrap.use_tls_server", false, "Forces the connection to Couchbase Server to use TLS")},
+		"bootstrap.group_id":                         {config: &config.Bootstrap.ConfigGroupID, flagValue: fs.String("bootstrap.group_id", "", "The config group ID to use when discovering databases. Allows for non-homogenous configuration")},
+		"bootstrap.config_update_frequency":          {config: &config.Bootstrap.ConfigUpdateFrequency, flagValue: fs.String("bootstrap.config_update_frequency", persistentConfigDefaultUpdateFrequency.String(), "How often to poll Couchbase Server for new config changes")},
+		"bootstrap.server":                           {config: &config.Bootstrap.Server, flagValue: fs.String("bootstrap.server", "", "Couchbase Server connection string/URL")},
+		"bootstrap.username":                         {config: &config.Bootstrap.Username, flagValue: fs.String("bootstrap.username", "", "Username for authenticating to server")},
+		"bootstrap.password":                         {config: nil, disabled: true, disabledErrorMessage: "Use config file to specify bootstrap password, or use X.509 cert/key path flags instead.", flagValue: fs.String("bootstrap.password", "", "Deprecated and disabled. Do not use. Use config file or X.509 auth.")},
+		"bootstrap.ca_cert_path":                     {config: &config.Bootstrap.CACertPath, flagValue: fs.String("bootstrap.ca_cert_path", "", "Root CA cert path for TLS connection")},
+		"bootstrap.server_tls_skip_verify":           {config: &config.Bootstrap.ServerTLSSkipVerify, flagValue: fs.Bool("bootstrap.server_tls_skip_verify", false, "Allow empty server CA Cert Path without attempting to use system root pool")},
+		"bootstrap.x509_cert_path":                   {config: &config.Bootstrap.X509CertPath, flagValue: fs.String("bootstrap.x509_cert_path", "", "Cert path (public key) for X.509 bucket auth")},
+		"bootstrap.x509_key_path":                    {config: &config.Bootstrap.X509KeyPath, flagValue: fs.String("bootstrap.x509_key_path", "", "Key path (private key) for X.509 bucket auth")},
+		"bootstrap.use_tls_server":                   {config: &config.Bootstrap.UseTLSServer, flagValue: fs.Bool("bootstrap.use_tls_server", false, "Forces the connection to Couchbase Server to use TLS")},
+		"bootstrap.node_heartbeat_expiry_multiplier": {config: &config.Bootstrap.NodeHeartbeatExpiryMultiplier, flagValue: fs.Int("bootstrap.node_heartbeat_expiry_multiplier", defaultNodeHeartbeatExpiryMultiplier, "Number of missed heartbeats before a node is considered stale. Staleness threshold = ConfigUpdateFrequency * multiplier")},
 
 		"api.public_interface":                              {config: &config.API.PublicInterface, flagValue: fs.String("api.public_interface", "", "Network interface to bind public API to")},
 		"api.admin_interface":                               {config: &config.API.AdminInterface, flagValue: fs.String("api.admin_interface", "", "Network interface to bind admin API to")},

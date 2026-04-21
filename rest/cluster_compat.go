@@ -163,8 +163,8 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 	for _, v := range nodeMap {
 		versions = append(versions, v)
 	}
-	min := base.MinClusterCompatVersion(versions...)
-	return &min, nodeMap, bucketMap, nil
+	minCompactVersion := base.MinClusterCompatVersion(versions...)
+	return &minCompactVersion, nodeMap, bucketMap, nil
 }
 
 // heartbeatExpiry returns the duration after which a node is considered stale.

@@ -56,6 +56,7 @@ type GatewayRegistry struct {
 // PruneStaleNodes removes nodes that haven't heartbeated within the given expiry duration.
 // Returns the list of pruned node UUIDs.
 func (r *GatewayRegistry) PruneStaleNodes(expiry time.Duration) []string {
+	// CBG-5219: test this functionality
 	var pruned []string
 	for uuid, node := range r.Nodes {
 		if time.Since(node.HeartbeatAt) > expiry {

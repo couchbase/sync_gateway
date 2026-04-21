@@ -133,6 +133,62 @@ func GenerateRandomID() (string, error) {
 	return val, nil
 }
 
+// nodeUUIDFilename is the name of the file used to persist the node UUID.
+const nodeUUIDFilename = "node_uuid"
+
+// nodeUUIDLength is the expected length of a valid node UUID as produced by GenerateRandomID
+// (128-bit value encoded as a 32-character lowercase hex string).
+const nodeUUIDLength = 32
+
+// LoadOrCreateNodeUUID loads a persistent node UUID from a file in logFilePath, creating it if
+// it doesn't already exist. If logFilePath is empty, a random UUID is generated but not persisted.
+// Returns an error only if a UUID could not be generated.
+func LoadOrCreateNodeUUID(ctx context.Context, logFilePath string) (string, error) {
+	if logFilePath == "" {
+		WarnfCtx(ctx, "No log_file_path configured: node UUID will not be persisted across restarts")
+		return GenerateRandomID()
+	}
+
+	path := filepath.Join(logFilePath, nodeUUIDFilename)
+
+	// Attempt to read an existing UUID file.
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if id := strings.TrimSpace(string(data)); isValidNodeUUID(id) {
+			return id, nil
+		}
+		WarnfCtx(ctx, "Node UUID file %s contains invalid content, regenerating", path)
+	} else if !os.IsNotExist(err) {
+		WarnfCtx(ctx, "Could not read node UUID file %s: %v — will attempt to regenerate", path, err)
+	}
+
+	id, err := GenerateRandomID()
+	if err != nil {
+		return "", err
+	}
+
+	if writeErr := os.WriteFile(path, []byte(id), 0600); writeErr != nil {
+		WarnfCtx(ctx, "Could not write node UUID to %s: %v — node UUID will not be persisted across restarts", path, writeErr)
+		return id, nil
+	}
+
+	InfofCtx(ctx, KeyAll, "Generated and persisted new node UUID to %s", path)
+	return id, nil
+}
+
+// isValidNodeUUID reports whether id is a 32-character lowercase hex string, as produced by GenerateRandomID.
+func isValidNodeUUID(id string) bool {
+	if len(id) != nodeUUIDLength {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.
 func randCryptoHex(sizeBits int) (string, error) {
 	if sizeBits%8 != 0 {

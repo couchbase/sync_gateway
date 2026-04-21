@@ -890,9 +890,9 @@ func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
 	srcCAS, err := src.Get(docID, &data)
 	require.NoError(t, err)
 
-	ok, err := dst.Add(docID, 0, data)
+	// registry is now stamped to all buckets for cluster compat version
+	err = dst.Set(docID, 0, nil, &data)
 	require.NoError(t, err)
-	require.True(t, ok)
 
 	_, err = src.Remove(docID, srcCAS)
 	require.NoError(t, err)

@@ -215,8 +215,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		}
 	}
 
-	// TODO: CBG-5138 - Persist or deterministically generate NodeUUID so that across restarts entries are reused instead of leaving a stale entry.
-	nodeUUID, err := base.GenerateRandomID()
+	nodeUUID, err := base.LoadOrCreateNodeUUID(ctx, sc.Config.Logging.LogFilePath)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to generate node UUID: %v — using LogContextID as fallback", err)
 		nodeUUID = sc.LogContextID

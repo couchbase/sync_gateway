@@ -16,6 +16,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -1948,4 +1950,76 @@ func TestRequireChan(t *testing.T) {
 		wg.Wait()
 		assert.Equal(t, "hello?", val)
 	})
+}
+
+func TestLoadOrCreateNodeUUID(t *testing.T) {
+	ctx := TestCtx(t)
+
+	t.Run("empty logFilePath returns ephemeral UUID without creating file", func(t *testing.T) {
+		id, err := LoadOrCreateNodeUUID(ctx, "")
+		require.NoError(t, err)
+		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+	})
+
+	t.Run("first call creates UUID file and returns valid UUID", func(t *testing.T) {
+		dir := t.TempDir()
+		id, err := LoadOrCreateNodeUUID(ctx, dir)
+		require.NoError(t, err)
+		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+
+		data, readErr := os.ReadFile(filepath.Join(dir, nodeUUIDFilename))
+		require.NoError(t, readErr)
+		assert.Equal(t, id, strings.TrimSpace(string(data)))
+	})
+
+	t.Run("subsequent call returns the same UUID from file", func(t *testing.T) {
+		dir := t.TempDir()
+		id1, err := LoadOrCreateNodeUUID(ctx, dir)
+		require.NoError(t, err)
+
+		id2, err := LoadOrCreateNodeUUID(ctx, dir)
+		require.NoError(t, err)
+		assert.Equal(t, id1, id2, "expected same UUID on second call")
+	})
+
+	t.Run("file with whitespace-only content triggers regeneration", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, nodeUUIDFilename), []byte("   \n"), 0600))
+
+		id, err := LoadOrCreateNodeUUID(ctx, dir)
+		require.NoError(t, err)
+		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+	})
+
+	t.Run("file with invalid non-whitespace content triggers regeneration", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, nodeUUIDFilename), []byte("not-a-valid-uuid!!!"), 0600))
+
+		id, err := LoadOrCreateNodeUUID(ctx, dir)
+		require.NoError(t, err)
+		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+
+		// Confirm the file was rewritten with the new valid UUID.
+		data, readErr := os.ReadFile(filepath.Join(dir, nodeUUIDFilename))
+		require.NoError(t, readErr)
+		assert.Equal(t, id, strings.TrimSpace(string(data)))
+	})
+}
+
+func TestIsValidNodeUUID(t *testing.T) {
+	tests := []struct {
+		input string
+		valid bool
+	}{
+		{"", false},
+		{"abc123", false},
+		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", true},   // 32 lowercase hex
+		{"A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4", false},  // uppercase not accepted
+		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4z", false}, // 33 chars
+		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d", false},   // 31 chars
+		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3zz", false},  // invalid hex chars
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.valid, isValidNodeUUID(tt.input), "input: %q", tt.input)
+	}
 }
