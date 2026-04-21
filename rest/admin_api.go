@@ -472,6 +472,9 @@ func (h *handler) handlePostIndexInit() error {
 	if _, ok := statusMap[base.DefaultScope]; !ok {
 		statusMap[base.DefaultScope] = make(map[string]db.CollectionIndexStatus, 1)
 	}
+	// init _mobile scope because we have metadata indexes initialized in _mobile collection
+	statusMap[base.SystemScope] = make(map[string]db.CollectionIndexStatus, 1)
+
 	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
 		statusMap[scName.ScopeName()][scName.CollectionName()] = status
 		if err := h.db.AsyncIndexInitManager.UpdateStatusClusterAware(h.ctx()); err != nil {

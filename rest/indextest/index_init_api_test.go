@@ -148,8 +148,9 @@ func TestChangeIndexPartitions(t *testing.T) {
 				require.NoError(c, err)
 				require.Empty(c, body.LastErrorMessage)
 				require.Equal(c, db.BackgroundProcessStateCompleted, body.State)
-				require.GreaterOrEqual(c, len(body.IndexStatus), 1, "expected at least one scope (maybe two if `_default` and a named scope)")
-				require.LessOrEqual(c, len(body.IndexStatus), 2, "expected at most two scopes (maybe one if `_default` only)")
+				// index status will include metadata indexes for _system._mobile
+				require.GreaterOrEqual(c, len(body.IndexStatus), 2, "expected at least two scopes (maybe three if `_default` and a named scope)")
+				require.LessOrEqual(c, len(body.IndexStatus), 3, "expected at most three scopes (maybe two if `_default` only, taking into account _mobile collection)")
 				for _, collections := range body.IndexStatus {
 					for _, status := range collections {
 						assert.Equal(c, db.CollectionIndexStatusReady, status)
