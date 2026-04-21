@@ -397,7 +397,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	dbName := "db"
 
 	keyspace := dbName
-	expectedCollectionCount := 1 // metadata store
+	expectedCollectionCount := 2 // _default metadata store + _mobile metadata stores
 	if len(dbConfig.Scopes) > 0 {
 		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
 		keyspace = keyspaces[0]
@@ -525,7 +525,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
-	expectedCollectionCount := 1 // metadata store
+	expectedCollectionCount := 2 // _default metadata store + _mobile metadata stores
 	if len(dbConfig.Scopes) > 0 {
 		keyspaces := getRESTKeyspaces(dbName, dbConfig.Scopes)
 		expectedCollectionCount += len(keyspaces)
