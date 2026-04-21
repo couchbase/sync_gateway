@@ -1094,7 +1094,6 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		var errA, errB error
 		var casANew, casBNew uint64
 
-		wg.Add(2)
 		wg.Go(func() {
 			defer wg.Done()
 			casANew, errA = nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 2}`), cas)
