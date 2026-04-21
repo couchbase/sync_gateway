@@ -1,0 +1,30 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+get:
+  summary: Get cluster compatibility version
+  description: |-
+    Returns the cluster compatibility version, per-node versions, and per-bucket node registrations.
+
+    The cluster compatibility version is the minimum Sync Gateway version across all nodes in the cluster.
+    It is used to gate new metadata formats until all nodes have been upgraded.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Dev Ops
+  tags:
+    - Server
+  responses:
+    '200':
+      description: Returned the cluster compatibility information successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/ClusterCompatResponse
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+  operationId: get__cluster_compat

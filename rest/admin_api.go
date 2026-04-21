@@ -2491,6 +2491,22 @@ func (h *handler) handleGetClusterInfo() error {
 	return nil
 }
 
+// handleGetClusterCompat returns the cluster compatibility version, per-node versions, and
+// per-bucket node registrations.
+func (h *handler) handleGetClusterCompat() error {
+	resp := clusterCompatResponse{}
+	if h.server.ClusterCompat != nil {
+		resp.ClusterCompatVersion = h.server.ClusterCompat.ClusterCompatVersion()
+		resp.Nodes = h.server.ClusterCompat.NodeVersions()
+		if ccm, ok := h.server.ClusterCompat.(*clusterCompatManager); ok {
+			resp.Buckets = ccm.BucketNodes()
+		}
+	}
+	base.Audit(h.ctx(), base.AuditIDClusterCompatRead, nil)
+	h.writeJSON(resp)
+	return nil
+}
+
 // databaseLoadErrorAsHTTPError converts an error loading a database into an error with an http status code. Pulled into a function so we can duplicate persistent and non persistent config logic.
 func databaseLoadErrorAsHTTPError(err error) error {
 	var httpErr *base.HTTPError

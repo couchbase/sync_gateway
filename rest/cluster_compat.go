@@ -206,22 +206,6 @@ type clusterCompatResponse struct {
 	Buckets              map[string]clusterCompatBucketNodes  `json:"buckets,omitempty"`
 }
 
-// handleGetClusterCompat returns the cluster compatibility version, per-node versions, and
-// per-bucket node registrations.
-func (h *handler) handleGetClusterCompat() error {
-	resp := clusterCompatResponse{}
-	if h.server.ClusterCompat != nil {
-		resp.ClusterCompatVersion = h.server.ClusterCompat.ClusterCompatVersion()
-		resp.Nodes = h.server.ClusterCompat.NodeVersions()
-		if ccm, ok := h.server.ClusterCompat.(*clusterCompatManager); ok {
-			resp.Buckets = ccm.BucketNodes()
-		}
-	}
-	base.Audit(h.ctx(), base.AuditIDClusterCompatRead, nil)
-	h.writeJSON(resp)
-	return nil
-}
-
 // clusterCompatVersionEqual compares two possibly-nil ClusterCompatVersion pointers.
 func clusterCompatVersionEqual(a, b *base.ClusterCompatVersion) bool {
 	if a == nil && b == nil {
