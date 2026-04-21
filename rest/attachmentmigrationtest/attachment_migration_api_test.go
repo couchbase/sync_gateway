@@ -24,10 +24,6 @@ import (
 )
 
 func TestAttachmentMigrationAPI(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -43,7 +39,8 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	var migrationStatus db.AttachmentMigrationManagerResponse
 	err := base.JSONUnmarshal(resp.BodyBytes(), &migrationStatus)
 	require.NoError(t, err)
-	require.Equal(t, db.BackgroundProcessStateRunning, migrationStatus.State)
+	// could be running or completed depending on timing of when GET is performed
+	require.Contains(t, []db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateCompleted}, migrationStatus.State)
 	assert.Equal(t, int64(0), migrationStatus.DocsChanged)
 	assert.Equal(t, int64(0), migrationStatus.DocsProcessed)
 	assert.Empty(t, migrationStatus.LastErrorMessage)
@@ -52,7 +49,7 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	addDocsForMigrationProcess(t, ctx, collection)
+	numDocs := addDocsForMigrationProcess(t, ctx, collection)
 
 	// kick off migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -73,18 +70,14 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	err = base.JSONUnmarshal(resp.BodyBytes(), &migrationStatus)
 	require.NoError(t, err)
 	require.Equal(t, db.BackgroundProcessStateCompleted, migrationStatus.State)
-	assert.Equal(t, int64(5), migrationStatus.DocsChanged)
+	assert.Equal(t, numDocs/2, migrationStatus.DocsChanged)
 	// With GSI test bucket pool, a past document might sneak in in the case it was:
 	// mutated & deleted but did not pass the snapshot boundary.
-	assert.GreaterOrEqual(t, migrationStatus.DocsProcessed, int64(10))
+	assert.GreaterOrEqual(t, migrationStatus.DocsProcessed, numDocs)
 	assert.Empty(t, migrationStatus.LastErrorMessage)
 }
 
 func TestAttachmentMigrationAbort(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -96,8 +89,12 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 	// Wait for run on startup to complete
 	_ = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
+	numDocs := 20
+	if base.UnitTestUrlIsWalrus() {
+		numDocs *= 10
+	}
 	// add some docs to arrive over dcp
-	for i := range 20 {
+	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		docBody := db.Body{
 			"value": 1234,
@@ -119,10 +116,6 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 }
 
 func TestAttachmentMigrationReset(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
@@ -135,7 +128,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	addDocsForMigrationProcess(t, ctx, collection)
+	numDocs := addDocsForMigrationProcess(t, ctx, collection)
 
 	// start migration
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -165,13 +158,10 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 	// assert all 10 docs are processed again
-	assert.Equal(t, int64(10), status.DocsProcessed)
+	assert.Equal(t, numDocs, status.DocsProcessed)
 }
 
 func TestAttachmentMigrationMultiNode(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar does not support DCP client, pending CBG-4249")
-	}
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
@@ -226,8 +216,12 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	_ = rt2.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
 }
 
-func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) {
-	for i := range 10 {
+func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) int64 {
+	numDocs := int64(10)
+	if base.UnitTestUrlIsWalrus() {
+		numDocs *= 10
+	}
+	for i := range numDocs {
 		docBody := db.Body{
 			"value":            1234,
 			db.BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
@@ -259,11 +253,12 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	}
 
 	// Move some subset of the documents attachment metadata from global sync to sync data
-	for j := range 5 {
+	for j := range numDocs / 2 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
 		value, _, err := collection.GetCollectionDatastore().GetRaw(key)
 		require.NoError(t, err)
 
 		db.MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), key, value, true)
 	}
+	return numDocs
 }
