@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -39,12 +40,7 @@ type CfgEventNotifyFunc func(docID string, cas uint64, err error)
 
 var ErrCfgCasError = &cbgt.CfgCASError{}
 
-// NewCfgSG returns a Cfg implementation that reads/writes its entries
-// from/to a couchbase datastore. All document names will start with keyPrefix.
-// If useNodePoller is true, then any document changes are received by node polling. If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
-//
-// The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
-func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
+func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool, pollInterval time.Duration) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	// should this inherit DB context?
@@ -58,10 +54,20 @@ func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	}
 
 	if useNodePoller {
-		c.nodePoller = newCfgNodePoller(loggingCtx, datastore, c.FireEvent, defaultHeartbeatPollInterval)
+		c.nodePoller = newCfgNodePoller(loggingCtx, datastore, c.FireEvent, pollInterval)
 	}
 
 	return c, nil
+}
+
+// NewCfgSG returns a Cfg implementation that reads/writes its entries
+// from/to a couchbase datastore. All document names will start with keyPrefix.
+// If useNodePoller is true, then any document changes are received by node polling with the specified pollInterval.
+// If useNodePoller is not true, then the caller needs to register event changes itself by calling FireEvent.
+//
+// The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
+func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
+	return newCfgSG(ctx, datastore, keyPrefix, useNodePoller, DefaultHeartbeatPollInterval)
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {

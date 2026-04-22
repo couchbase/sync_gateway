@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -425,6 +426,13 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	assert.Equal(t, Crc32cHashString(valBytes), vxattrCrc32c)
 	assert.Equal(t, macroBodyHashString, vxattrCrc32c)
+
+	_, xattrs, cas, err = dataStore.GetWithXattrs(ctx, key, []string{VirtualDocumentXattrCAS})
+	require.NoError(t, err)
+	var fetchedCAS string
+	require.NoError(t, json.Unmarshal(xattrs[VirtualDocumentXattrCAS], &fetchedCAS))
+	expectedCAS := fmt.Sprintf(`0x%s`, strconv.FormatUint(cas, 16))
+	require.Equal(t, expectedCAS, fetchedCAS)
 
 }
 

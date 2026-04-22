@@ -655,12 +655,12 @@ func (p *cfgNodePoller) Register(key string) error {
 // poll checks all registered keys for CAS changes. For each key whose CAS value has changed since the last check,
 // the fireEvent callback is invoked with the key, new CAS value, and nil error. The keyWatcher is updated with
 // the new CAS values. This method is thread-safe and uses optimistic locking to avoid blocking during I/O operations.
-func (p *cfgNodePoller) poll() {
+func (p *cfgNodePoller) poll(ctx context.Context) {
 
 	watcher := p.getWatcher()
 
 	for key, oldCas := range watcher {
-		newCas, err := p.datastore.Get(key, nil)
+		_, newCas, err := p.datastore.GetXattrs(ctx, key, []string{VirtualDocumentXattrCAS})
 		if err != nil && !IsDocNotFoundError(err) {
 			WarnfCtx(p.ctx, "cfgNodePoller: error polling doc: %s %v, skipping polling", UD(key), err)
 			continue
@@ -686,7 +686,7 @@ func (p *cfgNodePoller) startPolling(ctx context.Context) {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				p.poll()
+				p.poll(ctx)
 			}
 		}
 	}()
