@@ -5055,6 +5055,15 @@ func TestDeleteState(t *testing.T) {
 		require.True(t, base.IsDocNotFoundError(err))
 	})
 
+	t.Run("resets in-memory CAS and State on success", func(t *testing.T) {
+		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
+		mgr := NewDatabaseStateMgr(metadataStore, docID)
+		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
+		require.NoError(t, mgr.DeleteState())
+		require.Zero(t, mgr.CAS)
+		require.Equal(t, DatabaseState{}, mgr.State)
+	})
+
 	t.Run("returns error when doc already deleted", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
