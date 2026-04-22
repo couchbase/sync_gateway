@@ -5087,18 +5087,18 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		mgr.pollingInterval = 10 * time.Millisecond
 
-		called := false
-		resumeVal := false
+		var called atomic.Bool
+		var resumeVal atomic.Bool
 		mgr.AddResyncFunc(func(resume bool) {
-			called = true
-			resumeVal = resume
+			called.Store(true)
+			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
 		defer mgr.StopPolling()
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.True(c, called)
-			assert.False(c, resumeVal)
+			assert.True(c, called.Load())
+			assert.False(c, resumeVal.Load())
 		}, 2*time.Second, 10*time.Millisecond)
 	})
 
@@ -5109,18 +5109,18 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		mgr.CAS = 0 // simulate stale CAS so the poller sees a change
 
-		called := false
-		resumeVal := false
+		var called atomic.Bool
+		var resumeVal atomic.Bool
 		mgr.AddResyncFunc(func(resume bool) {
-			called = true
-			resumeVal = resume
+			called.Store(true)
+			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
 		defer mgr.StopPolling()
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.True(c, called)
-			assert.True(c, resumeVal)
+			assert.True(c, called.Load())
+			assert.True(c, resumeVal.Load())
 		}, 2*time.Second, 10*time.Millisecond)
 	})
 
@@ -5130,13 +5130,13 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr.pollingInterval = 10 * time.Millisecond
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 
-		callCount := 0
-		mgr.AddResyncFunc(func(_ bool) { callCount++ })
+		var callCount atomic.Int32
+		mgr.AddResyncFunc(func(_ bool) { callCount.Add(1) })
 		mgr.StartPolling(ctx)
 
 		time.Sleep(50 * time.Millisecond)
 		mgr.StopPolling()
-		require.Equal(t, 0, callCount)
+		require.Equal(t, int32(0), callCount.Load())
 	})
 
 	t.Run("StopPolling halts the goroutine", func(t *testing.T) {
