@@ -165,6 +165,7 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+	DBStateMgr                   *DatabaseStateMgr // Manager use to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -303,6 +304,21 @@ type ImportOptions struct {
 type Database struct {
 	*DatabaseContext
 	user auth.User
+}
+
+type DatabaseState struct {
+	ResyncRunning bool `json:"resync,omitempty"`
+}
+
+type ResyncHandler func(resume bool)
+type DatabaseStateMgr struct {
+	State           DatabaseState
+	CAS             uint64
+	dbStateID       string
+	terminator      *base.SafeTerminator
+	metadataStore   base.DataStore
+	pollingInterval time.Duration
+	resyncHandler   ResyncHandler
 }
 
 func ValidateDatabaseName(dbName string) error {
@@ -610,6 +626,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
+	// Initialize DatabaseStateManager
+	dbContext.DBStateMgr = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
+
 	return dbContext, nil
 }
 
@@ -668,6 +687,9 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context._stopOnlineProcesses(ctx)
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
+
+	// Stopping the polling in DBStateMgr
+	context.DBStateMgr.StopPolling()
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
@@ -2590,4 +2612,96 @@ func (db *DatabaseContext) usingRosmar() bool {
 // if the sequence remains in skipped list.
 func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
 	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
+}
+
+// NewDatabaseStateMgr creates an OfflineDatabaseStateMgr for the given database.
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *DatabaseStateMgr {
+	return &DatabaseStateMgr{
+		dbStateID:       dbStateID,
+		CAS:             0,
+		terminator:      base.NewSafeTerminator(),
+		metadataStore:   metadataStore,
+		pollingInterval: 10 * time.Second,
+	}
+}
+
+// UpdateState persists the given DatabaseState to the metadata store using a CAS write, then updates the
+// in-memory State and CAS on success. Returns an error on CAS mismatch or store failure.
+func (dbMgr *DatabaseStateMgr) UpdateState(state DatabaseState) (err error) {
+	cas, err := dbMgr.metadataStore.WriteCas(dbMgr.dbStateID, 0, dbMgr.CAS, state, 0)
+	if err != nil {
+		return err
+	}
+	dbMgr.State = state
+	dbMgr.CAS = cas
+	return
+}
+
+// GetState reads the current DatabaseState document from the metadata store. Returns the state and its CAS value.
+// A doc-not-found error is treated as a zero-value state (no state document exists) and is not returned as an error.
+func (dbMgr *DatabaseStateMgr) GetState() (state DatabaseState, cas uint64, err error) {
+	cas, err = dbMgr.metadataStore.Get(dbMgr.dbStateID, &state)
+	if err != nil && !base.IsDocNotFoundError(err) {
+		return state, cas, err
+	}
+	return
+}
+
+// DeleteState removes the database state document from the metadata store using a CAS-protected Remove.
+// Returns an error on CAS mismatch or if the document does not exist.
+func (dbMgr *DatabaseStateMgr) DeleteState() (err error) {
+	_, err = dbMgr.metadataStore.Remove(dbMgr.dbStateID, dbMgr.CAS)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// AddResyncFunc registers the callback that is invoked by the polling loop when a state change is detected.
+// The callback receives true if a resync should resume, or false if the state document was removed (resync complete).
+func (dbMgr *DatabaseStateMgr) AddResyncFunc(resyncFunc ResyncHandler) {
+	dbMgr.resyncHandler = resyncFunc
+}
+
+// StartPolling launches a background goroutine that periodically calls poll() at dbMgr.pollingInterval.
+// The goroutine exits when StopPolling is called (via the terminator). AddResyncFunc must be called before
+// StartPolling so that state change notifications have a registered handler.
+func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
+	ticker := time.NewTicker(dbMgr.pollingInterval)
+	go func() {
+		defer base.FatalPanicHandler()
+		for {
+			select {
+			case <-dbMgr.terminator.Done():
+				return
+			case <-ticker.C:
+				dbMgr.poll(ctx)
+			}
+		}
+	}()
+}
+
+// poll reads the offline state document from the metadata store and invokes the resumeFunc if the CAS has
+// changed. If the document is not found it calls resumeFunc(false) to signal that resync is no longer
+// running. CAS changes that match the locally held CAS are ignored to avoid redundant callbacks.
+func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
+	state, cas, err := dbMgr.GetState()
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			dbMgr.resyncHandler(false)
+			return
+		}
+		base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
+	}
+	if cas == dbMgr.CAS {
+		return
+	}
+	dbMgr.resyncHandler(state.ResyncRunning)
+	dbMgr.CAS = cas
+	dbMgr.State = state
+}
+
+// StopPolling signals the background polling goroutine started by StartPolling to exit.
+func (dbMgr *DatabaseStateMgr) StopPolling() {
+	dbMgr.terminator.Close()
 }

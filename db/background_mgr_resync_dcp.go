@@ -142,6 +142,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		} else {
 			cancelResync(errors.New("resync ended normally"))
 		}
+		err := db.DBStateMgr.DeleteState()
+		if err != nil {
+			base.WarnfCtx(ctx, "failed to delete the database state: %v", err)
+		}
 	}()
 
 	var doneChan chan error
