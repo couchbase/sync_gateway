@@ -50,7 +50,7 @@ func TestUpdateState(t *testing.T) {
 }
 
 // TestGetState verifies that GetState reads back the persisted state, and returns a zero-value state
-// without error when no state document exists.
+// with a doc-not-found error when no state document exists.
 func TestGetState(t *testing.T) {
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
