@@ -39,6 +39,7 @@ type clusterCompatManager struct {
 	cachedVersion *base.ClusterCompatVersion
 	cachedNodes   map[string]base.ClusterCompatVersion
 	cachedBuckets map[string]clusterCompatBucketNodes
+	lastRefreshAt time.Time // records when the last successful node registration completed
 	mu            sync.RWMutex
 }
 
@@ -54,6 +55,7 @@ func (m *clusterCompatManager) setCached(version *base.ClusterCompatVersion, nod
 	m.cachedVersion = version
 	m.cachedNodes = nodes
 	m.cachedBuckets = buckets
+	m.lastRefreshAt = time.Now()
 }
 
 // Start registers this node in all bucket registries and computes the initial cluster compat version.
@@ -114,7 +116,20 @@ func (m *clusterCompatManager) NodeVersions() map[string]base.ClusterCompatVersi
 
 // Refresh re-registers this node in all bucket registries, prunes stale nodes, and recomputes
 // the cluster compat version. Called from the config polling goroutine.
+//
+// To avoid excessive CAS contention on the registry document — which is shared with db-config
+// updates — the refresh is rate-limited to at most once per refreshInterval(). This keeps the
+// heartbeat well within the expiry window (refreshInterval << heartbeatExpiry) while preventing
+// rapid-polling test configurations from writing the registry on every tick.
 func (m *clusterCompatManager) Refresh(ctx context.Context) {
+	// if config polling interval is very low we should rate limit heartbeat updates
+	m.mu.RLock()
+	lastRefresh := m.lastRefreshAt
+	m.mu.RUnlock()
+	if time.Since(lastRefresh) < m.refreshInterval() {
+		return
+	}
+
 	version, nodes, buckets, err := m.refreshNodeRegistrations(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to refresh cluster compat version: %v", err)
@@ -138,7 +153,6 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 
 	nodeVersion := base.NodeClusterCompatVersion
 	heartbeatExpiry := m.heartbeatExpiry()
-
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
@@ -170,15 +184,29 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 // heartbeatExpiry returns the duration after which a node is considered stale.
 // If ConfigUpdateFrequency is zero (e.g. disabled in tests), falls back to the default frequency.
 func (m *clusterCompatManager) heartbeatExpiry() time.Duration {
-	multiplier := defaultNodeHeartbeatExpiryMultiplier
-	if m.sc.Config.Bootstrap.NodeHeartbeatExpiryMultiplier != nil {
-		multiplier = *m.sc.Config.Bootstrap.NodeHeartbeatExpiryMultiplier
-	}
+	return m.refreshInterval() * time.Duration(m.nodeHeartbeatExpiryMultiplier())
+}
+
+// refreshInterval returns the effective interval between node registration refreshes.
+// It applies the same normalisation used by heartbeatExpiry: if ConfigUpdateFrequency is
+// very low (e.g. in some tests), it falls back to persistentConfigDefaultUpdateFrequency. This
+// ensures that Refresh() writes to the registry no more often than once per refreshInterval,
+// which is always significantly less than heartbeatExpiry (by the multiplier factor), so
+// heartbeats never expire due to rate-limiting.
+func (m *clusterCompatManager) refreshInterval() time.Duration {
 	freq := m.sc.Config.Bootstrap.ConfigUpdateFrequency.Value()
-	if freq <= 0 {
+	if freq <= time.Second {
 		freq = persistentConfigDefaultUpdateFrequency
 	}
-	return freq * time.Duration(multiplier)
+	return freq
+}
+
+// nodeHeartbeatExpiryMultiplier returns the configured multiplier, falling back to the default.
+func (m *clusterCompatManager) nodeHeartbeatExpiryMultiplier() int {
+	if m.sc.Config.Bootstrap.NodeHeartbeatExpiryMultiplier != nil {
+		return *m.sc.Config.Bootstrap.NodeHeartbeatExpiryMultiplier
+	}
+	return defaultNodeHeartbeatExpiryMultiplier
 }
 
 // BucketNodes returns a deep copy of the per-bucket node registrations.
