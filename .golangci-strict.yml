@@ -9,6 +9,7 @@
 version: "2"
 linters:
   enable:
+    - errorlint
     - exhaustive
     - gocritic # The most opinionated Go source code linter
     #- goprintffuncname # Checks that printf-like functions are named with `f` at the end
@@ -25,6 +26,9 @@ linters:
     #- unparam # Reports unused function parameters
     - unused # (megacheck) Checks Go code for unused constants, variables, functions and types
   settings:
+    errorlint:
+      asserts: false
+      comparison: false
     exhaustive:
       check:
         - switch

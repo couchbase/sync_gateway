@@ -1682,7 +1682,7 @@ func (db *DatabaseCollectionWithUser) SyncFnDryRun(ctx context.Context, newDoc, 
 	jsTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 	syncRunner, err := channels.NewSyncRunnerWithLogging(ctx, syncFn, jsTimeout, errorLogFunc, infoLogFunc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sync runner: %v", err)
+		return nil, fmt.Errorf("failed to create sync runner: %w", err)
 	}
 
 	oldDocBodyBytes, err := oldDoc.BodyBytes(ctx)

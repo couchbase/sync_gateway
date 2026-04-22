@@ -157,7 +157,7 @@ func hostOnlyCORS(originPatterns []string) ([]string, error) {
 		}
 		u, err := url.Parse(origin)
 		if err != nil {
-			multiError = multiError.Append(fmt.Errorf("%s is not a valid pattern for CORS config", err))
+			multiError = multiError.Append(fmt.Errorf("%w is not a valid pattern for CORS config", err))
 			continue
 		}
 		origins = append(origins, u.Host)

@@ -711,13 +711,13 @@ func DeepCopyInefficient(dst any, src any) error {
 	}
 	b, err := JSONMarshal(src)
 	if err != nil {
-		return fmt.Errorf("Unable to marshal src: %s", err)
+		return fmt.Errorf("Unable to marshal src: %w", err)
 	}
 	d := JSONDecoder(bytes.NewBuffer(b))
 	d.UseNumber()
 	err = d.Decode(dst)
 	if err != nil {
-		return fmt.Errorf("Unable to unmarshal into dst: %s", err)
+		return fmt.Errorf("Unable to unmarshal into dst: %w", err)
 	}
 	return nil
 }

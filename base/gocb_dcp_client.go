@@ -358,7 +358,7 @@ func (dc *GoCBDCPClient) getAgentConfig(spec BucketSpec) (*gocbcore.DCPAgentConf
 	beforeFromConnStr := time.Now()
 	connStrError := agentConfig.FromConnStr(connStr)
 	if connStrError != nil {
-		return nil, fmt.Errorf("Unable to start DCP Client - error building conn str: %v", connStrError)
+		return nil, fmt.Errorf("Unable to start DCP Client - error building conn str: %w", connStrError)
 	}
 	if d := time.Since(beforeFromConnStr); d > FromConnStrWarningThreshold {
 		WarnfCtx(dc.ctx, "Parsed cluster connection string %q in: %v", UD(connStr), d)
@@ -492,7 +492,7 @@ func (dc *GoCBDCPClient) openStream(vbID uint16, maxRetries uint32) error {
 
 			dc.rollback(dc.ctx, vbID, rollbackErr.SeqNo)
 		case errors.Is(openStreamErr, gocbcore.ErrMemdRangeError):
-			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
+			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %w metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
 			WarnfCtx(dc.ctx, "%s", err)
 			return err
 		case errors.Is(openStreamErr, ErrVbUUIDMismatch):

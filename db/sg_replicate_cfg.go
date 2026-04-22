@@ -426,7 +426,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 		base.InfofCtx(ctx, base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
 		stopErr := ar.Stop()
 		if stopErr != nil {
-			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %v", ar.ID, stopErr)
+			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %w", ar.ID, stopErr)
 		}
 	case ReplicationStateRunning:
 		if currentState == ReplicationStateReconnecting {
@@ -436,7 +436,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 		base.InfofCtx(ctx, base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
 		startErr := ar.Start(ctx)
 		if startErr != nil {
-			return fmt.Errorf("Unable to start active replicator for replication %s: %v", ar.ID, startErr)
+			return fmt.Errorf("Unable to start active replicator for replication %s: %w", ar.ID, startErr)
 		}
 	case ReplicationStateResetting:
 		if currentState != ReplicationStateStopped {
@@ -445,7 +445,7 @@ func (ar *ActiveReplicator) alignState(ctx context.Context, targetState string) 
 		base.InfofCtx(ctx, base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
 		resetErr := ar.Reset()
 		if resetErr != nil {
-			return fmt.Errorf("Unable to reset active replicator for replication %s: %v", ar.ID, resetErr)
+			return fmt.Errorf("Unable to reset active replicator for replication %s: %w", ar.ID, resetErr)
 		}
 	}
 	return nil
@@ -692,7 +692,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// re-checking here in case of issues during persistence/load.
 	configValidationError := config.ValidateReplication(false)
 	if configValidationError != nil {
-		return nil, fmt.Errorf("Validation failure for replication config when initializing replication %s: %v", base.UD(config.ID), configValidationError)
+		return nil, fmt.Errorf("Validation failure for replication config when initializing replication %s: %w", base.UD(config.ID), configValidationError)
 	}
 
 	rc, cfgErr := m.NewActiveReplicatorConfig(config)

@@ -360,7 +360,7 @@ func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, max
 
 	numVBuckets, err := b.GetMaxVbno()
 	if err != nil {
-		return false, nil, fmt.Errorf("error getting vbucket count: %v", err)
+		return false, nil, fmt.Errorf("error getting vbucket count: %w", err)
 	}
 
 	highCAS := make(map[VBNo]uint64, numVBuckets)
@@ -378,7 +378,7 @@ func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, max
 	for i, casStr := range response.VBucketsMaxCas {
 		cas, err := strconv.ParseUint(casStr, 10, 64)
 		if err != nil {
-			return false, nil, fmt.Errorf("error parsing vbucket CAS value %q for vBucket %d: %v", casStr, i, err)
+			return false, nil, fmt.Errorf("error parsing vbucket CAS value %q for vBucket %d: %w", casStr, i, err)
 		}
 		highCAS[VBNo(i)] = cas
 	}

@@ -95,12 +95,12 @@ func UnmarshalIdentityJSON(claims []byte) (*IdentityJson, error) {
 func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 	payload, err := parseJWT(rawIDToken)
 	if err != nil {
-		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
+		return nil, fmt.Errorf("oidc: malformed jwt: %w", err)
 	}
 
 	identityJson, err := UnmarshalIdentityJSON(payload)
 	if err != nil {
-		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
+		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %w", err)
 	}
 
 	identity := &Identity{
@@ -151,7 +151,7 @@ func parseJWT(p string) ([]byte, error) {
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("oidc: malformed jwt payload: %v", err)
+		return nil, fmt.Errorf("oidc: malformed jwt payload: %w", err)
 	}
 	return payload, nil
 }

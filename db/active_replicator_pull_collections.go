@@ -22,7 +22,7 @@ import (
 func (apr *ActivePullReplicator) _startPullWithCollections() error {
 	collectionCheckpoints, err := apr._initCollections()
 	if err != nil {
-		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
+		return fmt.Errorf("%w: %w", fatalReplicatorConnectError, err)
 	}
 
 	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {

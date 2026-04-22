@@ -314,7 +314,7 @@ func newConflictResolverRunner(ctx context.Context, funcSource string, timeout t
 		}
 		rawConflict, exportErr := call.Argument(0).Export()
 		if exportErr != nil {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
+			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %w", call.Argument(0), exportErr))
 		}
 
 		// Called defaultPolicy with null/undefined value - return

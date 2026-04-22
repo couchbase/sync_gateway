@@ -100,13 +100,13 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %w", err)
 	}
 	req.SetBasicAuth(creds.username, creds.password)
 
 	res, err := cbgt.HttpClient().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %w", err)
 	}
 	defer func() {
 		if err := res.Body.Close(); err != nil {
@@ -116,7 +116,7 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %w", err)
 	}
 	if len(body) == 0 {
 		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")

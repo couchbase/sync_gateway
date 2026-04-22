@@ -514,7 +514,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 		// View cleanup
 		removedDDocs, err := database.RemoveObsoleteDesignDocs(ctx, preview)
 		if err != nil {
-			errs = errs.Append(fmt.Errorf("Error removing obsolete design docs for database %q: %v", dbName, err))
+			errs = errs.Append(fmt.Errorf("Error removing obsolete design docs for database %q: %w", dbName, err))
 			continue
 		}
 		dbDesignDocs[dbName] = removedDDocs
@@ -537,7 +537,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 	for bucketName, indexes := range bucketInUseIndexes {
 		bucket, ok := buckets[bucketName]
 		if !ok {
-			errs = errs.Append(fmt.Errorf("Error getting bucket %q for index cleanup: %v", bucketName, err))
+			errs = errs.Append(fmt.Errorf("Error getting bucket %q for index cleanup: %w", bucketName, err))
 			continue
 		}
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
@@ -545,7 +545,7 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 		}
 		removedIndexes, err := db.RemoveUnusedIndexes(ctx, bucket, indexes, preview)
 		if err != nil {
-			errs = errs.Append(fmt.Errorf("Error removing obsolete indexes for bucket %q: %v", bucketName, err))
+			errs = errs.Append(fmt.Errorf("Error removing obsolete indexes for bucket %q: %w", bucketName, err))
 			continue
 		}
 		bucketRemovedIndexes[bucketName] = removedIndexes
@@ -2220,12 +2220,12 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 
 	securityConfig, err := base.GoCBv2SecurityConfig(ctx, base.Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
-		return fmt.Errorf("failed to create security config: %v", err)
+		return fmt.Errorf("failed to create security config: %w", err)
 	}
 
 	authenticator, err := base.GoCBv2Authenticator(clusterSpec.Username, clusterSpec.Password, clusterSpec.X509Certpath, clusterSpec.X509Keypath)
 	if err != nil {
-		return fmt.Errorf("failed to create authenticator: %v", err)
+		return fmt.Errorf("failed to create authenticator: %w", err)
 	}
 
 	cluster, err := gocb.Connect(clusterSpec.Server,
@@ -2234,19 +2234,19 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 			SecurityConfig: securityConfig,
 		})
 	if err != nil {
-		return fmt.Errorf("failed to create cluster: %v", err)
+		return fmt.Errorf("failed to create cluster: %w", err)
 	}
 
 	err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{
 		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to wait for cluster to become ready: %v", err)
+		return fmt.Errorf("failed to wait for cluster to become ready: %w", err)
 	}
 
 	major, minor, err := base.GetClusterVersion(cluster)
 	if err != nil {
-		return fmt.Errorf("failed to get cluster version: %v", err)
+		return fmt.Errorf("failed to get cluster version: %w", err)
 	}
 
 	errMsg := fmt.Sprintf(

@@ -1039,7 +1039,7 @@ func (h *LogPriorityQueue) Pop() any {
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	_, numSkipped, err := c.skippedSeqs.list.Remove(NewSingleSkippedSequenceEntryAt(x, 0))
 	if err != nil {
-		return fmt.Errorf("sequence %d not found in the skipped list, err: %v", x, err)
+		return fmt.Errorf("sequence %d not found in the skipped list, err: %w", x, err)
 	}
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)

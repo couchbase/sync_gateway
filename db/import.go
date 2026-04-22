@@ -480,7 +480,7 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 
 	setOldRevErr := db.setOldRevisionJSON(ctx, docid, revid, oldRevJSON, previousRev.Deleted, db.oldRevExpirySeconds(), previousRev.Channels)
 	if setOldRevErr != nil {
-		return fmt.Errorf("Persistence error: %v", setOldRevErr)
+		return fmt.Errorf("Persistence error: %w", setOldRevErr)
 	}
 
 	return nil

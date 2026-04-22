@@ -111,7 +111,7 @@ func compileFunction(ctx context.Context, name string, typeName string, fnConfig
 	case "query":
 		err = validateN1QLQuery(fnConfig.Code)
 		if err != nil {
-			err = fmt.Errorf("%s %q invalid query: %v", typeName, name, err)
+			err = fmt.Errorf("%s %q invalid query: %w", typeName, name, err)
 		}
 	default:
 		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)

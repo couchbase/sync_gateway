@@ -433,10 +433,10 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 			// attempt new fetch
 			_, fetchErr = ds.Get(SGSyncInfo, &syncInfo)
 			if fetchErr != nil {
-				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
+				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %w", fetchErr)
 			}
 		} else if addErr != nil {
-			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+			return true, true, fmt.Errorf("Error adding syncInfo: %w", addErr)
 		}
 		requiresResync = syncInfo.requiresResync(metadataID)
 		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
@@ -445,7 +445,7 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (require
 		}
 		return requiresResync, requiresAttachmentMigration, nil
 	} else if fetchErr != nil {
-		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+		return true, true, fmt.Errorf("Error retrieving syncInfo: %w", fetchErr)
 	}
 	requiresResync = syncInfo.requiresResync(metadataID)
 	// check for meta version, if we don't have meta version of 4.0 we need to run migration job

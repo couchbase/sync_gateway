@@ -71,7 +71,7 @@ func getCbgtDest(ctx context.Context, indexParams string, restart func()) (cbgt.
 	base.DebugfCtx(ctx, base.KeyDCP, "Fetching dest for %v", base.MD(sgIndexParams.DestKey))
 	destFactory, fetchErr := base.FetchDestFactory(sgIndexParams.DestKey)
 	if fetchErr != nil {
-		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %v", indexParams, fetchErr)
+		return nil, fmt.Errorf("error retrieving listener for indexParams %v: %w", indexParams, fetchErr)
 	}
 	return destFactory(restart)
 }

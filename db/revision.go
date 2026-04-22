@@ -267,14 +267,14 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 		if ch, ok := meta[backupRevisionChannelsMetaKey]; ok && ch != nil {
 			err = base.JSONUnmarshal(ch, &channelSet)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
+				return nil, nil, false, fmt.Errorf("error unmarshalling _channels xattr for old revision %q / %q: %w", base.UD(docid), revOrCV, err)
 			}
 		}
 		var deletedDoc bool
 		if deletedMeta, ok := meta[backupRevisionBodyDeletedMetaKey]; ok && deletedMeta != nil {
 			err = base.JSONUnmarshal(deletedMeta, &deletedDoc)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("error unmarshalling _deleted xattr for old revision %q / %q: %v", base.UD(docid), revOrCV, err)
+				return nil, nil, false, fmt.Errorf("error unmarshalling _deleted xattr for old revision %q / %q: %w", base.UD(docid), revOrCV, err)
 			}
 		}
 		return jsonBody, channelSet, deletedDoc, nil
@@ -337,11 +337,11 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	// not stored as a real Couchbase Server xattr since we need to write this as a binary document
 	channelsJSON, err := channels.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("error marshalling channels for old revision %q / %q: %v", base.UD(docid), rev, err)
+		return fmt.Errorf("error marshalling channels for old revision %q / %q: %w", base.UD(docid), rev, err)
 	}
 	deletedJSON, err := base.JSONMarshal(deletedDoc)
 	if err != nil {
-		return fmt.Errorf("error marshalling deleted flag for old revision %q / %q: %v", base.UD(docid), rev, err)
+		return fmt.Errorf("error marshalling deleted flag for old revision %q / %q: %w", base.UD(docid), rev, err)
 	}
 	meta := []sgbucket.Xattr{
 		{Name: backupRevisionChannelsMetaKey, Value: channelsJSON},
@@ -447,7 +447,7 @@ func parseRevID(revid string) (int, string, error) {
 
 	gen, err := strconv.Atoi(revid[:idx])
 	if err != nil {
-		return -1, "", fmt.Errorf("parseRevID unexpected generation in rev %q: %s", revid, err)
+		return -1, "", fmt.Errorf("parseRevID unexpected generation in rev %q: %w", revid, err)
 	} else if gen < 1 {
 		return -1, "", fmt.Errorf("parseRevID unexpected generation in rev %q", revid)
 	}

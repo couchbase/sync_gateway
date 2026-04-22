@@ -1522,7 +1522,7 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 	}
 
 	if sc.Auth.BcryptCost > 0 && (sc.Auth.BcryptCost < auth.DefaultBcryptCost || sc.Auth.BcryptCost > bcrypt.MaxCost) {
-		multiError = multiError.Append(fmt.Errorf("%v: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
+		multiError = multiError.Append(fmt.Errorf("%w: %d outside allowed range: %d-%d", auth.ErrInvalidBcryptCost, sc.Auth.BcryptCost, auth.DefaultBcryptCost, bcrypt.MaxCost))
 	}
 
 	if len(sc.Bootstrap.ConfigGroupID) > persistentConfigGroupIDMaxLength {
@@ -1594,7 +1594,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 			// If we didn't set up logging correctly, we *probably* can't log via normal means...
 			// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 			log.Printf("[ERR] Error setting up logging: %v", err)
-			return nil, fmt.Errorf("error setting up logging: %v", err)
+			return nil, fmt.Errorf("error setting up logging: %w", err)
 		}
 		base.FlushLoggerBuffers()
 

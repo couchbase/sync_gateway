@@ -54,7 +54,7 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 		err := fmt.Errorf("couldn't get cluster version: %w", err)
 		closeErr := agent.Close()
 		if closeErr != nil {
-			err = fmt.Errorf("%w; couldn't close agent: %v", err, closeErr)
+			err = fmt.Errorf("%w; couldn't close agent: %w", err, closeErr)
 		}
 		return nil, err
 	}

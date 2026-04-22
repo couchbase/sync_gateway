@@ -304,7 +304,7 @@ func networkInterfaceStatsForHostnamePort(hostPort string) (*gopsutilnet.IOCount
 	}
 
 	if len(iocountersStatsSet) == 0 {
-		return nil, fmt.Errorf("unable to find any network interface stats: %v", err)
+		return nil, fmt.Errorf("unable to find any network interface stats: %w", err)
 	}
 
 	// At this point we should only have one set of stats, either the stats for the NIC we care

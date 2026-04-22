@@ -174,7 +174,7 @@ func mandatoryFieldsPresent(fields, mandatoryFields AuditFields, baseName string
 		if _, ok := fields[k].(json.RawMessage); ok {
 			// unmarshal for type check
 			if err := json.Unmarshal(fields[k].(json.RawMessage), &val); err != nil {
-				me = me.Append(fmt.Errorf("field value for %s%s could not be unmarshalled: %v", baseName, k, err))
+				me = me.Append(fmt.Errorf("field value for %s%s could not be unmarshalled: %w", baseName, k, err))
 				continue
 			}
 		}

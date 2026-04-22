@@ -232,7 +232,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(ctx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
 			if err != nil {
-				return nil, fmt.Errorf("Error creating resync dest: %v", err)
+				return nil, fmt.Errorf("Error creating resync dest: %w", err)
 			}
 			return resyncDest, nil
 		}
@@ -244,22 +244,22 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix()
 		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
 		if err != nil {
-			return fmt.Errorf("Error creating resync heartbeater: %v", err)
+			return fmt.Errorf("Error creating resync heartbeater: %w", err)
 		}
 		err = resyncHB.Start(ctx)
 		if err != nil {
-			return fmt.Errorf("Error starting resync heartbeater: %v", err)
+			return fmt.Errorf("Error starting resync heartbeater: %w", err)
 		}
 		defer resyncHB.Stop(ctx)
 
 		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
-			return fmt.Errorf("Error creating resync cfg: %v", err)
+			return fmt.Errorf("Error creating resync cfg: %w", err)
 		}
 
 		indexName, err := base.GenerateCBGTIndexName(db.Name, base.ShardedDCPFeedTypeResync)
 		if err != nil {
-			return fmt.Errorf("Error generating CBGT index name: %v", err)
+			return fmt.Errorf("Error generating CBGT index name: %w", err)
 		}
 		opts := base.ShardedDCPOptions{
 			DBName:        db.Name,
@@ -277,7 +277,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(ctx, opts)
 		if err != nil {
-			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
+			return fmt.Errorf("Error starting resync sharded dcp feed: %w", err)
 		}
 		defer resyncCbgtContext.Stop(ctx)
 	} else {

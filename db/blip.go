@@ -90,7 +90,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 
 	seqJSON, err := base.JSONMarshal(seq)
 	if err != nil {
-		return nil, fmt.Errorf("could not marshal sequence %v: %v", seq, err)
+		return nil, fmt.Errorf("could not marshal sequence %v: %w", seq, err)
 	}
 	properties[RevMessageSequence] = string(seqJSON)
 

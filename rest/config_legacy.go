@@ -405,7 +405,7 @@ func setupServerConfig(ctx context.Context, args []string) (config *LegacyServer
 	multiError = multiError.Append(config.setupAndValidateDatabases(ctx))
 	if multiError.ErrorOrNil() != nil {
 		base.ErrorfCtx(ctx, "Error during config validation: %v", multiError)
-		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
+		return nil, fmt.Errorf("error(s) during config validation: %w", multiError)
 	}
 
 	return config, nil
