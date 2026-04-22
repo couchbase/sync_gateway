@@ -1088,6 +1088,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if !startOnlineProcesses {
+		dbcontext.DBStateMgr.StartPolling(dbcontext.CancelContext)
 		return dbcontext, nil
 	}
 
