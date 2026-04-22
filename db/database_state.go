@@ -21,6 +21,11 @@ type DatabaseState struct {
 }
 
 type ResyncHandler func(resume bool)
+
+func TempResyncHandler(resume bool) {
+	return
+}
+
 type DatabaseStateMgr struct {
 	State           DatabaseState
 	CAS             uint64
@@ -58,7 +63,7 @@ func (dbMgr *DatabaseStateMgr) UpdateState(state DatabaseState) (err error) {
 }
 
 // GetState reads the current DatabaseState document from the metadata store. Returns the state and its CAS value.
-// A doc-not-found error is treated as a zero-value state (no state document exists) and is not returned as an error.
+// A doc-not-found error is treated as a zero-value state.
 func (dbMgr *DatabaseStateMgr) GetState() (state DatabaseState, cas uint64, err error) {
 	cas, err = dbMgr.metadataStore.Get(dbMgr.dbStateID, &state)
 	if err != nil && !base.IsDocNotFoundError(err) {
@@ -74,7 +79,12 @@ func (dbMgr *DatabaseStateMgr) DeleteState() (err error) {
 	defer dbMgr.lock.Unlock()
 	_, err = dbMgr.metadataStore.Remove(dbMgr.dbStateID, dbMgr.CAS)
 	if err != nil {
-		return
+		// The stop operation has already succeeded above. If another cleanup path
+		// or node removed or updated the state document first, treat that as a
+		// benign race instead of failing the API after a successful stop.
+		if !base.IsDocNotFoundError(err) && !base.IsCasMismatch(err) {
+			return err
+		}
 	}
 	dbMgr.CAS = 0
 	dbMgr.State = DatabaseState{}
@@ -97,6 +107,7 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 		for {
 			select {
 			case <-dbMgr.terminator.Done():
+				ticker.Stop()
 				return
 			case <-ticker.C:
 				dbMgr.poll(ctx)
@@ -111,7 +122,7 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	state, cas, err := dbMgr.GetState()
 	if err != nil {
-		if base.IsDocNotFoundError(err) {
+		if base.IsDocNotFoundError(err) && cas != dbMgr.CAS {
 			dbMgr.resyncHandler(false)
 			return
 		}
