@@ -925,7 +925,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 // heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
 // for a small race if you try to stop and immediately restart a background manager.
 func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundManager) {
-	if !mgr.isClusterAware() {
+	if mgr.mode() != backgroundManagerModeSingleNode {
 		return
 	}
 
