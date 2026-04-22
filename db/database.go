@@ -2654,6 +2654,8 @@ func (dbMgr *DatabaseStateMgr) DeleteState() (err error) {
 	if err != nil {
 		return
 	}
+	dbMgr.CAS = 0
+	dbMgr.State = DatabaseState{}
 	return
 }
 
