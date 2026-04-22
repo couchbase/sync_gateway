@@ -54,11 +54,6 @@ func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	}
 
 	if useNodePoller {
-		// Validate the interval here so invalid input is rejected before the poller
-		// reaches ticker creation, which would otherwise panic for non-positive values.
-		if pollInterval <= 0 {
-			return nil, fmt.Errorf("pollInterval must be greater than zero when useNodePoller is enabled")
-		}
 		c.nodePoller = newCfgNodePoller(loggingCtx, datastore, c.FireEvent, pollInterval)
 	}
 
@@ -72,11 +67,7 @@ func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 //
 // The caching feed implements FireEvent calls by looking for document changes starting with keyPrefix and calling FireEvent.
 func NewCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix string, useNodePoller bool) (*CfgSG, error) {
-	pollInterval := DefaultHeartbeatPollInterval
-	if !useNodePoller {
-		pollInterval = 0
-	}
-	return newCfgSG(ctx, datastore, keyPrefix, useNodePoller, pollInterval)
+	return newCfgSG(ctx, datastore, keyPrefix, useNodePoller, DefaultHeartbeatPollInterval)
 }
 
 func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
