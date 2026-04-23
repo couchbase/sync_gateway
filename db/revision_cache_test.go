@@ -2765,42 +2765,39 @@ func TestMemoryBasedEvictionBetweenRevAndDeltaCache(t *testing.T) {
 
 	// -----------------------------------------------------------------------
 	// Step 2: Add delta rev1→rev2 via UpdateDelta.
-	// Total (121+10=131) exceeds maxBytes (121).  rev1 carries the older access
-	// order, so it is evicted from the revision cache, leaving only the delta.
+	// Total (121+10=131) exceeds maxBytes (121).  Delta is evicted due to round-
+	// robin eviction approach
 	// -----------------------------------------------------------------------
 	delta := RevisionDelta{DeltaBytes: deltaBodyBytes}
 	delta.CalculateDeltaBytes()
 	orchestrator.UpdateDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID, delta)
 
 	_, rev1InCacheAfterDelta := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
-	assert.False(t, rev1InCacheAfterDelta, "rev1 should have been evicted from revision cache by memory pressure")
+	assert.True(t, rev1InCacheAfterDelta, "rev1 should still be present")
 
 	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
-	assert.NotNil(t, cachedDelta, "delta should remain in delta cache after evicting rev1")
+	assert.Nil(t, cachedDelta, "delta should have been evicted")
 
-	assert.Equal(t, int64(0), cacheNumItems.Value(), "revision cache should be empty after evicting rev1")
-	assert.Equal(t, int64(1), deltaCacheNumItems.Value(), "delta cache should have one entry")
-	assert.Equal(t, expectedDeltaBytes, cacheMemoryBytes.Value(), "memory stat should equal delta bytes only after eviction")
+	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should not be empty after evicting rev1")
+	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should be empty")
+	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes only after eviction")
 
 	// -----------------------------------------------------------------------
-	// Step 3: Load rev1 again via Get (cache miss — it was evicted in step 2).
-	// Total (10+121=131) exceeds maxBytes again.  The delta now carries the older
-	// access order, so it is evicted from the delta cache, leaving only rev1.
+	// Step 3: Add delta rev1→rev2 via UpdateDelta again.
+	// Total (10+121=131) exceeds maxBytes again.  rev1 turn to be evicted.
 	// -----------------------------------------------------------------------
-	_, wasMiss2, err := orchestrator.Get(ctx, docID, rev1CV.String(), testCollectionID, false)
-	require.NoError(t, err)
-	require.True(t, wasMiss2, "second Get should be a cache miss (rev1 was evicted)")
+	orchestrator.UpdateDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID, delta)
 
-	_, rev1BackInCache := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
-	assert.True(t, rev1BackInCache, "rev1 should be back in revision cache after second Get")
+	_, rev1InCacheAfterDelta = orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
+	assert.False(t, rev1InCacheAfterDelta, "rev1 should have been evicted after delta update")
 
 	cachedDeltaAfter := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
-	assert.Nil(t, cachedDeltaAfter, "delta should have been evicted from delta cache by memory pressure")
+	assert.NotNil(t, cachedDeltaAfter, "delta should be present")
 
-	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should have rev1 again")
-	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should be empty after eviction")
-	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes only after delta evicted")
-	assert.Equal(t, int64(2), cacheMisses.Value(), "both Gets were cache misses")
+	assert.Equal(t, int64(0), cacheNumItems.Value(), "revision cache should be empty")
+	assert.Equal(t, int64(1), deltaCacheNumItems.Value(), "delta cache should have one item")
+	assert.Equal(t, expectedDeltaBytes, cacheMemoryBytes.Value(), "memory stat should equal delta bytes only after rev1 evicted")
+	assert.Equal(t, int64(1), cacheMisses.Value(), "Get was a cache miss")
 	assert.Equal(t, int64(0), cacheHits.Value())
 }
 
@@ -2940,7 +2937,8 @@ func TestEvictLRUTailOnLoadingItemReturnsZeroBytes(t *testing.T) {
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 
 	// Evict the still-loading item — must return 0 bytes, not inflate or deflate the stat.
-	bytesReturned := rc.evictLRUTail()
+	bytesReturned, evicted := rc.evictLRUTail()
+	assert.True(t, evicted)
 	assert.Equal(t, int64(0), bytesReturned, "evicting a loading item must return 0 bytes")
 	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "memory stat must not go negative")
 	assert.Equal(t, memStateRemoved, value.memState.Load(), "evicted item should be in Removed state")
@@ -3027,12 +3025,12 @@ func TestCombinedNumberAndMemoryEviction(t *testing.T) {
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value())
 
-	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision
-	// (older access order).  After eviction: only delta A in memory (10 bytes).
+	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision delta immediately
+	// After eviction: only delta doc1 in memory (15 bytes).
 	orchestrator.UpdateDelta(ctx, "doc1", "from1", "to1", testCollectionID, makeDelta())
-	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value(), "revision evicted by memory pressure")
-	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
-	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(), "only delta A bytes should remain")
+	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(0), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value(), "only doc1 bytes should remain")
 
 	// UpdateDelta B: number-based eviction (MaxItemCount=1) removes delta A and decrements
 	// its 10 bytes, then delta B is added and its 10 bytes incremented.  Net = 10 bytes.
@@ -3087,4 +3085,221 @@ func TestMemoryStatTracksUsageWithUnlimitedCapacity(t *testing.T) {
 	orchestrator.Remove(ctx, "doc2", cv2.String(), testCollectionID)
 	assert.Equal(t, int64(0), revStats.cacheMemoryStat.Value(), "all items removed — stat must be 0")
 	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+}
+
+// TestConcurrentPutAndRemoveRace exercises the Put/Remove race with many goroutines to ensure
+// memory stats stay consistent under the race detector. After all goroutines finish, every item
+// must either be in the cache with its bytes counted, or absent with its bytes not counted.
+func TestConcurrentPutAndRemoveRace(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	opts := &RevisionCacheOptions{MaxItemCount: 1000, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	const numDocs = 50
+	const iterations = 20
+
+	for iter := range iterations {
+		var wg sync.WaitGroup
+		for i := range numDocs {
+			docID := fmt.Sprintf("doc-%d-%d", iter, i)
+			cv := Version{Value: uint64(iter*numDocs + i + 1), SourceID: "test"}
+			body := fmt.Sprintf(`{"iter":%d,"i":%d}`, iter, i)
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+			}()
+			go func() {
+				defer wg.Done()
+				orchestrator.Remove(ctx, docID, cv.String(), testCollectionID)
+			}()
+		}
+		wg.Wait()
+	}
+
+	// Verify stat consistency: the memory stat must equal the sum of bytes of items
+	// actually resident in the cache.
+	var expectedBytes int64
+	for iter := range iterations {
+		for i := range numDocs {
+			docID := fmt.Sprintf("doc-%d-%d", iter, i)
+			cv := Version{Value: uint64(iter*numDocs + i + 1), SourceID: "test"}
+			docRev, found := orchestrator.Peek(ctx, docID, cv.String(), testCollectionID)
+			if found {
+				docRev.CalculateBytes()
+				expectedBytes += docRev.MemoryBytes
+			}
+		}
+	}
+	assert.Equal(t, expectedBytes, revStats.cacheMemoryStat.Value(),
+		"memory stat must equal the sum of bytes of items actually in the cache")
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+}
+
+// TestConcurrentGetAndRemoveRace exercises the Get (cache-miss load)/Remove race. A backing store
+// with a delay would make the race more likely, but even without delays the race detector can
+// catch unsynchronized access. After all goroutines finish, memory stats must be consistent.
+func TestConcurrentGetAndRemoveRace(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	var getDocCounter, getRevCounter base.SgwIntStat
+	backingStore := &testBackingStore{nil, &getDocCounter, &getRevCounter}
+	revStats := newTestRevCacheStats()
+	opts := &RevisionCacheOptions{MaxItemCount: 1000, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(backingStore, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	const numDocs = 50
+
+	var wg sync.WaitGroup
+	for i := range numDocs {
+		docID := fmt.Sprintf("doc-%d", i)
+		// testBackingStore always returns docs at rev "1-abc" with HLV SourceID=test Version=123
+		cv := Version{Value: 123, SourceID: "test"}
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			// Get triggers a cache-miss load from the backing store
+			_, _, _ = orchestrator.Get(ctx, docID, cv.String(), testCollectionID, false)
+		}()
+		go func() {
+			defer wg.Done()
+			orchestrator.Remove(ctx, docID, cv.String(), testCollectionID)
+		}()
+	}
+	wg.Wait()
+
+	// Memory stat must be non-negative and consistent with what's in the cache.
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+}
+
+// TestRemoveDuringNumberBasedEviction verifies that when a Put triggers number-based eviction
+// of an unsized item, and a concurrent Remove targets the same item, the memory stat remains
+// consistent — no double-decrement, no negative stat.
+func TestRemoveDuringNumberBasedEviction(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	// MaxItemCount=1: every Put evicts the previous tail.
+	opts := &RevisionCacheOptions{MaxItemCount: 1, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	const numDocs = 100
+
+	var wg sync.WaitGroup
+	for i := range numDocs {
+		cv := Version{Value: uint64(i + 1), SourceID: "test"}
+		docID := fmt.Sprintf("doc-%d", i)
+		body := fmt.Sprintf(`{"i":%d}`, i)
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+		}()
+		go func() {
+			defer wg.Done()
+			orchestrator.Remove(ctx, docID, cv.String(), testCollectionID)
+		}()
+	}
+	wg.Wait()
+
+	// With MaxItemCount=1, at most 1 item should remain.
+	assert.True(t, revStats.cacheNumItemsStat.Value() <= 1,
+		"with MaxItemCount=1, at most 1 item should remain in cache")
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+}
+
+// TestConcurrentUpsertAndRemoveRace exercises the Upsert/Remove race. Upsert replaces an
+// existing entry (decrement old bytes, increment new bytes); a concurrent Remove must not
+// cause double-decrement.
+func TestConcurrentUpsertAndRemoveRace(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	opts := &RevisionCacheOptions{MaxItemCount: 1000, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	const numDocs = 50
+	const upsertRounds = 10
+
+	// Seed the cache with initial versions.
+	for i := range numDocs {
+		cv := Version{Value: 1, SourceID: "test"}
+		docID := fmt.Sprintf("doc-%d", i)
+		orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"v":1}`), testCollectionID)
+	}
+
+	// Concurrently Upsert new versions and Remove entries.
+	var wg sync.WaitGroup
+	for round := range upsertRounds {
+		for i := range numDocs {
+			cv := Version{Value: 1, SourceID: "test"}
+			docID := fmt.Sprintf("doc-%d", i)
+			body := fmt.Sprintf(`{"v":%d,"round":%d}`, round+2, round)
+
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				orchestrator.Upsert(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+			}()
+			go func() {
+				defer wg.Done()
+				orchestrator.Remove(ctx, docID, cv.String(), testCollectionID)
+			}()
+		}
+	}
+	wg.Wait()
+
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+}
+
+// TestMemoryEvictionDuringConcurrentPuts verifies that when memory-based eviction fires during
+// concurrent Puts, the memory stat remains consistent and eventually falls at or below capacity.
+func TestMemoryEvictionDuringConcurrentPuts(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	// Each body is 10 bytes; maxBytes=50 means at most ~5 items before eviction.
+	const maxBytes = int64(50)
+	opts := &RevisionCacheOptions{MaxItemCount: 1000, MaxBytes: maxBytes}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
+		revStats, &base.DeltaSyncStats{}, false,
+	)
+
+	const numDocs = 30
+
+	var wg sync.WaitGroup
+	for i := range numDocs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cv := Version{Value: uint64(i + 1), SourceID: "test"}
+			docID := fmt.Sprintf("doc-%d", i)
+			orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"k":"val"}`), testCollectionID)
+		}()
+	}
+	wg.Wait()
+
+	// After all concurrent Puts and evictions settle, the memory stat should be at or below capacity.
+	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+	assert.True(t, revStats.cacheMemoryStat.Value() <= maxBytes,
+		"memory stat (%d) should be at or below capacity (%d) after eviction settles",
+		revStats.cacheMemoryStat.Value(), maxBytes)
 }

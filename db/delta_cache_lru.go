@@ -14,7 +14,6 @@ import (
 	"container/list"
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -30,9 +29,8 @@ type LRUDeltaCache struct {
 
 // deltaCacheValue is the delta cache payload data. Stored as the Value of a list Element.
 type deltaCacheValue struct {
-	delta       *RevisionDelta
-	itemKey     deltaCacheKey
-	accessOrder atomic.Uint64 // stamped on insert; used for cross-cache eviction ordering
+	delta   *RevisionDelta
+	itemKey deltaCacheKey
 }
 
 // deltaCacheKey is used to key the lookup map to delta cache items
@@ -73,7 +71,6 @@ func (dc *LRUDeltaCache) addDelta(ctx context.Context, docID, fromVersionString,
 	elem := dc.lruList.PushFront(value)
 	dc.cache[key] = elem
 	dc.cacheNumDeltas.Add(1)
-	value.accessOrder.Store(nextAccessOrder()) // stamp on insert
 	numItemsRemoved, bytesEvicted := dc._numberCapacityEviction()
 	if numItemsRemoved > 0 {
 		dc.cacheNumDeltas.Add(-numItemsRemoved)
@@ -135,30 +132,21 @@ func (delta *RevisionDelta) CalculateDeltaBytes() {
 	delta.totalDeltaBytes = int64(totalBytes)
 }
 
-// peekLRUTailAccessOrder returns the accessOrder of the LRU item, or 0 if the cache is empty.
-func (c *LRUDeltaCache) peekLRUTailAccessOrder() uint64 {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if elem := c.lruList.Back(); elem != nil {
-		return elem.Value.(*deltaCacheValue).accessOrder.Load()
-	}
-	return 0
-}
-
 // evictLRUTail removes the LRU item and notifies the memory controller.
 // Returns 0 bytes if the cache was empty.
-func (dc *LRUDeltaCache) evictLRUTail() int64 {
+// Returns true if an item was evicted.
+func (dc *LRUDeltaCache) evictLRUTail() (int64, bool) {
 	dc.lock.Lock()
 	defer dc.lock.Unlock()
 	elem := dc.lruList.Back()
 	if elem == nil {
-		return 0
+		return 0, false
 	}
 	val := elem.Value.(*deltaCacheValue)
 	dc.lruList.Remove(elem)
 	delete(dc.cache, val.itemKey)
 	dc.cacheNumDeltas.Add(-1)
-	return val.delta.totalDeltaBytes
+	return val.delta.totalDeltaBytes, true
 }
 
 // RevisionDelta stores data about a delta between a revision and ToRevID.

@@ -526,7 +526,7 @@ func TestGetWithDeltaTriggersMemoryEvictionOnMiss(t *testing.T) {
 		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID), revStats, deltaStats, true,
 	)
 
-	// Add the delta first so it carries the older access order.
+	// Add the delta first so will be evicted by GetWithDelta.
 	delta := RevisionDelta{DeltaBytes: []byte("delta12345")}
 	delta.CalculateDeltaBytes()
 	orchestrator.UpdateDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID, delta)
@@ -535,7 +535,7 @@ func TestGetWithDeltaTriggersMemoryEvictionOnMiss(t *testing.T) {
 
 	// GetWithDelta causes a revision backing-store miss, adding 118 bytes.
 	// Total (128) exceeds maxBytes (118) → triggerMemoryEviction must fire and evict the
-	// delta (older access order), leaving only the revision in memory.
+	// delta, leaving only the revision in memory.
 	docRev, err := orchestrator.GetWithDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID)
 	require.NoError(t, err)
 	require.NotNil(t, docRev.BodyBytes, "revision should be loaded from backing store")
@@ -553,9 +553,8 @@ func TestGetWithDeltaTriggersMemoryEvictionOnMiss(t *testing.T) {
 }
 
 // TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry verifies that when Put and
-// UpdateDelta race under a MaxBytes limit that fits exactly one item, the operation
-// with the lower accessOrder (whichever landed first) is evicted by the one that
-// follows, and the memory stat reflects only the surviving item's bytes.
+// UpdateDelta race under a MaxBytes limit that fits exactly one item, memory eviction
+// fires and the memory stat reflects only the surviving item's bytes.
 func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("delta cache is EE only")
@@ -573,8 +572,7 @@ func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	//
 	// With MaxBytes=itemBytes the first item to land fits exactly (itemBytes NOT >
 	// itemBytes, so IsOverCapacity is false). When the second arrives the total
-	// becomes 2*itemBytes > itemBytes, triggerMemoryEviction fires, and the item with
-	// the lower accessOrder — whichever landed first — is evicted.
+	// becomes 2*itemBytes > itemBytes, triggerMemoryEviction fires and evicts one item.
 	const itemBytes = int64(32)
 	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: itemBytes}
 	orchestrator := NewRevisionCacheOrchestrator(
@@ -621,10 +619,9 @@ func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	close(ready)
 	wg.Wait()
 
-	// The winner (higher accessOrder) survives; the loser (lower accessOrder) is evicted.
 	// Regardless of scheduling, exactly one item — worth itemBytes — must remain.
 	assert.Equal(t, itemBytes, revStats.cacheMemoryStat.Value(),
-		"memory stat must equal one item's bytes: the first-landed entry was evicted")
+		"memory stat must equal one item's bytes after eviction")
 
 	_, revInCache := orchestrator.Peek(ctx, "doc1", cv.String(), testCollectionID)
 	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, "doc1", cv.String(), toCV.String(), testCollectionID)

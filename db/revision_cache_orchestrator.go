@@ -23,6 +23,7 @@ type RevisionCacheOrchestrator struct {
 	deltaCache       *LRUDeltaCache         // holds computed deltas, only initialized when delta sync is enabled
 	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
 	evictionLock     sync.Mutex             // This is to synchronise the eviction process so we don;t have multiple goroutines fighting to evict
+	evictNextFromRev bool                   // round-robin flag: alternates which cache is tried first on each eviction
 }
 
 // NewRevisionCacheOrchestrator creates a new RevisionCacheOrchestrator.
@@ -82,7 +83,7 @@ func (c *RevisionCacheOrchestrator) UpdateDelta(ctx context.Context, docID, from
 }
 
 func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fromVersionString, toVersionString string, collectionID uint32) (DocumentRevision, error) {
-	docRev, _, err := c.revisionCache.Get(ctx, docID, fromVersionString, collectionID, RevCacheLoadBackupRev)
+	docRev, checkForMemoryEviction, err := c.revisionCache.Get(ctx, docID, fromVersionString, collectionID, RevCacheLoadBackupRev)
 	if err != nil {
 		return docRev, err
 	}
@@ -91,7 +92,9 @@ func (c *RevisionCacheOrchestrator) GetWithDelta(ctx context.Context, docID, fro
 		docRev.Delta = cachedDelta
 	}
 	// check for memory based eviction
-	c.triggerMemoryEviction()
+	if checkForMemoryEviction {
+		c.triggerMemoryEviction()
+	}
 	return docRev, nil
 }
 
@@ -107,29 +110,47 @@ func (c *RevisionCacheOrchestrator) triggerMemoryEviction() {
 	defer c.evictionLock.Unlock()
 
 	var numBytesRemoved int64
-	var deltaCandidateOrder uint64
 	bytesNeededToEvict := c.memoryController.bytesToEvict()
 	if bytesNeededToEvict == 0 {
 		// a different goroutine has evicted enough already
 		return
 	}
-	for bytesNeededToEvict > numBytesRemoved {
-		if c.deltaCache != nil {
-			deltaCandidateOrder = c.deltaCache.peekLRUTailAccessOrder()
-		}
-		revCandidateOrder := c.revisionCache.peekLRUTailAccessOrder()
-		if revCandidateOrder == 0 && deltaCandidateOrder == 0 {
-			// Both caches are empty — nothing more to evict.
+	for numBytesRemoved < bytesNeededToEvict {
+		bytes, evicted := c.evictOneItem()
+		if !evicted {
+			// both caches exhausted
 			break
 		}
-		var bytesRemoved int64
-		evictFromRev := deltaCandidateOrder == 0 || (revCandidateOrder != 0 && revCandidateOrder < deltaCandidateOrder)
-		if evictFromRev {
-			bytesRemoved = c.revisionCache.evictLRUTail()
-		} else {
-			bytesRemoved = c.deltaCache.evictLRUTail()
-		}
-		numBytesRemoved += bytesRemoved
+		numBytesRemoved += bytes
 	}
 	c.memoryController.decrementBytesCount(numBytesRemoved)
+}
+
+// evictOneItem removes one item from either the revision or delta cache using round-robin
+// selection. If the primary cache is empty, it immediately falls back to the other cache.
+// Returns (bytes freed, true) when an item was removed, or (0, false) when both are empty.
+// Must only be called while holding evictionLock.
+func (c *RevisionCacheOrchestrator) evictOneItem() (int64, bool) {
+	// When the delta cache is not enabled, always evict from the revision cache.
+	if c.deltaCache == nil {
+		return c.revisionCache.evictLRUTail()
+	}
+
+	tryRevFirst := c.evictNextFromRev
+	// flip boolean to evict from opposite sode nect time around
+	c.evictNextFromRev = !c.evictNextFromRev
+
+	if tryRevFirst {
+		if bytes, evicted := c.revisionCache.evictLRUTail(); evicted {
+			return bytes, true
+		}
+		// Rev cache exhausted — fall back to delta immediately without burning a loop iteration.
+		return c.deltaCache.evictLRUTail()
+	}
+
+	if bytes, evicted := c.deltaCache.evictLRUTail(); evicted {
+		return bytes, true
+	}
+	// Delta cache exhausted — fall back to rev immediately without burning a loop iteration.
+	return c.revisionCache.evictLRUTail()
 }

@@ -25,17 +25,6 @@ type CacheMemoryController struct {
 	totalBytesStat *base.SgwIntStat // shared observable stat. Overall footprint of the caches combined.
 }
 
-// globalCacheAccessCounter is a monotonically increasing counter stamped onto every
-// cache item on insert and on access. It provides a total ordering across both the
-// revision and delta caches for cross-cache LRU eviction decisions.
-// Using a counter rather than time.Now() keeps the hot-path cost to a single
-// atomic increment (~1–2 ns vs ~25 ns for a clock read).
-var globalCacheAccessCounter atomic.Uint64
-
-func nextAccessOrder() uint64 {
-	return globalCacheAccessCounter.Add(1)
-}
-
 func newCacheMemoryController(capacityBytes int64, totalBytesStat *base.SgwIntStat) *CacheMemoryController {
 	return &CacheMemoryController{
 		capacity:       capacityBytes,

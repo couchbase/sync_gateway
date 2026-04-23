@@ -128,9 +128,8 @@ type revCacheValue struct {
 	removed      bool
 	itemBytes    atomic.Int64
 	collectionID uint32
-	memState     atomic.Int32  // memory accounting lifecycle; see memStateXxx constants
-	deltaLock    sync.Mutex    // synchronizes GetDelta across multiple clients for each fromRevision
-	accessOrder  atomic.Uint64 // stamped on insert; used for cross-cache eviction ordering
+	memState     atomic.Int32 // memory accounting lifecycle; see memStateXxx constants
+	deltaLock    sync.Mutex   // synchronizes GetDelta across multiple clients for each fromRevision
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -325,7 +324,6 @@ func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCache
 	// also ensure we add to rev id lookup map too
 	cvValue := &revCacheValue{id: docRev.DocID, cv: *docRev.CV, collectionID: collectionID, itemKey: cvKey}
 	elem := rc.lruList.PushFront(cvValue)
-	cvValue.accessOrder.Store(nextAccessOrder()) // stamp on insert
 	rc.cache[cvKey] = elem
 
 	// only increment if we are inserting new item to cache
@@ -368,7 +366,6 @@ func (rc *LRURevisionCache) getValue(ctx context.Context, docID, docVersionStrin
 		} else {
 			value.cv = currentVersion
 		}
-		value.accessOrder.Store(nextAccessOrder()) // stamp on insert
 		rc.cache[key] = rc.lruList.PushFront(value)
 		rc.cacheNumItems.Add(1)
 
@@ -633,34 +630,21 @@ func (rc *LRURevisionCache) _findEvictionValue() *revCacheValue {
 	return revItem
 }
 
-// peekLRUTailAccessOrder returns the accessOrder of the least-recently-used item,
-// or 0 if the cache is empty.
-// Called by the orchestrator to compare against the delta cache tail before deciding which to evict.
-func (rc *LRURevisionCache) peekLRUTailAccessOrder() uint64 {
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	if elem := rc.lruList.Back(); elem != nil {
-		if v, ok := elem.Value.(*revCacheValue); ok {
-			return v.accessOrder.Load()
-		}
-	}
-	return 0
-}
-
 // evictLRUTail removes the LRU loaded item and returns the bytes to decrement from the memory
 // controller, or 0 if there was nothing eligible to evict or the item's bytes were not yet
 // accounted (in which case the in-flight CAS in Get will fail, so no decrement is needed).
-func (rc *LRURevisionCache) evictLRUTail() int64 {
+// Returns true if an item was evicted.
+func (rc *LRURevisionCache) evictLRUTail() (int64, bool) {
 	rc.lock.Lock()
 	defer rc.lock.Unlock()
 	value := rc._findEvictionValue()
 	if value == nil {
-		return 0
+		return 0, false
 	}
 	delete(rc.cache, value.itemKey)
 	rc.cacheNumItems.Add(-1)
 	if value.memState.Swap(memStateRemoved) == memStateSized {
-		return value.getItemBytes()
+		return value.getItemBytes(), true
 	}
-	return 0
+	return 0, true
 }
