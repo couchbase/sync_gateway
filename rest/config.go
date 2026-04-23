@@ -2128,6 +2128,12 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		return false, nil
 	}
 
+	// Register this node in the bucket's registry now that we know SG is serving a
+	// database here. Registration is lazy — we never touch buckets SG is not serving.
+	if ccm, ok := sc.ClusterCompat.(*clusterCompatManager); ok {
+		ccm.RegisterBucket(ctx, *cnf.Bucket)
+	}
+
 	// Prevent database from being unsuspended when it is suspended
 	if sc._isDatabaseSuspended(cnf.Name) {
 		return true, nil

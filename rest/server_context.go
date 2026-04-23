@@ -2181,6 +2181,14 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 		base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
 	}
 
+	// Initialize the cluster compat manager before loading configs so that database loads
+	// triggered by fetchAndLoadConfigs can lazily register this node in the buckets they use.
+	ccm := &clusterCompatManager{sc: sc}
+	if err := ccm.Start(ctx); err != nil {
+		base.WarnfCtx(ctx, "Failed to start cluster compat manager: %v", err)
+	}
+	sc.ClusterCompat = ccm
+
 	count, err := sc.fetchAndLoadConfigs(ctx, true)
 	if err != nil {
 		return err
@@ -2191,12 +2199,6 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	} else {
 		base.WarnfCtx(ctx, "Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.Config.Bootstrap.ConfigGroupID)
 	}
-
-	ccm := &clusterCompatManager{sc: sc}
-	if err := ccm.Start(ctx); err != nil {
-		base.WarnfCtx(ctx, "Failed to start cluster compat manager: %v", err)
-	}
-	sc.ClusterCompat = ccm
 
 	if sc.Config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 		sc.BootstrapContext.terminator = make(chan struct{})
