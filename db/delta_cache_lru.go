@@ -108,7 +108,7 @@ func (dc *LRUDeltaCache) getCachedDelta(ctx context.Context, docID, fromVersionS
 		return nil
 	}
 	key := createDeltaCacheKey(docID, fromVersionString, toVersionString, collectionID)
-	dc.lock.Lock()
+	dc.lock.Lock() // exclusive lock needed for read given it moves the item to front of list
 	defer dc.lock.Unlock()
 	var deltaValue *RevisionDelta
 	if elem := dc.cache[key]; elem != nil {

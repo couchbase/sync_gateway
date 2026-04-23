@@ -37,6 +37,8 @@ func (mc *CacheMemoryController) IsOverCapacity() bool {
 	if mc.capacity == 0 {
 		return false
 	}
+	// IsOverCapacity returns true only when usage strictly exceeds the limit,
+	// so a cache exactly at capacity is not evicted.
 	return mc.currBytesCount.Load() > mc.capacity
 }
 

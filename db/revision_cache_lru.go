@@ -53,7 +53,7 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *RevisionCacheOrchestr
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, b bool, err error) {
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (docRev DocumentRevision, checkForMemoryEviction bool, err error) {
 	return sc.getShard(docID).Get(ctx, docID, versionString, collectionID, loadBackup)
 }
 

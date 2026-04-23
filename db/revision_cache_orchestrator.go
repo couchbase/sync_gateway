@@ -22,7 +22,7 @@ type RevisionCacheOrchestrator struct {
 	revisionCache    *LRURevisionCache      // holds document revisions
 	deltaCache       *LRUDeltaCache         // holds computed deltas, only initialized when delta sync is enabled
 	memoryController *CacheMemoryController // used to control memory usage of revision cache and delta cache combined
-	evictionLock     sync.Mutex             // This is to synchronise the eviction process so we don;t have multiple goroutines fighting to evict
+	evictionLock     sync.Mutex             // This is to synchronise the eviction process so we don't have multiple goroutines fighting to evict
 	evictNextFromRev bool                   // round-robin flag: alternates which cache is tried first on each eviction
 }
 
@@ -137,7 +137,7 @@ func (c *RevisionCacheOrchestrator) evictOneItem() (int64, bool) {
 	}
 
 	tryRevFirst := c.evictNextFromRev
-	// flip boolean to evict from opposite sode nect time around
+	// flip flag to try the other cache first on the next eviction
 	c.evictNextFromRev = !c.evictNextFromRev
 
 	if tryRevFirst {
