@@ -241,8 +241,6 @@ func TestHandlerRecoverLog(t *testing.T) {
 			sc, closeFn := StartServerWithConfig(t, &config)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
-			require.NoError(t, sc.WaitForRESTAPIs(ctx))
 			startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			handler := makeHandlerWithOptions(sc, regularPrivs, nil, nil, func(_ *handler) error {
 				panic(tc.panicArg)

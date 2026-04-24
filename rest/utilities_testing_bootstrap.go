@@ -11,8 +11,11 @@ package rest
 import (
 	"bytes"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
@@ -189,8 +192,18 @@ func StartBootstrapServerWithGroupID(t *testing.T, groupID *string) (*ServerCont
 
 // StartServerWithConfig starts a server from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
 func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
+	return startServerWithConfig(t, config, true)
+}
+
+// StartServerWithLegacyConfig starts a server with non persistent configuration from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
+func StartServerWithLegacyConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
+	return startServerWithConfig(t, config, false)
+}
+
+// startServerWithConfig starts a ServerContext from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
+func startServerWithConfig(t *testing.T, config *StartupConfig, persistentConfig bool) (*ServerContext, func()) {
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, config, true)
+	sc, err := SetupServerContext(ctx, config, persistentConfig)
 	require.NoError(t, err)
 
 	serverErr := make(chan error)
@@ -211,7 +224,21 @@ func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext,
 		serverErr <- StartServer(ctx, config, sc)
 	}()
 
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	WaitForRESTAPIs(t, sc)
 	started = true
 	return sc, closeFn
+}
+
+// WaitForRESTAPIs blocks until all http servers for a ServerContext are serving traffic.
+func WaitForRESTAPIs(t testing.TB, sc *ServerContext) {
+	expectedServers := []serverType{metricsServer, adminServer, publicServer}
+	if sc.Config.Unsupported.DiagnosticInterface != "" {
+		expectedServers = append(expectedServers, diagnosticServer)
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		sc._httpServersLock.RLock()
+		defer sc._httpServersLock.RUnlock()
+		require.ElementsMatch(c, expectedServers, slices.Collect(maps.Keys(sc._httpServers)))
+		//}, 30*time.Second, 10*time.Millisecond)
+	}, 300*time.Millisecond, 10*time.Millisecond)
 }

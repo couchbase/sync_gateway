@@ -243,7 +243,7 @@ func DevTestFetchConfigManual(t *testing.T) {
 	go func() {
 		serverErr <- StartServer(ctx, &config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	WaitForRESTAPIs(t, sc)
 
 	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
 
