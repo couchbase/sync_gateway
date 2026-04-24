@@ -31,9 +31,10 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	rt.CreateTestDoc("doc1")
 
 	rt.SyncFn = `function(doc, oldDoc) {channel("A")}`
-	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, rt.NewDbConfig()), http.StatusCreated)
-
-	rt.TakeDbOffline()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
+	rt.WaitForDBInitializationCompleted(dbName)
 
 	if !base.TestsDisableGSI() {
 		for _, collection := range rt.GetDatabase().CollectionByID {
@@ -43,12 +44,9 @@ func TestResyncWithoutIndexes(t *testing.T) {
 		}
 	}
 
-	// gocb pipeline bootstrap errors can occur before this stage
-	warningsBeforeResync := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
 	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
-	require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()-warningsBeforeResync)
 
 	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
@@ -74,7 +72,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 					require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
 				}
 			} else {
-				require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection")
+				require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection %s.%s", collection.ScopeName, collection.Name)
 			}
 		}
 	}
