@@ -1051,7 +1051,7 @@ func TestCollectStackTraceFile(t *testing.T) {
 	stackTrace, err := base.GetStackTrace()
 	require.NoError(t, err)
 	base.LogStackTraces(ctx, serverConfig.Logging.LogFilePath, stackTrace, timeStamp)
-	require.Len(t, getFilenames(t, tempPath), 2) // stack trace file + node_uuid file
+	require.Len(t, getFilenames(t, tempPath), 1)
 	assert.True(t, slices.Contains(getFilenames(t, tempPath), base.StackFilePrefix+timeStamp+".log"))
 
 	// trigger rotation and assert we don't go above 10 files
@@ -1064,10 +1064,6 @@ func TestCollectStackTraceFile(t *testing.T) {
 		expectedFiles = append(expectedFiles, base.StackFilePrefix+timeStamp+".log")
 	}
 	files := getFilenames(t, tempPath)
-	// 10 stack trace files + node_uuid file so remove node uuid file
-	files = slices.DeleteFunc(files, func(s string) bool {
-		return s == "node_uuid"
-	})
 	require.Len(t, files, 10)
 	require.ElementsMatch(t, files, expectedFiles)
 }

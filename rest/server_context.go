@@ -104,7 +104,7 @@ type ServerContext struct {
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect                // singleton instance for this server's sgcollect_info process
-	NodeUUID                      string                    // Unique identifier for this SG node - ideally not ephemeral and persists restarts
+	NodeUUID                      string                    // Stable identifier for this SG node, derived deterministically from host fingerprint
 	ClusterCompat                 base.ClusterCompatChecker // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn           // supply a custom function for buckets, used for testing only
 }
