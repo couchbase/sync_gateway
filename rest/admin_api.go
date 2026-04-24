@@ -2495,7 +2495,8 @@ func (h *handler) handleGetClusterInfo() error {
 // per-bucket node registrations.
 func (h *handler) handleGetClusterCompat() error {
 	resp := clusterCompatResponse{}
-	if h.server.ClusterCompat != nil {
+	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
+	if h.shouldShowProductVersion() && h.server.ClusterCompat != nil {
 		resp.ClusterCompatVersion = h.server.ClusterCompat.ClusterCompatVersion()
 		resp.Nodes = h.server.ClusterCompat.NodeVersions()
 		if ccm, ok := h.server.ClusterCompat.(*clusterCompatManager); ok {
