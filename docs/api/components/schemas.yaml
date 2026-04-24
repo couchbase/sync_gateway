@@ -3027,8 +3027,8 @@ CollectionNames:
     - db_name: "db3"
       bucket: "bucket3"
       state: "Offline"
-      require_resync: false
-      init_in_progress: false
+      require_resync: true
+      init_in_progress: true
       database_error:
         error_message: "Error connecting to bucket"
         error_code: 1
