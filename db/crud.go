@@ -627,14 +627,14 @@ func (db *DatabaseCollection) getRevisionChannels(ctx context.Context, docID, re
 		}
 		// CV does not match the current version; channels cannot be determined without additional
 		// bucket reads. Returning nil channels is safe — access will be denied conservatively.
-		return nil, false, nil
+		return nil, false, ErrMissing
 	}
 
 	// Rev tree ID: extract channels directly from the revision tree.
 	revChannels, ok := doc.channelsForRevTreeID(rev)
 	if !ok {
 		// can't find rev (it was either an unknown rev, or an old non-leaf revision that we can't determine channels for)
-		return nil, false, nil
+		return nil, false, ErrMissing
 	}
 	revInfo, revExists := doc.History[rev]
 	if revExists {
