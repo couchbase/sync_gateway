@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -910,6 +911,13 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 func TestCfgNodePollerDistributed(t *testing.T) {
 
+	waitTime := 100 * time.Millisecond
+	if !UnitTestUrlIsWalrus() || IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
+		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
+		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
+		waitTime = 10 * time.Second
+	}
+
 	ctx := t.Context()
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -942,12 +950,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		cas, err := nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 1}`), 0)
 		require.NoError(t, err)
 
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -991,7 +999,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Equal(t, receivedEventA[key1], casA)
 			assert.Contains(t, receivedEventA, key2)
 			assert.Equal(t, receivedEventA[key2], casB)
-		}, 100*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		//Check if event is received in node B
 		receivedEventB := make(map[string]uint64)
@@ -1007,7 +1015,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Equal(t, receivedEventB[key1], casA)
 			assert.Contains(t, receivedEventB, key2)
 			assert.Equal(t, receivedEventB[key2], casB)
-		}, 100*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 	})
 
 	t.Run("concurrent_cas_conflict", func(t *testing.T) {
@@ -1026,12 +1034,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		cas, err := nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 1}`), 0)
 		require.NoError(t, err)
 
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1063,14 +1071,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			failedNodeEvents = eventsB
 		}
 
-		failedEvent := RequireChanRecvWithTimeout(t, failedNodeEvents, 100*time.Millisecond)
+		failedEvent := RequireChanRecvWithTimeout(t, failedNodeEvents, waitTime)
 		assert.Equal(t, key, failedEvent.Key)
 		assert.Equal(t, successCas, failedEvent.CAS, "should detect the winner's CAS")
 		assert.NoError(t, failedEvent.Error)
 	})
 
 	t.Run("delete_detection_across_nodes", func(t *testing.T) {
-
 		nodeA, eventsA := createNode(t.Context(), t.Name())
 		nodeB, eventsB := createNode(t.Context(), t.Name())
 
@@ -1087,13 +1094,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for Node A to detect its own write
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
 		// Wait for Node B to detect the creation
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, initialCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1103,13 +1110,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own deletion
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, delCas, eventA.CAS, "Node A: CAS should be 0 for deletion")
 		assert.NoError(t, eventA.Error)
 
 		// Node B should detect deletion via polling
-		eventB = RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, delCas, eventB.CAS, "Node B: CAS should be 0 for deletion")
 		assert.NoError(t, eventB.Error)
@@ -1177,7 +1184,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Contains(collectT, receivedEventsA, key4)
 			assert.Equal(collectT, casB4, receivedEventsA[key4])
 			assert.NoError(collectT, receivedErrorsA[key4])
-		}, 200*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// Wait for Node B to detect all 4 keys (1 self + 3 from Node A)
 		receivedEventsB := make(map[string]uint64)
@@ -1205,7 +1212,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Contains(collectT, receivedEventsB, key4)
 			assert.Equal(collectT, casB4, receivedEventsB[key4])
 			assert.NoError(collectT, receivedErrorsB[key4])
-		}, 200*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// === PHASE 2: Mixed operations ===
 
@@ -1242,7 +1249,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Contains(collectT, receivedEventsA, key3, "Node A should detect key3 deletion")
 			assert.Equal(collectT, delCas, receivedEventsA[key3], "Node A should have CAS=0 for deleted key3")
 			assert.NoError(collectT, receivedErrorsA[key3], "Node A should have no error for key3 deletion")
-		}, 200*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// Node B should detect: key2 update (from A), key1 update (self), key3 delete (from A)
 		receivedEventsB = make(map[string]uint64)
@@ -1265,7 +1272,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			assert.Contains(collectT, receivedEventsB, key3, "Node B should detect key3 deletion from Node A")
 			assert.Equal(collectT, delCas, receivedEventsB[key3], "Node B should have CAS=0 for deleted key3")
 			assert.NoError(collectT, receivedErrorsB[key3], "Node B should have no error for key3 deletion")
-		}, 200*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 	})
 
 	t.Run("rapid_sequential_updates", func(t *testing.T) {
@@ -1285,12 +1292,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for both nodes to sync initial state
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1319,7 +1326,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			// Eventually should converge to final CAS
 			assert.Contains(collectT, receivedEventsA, key)
 			assert.Equal(collectT, finalCas, receivedEventsA[key], "Node A should converge to final CAS")
-		}, 300*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// Node B should eventually converge to the final state via polling
 		// May miss intermediate updates, but final state must match
@@ -1334,7 +1341,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			// Eventually should converge to final CAS
 			assert.Contains(collectT, receivedEventsB, key)
 			assert.Equal(collectT, finalCas, receivedEventsB[key], "Node B should converge to final CAS")
-		}, 300*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// Verify final state matches on both nodes
 		assert.Equal(t, finalCas, receivedEventsA[key], "Node A final state should match")
@@ -1356,7 +1363,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own write
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
@@ -1366,7 +1373,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own update
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, updatedCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
@@ -1383,19 +1390,19 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 
 			assert.True(collectT, registered, "Node B should have registered the key")
 			assert.Equal(collectT, updatedCas, cas, "Node B should pick up current CAS on late registration")
-		}, 100*time.Millisecond, 10*time.Millisecond)
+		}, waitTime, 10*time.Millisecond)
 
 		// Node A makes another update (after Node B has registered)
 		finalCas, err := nodeA.Set(key, []byte(`{"version": 3}`), updatedCas)
 		require.NoError(t, err)
 
 		// Both nodes should detect this new update
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, finalCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, finalCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1425,13 +1432,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should only detect key1 (its own subscription)
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key1, eventA.Key, "Node A should only receive events for key1")
 		assert.Equal(t, casA1, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
 		// Node B should only detect key2 (its own subscription)
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key2, eventB.Key, "Node B should only receive events for key2")
 		assert.Equal(t, casB2, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1440,7 +1447,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		select {
 		case unexpectedEvent := <-eventsA:
 			t.Fatalf("Node A should not receive events for key2, got event for key: %s", unexpectedEvent.Key)
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(waitTime):
 			// Good - no unexpected events
 		}
 
@@ -1448,7 +1455,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		select {
 		case unexpectedEvent := <-eventsB:
 			t.Fatalf("Node B should not receive events for key1, got event for key: %s", unexpectedEvent.Key)
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(waitTime):
 			// Good - no unexpected events
 		}
 
@@ -1457,7 +1464,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node B should detect the update to key2 (even though Node A made the change)
-		eventB = RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key2, eventB.Key, "Node B should receive update for key2")
 		assert.Equal(t, casA2, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1489,12 +1496,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect creation
-		eventA := RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, initialCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1505,12 +1512,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect deletion
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, delCas, eventA.CAS, "Node A: CAS should be 0 for deletion")
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, delCas, eventB.CAS, "Node B: CAS should be 0 for deletion")
 		assert.NoError(t, eventB.Error)
@@ -1520,13 +1527,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes should detect resurrection with new non-zero CAS
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, resurrectCas, eventA.CAS, "Node A should detect resurrection with new CAS")
 		assert.Greater(t, eventA.CAS, uint64(0), "Resurrected document should have non-zero CAS")
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, resurrectCas, eventB.CAS, "Node B should detect resurrection with new CAS")
 		assert.Greater(t, eventB.CAS, uint64(0), "Resurrected document should have non-zero CAS")
@@ -1537,12 +1544,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect the update after resurrection
-		eventA = RequireChanRecvWithTimeout(t, eventsA, 100*time.Millisecond)
+		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, finalCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, 100*time.Millisecond)
+		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, finalCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
