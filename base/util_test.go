@@ -16,8 +16,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -1952,57 +1950,52 @@ func TestRequireChan(t *testing.T) {
 	})
 }
 
-func TestLoadOrCreateNodeUUID(t *testing.T) {
+func TestGenerateNodeUUID(t *testing.T) {
 	ctx := TestCtx(t)
 
-	t.Run("empty logFilePath returns ephemeral UUID without creating file", func(t *testing.T) {
-		id, err := LoadOrCreateNodeUUID(ctx, "")
-		require.NoError(t, err)
-		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+	id1, err := GenerateNodeUUID(ctx)
+	require.NoError(t, err)
+	assert.True(t, isValidNodeUUID(id1), "expected valid node UUID, got %q", id1)
+
+	id2, err := GenerateNodeUUID(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, id1, id2, "expected deterministic UUID across calls on the same host")
+}
+
+func TestDeterministicNodeUUID(t *testing.T) {
+	const hostA = "alpha"
+	const hostB = "beta"
+	macs1 := []string{"02:42:ac:11:00:02", "02:42:ac:11:00:03"}
+	macs2 := []string{"02:42:ac:11:00:04"}
+
+	t.Run("same inputs produce same output", func(t *testing.T) {
+		a := deterministicNodeUUID(hostA, macs1)
+		b := deterministicNodeUUID(hostA, macs1)
+		assert.Equal(t, a, b)
+		assert.True(t, isValidNodeUUID(a), "expected valid node UUID, got %q", a)
 	})
 
-	t.Run("first call creates UUID file and returns valid UUID", func(t *testing.T) {
-		dir := t.TempDir()
-		id, err := LoadOrCreateNodeUUID(ctx, dir)
-		require.NoError(t, err)
-		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
-
-		data, readErr := os.ReadFile(filepath.Join(dir, nodeUUIDFilename))
-		require.NoError(t, readErr)
-		assert.Equal(t, id, strings.TrimSpace(string(data)))
+	t.Run("different hostnames with identical MACs differ", func(t *testing.T) {
+		a := deterministicNodeUUID(hostA, macs1)
+		b := deterministicNodeUUID(hostB, macs1)
+		assert.NotEqual(t, a, b, "hostname should affect the UUID")
 	})
 
-	t.Run("subsequent call returns the same UUID from file", func(t *testing.T) {
-		dir := t.TempDir()
-		id1, err := LoadOrCreateNodeUUID(ctx, dir)
-		require.NoError(t, err)
-
-		id2, err := LoadOrCreateNodeUUID(ctx, dir)
-		require.NoError(t, err)
-		assert.Equal(t, id1, id2, "expected same UUID on second call")
+	t.Run("identical hostnames with different MACs differ", func(t *testing.T) {
+		a := deterministicNodeUUID(hostA, macs1)
+		b := deterministicNodeUUID(hostA, macs2)
+		assert.NotEqual(t, a, b, "MAC set should disambiguate colliding hostnames")
 	})
 
-	t.Run("file with whitespace-only content triggers regeneration", func(t *testing.T) {
-		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, nodeUUIDFilename), []byte("   \n"), 0600))
-
-		id, err := LoadOrCreateNodeUUID(ctx, dir)
-		require.NoError(t, err)
-		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+	t.Run("MAC ordering does not affect output", func(t *testing.T) {
+		a := deterministicNodeUUID(hostA, []string{"aa:aa:aa:aa:aa:aa", "bb:bb:bb:bb:bb:bb"})
+		b := deterministicNodeUUID(hostA, []string{"bb:bb:bb:bb:bb:bb", "aa:aa:aa:aa:aa:aa"})
+		assert.Equal(t, a, b)
 	})
 
-	t.Run("file with invalid non-whitespace content triggers regeneration", func(t *testing.T) {
-		dir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(dir, nodeUUIDFilename), []byte("not-a-valid-uuid!!!"), 0600))
-
-		id, err := LoadOrCreateNodeUUID(ctx, dir)
-		require.NoError(t, err)
+	t.Run("empty MAC list with hostname still produces valid UUID", func(t *testing.T) {
+		id := deterministicNodeUUID(hostA, nil)
 		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
-
-		// Confirm the file was rewritten with the new valid UUID.
-		data, readErr := os.ReadFile(filepath.Join(dir, nodeUUIDFilename))
-		require.NoError(t, readErr)
-		assert.Equal(t, id, strings.TrimSpace(string(data)))
 	})
 }
 

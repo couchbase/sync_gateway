@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
@@ -133,47 +134,65 @@ func GenerateRandomID() (string, error) {
 	return val, nil
 }
 
-// nodeUUIDFilename is the name of the file used to persist the node UUID.
-const nodeUUIDFilename = "node_uuid"
-
-// nodeUUIDLength is the expected length of a valid node UUID as produced by GenerateRandomID
+// nodeUUIDLength is the expected length of a valid node UUID
 // (128-bit value encoded as a 32-character lowercase hex string).
 const nodeUUIDLength = 32
 
-// LoadOrCreateNodeUUID loads a persistent node UUID from a file in logFilePath, creating it if
-// it doesn't already exist. If logFilePath is empty, a random UUID is generated but not persisted.
-// Returns an error only if a UUID could not be generated.
-func LoadOrCreateNodeUUID(ctx context.Context, logFilePath string) (string, error) {
-	if logFilePath == "" {
-		WarnfCtx(ctx, "No log_file_path configured: node UUID will not be persisted across restarts")
+// GenerateNodeUUID derives a stable 32-character hex node UUID from a fingerprint of the
+// current host (hostname + sorted non-loopback interface MAC addresses). The same host
+// produces the same UUID across restarts without needing any persistent state, while two
+// hosts that share a hostname still differ via their MAC addresses. Only if no fingerprint
+// inputs can be collected do we fall back to a random UUID.
+func GenerateNodeUUID(ctx context.Context) (string, error) {
+	hostname, macs := collectNodeFingerprint(ctx)
+	if hostname == "" && len(macs) == 0 {
+		WarnfCtx(ctx, "Could not collect hostname or interface MACs for deterministic node UUID — falling back to random")
 		return GenerateRandomID()
 	}
+	return deterministicNodeUUID(hostname, macs), nil
+}
 
-	path := filepath.Join(logFilePath, nodeUUIDFilename)
-
-	// Attempt to read an existing UUID file.
-	data, err := os.ReadFile(path)
-	if err == nil {
-		if id := strings.TrimSpace(string(data)); isValidNodeUUID(id) {
-			return id, nil
-		}
-		WarnfCtx(ctx, "Node UUID file %s contains invalid content, regenerating", path)
-	} else if !os.IsNotExist(err) {
-		WarnfCtx(ctx, "Could not read node UUID file %s: %v — will attempt to regenerate", path, err)
+// collectNodeFingerprint reads the hostname and non-empty hardware addresses of all
+// network interfaces (loopback and interfaces without a MAC are skipped). Either
+// component may be empty if the system call fails; both empty means we cannot
+// fingerprint the host.
+func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string) {
+	if h, err := os.Hostname(); err == nil {
+		hostname = h
+	} else {
+		WarnfCtx(ctx, "Could not read hostname for node UUID fingerprint: %v", err)
 	}
 
-	id, err := GenerateRandomID()
+	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		WarnfCtx(ctx, "Could not enumerate network interfaces for node UUID fingerprint: %v", err)
+		return hostname, nil
 	}
-
-	if writeErr := os.WriteFile(path, []byte(id), 0600); writeErr != nil {
-		WarnfCtx(ctx, "Could not write node UUID to %s: %v — node UUID will not be persisted across restarts", path, writeErr)
-		return id, nil
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if mac := iface.HardwareAddr.String(); mac != "" {
+			macs = append(macs, mac)
+		}
 	}
+	return hostname, macs
+}
 
-	InfofCtx(ctx, KeyAll, "Generated and persisted new node UUID to %s", path)
-	return id, nil
+// deterministicNodeUUID produces a 32-char lowercase hex digest over the canonical
+// NUL-separated fingerprint (hostname, then MACs sorted lexicographically). Pure
+// function — exposed unexported for tests.
+func deterministicNodeUUID(hostname string, macs []string) string {
+	sorted := append([]string(nil), macs...)
+	sort.Strings(sorted)
+
+	h := sha256.New()
+	h.Write([]byte(hostname))
+	for _, mac := range sorted {
+		h.Write([]byte{0})
+		h.Write([]byte(mac))
+	}
+	return hex.EncodeToString(h.Sum(nil)[:nodeUUIDLength/2])
 }
 
 // isValidNodeUUID reports whether id is a 32-character lowercase hex string, as produced by GenerateRandomID.
