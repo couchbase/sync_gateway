@@ -3125,7 +3125,7 @@ func TestConcurrentPutAndRemoveRace(t *testing.T) {
 
 	// Verify stat consistency: the memory stat must equal the sum of bytes of items
 	// actually resident in the cache.
-	var expectedBytes int64
+	var expectedBytes, numFound int64
 	for iter := range iterations {
 		for i := range numDocs {
 			docID := fmt.Sprintf("doc-%d-%d", iter, i)
@@ -3134,12 +3134,13 @@ func TestConcurrentPutAndRemoveRace(t *testing.T) {
 			if found {
 				docRev.CalculateBytes()
 				expectedBytes += docRev.MemoryBytes
+				numFound++
 			}
 		}
 	}
 	assert.Equal(t, expectedBytes, revStats.cacheMemoryStat.Value(),
 		"memory stat must equal the sum of bytes of items actually in the cache")
-	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+	assert.Equal(t, numFound, revStats.cacheNumItemsStat.Value())
 }
 
 // TestConcurrentGetAndRemoveRace exercises the Get (cache-miss load)/Remove race. A backing store
@@ -3179,7 +3180,21 @@ func TestConcurrentGetAndRemoveRace(t *testing.T) {
 	wg.Wait()
 
 	// Memory stat must be non-negative and consistent with what's in the cache.
-	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+	// Verify stat consistency: the memory stat must equal the sum of bytes of items
+	// actually resident in the cache.
+	var expectedBytes, numFound int64
+	for i := range numDocs {
+		docID := fmt.Sprintf("doc-%d", i)
+		cv := Version{Value: 123, SourceID: "test"}
+		docRev, found := orchestrator.Peek(ctx, docID, cv.String(), testCollectionID)
+		if found {
+			docRev.CalculateBytes()
+			expectedBytes += docRev.MemoryBytes
+			numFound++
+		}
+	}
+	assert.Equal(t, expectedBytes, revStats.cacheMemoryStat.Value())
+	assert.Equal(t, numFound, revStats.cacheNumItemsStat.Value())
 }
 
 // TestRemoveDuringNumberBasedEviction verifies that when a Put triggers number-based eviction
@@ -3216,10 +3231,21 @@ func TestRemoveDuringNumberBasedEviction(t *testing.T) {
 	}
 	wg.Wait()
 
-	// With MaxItemCount=1, at most 1 item should remain.
-	assert.True(t, revStats.cacheNumItemsStat.Value() <= 1,
-		"with MaxItemCount=1, at most 1 item should remain in cache")
-	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+	// With MaxItemCount=1, 1 item should remain.
+	// get copilot to suggest assertion here
+	var expectedBytes, numFound int64
+	for i := range numDocs {
+		cv := Version{Value: uint64(i + 1), SourceID: "test"}
+		docID := fmt.Sprintf("doc-%d", i)
+		docRev, found := orchestrator.Peek(ctx, docID, cv.String(), testCollectionID)
+		if found {
+			docRev.CalculateBytes()
+			expectedBytes += docRev.MemoryBytes
+			numFound++
+		}
+	}
+	assert.Equal(t, expectedBytes, revStats.cacheMemoryStat.Value())
+	assert.Equal(t, numFound, revStats.cacheNumItemsStat.Value())
 }
 
 // TestConcurrentUpsertAndRemoveRace exercises the Upsert/Remove race. Upsert replaces an
@@ -3266,7 +3292,19 @@ func TestConcurrentUpsertAndRemoveRace(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
+	var expectedBytes, numFound int64
+	for i := range numDocs {
+		docID := fmt.Sprintf("doc-%d", i)
+		cv := Version{Value: 1, SourceID: "test"}
+		docRev, found := orchestrator.Peek(ctx, docID, cv.String(), testCollectionID)
+		if found {
+			docRev.CalculateBytes()
+			expectedBytes += docRev.MemoryBytes
+			numFound++
+		}
+	}
+	assert.Equal(t, expectedBytes, revStats.cacheMemoryStat.Value())
+	assert.Equal(t, numFound, revStats.cacheNumItemsStat.Value())
 }
 
 // TestMemoryEvictionDuringConcurrentPuts verifies that when memory-based eviction fires during
@@ -3298,8 +3336,6 @@ func TestMemoryEvictionDuringConcurrentPuts(t *testing.T) {
 	wg.Wait()
 
 	// After all concurrent Puts and evictions settle, the memory stat should be at or below capacity.
-	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
-	assert.True(t, revStats.cacheMemoryStat.Value() <= maxBytes,
-		"memory stat (%d) should be at or below capacity (%d) after eviction settles",
-		revStats.cacheMemoryStat.Value(), maxBytes)
+	assert.Equal(t, int64(44), revStats.cacheMemoryStat.Value(), "we should have 4 items worth of memory")
+	assert.Equal(t, int64(4), revStats.cacheNumItemsStat.Value(), "we should have 4 items in cache")
 }
