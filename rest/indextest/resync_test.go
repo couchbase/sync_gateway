@@ -38,9 +38,9 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	rt.CreateTestDoc("doc1")
 
 	rt.SyncFn = `function(doc, oldDoc) {channel("A")}`
-	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, rt.NewDbConfig()), http.StatusCreated)
-
-	rt.TakeDbOffline()
+	config := rt.NewDbConfig()
+	config.StartOffline = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, config), http.StatusCreated)
 
 	if !base.TestsDisableGSI() {
 		rest.DropAllTestIndexesIncludingPrimary(t, rt.TestBucket)
