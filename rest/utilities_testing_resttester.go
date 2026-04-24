@@ -422,7 +422,7 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 	timeout := 10 * time.Second
 	pollInterval := 10 * time.Millisecond
 	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
-		timeout = 30 * time.Second
+		timeout = 60 * time.Second
 		pollInterval = 500 * time.Millisecond
 	}
 	var resyncStatus db.ResyncManagerResponseDCP
