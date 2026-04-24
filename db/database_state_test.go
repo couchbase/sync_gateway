@@ -62,7 +62,7 @@ func TestGetState(t *testing.T) {
 		require.Error(t, err)
 		require.True(t, base.IsDocNotFoundError(err))
 		require.Zero(t, cas)
-		require.False(t, state.ResyncRunning)
+		require.Nil(t, state)
 	})
 
 	t.Run("returns persisted state and CAS", func(t *testing.T) {
