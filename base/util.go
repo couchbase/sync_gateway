@@ -180,32 +180,17 @@ func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string
 }
 
 // deterministicNodeUUID produces a 32-char lowercase hex digest over the canonical
-// NUL-separated fingerprint (hostname, then MACs sorted lexicographically). Pure
-// function — exposed unexported for tests.
+// colon-separated fingerprint (hostname, then MACs sorted lexicographically). The
+// separator guards against hostname/MAC boundary collisions; ':' is safe because it
+// cannot appear in a hostname on Linux, macOS, or Windows. Pure function — exposed
+// unexported for tests.
 func deterministicNodeUUID(hostname string, macs []string) string {
 	sorted := append([]string(nil), macs...)
 	sort.Strings(sorted)
 
-	h := sha256.New()
-	h.Write([]byte(hostname))
-	for _, mac := range sorted {
-		h.Write([]byte{0})
-		h.Write([]byte(mac))
-	}
-	return hex.EncodeToString(h.Sum(nil)[:nodeUUIDLength/2])
-}
-
-// isValidNodeUUID reports whether id is a 32-character lowercase hex string, as produced by GenerateRandomID.
-func isValidNodeUUID(id string) bool {
-	if len(id) != nodeUUIDLength {
-		return false
-	}
-	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
+	parts := append([]string{hostname}, sorted...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, ":")))
+	return hex.EncodeToString(sum[:nodeUUIDLength/2])
 }
 
 // randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.

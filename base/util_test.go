@@ -1950,12 +1950,22 @@ func TestRequireChan(t *testing.T) {
 	})
 }
 
+// assertValidNodeUUID asserts that id is a 32-character lowercase hex string
+// (the format produced by GenerateNodeUUID and GenerateRandomID).
+func assertValidNodeUUID(t *testing.T, id string) {
+	t.Helper()
+	require.Lenf(t, id, nodeUUIDLength, "expected %d-char node UUID, got %q", nodeUUIDLength, id)
+	for _, c := range id {
+		require.Truef(t, (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'), "invalid char %q in node UUID %q", c, id)
+	}
+}
+
 func TestGenerateNodeUUID(t *testing.T) {
 	ctx := TestCtx(t)
 
 	id1, err := GenerateNodeUUID(ctx)
 	require.NoError(t, err)
-	assert.True(t, isValidNodeUUID(id1), "expected valid node UUID, got %q", id1)
+	assertValidNodeUUID(t, id1)
 
 	id2, err := GenerateNodeUUID(ctx)
 	require.NoError(t, err)
@@ -1972,7 +1982,7 @@ func TestDeterministicNodeUUID(t *testing.T) {
 		a := deterministicNodeUUID(hostA, macs1)
 		b := deterministicNodeUUID(hostA, macs1)
 		assert.Equal(t, a, b)
-		assert.True(t, isValidNodeUUID(a), "expected valid node UUID, got %q", a)
+		assertValidNodeUUID(t, a)
 	})
 
 	t.Run("different hostnames with identical MACs differ", func(t *testing.T) {
@@ -1995,24 +2005,6 @@ func TestDeterministicNodeUUID(t *testing.T) {
 
 	t.Run("empty MAC list with hostname still produces valid UUID", func(t *testing.T) {
 		id := deterministicNodeUUID(hostA, nil)
-		assert.True(t, isValidNodeUUID(id), "expected valid node UUID, got %q", id)
+		assertValidNodeUUID(t, id)
 	})
-}
-
-func TestIsValidNodeUUID(t *testing.T) {
-	tests := []struct {
-		input string
-		valid bool
-	}{
-		{"", false},
-		{"abc123", false},
-		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", true},   // 32 lowercase hex
-		{"A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4", false},  // uppercase not accepted
-		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4z", false}, // 33 chars
-		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d", false},   // 31 chars
-		{"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3zz", false},  // invalid hex chars
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.valid, isValidNodeUUID(tt.input), "input: %q", tt.input)
-	}
 }
