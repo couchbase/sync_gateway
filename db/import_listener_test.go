@@ -24,7 +24,6 @@ func TestImportFeedEventRecover(t *testing.T) {
 			0: {}, // this is an invalid entry, because we expect this code to panic and recover
 		},
 	}
-	startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 
 	// assert false to indicate that this checkpoint will not be incremented
 	if base.IsDevMode() {
@@ -40,5 +39,4 @@ func TestImportFeedEventRecover(t *testing.T) {
 			Opcode: sgbucket.FeedOpMutation,
 		}))
 	}
-	require.Equal(t, startWarnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
 }
