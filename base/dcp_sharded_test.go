@@ -611,9 +611,9 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		key := "deleted_doc_test"
 
 		// Create document
-		added, err := datastore.WriteCas(key, 0, 0, []byte(`{"test": true}`), 0)
+		initialCas, err := datastore.WriteCas(key, 0, 0, []byte(`{"test": true}`), 0)
 		require.NoError(t, err)
-		require.NotZero(t, added)
+		require.NotZero(t, initialCas)
 
 		t.Cleanup(func() {
 			_ = datastore.Delete(key)
@@ -624,7 +624,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Delete document (creates tombstone)
-		cas, err := datastore.Remove(key, added)
+		cas, err := datastore.Remove(key, initialCas)
 		require.NoError(t, err)
 
 		// Call Poll
