@@ -3234,3 +3234,101 @@ DiagnosticFunctionLogging:
       items:
         type: string
         example: This is an info message produced by console.log("test").
+
+ClusterInfo:
+  type: object
+  properties:
+    legacy_config:
+      description: Indicates if the server is using legacy (non persistent) configuration.
+      type: boolean
+    buckets:
+      description: Map of bucket names to bucket information.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: bucketname
+        $ref: '#/BucketInfo'
+
+BucketInfo:
+  type: object
+  properties:
+    registry:
+      $ref: '#/GatewayRegistry'
+    enable_cross_cluster_versioning:
+      description: Indicates if cross-cluster versioning is enabled for this bucket.
+      type: boolean
+
+GatewayRegistry:
+  type: object
+  properties:
+    version:
+      type: string
+      description: Registry version. This is not the Sync Gateway version number.
+    config_groups:
+      type: object
+      description: Map of config groups, keyed by config group ID
+      additionalProperties:
+        x-additionalPropertiesName: configgroupid
+        $ref: '#/RegistryConfigGroup'
+    sg_version:
+      type: string
+      description: Latest patch version of Sync Gateway that touched the registry.
+    updated_at:
+      type: string
+      format: date-time
+      description: Time the registry was last updated
+    created_at:
+      type: string
+      format: date-time
+      description: Time the registry was created
+
+RegistryConfigGroup:
+  type: object
+  properties:
+    databases:
+      type: object
+      description: Map of databases in this config group.
+      additionalProperties:
+        x-additionalPropertiesName: dbname
+        $ref: '#/RegistryDatabase'
+
+RegistryDatabase:
+  type: object
+  properties:
+    scopes:
+      $ref: '#/RegistryScopes'
+    version:
+      type: string
+      description: Revision ID for a database configuration, used for ETag validation.
+    previous_version:
+      $ref: '#/RegistryDatabaseVersion'
+    metadata_id:
+      type: string
+      description: Metadata ID.
+    uuid:
+      type: string
+      description: Database UUID.
+
+RegistryDatabaseVersion:
+  type: object
+  properties:
+    scopes:
+      $ref: '#/RegistryScopes'
+    version:
+      type: string
+      description: Revision ID for a database configuration, used for ETag validation.
+
+RegistryScopes:
+  type: object
+  description: Map of scope names to registry scope information.
+  additionalProperties:
+    x-additionalPropertiesName: scopename
+    $ref: '#/RegistryScope'
+
+RegistryScope:
+  type: object
+  properties:
+    collections:
+      description: List of collections in this scope.
+      type: array
+      items:
+        type: string

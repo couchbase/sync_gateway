@@ -73,6 +73,8 @@ paths:
     $ref: ./paths/admin/_stats.yaml
   /_config:
     $ref: ./paths/admin/_config.yaml
+  /_cluster_info:
+    $ref: ./paths/admin/_cluster_info.yaml
   /_status:
     $ref: ./paths/admin/_status.yaml
   /_sgcollect_info:
