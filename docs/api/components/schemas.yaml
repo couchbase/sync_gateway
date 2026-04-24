@@ -3067,6 +3067,28 @@ CollectionNames:
     error_code:
       description: A numeric code identifying the type of error.
       type: integer
+      enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+      x-enumDescriptions:
+        1: "Error connecting to bucket"
+        2: "Collection(s) not available"
+        3: "Error initializing sync info"
+        4: "Error initializing database indexes"
+        5: "Error creating database context"
+        6: "Error with fetching SGR cluster definition"
+        7: "Error creating replication during database init"
+        8: "Error attempting to start online process"
+        9: "Allow conflicts is set to true"
+        10: "Enable star channel is set to false"
       example: 1
 all_user_channels:
   description: |-
