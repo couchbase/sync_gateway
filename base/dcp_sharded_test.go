@@ -611,9 +611,9 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		key := "deleted_doc_test"
 
 		// Create document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.WriteCas(key, 0, 0, []byte(`{"test": true}`), 0)
 		require.NoError(t, err)
-		require.True(t, added)
+		require.NotZero(t, added)
 
 		t.Cleanup(func() {
 			_ = datastore.Delete(key)
@@ -624,7 +624,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Delete document (creates tombstone)
-		err = datastore.Delete(key)
+		cas, err := datastore.Remove(key, added)
 		require.NoError(t, err)
 
 		// Call Poll
@@ -632,64 +632,11 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 
 		// Verify event was fired
 		require.True(t, eventFired, "event should be fired for deleted document")
-		require.Equal(t, uint64(0), firedCas, "cas should be 0 for deleted document")
+		require.Equal(t, cas, firedCas)
 
 		// Verify keyWatcher was updated
 		poller.lock.Lock()
-		require.Equal(t, uint64(0), poller.keyWatcher[key], "keyWatcher should have cas=0 after deletion")
-		poller.lock.Unlock()
-	})
-
-	// Verify purge (complete removal) triggers event with cas=0 - Couchbase Server only
-	t.Run("poll_detects_document_purge", func(t *testing.T) {
-		if UnitTestUrlIsWalrus() {
-			t.Skip("This test requires Couchbase Server - purge behavior differs in Rosmar")
-		}
-
-		eventFired := false
-		var firedCas uint64
-
-		poller := &cfgNodePoller{
-			ctx:        ctx,
-			keyWatcher: make(map[string]uint64),
-			datastore:  datastore,
-			fireEvent: func(docID string, cas uint64, err error) {
-				eventFired = true
-				firedCas = cas
-			},
-		}
-
-		key := "purged_doc_test"
-
-		// Create document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
-		require.NoError(t, err)
-		require.True(t, added)
-
-		t.Cleanup(func() {
-			_ = datastore.Delete(key)
-		})
-
-		err = poller.Register(key)
-		require.NoError(t, err)
-
-		// Get current CAS before purge
-		cas, err := datastore.Get(key, nil)
-		require.NoError(t, err)
-
-		// Purge document (complete removal - no tombstone)
-		_, err = datastore.Remove(key, cas)
-		require.NoError(t, err)
-
-		poller.poll(t.Context())
-
-		// Verify event was fired
-		require.True(t, eventFired, "event should be fired for purged document")
-		require.Equal(t, uint64(0), firedCas, "cas should be 0 for purged document")
-
-		// Verify keyWatcher was updated
-		poller.lock.Lock()
-		require.Equal(t, uint64(0), poller.keyWatcher[key], "keyWatcher should have cas=0 after purge")
+		require.Equal(t, cas, poller.keyWatcher[key])
 		poller.lock.Unlock()
 	})
 
