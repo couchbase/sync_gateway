@@ -20,15 +20,15 @@ import (
 // its associated delta cache. All accounting is done via atomic operations so the hot-path
 // capacity check (IsOverCapacity) is entirely lock-free.
 type CacheMemoryController struct {
-	capacity       int64            // total byte limit; 0 = unlimited
-	currBytesCount atomic.Int64     // bytes held by the revision cache + delta cache shard
-	totalBytesStat *base.SgwIntStat // shared observable stat. Overall footprint of the caches combined.
+	capacity           int64            // total byte limit; 0 = unlimited
+	bytesInUseForShard atomic.Int64     // bytes held by the revision cache + delta cache shard
+	globalUsageStat    *base.SgwIntStat // shared observable stat. Overall footprint of the caches combined.
 }
 
 func newCacheMemoryController(capacityBytes int64, totalBytesStat *base.SgwIntStat) *CacheMemoryController {
 	return &CacheMemoryController{
-		capacity:       capacityBytes,
-		totalBytesStat: totalBytesStat,
+		capacity:        capacityBytes,
+		globalUsageStat: totalBytesStat,
 	}
 }
 
@@ -39,11 +39,11 @@ func (mc *CacheMemoryController) IsOverCapacity() bool {
 	}
 	// IsOverCapacity returns true only when usage strictly exceeds the limit,
 	// so a cache exactly at capacity is not evicted.
-	return mc.currBytesCount.Load() > mc.capacity
+	return mc.bytesInUseForShard.Load() > mc.capacity
 }
 
 func (mc *CacheMemoryController) bytesToEvict() int64 {
-	excess := mc.currBytesCount.Load() - mc.capacity
+	excess := mc.bytesInUseForShard.Load() - mc.capacity
 	if excess < 0 {
 		return 0
 	}
@@ -51,11 +51,11 @@ func (mc *CacheMemoryController) bytesToEvict() int64 {
 }
 
 func (mc *CacheMemoryController) incrementBytesCount(n int64) {
-	mc.currBytesCount.Add(n)
-	mc.totalBytesStat.Add(n)
+	mc.bytesInUseForShard.Add(n)
+	mc.globalUsageStat.Add(n)
 }
 
 func (mc *CacheMemoryController) decrementBytesCount(n int64) {
-	mc.currBytesCount.Add(-n)
-	mc.totalBytesStat.Add(-n)
+	mc.bytesInUseForShard.Add(-n)
+	mc.globalUsageStat.Add(-n)
 }

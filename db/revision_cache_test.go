@@ -1008,12 +1008,12 @@ func TestShardedMemoryEviction(t *testing.T) {
 	// grab this particular shard + assert that the shard memory usage is as expected
 	shardedCache := db.revisionCache.(*ShardedLRURevisionCache)
 	doc1Shard := shardedCache.getShard("doc1")
-	assert.Equal(t, int64(size), doc1Shard.memoryController.currBytesCount.Load())
+	assert.Equal(t, int64(size), doc1Shard.memoryController.bytesInUseForShard.Load())
 
 	// add new doc in diff shard + assert that the shard memory usage is as expected
 	size, _, _ = createDocAndReturnSizeAndRev(t, ctx, "doc2", collection, docBody, false)
 	doc2Shard := shardedCache.getShard("doc2")
-	assert.Equal(t, int64(size), doc2Shard.memoryController.currBytesCount.Load())
+	assert.Equal(t, int64(size), doc2Shard.memoryController.bytesInUseForShard.Load())
 	// overall mem usage should be combination oif the two added docs
 	assert.Equal(t, int64(size*2), cacheStats.RevisionCacheTotalMemory.Value())
 
@@ -1027,7 +1027,7 @@ func TestShardedMemoryEviction(t *testing.T) {
 	// add new doc to trigger eviction and assert stats are as expected
 	newDocSize, _, _ := createDocAndReturnSizeAndRev(t, ctx, "doc3", collection, docBody, false)
 	doc3Shard := shardedCache.getShard("doc3")
-	assert.Equal(t, int64(newDocSize), doc3Shard.memoryController.currBytesCount.Load())
+	assert.Equal(t, int64(newDocSize), doc3Shard.memoryController.bytesInUseForShard.Load())
 	assert.Equal(t, int64(2), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(size+newDocSize), cacheStats.RevisionCacheTotalMemory.Value())
 }
@@ -1063,7 +1063,7 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 
 	// assert that doc was not added to cache as it's too large
 	doc1Shard := shardedCache.getShard("doc1")
-	assert.Equal(t, int64(0), doc1Shard.memoryController.currBytesCount.Load())
+	assert.Equal(t, int64(0), doc1Shard.memoryController.bytesInUseForShard.Load())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
 
@@ -1074,7 +1074,7 @@ func TestShardedMemoryEvictionWhenShardEmpty(t *testing.T) {
 	assert.NotNil(t, docRev.BodyBytes)
 
 	// assert rev cache is still empty
-	assert.Equal(t, int64(0), doc1Shard.memoryController.currBytesCount.Load())
+	assert.Equal(t, int64(0), doc1Shard.memoryController.bytesInUseForShard.Load())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheNumItems.Value())
 	assert.Equal(t, int64(0), cacheStats.RevisionCacheTotalMemory.Value())
 }
@@ -2765,7 +2765,7 @@ func TestMemoryBasedEvictionBetweenRevAndDeltaCache(t *testing.T) {
 
 	// -----------------------------------------------------------------------
 	// Step 2: Add delta rev1→rev2 via UpdateDelta.
-	// Total (121+10=131) exceeds maxBytes (121).  Delta is evicted due to round-
+	// Total (121+10=131) exceeds maxBytes (121).  Revision 1 is evicted due to round-
 	// robin eviction approach
 	// -----------------------------------------------------------------------
 	delta := RevisionDelta{DeltaBytes: deltaBodyBytes}
@@ -2773,31 +2773,33 @@ func TestMemoryBasedEvictionBetweenRevAndDeltaCache(t *testing.T) {
 	orchestrator.UpdateDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID, delta)
 
 	_, rev1InCacheAfterDelta := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
-	assert.True(t, rev1InCacheAfterDelta, "rev1 should still be present")
+	assert.False(t, rev1InCacheAfterDelta, "rev1 should have been evicted")
 
 	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
-	assert.Nil(t, cachedDelta, "delta should have been evicted")
+	assert.NotNil(t, cachedDelta, "delta still be present")
 
-	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should not be empty after evicting rev1")
-	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should be empty")
-	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes only after eviction")
+	assert.Equal(t, int64(0), cacheNumItems.Value(), "revision cache should not be empty after evicting rev1")
+	assert.Equal(t, int64(1), deltaCacheNumItems.Value(), "delta cache should be empty")
+	assert.Equal(t, expectedDeltaBytes, cacheMemoryBytes.Value(), "memory stat should equal rev1 bytes only after eviction")
 
 	// -----------------------------------------------------------------------
-	// Step 3: Add delta rev1→rev2 via UpdateDelta again.
-	// Total (10+121=131) exceeds maxBytes again.  rev1 turn to be evicted.
+	// Step 3: Load rev1 again via Get (cache miss — it was evicted in step 2).
+	// Total (10+121=131) exceeds maxBytes again.  Deltas turn to be evicted.
 	// -----------------------------------------------------------------------
-	orchestrator.UpdateDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID, delta)
+	_, wasMiss2, err := orchestrator.Get(ctx, docID, rev1CV.String(), testCollectionID, false)
+	require.NoError(t, err)
+	require.True(t, wasMiss2, "second Get should be a cache miss (rev1 was evicted)")
 
-	_, rev1InCacheAfterDelta = orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
-	assert.False(t, rev1InCacheAfterDelta, "rev1 should have been evicted after delta update")
+	_, rev1BackInCache := orchestrator.Peek(ctx, docID, rev1CV.String(), testCollectionID)
+	assert.True(t, rev1BackInCache, "rev1 should be back in revision cache after second Get")
 
 	cachedDeltaAfter := orchestrator.deltaCache.getCachedDelta(ctx, docID, rev1CV.String(), rev2CV.String(), testCollectionID)
-	assert.NotNil(t, cachedDeltaAfter, "delta should be present")
+	assert.Nil(t, cachedDeltaAfter, "delta should've been evicted")
 
-	assert.Equal(t, int64(0), cacheNumItems.Value(), "revision cache should be empty")
-	assert.Equal(t, int64(1), deltaCacheNumItems.Value(), "delta cache should have one item")
-	assert.Equal(t, expectedDeltaBytes, cacheMemoryBytes.Value(), "memory stat should equal delta bytes only after rev1 evicted")
-	assert.Equal(t, int64(1), cacheMisses.Value(), "Get was a cache miss")
+	assert.Equal(t, int64(1), cacheNumItems.Value(), "revision cache should be empty")
+	assert.Equal(t, int64(0), deltaCacheNumItems.Value(), "delta cache should have one item")
+	assert.Equal(t, expectedRev1Bytes, cacheMemoryBytes.Value(), "memory stat should equal delta bytes only after rev1 evicted")
+	assert.Equal(t, int64(2), cacheMisses.Value(), "Two Get's were a cache miss")
 	assert.Equal(t, int64(0), cacheHits.Value())
 }
 
@@ -3025,12 +3027,12 @@ func TestCombinedNumberAndMemoryEviction(t *testing.T) {
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value())
 
-	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision delta immediately
+	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision immediately
 	// After eviction: only delta doc1 in memory (15 bytes).
 	orchestrator.UpdateDelta(ctx, "doc1", "from1", "to1", testCollectionID, makeDelta())
-	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
-	assert.Equal(t, int64(0), deltaStats.DeltaCacheNumItems.Value())
-	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value(), "only doc1 bytes should remain")
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(), "only doc1 bytes should remain")
 
 	// UpdateDelta B: number-based eviction (MaxItemCount=1) removes delta A and decrements
 	// its 10 bytes, then delta B is added and its 10 bytes incremented.  Net = 10 bytes.
@@ -3231,8 +3233,8 @@ func TestRemoveDuringNumberBasedEviction(t *testing.T) {
 	}
 	wg.Wait()
 
-	// With MaxItemCount=1, 1 item should remain.
-	// get copilot to suggest assertion here
+	// With MaxItemCount=1, 1 item should remain, assert on item that exists and
+	// ensure memory stat equals that item's bytes
 	var expectedBytes, numFound int64
 	for i := range numDocs {
 		cv := Version{Value: uint64(i + 1), SourceID: "test"}
@@ -3338,4 +3340,152 @@ func TestMemoryEvictionDuringConcurrentPuts(t *testing.T) {
 	// After all concurrent Puts and evictions settle, the memory stat should be at or below capacity.
 	assert.Equal(t, int64(44), revStats.cacheMemoryStat.Value(), "we should have 4 items worth of memory")
 	assert.Equal(t, int64(4), revStats.cacheNumItemsStat.Value(), "we should have 4 items in cache")
+}
+
+// TestMemoryStatLongTermConsistency runs a high-concurrency mixed workload (Put, Upsert,
+// Get, UpdateDelta, GetWithDelta, Remove) against an orchestrator with both rev and delta
+// caches enabled and a memory limit that forces frequent memory-based eviction. After the
+// workload settles, it audits the full internal state of both caches against the published
+// memory stat and the controller's internal counter — catching any divergence between the
+// stat and reality across all operation types and eviction paths.
+//
+// Mirrors the production invariant that any given CV maps to exactly one body: Put/Upsert
+// use a writer-side CV, Get/GetWithDelta use the backing-store's CV, and the body bytes for
+// each (docID, CV) pair are deterministic. Without this, the "Put-on-existing-Sized" path
+// is reached (different bodies for the same cache key) which is impossible in production.
+func TestMemoryStatLongTermConsistency(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta cache is EE only")
+	}
+
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	deltaStats := newTestDeltaStats()
+
+	var docCounter, revCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &docCounter, getRevisionCounter: &revCounter}
+
+	// MaxBytes deliberately small so memory-based eviction fires constantly throughout the run.
+	// MaxItemCount large so number-based eviction stays out of the way (covered by other tests).
+	const maxBytes = int64(2000)
+	opts := &RevisionCacheOptions{MaxItemCount: 10000, MaxBytes: maxBytes}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID),
+		revStats, deltaStats, true,
+	)
+
+	// loadedCV is what the backing store returns for any doc — Get/GetWithDelta cache under this key.
+	// writeCV is what Put/Upsert cache under — distinct from loadedCV so the two paths never collide
+	// on the same cache key (production invariant: each write produces a fresh CV).
+	loadedCV := Version{Value: 123, SourceID: "test"}
+	writeCV := Version{Value: 999, SourceID: "writer"}
+
+	const numDocs = 100
+	const opsPerWorker = 1000
+	const numWorkers = 250
+
+	docID := func(i int) string { return fmt.Sprintf("doc-%d", i) }
+	// bodyForDoc is deterministic per docID so any Put or Upsert on (docID, writeCV) produces the
+	// same byte count — upholding the "one CV ⇒ one body" invariant.
+	bodyForDoc := func(i int) string {
+		return fmt.Sprintf(`{"docID":%d,"payload":"abcdefghijklmnop"}`, i)
+	}
+
+	put := func(i int) {
+		orchestrator.Put(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID)
+	}
+	upsert := func(i int) {
+		orchestrator.Upsert(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID)
+	}
+	get := func(i int) {
+		_, _, _ = orchestrator.Get(ctx, docID(i), loadedCV.String(), testCollectionID, false)
+	}
+	updateDelta := func(i int) {
+		toCV := Version{Value: uint64(1000 + i), SourceID: "test"}.String()
+		d := RevisionDelta{DeltaBytes: []byte(fmt.Sprintf("delta-payload-for-doc-%d", i))}
+		d.CalculateDeltaBytes()
+		orchestrator.UpdateDelta(ctx, docID(i), loadedCV.String(), toCV, testCollectionID, d)
+	}
+	getWithDelta := func(i int) {
+		toCV := Version{Value: uint64(1000 + i), SourceID: "test"}.String()
+		_, _ = orchestrator.GetWithDelta(ctx, docID(i), loadedCV.String(), toCV, testCollectionID)
+	}
+	removeWriter := func(i int) {
+		orchestrator.Remove(ctx, docID(i), writeCV.String(), testCollectionID)
+	}
+	removeLoaded := func(i int) {
+		orchestrator.Remove(ctx, docID(i), loadedCV.String(), testCollectionID)
+	}
+
+	ops := []func(int){put, upsert, get, updateDelta, getWithDelta, removeWriter, removeLoaded}
+
+	var wg sync.WaitGroup
+	for w := range numWorkers {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			r := rand.New(rand.NewSource(int64(seed)))
+			for range opsPerWorker {
+				op := ops[r.Intn(len(ops))]
+				op(r.Intn(numDocs))
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	// Audit: walk both caches under their own locks and sum the bytes that should be
+	// reflected in the memory stat. Items in memStateLoading must not be counted (their
+	// bytes were never added). Items in memStateRemoved must not be present in the map at all.
+	var revBytes, deltaBytes, revCount, deltaCount int64
+
+	orchestrator.revisionCache.lock.Lock()
+	for _, elem := range orchestrator.revisionCache.cache {
+		val := elem.Value.(*revCacheValue)
+		switch val.memState.Load() {
+		case memStateSized:
+			revBytes += val.itemBytes.Load()
+		case memStateRemoved:
+			t.Errorf("rev cache map still contains a removed entry for key %+v", val.itemKey)
+		}
+		revCount++
+	}
+	revListLen := int64(orchestrator.revisionCache.lruList.Len())
+	orchestrator.revisionCache.lock.Unlock()
+
+	orchestrator.deltaCache.lock.Lock()
+	for _, elem := range orchestrator.deltaCache.cache {
+		val := elem.Value.(*deltaCacheValue)
+		deltaBytes += val.delta.totalDeltaBytes
+		deltaCount++
+	}
+	deltaListLen := int64(orchestrator.deltaCache.lruList.Len())
+	orchestrator.deltaCache.lock.Unlock()
+
+	totalBytes := revBytes + deltaBytes
+
+	// Stat published to the rest of the system must match the bytes actually held.
+	assert.Equal(t, totalBytes, revStats.cacheMemoryStat.Value(),
+		"published memory stat must equal sum of bytes in rev cache (%d) + delta cache (%d)", revBytes, deltaBytes)
+
+	// Internal controller counter must agree with the published stat — they are mutated
+	// together in incrementBytesCount/decrementBytesCount, so any drift between them
+	// indicates a missed write site.
+	assert.Equal(t, revStats.cacheMemoryStat.Value(), orchestrator.memoryController.bytesInUseForShard.Load(),
+		"internal controller counter must equal published memory stat")
+
+	// Item-count stats must match the actual number of entries in each cache.
+	assert.Equal(t, revCount, revStats.cacheNumItemsStat.Value(),
+		"rev cache num-items stat must equal number of map entries")
+	assert.Equal(t, deltaCount, deltaStats.DeltaCacheNumItems.Value(),
+		"delta cache num-items stat must equal number of map entries")
+
+	// Map size and list length must agree (no orphaned list entries or leaked map keys).
+	assert.Equal(t, revCount, revListLen, "rev cache map size must equal LRU list length")
+	assert.Equal(t, deltaCount, deltaListLen, "delta cache map size must equal LRU list length")
+
+	// Memory must remain at or below the configured limit (eviction may briefly go over, but
+	// the controller drives back to <= maxBytes once triggerMemoryEviction completes).
+	assert.LessOrEqual(t, revStats.cacheMemoryStat.Value(), maxBytes,
+		"after workload settles, memory stat must be at or below maxBytes — eviction failed to keep up")
 }

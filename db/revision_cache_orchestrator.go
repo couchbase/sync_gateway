@@ -116,7 +116,7 @@ func (c *RevisionCacheOrchestrator) triggerMemoryEviction() {
 		return
 	}
 	for numBytesRemoved < bytesNeededToEvict {
-		bytes, evicted := c.evictOneItem()
+		bytes, evicted := c._evictOneItem()
 		if !evicted {
 			// both caches exhausted
 			break
@@ -126,31 +126,24 @@ func (c *RevisionCacheOrchestrator) triggerMemoryEviction() {
 	c.memoryController.decrementBytesCount(numBytesRemoved)
 }
 
-// evictOneItem removes one item from either the revision or delta cache using round-robin
+// _evictOneItem removes one item from either the revision or delta cache using round-robin
 // selection. If the primary cache is empty, it immediately falls back to the other cache.
 // Returns (bytes freed, true) when an item was removed, or (0, false) when both are empty.
 // Must only be called while holding evictionLock.
-func (c *RevisionCacheOrchestrator) evictOneItem() (int64, bool) {
+func (c *RevisionCacheOrchestrator) _evictOneItem() (int64, bool) {
 	// When the delta cache is not enabled, always evict from the revision cache.
 	if c.deltaCache == nil {
 		return c.revisionCache.evictLRUTail()
 	}
 
-	tryRevFirst := c.evictNextFromRev
-	// flip flag to try the other cache first on the next eviction
+	// flip eviction toggle
 	c.evictNextFromRev = !c.evictNextFromRev
-
-	if tryRevFirst {
-		if bytes, evicted := c.revisionCache.evictLRUTail(); evicted {
-			return bytes, true
-		}
-		// Rev cache exhausted — fall back to delta immediately without burning a loop iteration.
-		return c.deltaCache.evictLRUTail()
+	first, second := c.revisionCache.evictLRUTail, c.deltaCache.evictLRUTail
+	if !c.evictNextFromRev {
+		first, second = second, first
 	}
-
-	if bytes, evicted := c.deltaCache.evictLRUTail(); evicted {
+	if bytes, evicted := first(); evicted {
 		return bytes, true
 	}
-	// Delta cache exhausted — fall back to rev immediately without burning a loop iteration.
-	return c.revisionCache.evictLRUTail()
+	return second()
 }

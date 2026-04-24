@@ -542,14 +542,14 @@ func TestGetWithDeltaTriggersMemoryEvictionOnMiss(t *testing.T) {
 	require.NotNil(t, docRev.Delta)
 
 	_, revInCache := orchestrator.Peek(ctx, "doc1", rev1CV.String(), testCollectionID)
-	assert.True(t, revInCache, "revision should remain in cache")
+	assert.False(t, revInCache, "revision be immediately evicted after GetWithDelta miss")
 
 	cachedDelta := orchestrator.deltaCache.getCachedDelta(ctx, "doc1", rev1CV.String(), rev2CV.String(), testCollectionID)
-	assert.Nil(t, cachedDelta, "delta should have been evicted by memory pressure from GetWithDelta")
+	assert.NotNil(t, cachedDelta, "delta should still be present in cache")
 
-	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
-	assert.Equal(t, int64(0), deltaStats.DeltaCacheNumItems.Value())
-	assert.Equal(t, expectedRevBytes, revStats.cacheMemoryStat.Value(), "memory stat should equal revision bytes only")
+	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
+	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
+	assert.Equal(t, expectedDeltaBytes, revStats.cacheMemoryStat.Value(), "memory stat should equal revision bytes only")
 }
 
 // TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry verifies that when Put and
