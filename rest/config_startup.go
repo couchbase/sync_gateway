@@ -26,8 +26,8 @@ const (
 	// persistentConfigDefaultUpdateFrequency is a duration that defines how frequent configs are refreshed from Couchbase Server.
 	persistentConfigDefaultUpdateFrequency = time.Second * 10
 	// defaultNodeHeartbeatExpiryMultiplier defines how many missed heartbeats before a node is considered stale.
-	// Staleness threshold = ConfigUpdateFrequency * multiplier (default: 10s * 10 = 100s).
-	defaultNodeHeartbeatExpiryMultiplier = 10
+	// Staleness threshold = config_update_frequency * multiplier (default: 10s * 6 = 60s).
+	defaultNodeHeartbeatExpiryMultiplier = 6
 )
 
 // DefaultStartupConfig returns a StartupConfig with values populated with defaults.
@@ -114,7 +114,7 @@ type BootstrapConfig struct {
 	X509CertPath                  string               `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath                   string               `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
 	UseTLSServer                  *bool                `json:"use_tls_server,omitempty"                    help:"Enforces a secure or non-secure server scheme"`
-	NodeHeartbeatExpiryMultiplier *int                 `json:"node_heartbeat_expiry_multiplier,omitempty"  help:"Number of missed heartbeats before a node is considered stale. Staleness threshold = ConfigUpdateFrequency * multiplier. Default: 10"`
+	NodeHeartbeatExpiryMultiplier *int                 `json:"node_heartbeat_expiry_multiplier,omitempty"  help:"Number of missed heartbeats before a node is considered stale. Staleness threshold = config_update_frequency * multiplier. Default: 6"`
 }
 
 type APIConfig struct {

@@ -41,7 +41,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"bootstrap.x509_cert_path":                   {config: &config.Bootstrap.X509CertPath, flagValue: fs.String("bootstrap.x509_cert_path", "", "Cert path (public key) for X.509 bucket auth")},
 		"bootstrap.x509_key_path":                    {config: &config.Bootstrap.X509KeyPath, flagValue: fs.String("bootstrap.x509_key_path", "", "Key path (private key) for X.509 bucket auth")},
 		"bootstrap.use_tls_server":                   {config: &config.Bootstrap.UseTLSServer, flagValue: fs.Bool("bootstrap.use_tls_server", false, "Forces the connection to Couchbase Server to use TLS")},
-		"bootstrap.node_heartbeat_expiry_multiplier": {config: &config.Bootstrap.NodeHeartbeatExpiryMultiplier, flagValue: fs.Int("bootstrap.node_heartbeat_expiry_multiplier", defaultNodeHeartbeatExpiryMultiplier, "Number of missed heartbeats before a node is considered stale. Staleness threshold = ConfigUpdateFrequency * multiplier")},
+		"bootstrap.node_heartbeat_expiry_multiplier": {config: &config.Bootstrap.NodeHeartbeatExpiryMultiplier, flagValue: fs.Int("bootstrap.node_heartbeat_expiry_multiplier", defaultNodeHeartbeatExpiryMultiplier, "Number of missed heartbeats before a node is considered stale. Staleness threshold = config_update_frequency * multiplier")},
 
 		"api.public_interface":                              {config: &config.API.PublicInterface, flagValue: fs.String("api.public_interface", "", "Network interface to bind public API to")},
 		"api.admin_interface":                               {config: &config.API.AdminInterface, flagValue: fs.String("api.admin_interface", "", "Network interface to bind admin API to")},

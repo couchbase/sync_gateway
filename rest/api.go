@@ -47,6 +47,7 @@ type rootResponse struct {
 	Version              string `json:"version,omitempty"`
 	PersistentConfig     bool   `json:"persistent_config"`
 	ClusterCompatVersion string `json:"cluster_compat_version,omitempty"`
+	NodeUUID             string `json:"node_uuid,omitempty"`
 }
 
 type vendor struct {
@@ -68,6 +69,7 @@ func (h *handler) handleRoot() error {
 	if h.shouldShowProductVersion() {
 		resp.Version = base.LongVersionString
 		resp.Vendor.Version = base.ProductAPIVersion
+		resp.NodeUUID = h.server.NodeUUID
 		if h.server.ClusterCompat != nil {
 			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
 				resp.ClusterCompatVersion = v.String()
