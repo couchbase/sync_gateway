@@ -3060,29 +3060,8 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
-	// explicitly start with persistent config disabled
-	sc, err := rest.SetupServerContext(ctx, &config, false)
-	require.NoError(t, err)
-
-	serverErr := make(chan error)
-
-	closeFn := func() {
-		sc.Close(ctx)
-		assert.NoError(t, <-serverErr)
-	}
-
-	started := false
-	defer func() {
-		if !started {
-			closeFn()
-		}
-
-	}()
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
+	sc, closeFn := rest.StartServerWithLegacyConfig(t, &config)
+	defer closeFn()
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
