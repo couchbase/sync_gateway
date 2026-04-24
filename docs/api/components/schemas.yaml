@@ -3024,6 +3024,14 @@ CollectionNames:
       state: "Starting"
       require_resync: true
       init_in_progress: true
+    - db_name: "db3"
+      bucket: "bucket3"
+      state: "Offline"
+      require_resync: true
+      init_in_progress: true
+      database_error:
+        error_message: "Error connecting to bucket"
+        error_code: 1
   items:
     type: object
     properties:
@@ -3044,6 +3052,44 @@ CollectionNames:
         description: Indicates whether database initialization is in progress.
         type: boolean
         example: true
+      database_error:
+        description: Error that occurred during database startup, if any.
+        allOf:
+          - $ref: '#/DatabaseError'
+"DatabaseError":
+  description: An error that occurred during database startup.
+  type: object
+  properties:
+    error_message:
+      description: A human-readable description of the error.
+      type: string
+      example: "Error connecting to bucket"
+    error_code:
+      description: A numeric code identifying the type of error.
+      type: integer
+      enum:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+      x-enumDescriptions:
+        1: "Error connecting to bucket"
+        2: "Collection(s) not available"
+        3: "Error initializing sync info"
+        4: "Error initializing database indexes"
+        5: "Error creating database context"
+        6: "Error with fetching SGR cluster definition"
+        7: "Error creating replication during database init"
+        8: "Error attempting to start online process"
+        9: "Allow conflicts is set to true"
+        10: "Enable star channel is set to false"
+      example: 1
 all_user_channels:
   description: |-
     All user channels split by how they were assigned to the user and by keyspace.
