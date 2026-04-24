@@ -400,3 +400,52 @@ func TestGetDeltaThreeRevisions(t *testing.T) {
 	assert.Equal(t, int64(3), db.DbStats.DeltaSync().DeltaCacheMiss.Value())
 	assert.Equal(t, int64(2), db.DbStats.DeltaSync().DeltaCacheHit.Value())
 }
+
+func TestAccessCheckOnNonCurrentRevision(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta sync requires enterprise edition")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("test requires delta cache to be in use")
+	}
+
+	dbcOptions := DatabaseContextOptions{
+		RevisionCacheOptions: &RevisionCacheOptions{
+			MaxItemCount: 100,
+		},
+		DeltaSyncOptions: DeltaSyncOptions{
+			Enabled:          true,
+			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	docID := SafeDocumentName(t, t.Name())
+	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"channels": "A"})
+	require.NoError(t, err)
+	rev1CV := doc1.HLV.GetCurrentVersionString()
+
+	rev2ID, doc2, err := collection.Put(ctx, docID, Body{"channels": "A", BodyRev: rev1ID})
+	require.NoError(t, err)
+	rev2CV := doc2.HLV.GetCurrentVersionString()
+
+	// request delta from rev1->rev2 to cache it
+	_, _, err = collection.GetDelta(ctx, docID, rev1CV, rev2CV)
+	require.NoError(t, err)
+
+	// create third revision to make rev2 non-current revision
+	_, _, err = collection.Put(ctx, docID, Body{"channels": "A", BodyRev: rev2ID})
+	require.NoError(t, err)
+
+	// flush main revision cache
+	db.FlushRevisionCacheForTest()
+
+	// Now request delta from rev1->rev2, delta cached but no rev2 in revision cache so fetch is done to see channel access,
+	// should return missing error given rev2 is no longer current revision
+	_, _, err = collection.GetDelta(ctx, docID, rev1CV, rev2CV)
+	require.ErrorContains(t, err, "404 missing")
+}
