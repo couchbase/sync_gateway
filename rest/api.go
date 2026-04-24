@@ -387,7 +387,7 @@ func (h *handler) handlePostResync() error {
 			}
 			err = h.db.DBStateMgr.UpdateState(db.DatabaseState{ResyncRunning: true})
 			if err != nil {
-				return err
+				base.WarnfCtx(h.ctx(), "Error updating state for 'resyncing' database: %v", err)
 			}
 			h.writeRawJSON(status)
 			base.Audit(h.ctx(), base.AuditIDDatabaseResyncStart, base.AuditFields{

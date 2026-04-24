@@ -27,7 +27,6 @@ func TempResyncHandler(resume bool) {
 }
 
 type DatabaseStateMgr struct {
-	State           DatabaseState
 	CAS             uint64
 	dbStateID       string
 	terminator      *base.SafeTerminator
@@ -49,45 +48,46 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *Databa
 }
 
 // UpdateState persists the given DatabaseState to the metadata store using a CAS write, then updates the
-// in-memory State and CAS on success. Returns an error on CAS mismatch or store failure.
+// in-memory State and CAS on success. Returns an error store failure.
 func (dbMgr *DatabaseStateMgr) UpdateState(state DatabaseState) (err error) {
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
-	cas, err := dbMgr.metadataStore.WriteCas(dbMgr.dbStateID, 0, dbMgr.CAS, state, 0)
+	cas, err := dbMgr.metadataStore.Update(dbMgr.dbStateID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		bodyBytes, err := base.JSONMarshal(state)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		return bodyBytes, nil, false, nil
+	})
 	if err != nil {
 		return err
 	}
-	dbMgr.State = state
 	dbMgr.CAS = cas
 	return
 }
 
 // GetState reads the current DatabaseState document from the metadata store. Returns the state and its CAS value.
 // A doc-not-found error is treated as a zero-value state.
-func (dbMgr *DatabaseStateMgr) GetState() (state DatabaseState, cas uint64, err error) {
+func (dbMgr *DatabaseStateMgr) GetState() (state *DatabaseState, cas uint64, err error) {
 	cas, err = dbMgr.metadataStore.Get(dbMgr.dbStateID, &state)
 	if err != nil && !base.IsDocNotFoundError(err) {
-		return state, cas, err
+		return nil, cas, err
 	}
 	return
 }
 
 // DeleteState removes the database state document from the metadata store using a CAS-protected Remove.
-// Returns an error on CAS mismatch or if the document does not exist.
+// Returns an error on delete failure
 func (dbMgr *DatabaseStateMgr) DeleteState() (err error) {
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
-	_, err = dbMgr.metadataStore.Remove(dbMgr.dbStateID, dbMgr.CAS)
+	_, err = dbMgr.metadataStore.Update(dbMgr.dbStateID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		return nil, nil, true, nil
+	})
 	if err != nil {
-		// The stop operation has already succeeded above. If another cleanup path
-		// or node removed or updated the state document first, treat that as a
-		// benign race instead of failing the API after a successful stop.
-		if !base.IsDocNotFoundError(err) && !base.IsCasMismatch(err) {
-			return err
-		}
+		return err
 	}
 	dbMgr.CAS = 0
-	dbMgr.State = DatabaseState{}
 	return
 }
 
@@ -120,9 +120,12 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // changed. If the document is not found it calls resumeFunc(false) to signal that resync is no longer
 // running. CAS changes that match the locally held CAS are ignored to avoid redundant callbacks.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
+	dbMgr.lock.Lock()
+	defer dbMgr.lock.Unlock()
 	state, cas, err := dbMgr.GetState()
 	if err != nil {
 		if base.IsDocNotFoundError(err) && cas != dbMgr.CAS {
+			dbMgr.CAS = cas
 			dbMgr.resyncHandler(false)
 			return
 		}
@@ -133,7 +136,6 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	}
 	dbMgr.resyncHandler(state.ResyncRunning)
 	dbMgr.CAS = cas
-	dbMgr.State = state
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.

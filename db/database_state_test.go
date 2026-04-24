@@ -30,22 +30,20 @@ func TestUpdateState(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
-		require.True(t, mgr.State.ResyncRunning)
 		require.NotZero(t, mgr.CAS)
 
 		var storedState DatabaseState
 		storeCAS, err := metadataStore.Get(docID, &storedState)
 		require.NoError(t, err)
 		require.Equal(t, mgr.CAS, storeCAS)
-		require.Equal(t, mgr.State, storedState)
 	})
 
-	t.Run("returns error on stale CAS", func(t *testing.T) {
+	t.Run("returns no error on stale CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		mgr.CAS = 0 // force stale CAS
-		require.Error(t, mgr.UpdateState(DatabaseState{ResyncRunning: false}))
+		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 	})
 }
 
@@ -103,15 +101,14 @@ func TestDeleteState(t *testing.T) {
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		require.NoError(t, mgr.DeleteState())
 		require.Zero(t, mgr.CAS)
-		require.Equal(t, DatabaseState{}, mgr.State)
 	})
 
-	t.Run("returns error when doc already deleted", func(t *testing.T) {
+	t.Run("returns no error when doc already deleted", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		require.NoError(t, mgr.DeleteState())
-		require.Error(t, mgr.DeleteState())
+		require.NoError(t, mgr.DeleteState())
 	})
 }
 
@@ -129,6 +126,11 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		mgr.pollingInterval = 10 * time.Millisecond
 
+		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
+		_, err := metadataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+			return nil, nil, true, nil
+		})
+		require.NoError(t, err)
 		var called atomic.Bool
 		var resumeVal atomic.Bool
 		mgr.AddResyncFunc(func(resume bool) {
@@ -186,15 +188,51 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		mgr.pollingInterval = 10 * time.Millisecond
 
+		// Register a callback that forwards the resume value to a buffered channel.
+		// The select/default prevents blocking if the channel is already full.
 		called := make(chan bool, 1)
 		mgr.AddResyncFunc(func(resume bool) {
 			select {
 			case called <- resume:
+				return
 			default:
 			}
 		})
+
+		// Start the polling goroutine.
 		mgr.StartPolling(ctx)
+
+		// Write a state document directly via the datastore (bypassing mgr.CAS) so that
+		// the poller sees a CAS mismatch and invokes the callback.
+		_, err := metadataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: true})
+			if err != nil {
+				return nil, nil, false, err
+			}
+			return bodyBytes, nil, false, nil
+		})
+		require.NoError(t, err)
+
+		// Confirm the goroutine is running by waiting for the callback to fire.
 		base.RequireChanRecvWithTimeout(t, called, 2*time.Second)
+
+		// Stop the polling goroutine.
 		mgr.StopPolling()
+
+		// Write a new state change directly to the store. If the goroutine were still
+		// running it would detect the CAS mismatch and fire the callback again.
+		_, err = metadataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: false})
+			if err != nil {
+				return nil, nil, false, err
+			}
+			return bodyBytes, nil, false, nil
+		})
+		require.NoError(t, err)
+
+		// Wait several polling intervals and assert no callback was received,
+		// confirming the goroutine has stopped.
+		time.Sleep(50 * time.Millisecond)
+		require.Empty(t, called)
 	})
 }
