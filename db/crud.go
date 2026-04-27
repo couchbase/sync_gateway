@@ -445,7 +445,15 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 	// If delta is found, check whether it is a delta for the toRevID we want.
 	if initialFromRevision.Delta != nil && (initialFromRevision.Delta.ToCV == toRev || initialFromRevision.Delta.ToRevID == toRev) {
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, initialFromRevision.Delta.ToChannels, initialFromRevision.Delta.ToDeleted, encodeRevisions(ctx, docID, initialFromRevision.Delta.RevisionHistory))
+		// Fetch fresh channel information for toRev: a user xattr update can change the document's
+		// channels without creating a new revision (createNewRevIDSkipped), which causes DocChanged to
+		// evict the toRevision from the revision cache while leaving the delta cache intact.
+		// Similar situation also for local wins in HLV.
+		toRevChannels, toRevDeleted, err := db.getRevisionChannels(ctx, docID, toRev)
+		if err != nil {
+			return nil, nil, err
+		}
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, toRevChannels, toRevDeleted, encodeRevisions(ctx, docID, initialFromRevision.Delta.RevisionHistory))
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -467,7 +475,12 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// Check if another writer beat us to generating the delta and caching it.
 		if fromRevisionForDiff.Delta != nil && (fromRevisionForDiff.Delta.ToCV == toRev || fromRevisionForDiff.Delta.ToRevID == toRev) {
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, fromRevisionForDiff.Delta.ToChannels, fromRevisionForDiff.Delta.ToDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff.Delta.RevisionHistory))
+			// Fetch fresh channel information for the same reason as the pre-lock delta cache hit path above.
+			toRevChannels, toRevDeleted, err := db.getRevisionChannels(ctx, docID, toRev)
+			if err != nil {
+				return nil, nil, err
+			}
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, toRevChannels, toRevDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -575,6 +588,59 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 	}
 
 	return true, DocumentRevision{}
+}
+
+// getRevisionChannels returns the current channel set and deletion status for a specific revision.
+// It is used to perform a lightweight, up-to-date access check on a toRevision during a delta cache
+// hit. A user xattr update can change the document's channels without creating a new revision
+// (createNewRevIDSkipped), causing DocChanged to evict the toRevision from the revision cache while
+// leaving the delta cache intact. Fetching fresh channels here ensures authorization is correct.
+//
+// Fast path: if the revision is still present in the revision cache, its channels are returned
+// directly with no backing store I/O.
+//
+// Slow path: if the revision has been evicted from the revision cache (e.g. due to a user xattr
+// update triggering removal in DocChanged), the document is fetched from the backing store using
+// DocUnmarshalSync (sync xattr only, no body) to obtain the current channel information.
+// This avoids the overhead of a full revision cache load cycle.
+func (db *DatabaseCollection) getRevisionChannels(ctx context.Context, docID, rev string) (channels base.Set, deleted bool, err error) {
+	// Fast path: revision is still in the cache, channels are authoritative.
+	if peekedRev, found := db.revisionCache.Peek(ctx, docID, rev); found {
+		return peekedRev.Channels, peekedRev.Deleted, nil
+	}
+
+	// Slow path: fetch sync metadata only from the backing store, without populating the revision cache.
+	doc, err := db.GetDocument(ctx, docID, DocUnmarshalSync)
+	if err != nil {
+		return nil, false, err
+	}
+	if doc == nil {
+		return nil, false, ErrMissing
+	}
+
+	// If revID is a CV string, compare it against the document's current version.
+	// For the stale delta cache scenario, toRev is always the document's current version because
+	// user xattr updates do not create a new revision ID, so the CV will match.
+	if cv, parseErr := ParseVersion(rev); parseErr == nil {
+		if doc.HasCurrentVersion(ctx, cv) == nil {
+			return doc.getCurrentChannels(), doc.Deleted, nil
+		}
+		// CV does not match the current version; channels cannot be determined without additional
+		// bucket reads. Returning nil channels is safe — access will be denied conservatively.
+		return nil, false, ErrMissing
+	}
+
+	// Rev tree ID: extract channels directly from the revision tree.
+	revChannels, ok := doc.channelsForRevTreeID(rev)
+	if !ok {
+		// can't find rev (it was either an unknown rev, or an old non-leaf revision that we can't determine channels for)
+		return nil, false, ErrMissing
+	}
+	revInfo, revExists := doc.History[rev]
+	if revExists {
+		deleted = revInfo.Deleted
+	}
+	return revChannels, deleted, nil
 }
 
 // Returns the body of a revision of a document, as well as the document's current channels
