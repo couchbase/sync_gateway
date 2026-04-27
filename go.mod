@@ -11,7 +11,7 @@ require (
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
 	github.com/couchbase/gocb/v2 v2.12.1
-	github.com/couchbase/gocbcore/v10 v10.9.1
+	github.com/couchbase/gocbcore/v10 v10.9.2
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/sg-bucket v0.0.0-20260410142618-49435afc5258
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
