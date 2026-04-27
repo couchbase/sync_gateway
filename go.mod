@@ -10,8 +10,8 @@ require (
 	github.com/couchbase/cbgt v1.4.14
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
-	github.com/couchbase/gocb/v2 v2.12.1
-	github.com/couchbase/gocbcore/v10 v10.9.1
+	github.com/couchbase/gocb/v2 v2.12.2
+	github.com/couchbase/gocbcore/v10 v10.9.2
 	github.com/couchbase/gomemcached v0.2.1
 	github.com/couchbase/sg-bucket v0.0.0-20260410142618-49435afc5258
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
@@ -49,7 +49,7 @@ require (
 	github.com/couchbase/cbauth v0.1.13 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.5-0.20260107140814-1c3a03f888f8 // indirect
-	github.com/couchbase/goprotostellar v1.0.5 // indirect
+	github.com/couchbase/goprotostellar v1.0.6-0.20260407143512-d7af25156dcc // indirect
 	github.com/couchbase/goutils v0.1.2 // indirect
 	github.com/couchbase/tools-common/cloud/v8 v8.1.3 // indirect
 	github.com/couchbase/tools-common/fs v1.0.3 // indirect
