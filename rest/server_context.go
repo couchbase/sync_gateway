@@ -2184,9 +2184,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	// Initialize the cluster compat manager before loading configs so that database loads
 	// triggered by fetchAndLoadConfigs can lazily register this node in the buckets they use.
 	ccm := &clusterCompatManager{sc: sc}
-	if err := ccm.Start(ctx); err != nil {
-		base.WarnfCtx(ctx, "Failed to start cluster compat manager: %v", err)
-	}
+	ccm.Start(ctx)
 	sc.ClusterCompat = ccm
 
 	count, err := sc.fetchAndLoadConfigs(ctx, true)

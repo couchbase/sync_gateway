@@ -42,13 +42,13 @@ func MinClusterCompatVersion(versions ...ClusterCompatVersion) ClusterCompatVers
 	if len(versions) == 0 {
 		return ClusterCompatVersion{}
 	}
-	min := versions[0]
+	minVersion := versions[0]
 	for _, v := range versions[1:] {
-		if clusterCompatVersionLess(v, min) {
-			min = v
+		if clusterCompatVersionLess(v, minVersion) {
+			minVersion = v
 		}
 	}
-	return min
+	return minVersion
 }
 
 // clusterCompatVersionLess returns true if a is strictly less than b.
@@ -84,6 +84,8 @@ func (v *ClusterCompatVersion) UnmarshalJSON(data []byte) error {
 }
 
 // RegistryNode represents a single Sync Gateway node's version registration in the cluster.
+// HeartbeatAt is currently informational only; staleness-based pruning is deferred to
+// CBG-5219.
 type RegistryNode struct {
 	Version     ClusterCompatVersion `json:"version"`
 	HeartbeatAt time.Time            `json:"heartbeat_at"`

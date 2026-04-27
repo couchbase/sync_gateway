@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -25,6 +26,10 @@ var _ base.ClusterCompatChecker = (*clusterCompatManager)(nil)
 // itself in a bucket once it has a database configured on that bucket (see RegisterBucket),
 // so buckets this SG node is not serving are never touched. Heartbeats and version
 // recomputation are driven by the config polling goroutine.
+//
+// TODO: CBG-5219 - A node that crashes or is killed before Stop() runs will leave a stale
+// entry in the registry, pinning the min version to its last reported value.
+// Pruning of stale heartbeats is deferred to follow-up ticket.
 type clusterCompatManager struct {
 	sc *ServerContext
 	// trackedBuckets is intent: the buckets this node has declared ownership of via
@@ -63,13 +68,12 @@ func (m *clusterCompatManager) setCached(version *base.ClusterCompatVersion, nod
 
 // Start initializes the manager. It does not write to any bucket — node registration is
 // performed lazily when a database is loaded on a given bucket (via RegisterBucket).
-func (m *clusterCompatManager) Start(_ context.Context) error {
+func (m *clusterCompatManager) Start(_ context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.trackedBuckets == nil {
 		m.trackedBuckets = make(map[string]struct{})
 	}
-	return nil
 }
 
 // Stop best-effort deregisters this node from the buckets this node registered in.
@@ -176,7 +180,9 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 
 // refreshNodeRegistrations iterates the tracked buckets, registers this node, and returns
 // the minimum version across all nodes in those registries, a flat map of all node versions,
-// and a per-bucket breakdown of node registrations.
+// and a per-bucket breakdown of node registrations. Returns an error if every tracked bucket
+// failed so callers can leave the previously-cached state in place — stale is preferable to
+// flipping the cluster compat version to nil on a transient bucket outage.
 func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*base.ClusterCompatVersion, map[string]base.ClusterCompatVersion, map[string]base.ClusterCompatBucketNodes, error) {
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
@@ -188,12 +194,14 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
 	bucketMap := make(map[string]base.ClusterCompatBucketNodes, len(buckets))
+	succeeded := 0
 	for _, bucket := range buckets {
 		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUUID, nodeVersion)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
 		}
+		succeeded++
 		bucketNodes := make(map[string]base.RegistryNode, len(registry.Nodes))
 		for nodeUUID, node := range registry.Nodes {
 			nodeMap[nodeUUID] = node.Version
@@ -201,15 +209,15 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 		}
 		bucketMap[bucket] = base.ClusterCompatBucketNodes{Nodes: bucketNodes}
 	}
-	if len(nodeMap) == 0 {
-		return nil, nil, nil, nil
+	if succeeded == 0 {
+		return nil, nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
 	}
 	versions := make([]base.ClusterCompatVersion, 0, len(nodeMap))
 	for _, v := range nodeMap {
 		versions = append(versions, v)
 	}
-	minCompactVersion := base.MinClusterCompatVersion(versions...)
-	return &minCompactVersion, nodeMap, bucketMap, nil
+	minCompatVersion := base.MinClusterCompatVersion(versions...)
+	return &minCompatVersion, nodeMap, bucketMap, nil
 }
 
 // BucketNodes returns a deep copy of the per-bucket node registrations.

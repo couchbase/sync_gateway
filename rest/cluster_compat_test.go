@@ -169,3 +169,35 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 		assert.NotContains(t, registry.Nodes, uuid, "node %s should have been deregistered", uuid)
 	}
 }
+
+// TestClusterCompatMinVersionAcrossNodes seeds two synthetic node entries at differing
+// versions into the bucket registry and verifies the manager surfaces the minimum across
+// all registered nodes (this node + the two synthetics).
+func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	older := base.NewClusterCompatVersion(3, 5)
+	newer := base.NewClusterCompatVersion(4, 0)
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, "synthetic-old", older)
+	require.NoError(t, err)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "synthetic-new", newer)
+	require.NoError(t, err)
+
+	ccm, ok := rt.ServerContext().ClusterCompat.(*clusterCompatManager)
+	require.True(t, ok)
+	ccm.Refresh(ctx)
+
+	got := ccm.ClusterCompatVersion()
+	require.NotNil(t, got)
+	assert.Equal(t, older, *got, "ClusterCompatVersion should be the min across registered nodes")
+
+	nodes := ccm.NodeVersions()
+	assert.Equal(t, older, nodes["synthetic-old"])
+	assert.Equal(t, newer, nodes["synthetic-new"])
+	assert.Equal(t, base.NodeClusterCompatVersion, nodes[rt.ServerContext().NodeUUID])
+}

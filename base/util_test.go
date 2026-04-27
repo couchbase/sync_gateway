@@ -1949,4 +1949,3 @@ func TestRequireChan(t *testing.T) {
 		assert.Equal(t, "hello?", val)
 	})
 }
-
