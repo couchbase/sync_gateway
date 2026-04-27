@@ -34,6 +34,7 @@ concurrency:
 env:
   ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v6
   ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@v6
+  ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@v4.0.0
   GO_VERSION: &go_version 1.26.2
   GOTESTSUM_VERSION: 1.13.0
   GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.9.0
@@ -214,14 +215,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
-      - uses: astral-sh/ruff-action@v4.0.0
+      - uses: *actions_ruff_version
         with:
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
-      - uses: astral-sh/ruff-action@v3
+      - uses: *actions_ruff_version
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
