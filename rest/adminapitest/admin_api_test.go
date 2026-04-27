@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2337,13 +2338,19 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
 	// Update is done on a GetRole operation so this delete is done between a GET and save operation.
-	triggerCallback := true
+	// Filter by the role doc key so unrelated bucket Updates can't consume the one-shot trigger,
+	// and clear the trigger before sending DELETE so the recursive Update inside DELETE no-ops.
+	roleDocID := rt.GetDatabase().Authenticator(base.TestCtx(t)).DocIDForRole("role")
+	var fired atomic.Bool
 	leakyDataStore.SetPostUpdateCallback(func(key string) {
-		if triggerCallback {
-			triggerCallback = false
-			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-			rest.RequireStatus(t, resp, http.StatusOK)
+		if key != roleDocID {
+			return
 		}
+		if !fired.CompareAndSwap(false, true) {
+			return
+		}
+		resp := rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
+		rest.RequireStatus(t, resp, http.StatusOK)
 	})
 
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["chan"]}`)
