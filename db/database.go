@@ -2313,10 +2313,10 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
+	needChangeCacheUnlock = false
 	if err := db.changeCache.Start(initialSequence); err != nil {
 		return err
 	}
-	needChangeCacheUnlock = false
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.

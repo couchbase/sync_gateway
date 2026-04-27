@@ -1066,7 +1066,7 @@ func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 
 // WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.
 func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
-
+	t.Helper()
 	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
 	wgFinished := make(chan bool)
 
