@@ -157,7 +157,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
-	// assert all 10 docs are processed again
+	// assert all docs are processed again
 	assert.Equal(t, numDocs, status.DocsProcessed)
 }
 
@@ -188,6 +188,11 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	status := rt1.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateRunning)
 	migrationID := status.MigrationID
 
+	// While node 1's migration is running, attempting to start on node 2 must return 503.
+	// This verifies the cluster-aware heartbeat lock blocks concurrent starts across nodes.
+	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
 	// stop migration
 	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -201,14 +206,12 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2MigrationStatus.State)
 
-	// kick off migration run again on node 2. Should resume and have same migration id
+	// kick off migration run again on node 2. Should resume and have same migration id.
+	// Note: with the small Rosmar test dataset the resumed migration can finish before the
+	// transient Running state is observable, so we don't poll for it here — the resume is
+	// instead verified by the migrationID equality check on the final Completed status below.
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	_ = rt2.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateRunning)
-
-	// assert starting on another node when already running should error
-	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=start", "")
-	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
 
 	// Wait for run to be marked as complete on both nodes
 	status = rt1.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
@@ -219,7 +222,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) int64 {
 	numDocs := int64(10)
 	if base.UnitTestUrlIsWalrus() {
-		numDocs *= 10
+		numDocs *= 20
 	}
 	for i := range numDocs {
 		docBody := db.Body{
