@@ -13,7 +13,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
@@ -132,65 +131,6 @@ func GenerateRandomID() (string, error) {
 		return "", fmt.Errorf("failed to generate random ID: %w", err)
 	}
 	return val, nil
-}
-
-// nodeUUIDLength is the expected length of a valid node UUID
-// (128-bit value encoded as a 32-character lowercase hex string).
-const nodeUUIDLength = 32
-
-// GenerateNodeUUID derives a stable 32-character hex node UUID from a fingerprint of the
-// current host (hostname + sorted non-loopback interface MAC addresses). The same host
-// produces the same UUID across restarts without needing any persistent state, while two
-// hosts that share a hostname still differ via their MAC addresses. Only if no fingerprint
-// inputs can be collected do we fall back to a random UUID.
-func GenerateNodeUUID(ctx context.Context) (string, error) {
-	hostname, macs := collectNodeFingerprint(ctx)
-	if hostname == "" && len(macs) == 0 {
-		WarnfCtx(ctx, "Could not collect hostname or interface MACs for deterministic node UUID — falling back to random")
-		return GenerateRandomID()
-	}
-	return deterministicNodeUUID(hostname, macs), nil
-}
-
-// collectNodeFingerprint reads the hostname and non-empty hardware addresses of all
-// network interfaces (loopback and interfaces without a MAC are skipped). Either
-// component may be empty if the system call fails; both empty means we cannot
-// fingerprint the host.
-func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string) {
-	if h, err := os.Hostname(); err == nil {
-		hostname = h
-	} else {
-		WarnfCtx(ctx, "Could not read hostname for node UUID fingerprint: %v", err)
-	}
-
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		WarnfCtx(ctx, "Could not enumerate network interfaces for node UUID fingerprint: %v", err)
-		return hostname, nil
-	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		if mac := iface.HardwareAddr.String(); mac != "" {
-			macs = append(macs, mac)
-		}
-	}
-	return hostname, macs
-}
-
-// deterministicNodeUUID produces a 32-char lowercase hex digest over the canonical
-// colon-separated fingerprint (hostname, then MACs sorted lexicographically). The
-// separator guards against hostname/MAC boundary collisions; ':' is safe because it
-// cannot appear in a hostname on Linux, macOS, or Windows. Pure function — exposed
-// unexported for tests.
-func deterministicNodeUUID(hostname string, macs []string) string {
-	sorted := append([]string(nil), macs...)
-	sort.Strings(sorted)
-
-	parts := append([]string{hostname}, sorted...)
-	sum := sha256.Sum256([]byte(strings.Join(parts, ":")))
-	return hex.EncodeToString(sum[:nodeUUIDLength/2])
 }
 
 // randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.

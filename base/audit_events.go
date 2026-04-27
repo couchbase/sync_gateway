@@ -56,7 +56,7 @@ const (
 
 	// SG cluster events
 	AuditIDClusterInfoRead   AuditID = 53350
-	AuditIDClusterCompatRead AuditID = 53351
+	AuditIDClusterCompatRead AuditID = 53355
 	AuditIDPostUpgrade       AuditID = 54043
 
 	// Database events

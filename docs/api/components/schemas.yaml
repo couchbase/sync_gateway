@@ -2295,9 +2295,6 @@ Startup-config:
         x509_key_path:
           description: Key path (private key) for X.509 bucket auth
           type: string
-        node_heartbeat_expiry_multiplier:
-          description: Number of missed heartbeats before a node is considered stale. Staleness threshold = config_update_frequency * multiplier. Default is 6
-          type: integer
       readOnly: true
       required:
         - server

@@ -9,7 +9,9 @@
 package rest
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -82,10 +84,88 @@ func TestClusterCompatEndpoint(t *testing.T) {
 	assert.True(t, foundNode, "This node's UUID should appear in at least one bucket's node registrations")
 }
 
-func TestClusterCompatEndpointRequiresAdmin(t *testing.T) {
+func TestClusterCompatEndpointNotOnPublicPort(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendRequest(http.MethodGet, "/_cluster_compat", "")
 	assert.Equal(t, http.StatusNotFound, resp.Code, "/_cluster_compat should not be accessible on public port")
+}
+
+// TestRegisterNodeVersionCASRetry concurrently registers many nodes in the same bucket registry
+// and verifies the CAS-retry path converges: every node ends up in the registry, and no caller
+// sees an error. Serialized get+set without retry would lose writes under this load.
+func TestRegisterNodeVersionCASRetry(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	const n = 10
+	version := base.NewClusterCompatVersion(4, 0)
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	base.AssertLogContains(t, "CAS mismatch registering node version", func() {
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				_, errs[i] = bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
+			}(i)
+		}
+		wg.Wait()
+	})
+	for i, err := range errs {
+		assert.NoError(t, err, "RegisterNodeVersion for node-%d", i)
+	}
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	for i := 0; i < n; i++ {
+		uuid := fmt.Sprintf("node-%d", i)
+		assert.Contains(t, registry.Nodes, uuid, "node %s should be in registry after concurrent registration", uuid)
+	}
+}
+
+// TestDeregisterNodeVersionCASRetry concurrently deregisters many nodes from the same bucket
+// registry and verifies the CAS-retry path converges: every node is removed.
+func TestDeregisterNodeVersionCASRetry(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	const n = 10
+	version := base.NewClusterCompatVersion(4, 0)
+	for i := 0; i < n; i++ {
+		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
+		require.NoError(t, err)
+	}
+
+	var wg sync.WaitGroup
+	base.AssertLogContains(t, "CAS mismatch deregistering node", func() {
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				bc.DeregisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i))
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	for i := 0; i < n; i++ {
+		uuid := fmt.Sprintf("node-%d", i)
+		assert.NotContains(t, registry.Nodes, uuid, "node %s should have been deregistered", uuid)
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ClusterCompatVersion represents a major.minor version used for cluster compatibility gating.
@@ -82,13 +83,27 @@ func (v *ClusterCompatVersion) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// RegistryNode represents a single Sync Gateway node's version registration in the cluster.
+type RegistryNode struct {
+	Version     ClusterCompatVersion `json:"version"`
+	HeartbeatAt time.Time            `json:"heartbeat_at"`
+}
+
+// ClusterCompatBucketNodes stores the node registrations for a single bucket's registry.
+type ClusterCompatBucketNodes struct {
+	Nodes map[string]RegistryNode `json:"nodes,omitempty"`
+}
+
 // ClusterCompatChecker provides read-only access to the cluster compatibility version.
 type ClusterCompatChecker interface {
+	// ClusterCompatVersion returns a copy of the current cluster compat version, or nil if not yet computed.
 	ClusterCompatVersion() *ClusterCompatVersion
 	ClusterIsAtLeast(major, minor uint8) bool
 	// NodeVersions returns the cluster compat version of each node in the cluster, keyed by node UUID.
 	// This is the union of nodes across all bucket registries.
 	NodeVersions() map[string]ClusterCompatVersion
+	// BucketNodes returns a per-bucket breakdown of node registrations, keyed by bucket name.
+	BucketNodes() map[string]ClusterCompatBucketNodes
 }
 
 // ParseClusterCompatVersion parses a "major.minor" string into a ClusterCompatVersion.

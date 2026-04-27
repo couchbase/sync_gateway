@@ -50,21 +50,7 @@ type GatewayRegistry struct {
 	SGVersion    base.ComparableBuildVersion     `json:"sg_version"`      // Latest patch version of Sync Gateway that touched the registry
 	UpdatedAt    time.Time                       `json:"updated_at"`      // Time the registry was last updated
 	CreatedAt    time.Time                       `json:"created_at"`      // Time the registry was created
-	Nodes        map[string]*RegistryNode        `json:"nodes,omitempty"` // Map of node UUID to node version registration
-}
-
-// PruneStaleNodes removes nodes that haven't heartbeated within the given expiry duration.
-// Returns the list of pruned node UUIDs.
-func (r *GatewayRegistry) PruneStaleNodes(expiry time.Duration) []string {
-	// CBG-5219: test this functionality
-	var pruned []string
-	for uuid, node := range r.Nodes {
-		if time.Since(node.HeartbeatAt) > expiry {
-			delete(r.Nodes, uuid)
-			pruned = append(pruned, uuid)
-		}
-	}
-	return pruned
+	Nodes        map[string]*base.RegistryNode   `json:"nodes,omitempty"` // Map of node UUID to node version registration
 }
 
 const GatewayRegistryVersion = "1.0"

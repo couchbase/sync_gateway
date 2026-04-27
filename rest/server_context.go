@@ -215,7 +215,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		}
 	}
 
-	nodeUUID, err := base.GenerateNodeUUID(ctx)
+	nodeUUID, err := base.GenerateNodeUUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to generate node UUID: %v — using LogContextID as fallback", err)
 		nodeUUID = sc.LogContextID
