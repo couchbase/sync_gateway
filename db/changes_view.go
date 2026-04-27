@@ -131,7 +131,7 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			queryRowCount++
 			highSeq = entry.Sequence
 
-			if activeOnly && !entry.IsActive() {
+			if activeOnly && (!entry.IsActive() || len(entries) >= limit) {
 				continue
 			}
 			entries = append(entries, entry)
