@@ -2199,7 +2199,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.BucketLock.RLock()
 	defer db.BucketLock.RUnlock()
 
-	if db.IsClosed() {
+	if db.Bucket == nil {
 		return base.RedactErrorf("cannot start online processes for database %q because it is closed", base.MD(db.Name))
 	}
 
