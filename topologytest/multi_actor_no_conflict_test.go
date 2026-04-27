@@ -68,8 +68,8 @@ func TestMultiActorDelete(t *testing.T) {
 						createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 						waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-						deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-						waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName}, topology)
+						deletePeer.DeleteDocument(collectionName, docID)
+						waitForConvergingTombstones(t, collectionName, docID, topology)
 					})
 				}
 			}
@@ -101,8 +101,8 @@ func TestMultiActorResurrect(t *testing.T) {
 							createVersion := createPeer.CreateDocument(collectionName, docID, body1)
 							waitForVersionAndBody(t, collectionName, docID, createVersion, topology)
 
-							deleteVersion := deletePeer.DeleteDocument(collectionName, docID)
-							waitForTombstoneVersion(t, collectionName, docID, BodyAndVersion{docMeta: deleteVersion, updatePeer: deletePeerName}, topology)
+							deletePeer.DeleteDocument(collectionName, docID)
+							waitForConvergingTombstones(t, collectionName, docID, topology)
 
 							resBody := fmt.Appendf(nil, `{"activePeer": "%s", "createPeer": "%s", "deletePeer": "%s", "resurrectPeer": "%s", "topology": "%s", "action": "resurrect"}`, resurrectPeerName, createPeerName, deletePeer, resurrectPeer, topology.specDescription)
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
