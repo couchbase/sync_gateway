@@ -157,7 +157,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
-	// assert all 10 docs are processed again
+	// assert all docs are processed again
 	assert.Equal(t, numDocs, status.DocsProcessed)
 }
 
