@@ -753,12 +753,6 @@ func waitForBGTCompletion(ctx context.Context, waitTimeMax time.Duration, tasks 
 	}
 }
 
-func (context *DatabaseContext) IsClosed() bool {
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
-	return context.Bucket == nil
-}
-
 // For testing only!
 func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 	context.mutationListener.Stop(ctx)
@@ -851,10 +845,9 @@ func (context *DatabaseContext) NotifyTerminatedChanges(ctx context.Context, use
 	context.mutationListener.NotifyCheckForTermination(ctx, base.SetOf(base.UserPrefixRoot+username))
 }
 
+// Authenticator returns an authenticator for this database context. The authenticator is stateless, so it's safe to
+// return a new instance on each call.
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
-
 	sessionCookieName := auth.DefaultCookieName
 	if context.Options.SessionCookieName != "" {
 		sessionCookieName = context.Options.SessionCookieName
