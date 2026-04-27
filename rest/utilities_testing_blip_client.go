@@ -1305,7 +1305,7 @@ func (btcc *BlipTesterCollectionClient) StartPushWithOpts(opts BlipTesterPushOpt
 	go func() {
 		defer func() {
 			waitTime := time.Second * 5
-			WaitWithTimeout(btcc.TB(), &btcc.pushGoroutineWg, waitTime)
+			base.WaitWithTimeout(btcc.TB(), &btcc.pushGoroutineWg, waitTime)
 			btcc.pushRunning.Set(false)
 		}()
 		defer btcc.pushGoroutineWg.Done()

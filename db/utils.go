@@ -47,6 +47,7 @@ func NewBackgroundTask(ctx context.Context, taskName string, task BackgroundTask
 					return
 				}
 			case <-c:
+				base.InfofCtx(ctx, base.KeyAll, "Terminating background task: %q", taskName)
 				base.DebugfCtx(ctx, base.KeyAll, "Terminating background task")
 				return
 			}

@@ -153,7 +153,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*5)
+	base.WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*5)
 }
 
 // Start subChanges w/ continuous=true, batchsize=10
@@ -255,7 +255,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	}
 
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
+	base.WaitWithTimeout(t, &receivedChangesWg, time.Second*30)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
@@ -370,7 +370,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*60)
+	base.WaitWithTimeout(t, &receivedChangesWg, time.Second*60)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
@@ -522,7 +522,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*15)
+	base.WaitWithTimeout(t, &receivedChangesWg, time.Second*15)
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
@@ -939,8 +939,8 @@ function(doc, oldDoc) {
 	rt.WaitForPendingChanges()
 
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, time.Second*5)
-	WaitWithTimeout(t, &revsFinishedWg, time.Second*5)
+	base.WaitWithTimeout(t, &receivedChangesWg, time.Second*5)
+	base.WaitWithTimeout(t, &revsFinishedWg, time.Second*5)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -1079,8 +1079,8 @@ function(doc, oldDoc) {
 
 	timeout := 30 * time.Second * db.GetCachingFeedDelayFactor(t)
 	// Wait until all expected changes are received by change handler
-	WaitWithTimeout(t, &receivedChangesWg, timeout)
-	WaitWithTimeout(t, &revsFinishedWg, timeout)
+	base.WaitWithTimeout(t, &receivedChangesWg, timeout)
+	base.WaitWithTimeout(t, &revsFinishedWg, timeout)
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
@@ -1163,7 +1163,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 		}()
 	}
 
-	WaitWithTimeout(t, &wg, time.Second*30)
+	base.WaitWithTimeout(t, &wg, time.Second*30)
 
 	throttleCount := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledCount.Value()
 	throttleTime := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledTime.Value()

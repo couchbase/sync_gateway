@@ -173,6 +173,38 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 		assert.Equal(t, status, httpErr.Status)
 }
 
+func TestDatabaseStartOnlineProcessesWhileClosing(t *testing.T) {
+	timeout := 30 * time.Second
+	go func() {
+		select {
+		case <-t.Context().Done():
+			return
+		case <-time.After(timeout):
+			require.FailNow(t, fmt.Sprintf("test has timed out after %s", timeout))
+		}
+	}()
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, tBucket, 1),
+	}
+
+	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, true, dbcOptions)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		_ = dbCtx.StartOnlineProcesses(ctx)
+	})
+
+	wg.Go(func() {
+		dbCtx.Close(ctx)
+	})
+
+	base.WaitWithTimeout(t, &wg, timeout)
+}
+
 func TestDatabase(t *testing.T) {
 
 	db, ctx := setupTestDB(t)

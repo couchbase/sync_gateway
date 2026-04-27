@@ -2053,7 +2053,7 @@ func TestWebhookProperties(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	WaitWithTimeout(t, &wg, 30*time.Second)
+	base.WaitWithTimeout(t, &wg, 30*time.Second)
 }
 
 func TestWebhookSpecialProperties(t *testing.T) {

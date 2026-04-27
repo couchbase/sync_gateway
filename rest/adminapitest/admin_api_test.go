@@ -460,7 +460,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 		wg.Done()
 	}()
 
-	rest.WaitWithTimeout(t, &wg, time.Second*30)
+	base.WaitWithTimeout(t, &wg, time.Second*30)
 	rest.RequireStatus(t, goroutineresponse1, http.StatusOK)
 	rest.RequireStatus(t, goroutineresponse2, http.StatusOK)
 

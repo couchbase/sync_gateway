@@ -1851,8 +1851,8 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 	bt.Send(subChangesRequest)
 
-	WaitWithTimeout(bt.TB(), &changesFinishedWg, time.Second*30)
-	WaitWithTimeout(bt.TB(), &revsFinishedWg, time.Second*30)
+	base.WaitWithTimeout(bt.TB(), &changesFinishedWg, time.Second*30)
+	base.WaitWithTimeout(bt.TB(), &revsFinishedWg, time.Second*30)
 	return resultDoc, resultErr
 }
 
@@ -2264,27 +2264,6 @@ func (d RestDocument) IsRemoved() bool {
 		return false
 	}
 	return removed.(bool)
-}
-
-// WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.
-func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
-
-	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
-	wgFinished := make(chan bool)
-
-	go func() {
-		wg.Wait()
-		wgFinished <- true
-	}()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case <-wgFinished:
-		return
-	case <-timer.C:
-		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
-	}
 }
 
 // NewHTTPTestServerOnListener returns a new httptest server, which is configured to listen on the given listener.
