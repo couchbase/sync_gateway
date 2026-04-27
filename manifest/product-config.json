@@ -718,7 +718,7 @@
             "start_build": 2,
             "trigger_blackduck": true
         },
-        "manifest/3.2.7.xml": {
+        "manifest/3.2/3.2.7.xml": {
             "do-build": false,
             "go_version": "1.24.12",
             "interval": 1440,
