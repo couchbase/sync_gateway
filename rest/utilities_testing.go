@@ -306,6 +306,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
+
+	_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
+	if rt.LeakyBucketConfig != nil || isLeaky {
+		rt.RestTesterServerContext.connectToBucketFn = func(ctx context.Context, spec base.BucketSpec, failfast bool) (base.Bucket, error) {
+			if spec.BucketName == testBucket.GetName() {
+				return testBucket.NoCloseClone(), nil
+			}
+			return db.ConnectToBucket(ctx, spec, false)
+		}
+	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	if rt.RestTesterConfig.syncGatewayVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.sgVersion = *rt.RestTesterConfig.syncGatewayVersion
@@ -406,13 +416,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			_, err := rt.TestBucket.GetMetadataStore().Incr(syncSeqKey, 0, rt.InitSyncSeq, 0)
 			require.NoError(rt.TB(), err)
 		}
-		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
-		var err error
-		if rt.LeakyBucketConfig != nil || isLeaky {
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB(), *rt.DatabaseConfig, testBucket.Bucket)
-		} else {
-			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
-		}
+		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		require.NoError(rt.TB(), err)
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
@@ -1296,19 +1300,6 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 	s.responseFinished.Done()
 
 	return numBytesWritten, err
-}
-
-// AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
-// If an existing config is found for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
-	options := getOrAddDatabaseConfigOptions{
-		useExisting: false,
-		failFast:    false,
-		connectToBucketFn: func(_ context.Context, spec base.BucketSpec, _ bool) (base.Bucket, error) {
-			return bucket, nil
-		},
-	}
-	return sc.getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
 // The parameters used to create a BlipTester

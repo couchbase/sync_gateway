@@ -160,6 +160,8 @@ type LeakyBucketConfig struct {
 	// AddCallback issues a callback during Add.
 	AddCallback func(key string) (bool, error)
 
+	CreateIndexIfNotExistsCallback func(indexName string)
+
 	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.
 	IgnoreClose bool
 }

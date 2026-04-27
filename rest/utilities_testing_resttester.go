@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -418,6 +419,12 @@ func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
 
 // WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
+	timeout := 10 * time.Second
+	pollInterval := 10 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
@@ -425,7 +432,7 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) d
 		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &resyncStatus))
 
 		assert.Equal(c, status, resyncStatus.State)
-	}, time.Second*10, time.Millisecond*10)
+	}, timeout, pollInterval)
 	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
 		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
 	}

@@ -312,8 +312,8 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		tbp.Fatalf(testCtx, "couldn't get %s bucket from <%s>: %v", typeName, url, err)
 	}
 
+	b = walrusBucket
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
-	b = &LeakyBucket{bucket: walrusBucket, config: &LeakyBucketConfig{}}
 
 	ctx := bucketCtx(testCtx, b)
 	tbp.Logf(ctx, "Creating new %s test bucket", typeName)
@@ -728,11 +728,11 @@ loop:
 
 				start := time.Now()
 				b, err := tbp.cluster.openTestBucket(ctx, testBucketName, waitForReadyBucketTimeout)
-				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
 				}
+				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 
 				err, _ = RetryLoop(ctx, b.GetName()+"bucketReadierRetry", func() (bool, error, any) {
 					tbp.Logf(ctx, "Running bucket through readier function")

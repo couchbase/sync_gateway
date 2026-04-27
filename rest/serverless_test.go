@@ -178,6 +178,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server due to testing gocb connection strings")
 	}
+
 	tests := []struct {
 		name                 string
 		expectedConnstrQuery string
@@ -212,6 +213,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
+			sc.connectToBucketFn = nil
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
 				tb.GetName(), base.TestsDisableGSI()))
@@ -254,8 +256,10 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 
 			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 			defer rt.Close()
+
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
+			sc.connectToBucketFn = nil
 
 			if test.name == "unsupported options specified" {
 				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "unsupported": {"dcp_read_buffer": %d, "kv_buffer": %d}}`,

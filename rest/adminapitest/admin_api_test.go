@@ -2323,10 +2323,9 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
-	}
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
 
 	// Create role
