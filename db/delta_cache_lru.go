@@ -115,13 +115,9 @@ func (dc *LRUDeltaCache) getCachedDelta(ctx context.Context, docID, fromVersionS
 	return deltaValue
 }
 
-// CalculateDeltaBytes will calculate bytes from delta channels, delta revisions and delta body
+// CalculateDeltaBytes will calculate bytes from delta revisions and delta body
 func (delta *RevisionDelta) CalculateDeltaBytes() {
 	var totalBytes int
-	for v := range delta.ToChannels {
-		bytes := len([]byte(v))
-		totalBytes += bytes
-	}
 	// history calculation
 	historyBytes := 32 * len(delta.RevisionHistory)
 	totalBytes += historyBytes

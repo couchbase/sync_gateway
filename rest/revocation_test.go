@@ -1208,10 +1208,6 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 }
 
 func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip test with LeakyBucket dependency when running in integration")
-	}
-
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.Ptr(2),
@@ -1224,6 +1220,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 				},
 			},
 		}},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
 
@@ -1241,8 +1238,12 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(t, ok)
+	shouldDeleteDoc := true
 	leakyDataStore.SetGetRawCallback(func(s string) error {
-		require.NoError(t, leakyDataStore.Delete("doc"))
+		if shouldDeleteDoc {
+			shouldDeleteDoc = false
+			require.NoError(t, leakyDataStore.Delete("doc"))
+		}
 		return nil
 	})
 

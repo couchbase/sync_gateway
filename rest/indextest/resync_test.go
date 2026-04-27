@@ -19,8 +19,15 @@ import (
 )
 
 func TestResyncWithoutIndexes(t *testing.T) {
+	var createdIndexes []string
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		PersistentConfig: true})
+		PersistentConfig: true,
+		LeakyBucketConfig: &base.LeakyBucketConfig{
+			CreateIndexIfNotExistsCallback: func(indexName string) {
+				createdIndexes = append(createdIndexes, indexName)
+			},
+		},
+	})
 	defer rt.Close()
 
 	dbName := "db"
@@ -31,49 +38,28 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	rt.CreateTestDoc("doc1")
 
 	rt.SyncFn = `function(doc, oldDoc) {channel("A")}`
-	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
-	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
+	config := rt.NewDbConfig()
+	config.StartOffline = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, config), http.StatusCreated)
 	rt.WaitForDBInitializationCompleted(dbName)
 
 	if !base.TestsDisableGSI() {
-		for _, collection := range rt.GetDatabase().CollectionByID {
-			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
-			require.True(t, ok)
-			require.NoError(t, base.DropAllIndexes(rt.Context(), n1qlStore))
-		}
+		rest.DropAllTestIndexesIncludingPrimary(t, rt.TestBucket)
 	}
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
+
 	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
 
-	defaultDataStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
-	require.True(t, ok)
-
-	if !base.TestsDisableGSI() {
-		numIndexes, err := defaultDataStore.GetIndexes()
-		require.NoError(t, err)
-		if rt.GetDatabase().UseLegacySyncDocsIndex() {
-			require.Len(t, numIndexes, 1) // sg_syncDocs
-		} else {
-			require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
-		}
-
-		for _, collection := range rt.GetDatabase().CollectionByID {
-			n1qlStore, ok := base.AsN1QLStore(collection.GetCollectionDatastore())
-			require.True(t, ok)
-			numIndexes, err := n1qlStore.GetIndexes()
-			require.NoError(t, err)
-			if collection.IsDefaultCollection() {
-				if rt.GetDatabase().UseLegacySyncDocsIndex() {
-					require.Len(t, numIndexes, 1) // sg_syncDocs
-				} else {
-					require.Len(t, numIndexes, 2) // sg_roles, sg_syncDocs
-				}
-			} else {
-				require.Len(t, numIndexes, 0, "Expected 0 indexes for non-default collection %s.%s", collection.ScopeName, collection.Name)
-			}
-		}
+	if base.TestsDisableGSI() {
+		return
 	}
+	if rt.GetDatabase().UseLegacySyncDocsIndex() {
+		require.ElementsMatch(t, []string{"sg_syncDocs_x1"}, createdIndexes)
+	} else {
+		require.ElementsMatch(t, []string{"sg_users_x1", "sg_roles_x1"}, createdIndexes)
+	}
+
 }

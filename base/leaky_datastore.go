@@ -416,6 +416,9 @@ func (lds *LeakyDataStore) CreateIndex(ctx context.Context, indexName string, ex
 }
 
 func (lds *LeakyDataStore) CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	if lds.config.CreateIndexIfNotExistsCallback != nil {
+		lds.config.CreateIndexIfNotExistsCallback(indexName)
+	}
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return err

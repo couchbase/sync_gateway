@@ -421,9 +421,9 @@ func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
 	timeout := 10 * time.Second
 	pollInterval := 10 * time.Millisecond
-	if os.Getenv("CI") != "" {
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
 		timeout = 60 * time.Second
-		pollInterval = 100 * time.Millisecond
+		pollInterval = 500 * time.Millisecond
 	}
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {

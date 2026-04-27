@@ -103,7 +103,8 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
-	SGCollect                     *sgCollect // singleton instance for this server's sgcollect_info process
+	SGCollect                     *sgCollect      // singleton instance for this server's sgcollect_info process
+	connectToBucketFn             db.OpenBucketFn // supply a custom function for buckets, used for testing only
 }
 
 type ActiveReplicationsCounter struct {
@@ -125,12 +126,11 @@ type bootstrapContext struct {
 }
 
 type getOrAddDatabaseConfigOptions struct {
-	failFast          bool            // if set, a failure to connect to a bucket of collection will immediately fail
-	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
-	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
-	forceOnline       bool            // force the database to come online, even if startOffline is set
-	asyncOnline       bool            // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
-	loadFromBucket    bool            // If this is load config from bucket operation
+	failFast       bool // if set, a failure to connect to a bucket of collection will immediately fail
+	useExisting    bool //  if true, return an existing DatabaseContext vs return an error
+	forceOnline    bool // force the database to come online, even if startOffline is set
+	asyncOnline    bool // Whether getOrAddDatabaseConfig should block until database is ready, when startOffline=false
+	loadFromBucket bool // If this is load config from bucket operation
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -282,9 +282,14 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	// stop HTTP servers - prevents any further requests from coming in before we continue with tearing down everything else
 	sc.stopHTTPServers(ctx)
 
+	err := sc.DatabaseInitManager.Close(ctx)
+	if err != nil {
+		base.AssertfCtx(ctx, "Error waiting for async database initialization to close server context: %v", err)
+	}
+
 	// stop the config polling
 	if err := base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait); err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
+		base.AssertfCtx(ctx, "Couldn't stop background config update worker: %v", err)
 	}
 
 	// close cached bootstrap bucket connections for config polling
@@ -299,7 +304,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	}
 
 	if err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait); err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
+		base.AssertfCtx(ctx, "Couldn't stop stats logger when closing ServerContext: %v", err)
 	}
 
 	// close all databases
@@ -750,9 +755,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 
 	// the connectToBucketFn is used for testing seam
-	if options.connectToBucketFn != nil {
+	if sc.connectToBucketFn != nil {
 		// the connectToBucketFn is used for testing seam
-		bucket, err = options.connectToBucketFn(ctx, spec, options.failFast)
+		bucket, err = sc.connectToBucketFn(ctx, spec, options.failFast)
 	} else {
 		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
 	}

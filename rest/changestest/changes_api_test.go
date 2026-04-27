@@ -30,12 +30,14 @@ import (
 
 // Reproduces issue #2383 by forcing a partial error from the view on the first changes request.
 func TestReproduce2383(t *testing.T) {
-
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
+		t.Skip("Skip test when running in integration, only works in view mode")
 	}
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:            channels.DocChannelsSyncFunction,
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -2597,13 +2599,12 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 // prepended to the cache.  Reproduces #3475
 func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	rtConfig := rest.RestTesterConfig{
+		SyncFn:            `function(doc, oldDoc){channel(doc.channels);}`,
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
