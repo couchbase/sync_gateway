@@ -649,8 +649,8 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
-	WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*10)
-	WaitWithTimeout(t, &revsFinishedWg, time.Second*10)
+	base.WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*10)
+	base.WaitWithTimeout(t, &revsFinishedWg, time.Second*10)
 
 }
 
@@ -753,8 +753,8 @@ func TestChangesResponseWithHLVInHistory(t *testing.T) {
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
-	WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*10)
-	WaitWithTimeout(t, &revsFinishedWg, time.Second*10)
+	base.WaitWithTimeout(t, &receivedChangesRequestWg, time.Second*10)
+	base.WaitWithTimeout(t, &revsFinishedWg, time.Second*10)
 }
 
 // TestCBLHasPreUpgradeMutationThatHasNotBeenReplicated:

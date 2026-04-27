@@ -2194,14 +2194,26 @@ func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
 }
 
 func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedError error) {
+	// It is possible to call StartOnlineProcesses while Close is called if Database is loaded with
+	// StartOffline: true
+	db.BucketLock.RLock()
+	defer db.BucketLock.RUnlock()
 
+	if db.Bucket == nil {
+		return base.RedactErrorf("cannot start online processes for database %q because it is closed", base.MD(db.Name))
+	}
+
+	needChangeCacheUnlock := false
 	defer func() {
 		if returnedError != nil {
+			// changeCache.Init locks the change cache, so if we the error occurs between changeCache.Init and
+			// changeCache.Start the cache must be unlocked
+			if needChangeCacheUnlock {
+				db.changeCache.lock.Unlock()
+			}
 			// indicate something has gone wrong in the online processes
 			db.DatabaseStartupError = NewDatabaseError(DatabaseOnlineProcessError)
 			// grab bucket lock so stopOnlineProcesses is not called at the same time as db.Close()
-			db.BucketLock.RLock()
-			defer db.BucketLock.RUnlock()
 			db._stopOnlineProcesses(ctx)
 		}
 	}()
@@ -2241,6 +2253,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache: %s", err)
 		return err
 	}
+	needChangeCacheUnlock = true
 
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 
@@ -2300,6 +2313,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		_ = db.sequences.waitForReleasedSequences(ctx, initialSequenceTime)
 	}
 
+	needChangeCacheUnlock = false
 	if err := db.changeCache.Start(initialSequence); err != nil {
 		return err
 	}
