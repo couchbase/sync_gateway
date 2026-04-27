@@ -32,16 +32,18 @@ concurrency:
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
 env:
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v6
+  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@v6
   GO_VERSION: &go_version 1.26.2
   GOTESTSUM_VERSION: 1.13.0
-  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.8.0
+  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.9.0
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: go-build
@@ -51,8 +53,8 @@ jobs:
     name: addlicense
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - run: go install github.com/google/addlicense@latest
@@ -62,8 +64,8 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: golangci-lint
@@ -89,8 +91,8 @@ jobs:
       MallocNanoZone: 0
     name: test (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Install gotestsum
@@ -115,8 +117,8 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Install gotestsum
@@ -140,8 +142,8 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_USE_DEFAULT_COLLECTION: true
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Install gotestsum
@@ -163,8 +165,8 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Install gotestsum
@@ -189,8 +191,8 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_DISABLE_REV_CACHE: true
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Install gotestsum
@@ -211,14 +213,14 @@ jobs:
   python-format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: *actions_checkout_version
       - uses: astral-sh/ruff-action@v3
         with:
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: *actions_checkout_version
       - uses: astral-sh/ruff-action@v3
   test-sgcollect:
     runs-on: ${{ matrix.os }}
@@ -227,7 +229,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: *actions_checkout_version
       - uses: astral-sh/setup-uv@v7
       - name: Run test
         run: |
@@ -243,8 +245,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Build
@@ -267,8 +269,8 @@ jobs:
     runs-on: ubuntu-latest
     name: build cache perf tool
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: *go_version
       - name: Build
