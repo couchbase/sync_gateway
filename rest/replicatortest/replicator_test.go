@@ -8074,3 +8074,134 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 		assert.Equal(t, configResponse.CreatedAt.UnixNano(), createdAtTime.UnixNano())
 	})
 }
+
+func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
+	base.LongRunningTest(t)
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyAccess, base.KeyChanges)
+
+	const (
+		repl1Name      = "repl"
+		repl2Name      = "repl2"
+		repl3Name      = "repl3"
+		runAsMissing   = "missinguser"
+		privateChannel = "secret"
+	)
+
+	// Both peers use the default channels-from-doc sync function.
+	rtConfig := &rest.RestTesterConfig{
+		SyncFn: `function(doc) { channel(doc.channels); }`,
+	}
+
+	// Passive peer — receives docs. Needs an alice for remote auth.
+	passiveRT := rest.NewRestTester(t, rtConfig)
+	defer passiveRT.Close()
+
+	publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
+	defer publicSrv.Close()
+
+	// Active peer
+	activeRTConfig := &rest.RestTesterConfig{
+		SyncFn:             rtConfig.SyncFn,
+		SgReplicateEnabled: true,
+	}
+	activeRT := rest.NewRestTester(t, activeRTConfig)
+	defer activeRT.Close()
+
+	passiveRT.CreateUser("alice", []string{"*"})
+
+	// Admin-authored private document on active, in a channel that would
+	// never match a scoped run_as user's access (because no such user
+	// exists to grant access to).
+	docID := "private_doc_" + rest.SafeDocumentName(t, t.Name())
+	version := activeRT.PutDoc(docID, `{"channels":["`+privateChannel+`"],"content":"secret"}`)
+	activeRT.WaitForPendingChanges()
+
+	// One-shot (non-continuous) push with run_as: <non-existent user>.
+	// One-shot is used instead of continuous so the replicator reaches a
+	// terminal state on its own — a continuous replication holds the cbgt
+	// cluster-config subscription open and can deadlock on test teardown.
+	collectionsEnabled := strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection())
+	replConf := fmt.Sprintf(`{
+        "replication_id": "%s",
+        "remote": "%s/%s",
+        "direction": "push",
+        "continuous": false,
+        "run_as": "%s",
+        "remote_username": "alice",
+        "remote_password": "%s",
+		"initial_state": "stopped",
+        "collections_enabled": %s
+    }`, repl1Name, publicSrv.URL, passiveRT.GetDatabase().Name,
+		runAsMissing, rest.RestTesterDefaultUserPassword, collectionsEnabled)
+
+	configResp := activeRT.SendAdminRequest(http.MethodPut,
+		"/{{.db}}/_replication/"+repl1Name, replConf)
+	rest.RequireStatus(t, configResp, http.StatusCreated)
+
+	// StartReplications will error initialising the replicator but will no return error
+	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status := activeRT.GetReplicationStatus(repl1Name).Status
+		assert.Contains(c, []string{db.ReplicationStateError},
+			status,
+			"replication never reached stopped/error: currently %s", status)
+	}, 20*time.Second, 100*time.Millisecond)
+
+	resp := passiveRT.SendAdminRequest(http.MethodGet,
+		"/{{.keyspace}}/"+docID, "")
+	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed")
+
+	// create a replication with the same config but without the run_as field, this should push the doc successfully as admin
+	replConfNoRunAs := fmt.Sprintf(`{
+		 "replication_id": "%s",
+        "remote": "%s/%s",
+        "direction": "push",
+        "continuous": false,
+        "remote_username": "alice",
+        "remote_password": "%s",
+        "collections_enabled": %s
+		}`, repl2Name, publicSrv.URL, passiveRT.GetDatabase().Name, rest.RestTesterDefaultUserPassword, collectionsEnabled)
+
+	configResp = activeRT.SendAdminRequest(http.MethodPut,
+		"/{{.db}}/_replication/"+repl2Name, replConfNoRunAs)
+	rest.RequireStatus(t, configResp, http.StatusCreated)
+
+	activeRT.WaitForReplicationStatus(repl2Name, db.ReplicationStateRunning)
+	// doc should be pushed successfully with the second replication that doesn't have run_as set
+	passiveRT.WaitForVersion(docID, version)
+	activeRT.WaitForReplicationStatus(repl2Name, db.ReplicationStateStopped)
+
+	// purge doc on passive
+	passiveRT.PurgeDoc(docID)
+
+	// now create a replication with the bad run_as user again, but this time don't specific initial state so the replication starts straight away
+	replConf = fmt.Sprintf(`{
+        "replication_id": "%s",
+        "remote": "%s/%s",
+        "direction": "push",
+        "continuous": false,
+        "run_as": "%s",
+        "remote_username": "alice",
+        "remote_password": "%s",
+        "collections_enabled": %s
+    }`, repl3Name, publicSrv.URL, passiveRT.GetDatabase().Name,
+		runAsMissing, rest.RestTesterDefaultUserPassword, collectionsEnabled)
+
+	configResp = activeRT.SendAdminRequest(http.MethodPut,
+		"/{{.db}}/_replication/"+repl3Name, replConf)
+	rest.RequireStatus(t, configResp, http.StatusCreated)
+
+	// assert that the replication doesn't start
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status := activeRT.GetReplicationStatus(repl3Name).Status
+		assert.Contains(c, []string{db.ReplicationStateError},
+			status,
+			"replication never reached stopped/error: currently %s", status)
+	}, 20*time.Second, 100*time.Millisecond)
+
+	resp = passiveRT.SendAdminRequest(http.MethodGet,
+		"/{{.keyspace}}/"+docID, "")
+	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed")
+}
