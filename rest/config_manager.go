@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -247,17 +248,32 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	}
 	base.DebugfCtx(ctx, base.KeyConfig, "Write for database config was successful")
 
-	// Step 3. After config is successfully updated, finalize the update by removing the previous version from the registry
-	err = registry.removePreviousVersion(groupID, dbName, previousVersion)
-	if err != nil {
-		return 0, base.RedactErrorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err)
+	// Step 3. After config is successfully updated, finalize the update by removing the previous
+	// version from the registry. Re-read + CAS retry tolerates concurrent registry writers
+	// (e.g. cluster compat heartbeats) that may have bumped CAS since step 2.
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		registry, err = b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			return 0, base.RedactErrorf("Error fetching registry to finalize update of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err)
+		}
+		if err = registry.removePreviousVersion(groupID, dbName, previousVersion); err != nil {
+			// Already removed by a concurrent finalize — the update has effectively been
+			// fully applied, treat as success.
+			if errors.Is(err, base.ErrNotFound) || errors.Is(err, base.ErrConfigVersionMismatch) {
+				return casOut, nil
+			}
+			return 0, base.RedactErrorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err)
+		}
+		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
+		if writeErr == nil {
+			return casOut, nil
+		}
+		if !base.IsCasMismatch(writeErr) {
+			return 0, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr)
+		}
+		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 	}
-	writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
-	if writeErr != nil {
-		return 0, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr)
-	}
-
-	return casOut, nil
+	return 0, fmt.Errorf("UpdateConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
 }
 
 // DeleteConfig deletes a database config
@@ -325,19 +341,28 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	}
 	base.DebugfCtx(ctx, base.KeyConfig, "Delete for database config was successful")
 
-	// Step 3. After config is successfully deleted, finalize the delete by removing the previous version from the registry
-	found := registry.removeDatabase(groupID, dbName)
-	if !found {
-		base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization")
-	} else {
+	// Step 3. After config is successfully deleted, finalize the delete by removing the previous
+	// version from the registry. Re-read + CAS retry tolerates concurrent registry writers
+	// (e.g. cluster compat heartbeats) that may have bumped CAS since step 2.
+	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+		registry, err = b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			return base.RedactErrorf("Error fetching registry to finalize delete of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err)
+		}
+		if !registry.removeDatabase(groupID, dbName) {
+			base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization")
+			return nil
+		}
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
-		if writeErr != nil {
+		if writeErr == nil {
+			return nil
+		}
+		if !base.IsCasMismatch(writeErr) {
 			return base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
 		}
+		base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 	}
-
-	return nil
-
+	return fmt.Errorf("DeleteConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
 }
 
 // WaitForConflictingUpdates is called when an upsert is in conflict with previous versions found in the registry.  Previous
