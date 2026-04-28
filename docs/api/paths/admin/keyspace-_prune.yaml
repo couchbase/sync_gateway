@@ -8,7 +8,7 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 post:
-  summary: Purge Channel History of Document
+  summary: Prune Channel History of Document
   description: |-
     Prunes channel history entries from one or more documents before a specified sequence number.
 
