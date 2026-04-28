@@ -142,6 +142,7 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 
 // Start starts the replicator, setting the state to ReplicationStateStarting and starting the status reporter.
 // TODO: CBG-4882 - reconnect() and Start() race on reading/writing ctx
+//
 //go:norace
 func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 	arc.lock.Lock()
