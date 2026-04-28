@@ -1260,7 +1260,7 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 
 // TestDeltaGenerationWithBypassRevCache tests that delta generation works when the rev cache is bypassed.
 func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
@@ -1305,7 +1305,9 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 		// code will go though bypass revision cache interface, delta will be generated from backup rev
 		btcRunner.WaitForVersion(client.id, docID, version2)
 		// assert rev sent as delta
-		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		base.RequireWaitForStat(t, func() int64 {
+			return rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
+		}, 1)
 	})
 }
 
