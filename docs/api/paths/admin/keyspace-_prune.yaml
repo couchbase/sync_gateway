@@ -1,0 +1,85 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+post:
+  summary: Purge Channel History of Document
+  description: |-
+    Prunes channel history entries from one or more documents before a specified sequence number.
+
+    This endpoint removes all channel entries that were recorded before the specified sequence number,
+    effectively cleaning up historical channel membership information while preserving recent changes.
+    This is useful for reducing storage overhead when maintaining large document histories.
+
+    Required Sync Gateway RBAC Roles:
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            docIDs:
+              description: |-
+                List of document IDs whose channel history should be pruned.
+                Only the channel entries for these specific documents will be affected.
+                Other documents in the keyspace will not be modified.
+              type: array
+              items:
+                type: string
+              example:
+                - doc1
+                - doc2
+            seqNo:
+              description: |-
+                The sequence number threshold. All channel entries recorded before this sequence number
+                will be removed from the specified documents. Channel entries at or after this sequence
+                number will be preserved. This allows you to clean up old history while keeping recent
+                changes intact.
+              type: number
+              example: 12345
+  responses:
+    "200":
+      description: |-
+        Successfully pruned channel history from the specified documents.
+        Returns a mapping of document IDs to the list of channels that remain after pruning.
+
+        **Note:** If a document ID is not present in the response, it means no channels were pruned for that document.
+        This can occur if the document does not exist or has no channel history before the specified sequence number.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+              description: |-
+                Array of channel names that remain for the corresponding document after pruning.
+                Channels with all entries before the specified sequence number have been removed.
+            description: |-
+              A mapping of document IDs (keys) to arrays of remaining channels (values).
+              Each entry shows which channels still have history entries at or after the pruned sequence number.
+            example:
+              doc1:
+                - channel1
+                - channel2
+              doc2:
+                - channel2
+                - channel3
+    "400":
+      description: 'Bad request. This could be due to invalid request parameters such as missing or malformed docIDs array or invalid seqNo value.'
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    "403":
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+
+  tags:
+    - Document
+  operationId: post_keyspace-_prune
