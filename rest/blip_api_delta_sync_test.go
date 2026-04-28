@@ -1260,6 +1260,7 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 
 // TestDeltaGenerationWithBypassRevCache tests that delta generation works when the rev cache is bypassed.
 func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
