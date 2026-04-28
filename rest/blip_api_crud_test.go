@@ -3602,12 +3602,12 @@ func TestTombstoneCount(t *testing.T) {
 
 		deleteVersion := btcRunner.DeleteDoc(client.id, docID1, &docVersion)
 		rt.WaitForTombstone(docID1, deleteVersion)
-		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value, 1)
 
 		const docID2 = "doc2"
 		version := rt.CreateTestDoc(docID2)
 		rt.DeleteDoc(docID2, version)
-		assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DatabaseStats.TombstoneCount.Value, 2)
 	})
 
 }
