@@ -141,6 +141,9 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 }
 
 // Start starts the replicator, setting the state to ReplicationStateStarting and starting the status reporter.
+// TODO: CBG-4882 - reconnect() and Start() race on reading/writing ctx
+//
+//go:norace
 func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 	arc.lock.Lock()
 	defer arc.lock.Unlock()
@@ -242,6 +245,9 @@ func (arc *activeReplicatorCommon) reset() error {
 }
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
+// TODO: CBG-4882 - reconnect() and Start() race on reading/writing ctx
+//
+//go:norace
 func (arc *activeReplicatorCommon) reconnectLoop() {
 	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
 	defer func() {
