@@ -97,6 +97,7 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 	start := time.Now()
 	usingViews := c.useViews()
 	entries := make(LogEntries, 0)
+	activeEntryCount := 0
 
 	base.InfofCtx(ctx, base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, limit)
 
@@ -129,12 +130,16 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			}
 
 			queryRowCount++
-			highSeq = entry.Sequence
 
-			if activeOnly && (!entry.IsActive() || len(entries) >= limit) {
-				continue
+			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
+			// for limit calculation below.
+			if activeOnly {
+				if entry.IsActive() {
+					activeEntryCount++
+				}
 			}
 			entries = append(entries, entry)
+			highSeq = entry.Sequence
 		}
 
 		// Close query results
@@ -151,10 +156,11 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			return nil, nil
 		}
 
-		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.
+		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.  Non-active entries are still
+		// included in the result set for potential cache prepend
 		if activeOnly {
 			// If we've reached limit, we're done
-			if len(entries) >= limit || limit == 0 {
+			if activeEntryCount >= limit || limit == 0 {
 				break
 			}
 			// If we've reached endSeq, we're done

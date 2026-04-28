@@ -440,31 +440,19 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 
 	result := resultFromQuery
 	room := options.Limit - len(result)
-	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
+	if (options.Limit == 0 || room > 0 || options.ActiveOnly) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
 		if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
 			resultFromCache = resultFromCache[1:]
 		}
 		n := len(resultFromCache)
-		if options.Limit > 0 && room > 0 && room < n {
-			n = room
-		}
-		if !options.ActiveOnly || options.Limit == 0 || len(resultFromQuery)+len(resultFromCache) <= options.Limit {
-			result = append(result, resultFromCache[0:n]...)
-		} else {
-			totalEntries := len(result)
-			for _, entry := range resultFromCache {
-				if totalEntries >= options.Limit {
-					break
-				}
-				if !entry.IsActive() {
-					continue
-				}
-				result = append(result, entry)
-				totalEntries++
+		// Limit evaluation only valid when not activeOnly, since view and cache results don't apply activeOnly filtering
+		if !options.ActiveOnly {
+			if options.Limit > 0 && room > 0 && room < n {
+				n = room
 			}
-
 		}
+		result = append(result, resultFromCache[0:n]...)
 	}
 	base.InfofCtx(ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 
