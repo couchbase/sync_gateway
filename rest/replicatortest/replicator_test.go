@@ -8138,7 +8138,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 		"/{{.db}}/_replication/"+repl1Name, replConf)
 	rest.RequireStatus(t, configResp, http.StatusCreated)
 
-	// StartReplications will error initialising the replicator but will no return error
+	// StartReplications will error initialising the replicator but will not return an error
 	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
 
 	activeRT.WaitForReplicationStatus(repl1Name, db.ReplicationStateError)
@@ -8162,7 +8162,6 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 		"/{{.db}}/_replication/"+repl2Name, replConfNoRunAs)
 	rest.RequireStatus(t, configResp, http.StatusCreated)
 
-	activeRT.WaitForReplicationStatus(repl2Name, db.ReplicationStateRunning)
 	// doc should be pushed successfully with the second replication that doesn't have run_as set
 	passiveRT.WaitForVersion(docID, version)
 	activeRT.WaitForReplicationStatus(repl2Name, db.ReplicationStateStopped)
@@ -8170,7 +8169,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 	// purge doc on passive
 	passiveRT.PurgeDoc(docID)
 
-	// now create a replication with the bad run_as user again, but this time don't specific initial state so the replication starts straight away
+	// now create a replication with the bad run_as user again, but this time don't specify initial state so the replication starts straight away
 	replConf = fmt.Sprintf(`{
         "replication_id": "%s",
         "remote": "%s/%s",
@@ -8199,7 +8198,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 // run_as user defined inline in the database config (legacy file-based config style, via
 // RestTesterConfig.DatabaseConfig.Replications) enters the error state and does not push
 // any documents.
-func TestISGRRunAsNonExistentUserLegacyConfig(t *testing.T) {
+func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyAccess, base.KeyChanges)

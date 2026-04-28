@@ -569,7 +569,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 			return nil, err
 		}
 		if user == nil {
-			return nil, base.HTTPErrorf(http.StatusUnauthorized, "run_as user %s not found", base.UD(config.RunAs))
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "run_as user %s not found", base.UD(config.RunAs))
 		}
 		activeDB.SetUser(user)
 	}
