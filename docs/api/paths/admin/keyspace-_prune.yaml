@@ -16,7 +16,9 @@ post:
     effectively cleaning up historical channel membership information while preserving recent changes.
     This is useful for reducing storage overhead when maintaining large document histories.
 
-    Required Sync Gateway RBAC Roles:
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
   requestBody:
     content:
       application/json:
