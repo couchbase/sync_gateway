@@ -3378,3 +3378,81 @@ RegistryScope:
       type: array
       items:
         type: string
+
+UserChannelInfo:
+  description: Channel information for a user including admin channels, all channels, and collection access.
+  type: object
+  properties:
+    admin_channels:
+      description: |-
+        A list of channels explicitly granted to the user for the default collection.
+      type: array
+      items:
+        type: string
+    all_channels:
+      description: |-
+        All the channels that the user has been granted access to for the default collection.
+
+        Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    collection_access:
+      description: A set of access grants by scope and collection for a specific collection.
+      type: object
+      additionalProperties:
+        maxProperties: 1
+        description: An object keyed by scope, containing a set of collections.
+        type: object
+        x-additionalPropertiesName: scopename
+        additionalProperties:
+          description: An object keyed by collection name, defines access collections in this scope.
+          type: object
+          x-additionalPropertiesName: collectionname
+          properties:
+            admin_channels:
+              description: A list of channels explicitly granted to the user in this collection.
+              type: array
+              items:
+                type: string
+            all_channels:
+              description: |-
+                All the channels that the user has been granted access to in this collection.
+
+                Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+              type: array
+              items:
+                type: string
+              readOnly: true
+  title: UserChannelInfo
+
+UserChannelPruneRequest:
+  description: Request body for pruning channels from a user. Specifies which channels should be removed from admin_channels and collection_access.
+  type: object
+  properties:
+    admin_channels:
+      description: |-
+        A list of channels to be removed from the user's admin channels for the default collection.
+      type: array
+      items:
+        type: string
+    collection_access:
+      description: A set of channels to be pruned by scope and collection.
+      type: object
+      additionalProperties:
+        maxProperties: 1
+        description: An object keyed by scope, containing a set of collections.
+        type: object
+        x-additionalPropertiesName: scopename
+        additionalProperties:
+          description: An object keyed by collection name, defines channels to prune in this scope.
+          type: object
+          x-additionalPropertiesName: collectionname
+          properties:
+            admin_channels:
+              description: A list of channels to be removed from the user's admin channels in this collection.
+              type: array
+              items:
+                type: string
+  title: UserChannelPruneRequest

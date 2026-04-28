@@ -1,0 +1,105 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
+get:
+  summary: Get user's channel information
+  description: |-
+    Retrieve the channel access information for a user, including admin channels, all channels, and collection access configuration.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: User channel information retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/UserChannelInfo
+          example:
+            admin_channels:
+              - channel1
+              - channel2
+            all_channels:
+              - channel1
+              - channel2
+              - channel3
+            collection_access:
+              scope1:
+                collection1:
+                  admin_channels:
+                    - scoped_channel1
+                  all_channels:
+                    - scoped_channel1
+                    - scoped_channel2
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  operationId: get_db-_user-name-_prune
+post:
+  summary: Prune user's channels
+  description: |-
+    Remove specified channels from a user's channel access. The request specifies which channels should be pruned from the user's admin_channels and collection_access.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  requestBody:
+    description: Channels to be pruned from the user
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/UserChannelPruneRequest
+        example:
+          admin_channels:
+            - channel2
+          collection_access:
+            scope1:
+              collection1:
+                admin_channels:
+                  - scoped_channel1
+  responses:
+    '200':
+      description: Channels pruned successfully from user
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/UserChannelInfo
+          example:
+            admin_channels:
+              - channel1
+            all_channels:
+              - channel1
+              - channel3
+            collection_access:
+              scope1:
+                collection1:
+                  admin_channels: []
+                  all_channels:
+                    - scoped_channel2
+    '400':
+      description: Bad request. Invalid channel names or malformed request body.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+          example:
+            error: "Bad Request"
+            reason: "Invalid channel format: channels must be non-empty strings"
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  operationId: post_db-_user-name-_prune
