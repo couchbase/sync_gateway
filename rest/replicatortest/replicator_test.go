@@ -1533,6 +1533,8 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	const username = "alice"
 	rt.CreateUser("alice", []string{})
 
+	collectionsEnabled := strconv.FormatBool(!rt.GetDatabase().OnlyDefaultCollection())
+
 	DBURL := userDBURL(rt, username)
 
 	replicationConfig := fmt.Sprintf(`{
@@ -1541,8 +1543,9 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 		"direction": "pushAndPull",
 		"conflict_resolution_type":"default",
 		"max_backoff":100,
+		"collections_enabled": %s,
         "continuous":true
-	}`, DBURL.String())
+	}`, DBURL.String(), collectionsEnabled)
 
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", replicationConfig)
 	rest.RequireStatus(t, response, http.StatusCreated)
@@ -1550,11 +1553,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	var body []map[string]any
-	err := base.JSONUnmarshal(response.BodyBytes(), &body)
-	fmt.Println(string(response.BodyBytes()))
-	assert.NoError(t, err)
-	assert.Equal(t, "running", body[0]["status"])
+	rt.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
 
 	replicationConfigUpdate := fmt.Sprintf(`{
 		"replication_id": "replication1",
@@ -8142,12 +8141,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 	// StartReplications will error initialising the replicator but will no return error
 	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
 
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status := activeRT.GetReplicationStatus(repl1Name).Status
-		assert.Contains(c, []string{db.ReplicationStateError},
-			status,
-			"replication never reached stopped/error: currently %s", status)
-	}, 20*time.Second, 100*time.Millisecond)
+	activeRT.WaitForReplicationStatus(repl1Name, db.ReplicationStateError)
 
 	resp := passiveRT.SendAdminRequest(http.MethodGet,
 		"/{{.keyspace}}/"+docID, "")
@@ -8194,14 +8188,84 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 	rest.RequireStatus(t, configResp, http.StatusCreated)
 
 	// assert that the replication doesn't start
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status := activeRT.GetReplicationStatus(repl3Name).Status
-		assert.Contains(c, []string{db.ReplicationStateError},
-			status,
-			"replication never reached stopped/error: currently %s", status)
-	}, 20*time.Second, 100*time.Millisecond)
+	activeRT.WaitForReplicationStatus(repl3Name, db.ReplicationStateError)
 
 	resp = passiveRT.SendAdminRequest(http.MethodGet,
 		"/{{.keyspace}}/"+docID, "")
 	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed")
+}
+
+// TestISGRRunAsNonExistentUserLegacyConfig verifies that a replication with a non-existent
+// run_as user defined inline in the database config (legacy file-based config style, via
+// RestTesterConfig.DatabaseConfig.Replications) enters the error state and does not push
+// any documents.
+func TestISGRRunAsNonExistentUserLegacyConfig(t *testing.T) {
+	base.LongRunningTest(t)
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyAccess, base.KeyChanges)
+
+	const (
+		replName       = "repl-legacy"
+		runAsMissing   = "missinguser"
+		privateChannel = "secret"
+		aliceUser      = "alice"
+	)
+
+	syncFn := `function(doc) { channel(doc.channels); }`
+
+	// Passive peer — receives docs; provides alice for remote auth.
+	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: syncFn,
+	})
+	defer passiveRT.Close()
+
+	publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
+	defer publicSrv.Close()
+
+	passiveRT.CreateUser(aliceUser, []string{"*"})
+
+	// collectionsEnabled mirrors !OnlyDefaultCollection() for the passive RT.
+	// Both RTs share the same test environment so the topology is identical.
+	collectionsEnabled := !passiveRT.GetDatabase().OnlyDefaultCollection()
+
+	// Define the replication inline in the DatabaseConfig
+	// rather than creating it through the admin REST API.
+	// initial_state "stopped" prevents it from running before we call
+	// StartReplications, while still exercising the initialisation path that
+	// validates run_as.
+	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:             syncFn,
+		SgReplicateEnabled: true,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Replications: map[string]*db.ReplicationConfig{
+				replName: {
+					ID:                 replName,
+					Remote:             fmt.Sprintf("%s/%s", publicSrv.URL, passiveRT.GetDatabase().Name),
+					Direction:          db.ActiveReplicatorTypePush,
+					Continuous:         false,
+					RunAs:              runAsMissing,
+					RemoteUsername:     aliceUser,
+					RemotePassword:     rest.RestTesterDefaultUserPassword,
+					InitialState:       db.ReplicationStateStopped,
+					CollectionsEnabled: collectionsEnabled,
+				},
+			},
+		}},
+	})
+	defer activeRT.Close()
+
+	// Admin-authored private document; a non-existent run_as user can never
+	// be granted access to this channel.
+	docID := "private_doc_" + rest.SafeDocumentName(t, t.Name())
+	activeRT.PutDoc(docID, `{"channels":["`+privateChannel+`"],"content":"secret"}`)
+	activeRT.WaitForPendingChanges()
+
+	// StartReplications initialises the replicator; it errors on the missing
+	// run_as user but does not surface an error to the caller.
+	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
+
+	activeRT.WaitForReplicationStatus(replName, db.ReplicationStateError)
+
+	resp := passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed with invalid run_as user")
 }
