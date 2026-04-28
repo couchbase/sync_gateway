@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -44,6 +45,10 @@ type clusterCompatManager struct {
 	cachedVersion *base.ClusterCompatVersion
 	cachedNodes   map[string]base.ClusterCompatVersion
 	cachedBuckets map[string]base.ClusterCompatBucketNodes
+	// lastRefreshAt records when Refresh last completed a registry write cycle. Used to
+	// rate-limit periodic Refresh — see Refresh(). RegisterBucket does not update this:
+	// a new bucket coming into scope should still trigger the next periodic heartbeat.
+	lastRefreshAt time.Time
 	mu            sync.RWMutex
 }
 
@@ -64,6 +69,19 @@ func (m *clusterCompatManager) setCached(version *base.ClusterCompatVersion, nod
 	m.cachedVersion = version
 	m.cachedNodes = nodes
 	m.cachedBuckets = buckets
+}
+
+// refreshInterval is the rate-limit window for periodic Refresh calls. The heartbeat write
+// to each bucket's registry doc only needs to happen well within the (eventual) heartbeat
+// expiry — rewriting on every poll tick just churns CAS for no benefit and worsens contention
+// with other nodes' simultaneous refreshes. Falls back to the default if ConfigUpdateFrequency
+// is unset or sub-second (some test setups effectively disable polling).
+func (m *clusterCompatManager) refreshInterval() time.Duration {
+	freq := m.sc.Config.Bootstrap.ConfigUpdateFrequency.Value()
+	if freq <= time.Second {
+		freq = persistentConfigDefaultUpdateFrequency
+	}
+	return freq
 }
 
 // Start initializes the manager. It does not write to any bucket — node registration is
@@ -158,11 +176,20 @@ func (m *clusterCompatManager) NodeVersions() map[string]base.ClusterCompatVersi
 
 // Refresh re-registers this node in every tracked bucket and recomputes the cluster compat
 // version. Called from the config polling goroutine.
+//
+// Rate-limited to at most once per refreshInterval(): the heartbeat is well within its
+// (eventual) expiry window if rewritten once per poll cycle, and skipping when the previous
+// write is still fresh avoids piling extra CAS contention onto a registry doc that's also
+// touched by db config writes.
 func (m *clusterCompatManager) Refresh(ctx context.Context) {
 	m.mu.RLock()
 	hasTrackedBuckets := len(m.trackedBuckets) > 0
+	lastRefresh := m.lastRefreshAt
 	m.mu.RUnlock()
 	if !hasTrackedBuckets {
+		return
+	}
+	if !lastRefresh.IsZero() && time.Since(lastRefresh) < m.refreshInterval() {
 		return
 	}
 
@@ -175,7 +202,12 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 	if !clusterCompatVersionEqual(oldVersion, version) {
 		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, version)
 	}
-	m.setCached(version, nodes, buckets)
+	m.mu.Lock()
+	m.cachedVersion = version
+	m.cachedNodes = nodes
+	m.cachedBuckets = buckets
+	m.lastRefreshAt = time.Now()
+	m.mu.Unlock()
 }
 
 // refreshNodeRegistrations iterates the tracked buckets, registers this node, and returns

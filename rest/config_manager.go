@@ -46,6 +46,12 @@ var _ ConfigManager = &bootstrapContext{}
 const configUpdateMaxRetryAttempts = 5 // Maximum number of retries due to conflicting updates or rollback
 const configFetchMaxRetryAttempts = 5  // Maximum number of retries due to registry rollback
 
+// nodeVersionUpdateMaxRetryAttempts bounds CAS retries for node version register/deregister.
+// In steady state, periodic Refresh is rate-limited per node, so contention is low. Burst
+// contention happens during cluster cold-start / simultaneous restart, when N nodes register
+// at once — the budget is a multiple of configUpdateMaxRetryAttempts to absorb that race.
+const nodeVersionUpdateMaxRetryAttempts = configUpdateMaxRetryAttempts * 5
+
 const defaultMetadataID = "_default"
 
 // GetConfig fetches a database name for a given bucket and config group ID.
@@ -675,7 +681,7 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // RegisterNodeVersion registers or updates a node's version and heartbeat in the given bucket's registry.
 // Uses CAS retry on conflict. Returns the updated registry for min-version computation.
 func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUUID string, version base.ClusterCompatVersion) (*GatewayRegistry, error) {
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get registry for node registration: %w", err)
@@ -690,20 +696,20 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, configUpdateMaxRetryAttempts)
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 				continue
 			}
 			return nil, fmt.Errorf("failed to write registry for node registration: %w", err)
 		}
 		return registry, nil
 	}
-	return nil, fmt.Errorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", configUpdateMaxRetryAttempts, base.MD(bucketName))
+	return nil, fmt.Errorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 }
 
 // DeregisterNodeVersion removes a node's version entry from the given bucket's registry.
 // Best-effort with CAS retry — errors are logged but not fatal.
 func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName, nodeUUID string) {
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
+	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to get registry for node deregistration from bucket %s: %v", base.MD(bucketName), err)
@@ -719,14 +725,14 @@ func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, configUpdateMaxRetryAttempts)
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 				continue
 			}
 			base.WarnfCtx(ctx, "Failed to deregister node from bucket %s: %v", base.MD(bucketName), err)
 		}
 		return
 	}
-	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", configUpdateMaxRetryAttempts, base.MD(bucketName))
+	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 }
 
 // getRegistryAndDatabase retrieves both the gateway registry and database config for the specified dbName and groupID.
