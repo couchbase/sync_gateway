@@ -212,7 +212,7 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 
 // TODO: Not implemented, review potential usage
 func (d *DCPDest) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
+	consistencyLevel cbgt.ConsistencyLevel, consistencySeq uint64, cancelCh <-chan bool) error {
 	WarnfCtx(d.loggingCtx, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
@@ -315,7 +315,7 @@ func (d *DCPLoggingDest) RollbackEx(partition string, vbucketUUID uint64, rollba
 }
 
 func (d *DCPLoggingDest) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
+	consistencyLevel cbgt.ConsistencyLevel, consistencySeq uint64, cancelCh <-chan bool) error {
 	return d.dest.ConsistencyWait(partition, partitionUUID, consistencyLevel, consistencySeq, cancelCh)
 }
 

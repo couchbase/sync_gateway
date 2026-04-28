@@ -784,6 +784,10 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 	// No-op for SG
 }
 
+func (meh *sgMgrEventHandlers) OnUnregisterFeed(feed cbgt.Feed) {
+	fmt.Printf("OnUnRegisterFeed called for feed: %s\n", feed)
+}
+
 // OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
 // NotifyMgrOnClose will trigger cbgt closing and then attempt to reconnect to the feed, if the manager hasn't
 // been stopped.
