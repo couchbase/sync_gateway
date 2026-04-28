@@ -663,6 +663,9 @@ func (rt *RestTester) Close() {
 	ctx := rt.Context() // capture ctx before closing rt
 	rt.closed = true
 	if rt.RestTesterServerContext != nil {
+		require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+			assert.Empty(c, rt.RestTesterServerContext.DatabaseInitManager.activeInitializations())
+		}, 100*time.Second, 100*time.Millisecond, "There are still active database initializations (index creation) when closing the RestTester")
 		rt.RestTesterServerContext.Close(ctx)
 	}
 	if rt.TestBucket != nil {

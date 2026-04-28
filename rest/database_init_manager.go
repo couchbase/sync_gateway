@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -164,6 +166,15 @@ func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
 	defer m.workersLock.Unlock()
 	_, ok := m.workers[dbName]
 	return ok
+}
+
+func (m *DatabaseInitManager) activeInitializations() []string {
+	if m == nil {
+		return nil
+	}
+	m.workersLock.Lock()
+	defer m.workersLock.Unlock()
+	return slices.Collect(maps.Keys(m.workers))
 }
 
 func (m *DatabaseInitManager) buildIndexOptions(dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) db.InitializeIndexOptions {
