@@ -93,13 +93,25 @@ put:
       application/json:
         schema:
           $ref: ../../components/schemas.yaml#/Document
-        example:
-          _rev: 1-64d4a1f179db5c1848fe52967b47c166
-          foo: bar
-          _attachments:
-            hello.txt:
-              content_type: text/plain
-              data: aGVsbG8=
+        examples:
+          RevTreeOCC:
+            summary: Update with RevTree OCC
+            value:
+              _rev: 1-64d4a1f179db5c1848fe52967b47c166
+              foo: bar
+              _attachments:
+                hello.txt:
+                  content_type: text/plain
+                  data: aGVsbG8=
+          CVOCC:
+            summary: Update with CV OCC
+            value:
+              _cv: 1@src
+              foo: bar
+              _attachments:
+                hello.txt:
+                  content_type: text/plain
+                  data: aGVsbG8=
   responses:
     '201':
       description: Created

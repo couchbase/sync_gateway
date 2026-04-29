@@ -20,7 +20,12 @@ Document-If-Match:
   schema:
     type: string
   description: |-
-    An optimistic concurrency control (OCC) value used to prevent conflicts. Use the value returned in the ETag response header of the GET request for the resource being updated, or the latest known Revision Tree ID or Current Version of the document. When upserting a single document by ID (`PUT /{db}/{doc}`), the `_rev` field in the request body and the `rev` query parameter serve the same purpose as this header; supply exactly one of the three.
+    An optimistic concurrency control (OCC) value used to prevent conflicts. The value is typically the `ETag` response header from a prior `GET` of the document, or the latest known Revision Tree ID or Current Version (CV) of the document; the type is autodetected.
+
+    The `If-Match` header, the `rev` query parameter, and the `_rev` / `_cv` fields in the request body are alternative OCC sources, listed below. Clients may supply more than one as long as same-type values match exactly; mismatched values return HTTP 400. Precedence when multiple are present: `rev` query parameter, then `If-Match` header, then body `_cv`, then body `_rev`.
+
+    - For [PUT /{keyspace}/{docid}](#operation/put_keyspace-docid): any of these OCC sources may be used.
+    - For [POST /{keyspace}/_bulk_docs](#operation/post_keyspace-_bulk_docs): per-document OCC must be supplied in the doc body via `_rev` or `_cv` (header/query OCC are per-request, not per-document).
 Include-channels:
   name: channels
   in: query

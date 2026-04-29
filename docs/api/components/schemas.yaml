@@ -497,7 +497,15 @@ Document:
       type: string
     _rev:
       description: |-
-        The ancestor revision of the document, used by Sync Gateway as an optimistic concurrency control (OCC) value to detect conflicts when updating an existing document; omit this field when creating a new document. The value is a Revision Tree ID or a Current Version (CV) ID, typically taken from the `_rev` returned by a prior `GET` of the document, or from the `ETag` response header. When upserting a single document by ID (`PUT /{db}/{doc}`), the `rev` query parameter and the `If-Match` request header serve the same purpose as this field; supply exactly one of the three.
+        The ancestor Revision Tree ID of the document, used by Sync Gateway as an optimistic concurrency control (OCC) value to detect conflicts when updating an existing document; omit this field when creating a new document. The value is typically taken from the `_rev` returned by a prior `GET` of the document, or from the `ETag` response header.
+
+        For single-document upserts ([PUT /{keyspace}/{docid}](#operation/put_keyspace-docid)), the `rev` query parameter and the `If-Match` request header are alternative OCC sources for the same document; for bulk upserts ([POST /{keyspace}/_bulk_docs](#operation/post_keyspace-_bulk_docs)), per-document OCC must be supplied in the doc body via this field or `_cv`. Clients may supply more than one OCC source as long as same-type values match exactly; mismatched values return HTTP 400. Precedence when multiple are present: `rev` query parameter, then `If-Match` header, then body `_cv`, then body `_rev`.
+      type: string
+    _cv:
+      description: |-
+        The ancestor Current Version (CV) ID of the document, used by Sync Gateway as an optimistic concurrency control (OCC) value to detect conflicts when updating an existing document; omit this field when creating a new document. The value is typically taken from the `_cv` returned by a prior `GET` of the document, or from the `ETag` response header.
+
+        Unlike the `rev` query parameter and `If-Match` header (which autodetect Revision Tree IDs vs Current Version IDs), this field must hold a CV. As with `_rev`, this can be supplied alongside other OCC sources as long as same-type values match exactly. See `_rev` for the full precedence order.
       type: string
     _exp:
       description: |-
