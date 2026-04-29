@@ -120,13 +120,15 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // changed. If the document is not found it calls resumeFunc(false) to signal that resync is no longer
 // running. CAS changes that match the locally held CAS are ignored to avoid redundant callbacks.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	dbMgr.lock.Lock()
-	defer dbMgr.lock.Unlock()
 	state, cas, err := dbMgr.GetState()
 	if err != nil {
-		if base.IsDocNotFoundError(err) && cas != dbMgr.CAS {
-			dbMgr.CAS = cas
-			dbMgr.resyncHandler(false)
+		if base.IsDocNotFoundError(err) {
+			if cas != dbMgr.CAS {
+				dbMgr.resyncHandler(false)
+				dbMgr.lock.Lock()
+				dbMgr.lock.Unlock()
+				dbMgr.CAS = cas
+			}
 			return
 		}
 		base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
@@ -135,6 +137,8 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 		return
 	}
 	dbMgr.resyncHandler(state.ResyncRunning)
+	dbMgr.lock.Lock()
+	defer dbMgr.lock.Unlock()
 	dbMgr.CAS = cas
 }
 
