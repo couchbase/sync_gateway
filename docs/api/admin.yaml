@@ -51,8 +51,8 @@ paths:
     $ref: './paths/admin/db-_user-name-_session.yaml'
   '/{db}/_user/{name}/_session/{sessionid}':
     $ref: './paths/admin/db-_user-name-_session-sessionid.yaml'
-  '/{db}/_user/{name}/_prune':
-    $ref: './paths/admin/db-_user-name-_prune.yaml'
+  '/{db}/_user/{name}/_history':
+    $ref: './paths/admin/db-_user-name-_history.yaml'
   '/{db}/_role/':
     $ref: './paths/admin/db-_role-.yaml'
   '/{db}/_role/{name}':

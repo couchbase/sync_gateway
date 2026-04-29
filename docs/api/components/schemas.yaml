@@ -3383,21 +3383,6 @@ UserChannelInfo:
   description: Channel information for a user including admin channels, all channels, and collection access.
   type: object
   properties:
-    admin_channels:
-      description: |-
-        A list of channels explicitly granted to the user for the default collection.
-      type: array
-      items:
-        type: string
-    all_channels:
-      description: |-
-        All the channels that the user has been granted access to for the default collection.
-
-        Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
-      type: array
-      items:
-        type: string
-      readOnly: true
     collection_access:
       description: A set of access grants by scope and collection for a specific collection.
       type: object

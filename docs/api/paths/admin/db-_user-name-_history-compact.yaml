@@ -8,48 +8,10 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/db
   - $ref: ../../components/parameters.yaml#/user-name
-get:
-  summary: Get user's channel information
-  description: |-
-    Retrieve the channel access information for a user, including admin channels, all channels, and collection access configuration.
-
-    Required Sync Gateway RBAC roles:
-
-    * Sync Gateway Architect
-  responses:
-    '200':
-      description: User channel information retrieved successfully
-      content:
-        application/json:
-          schema:
-            $ref: ../../components/schemas.yaml#/UserChannelInfo
-          example:
-            admin_channels:
-              - channel1
-              - channel2
-            all_channels:
-              - channel1
-              - channel2
-              - channel3
-            collection_access:
-              scope1:
-                collection1:
-                  admin_channels:
-                    - scoped_channel1
-                  all_channels:
-                    - scoped_channel1
-                    - scoped_channel2
-    '403':
-      $ref: ../../components/responses.yaml#/Unauthorized-database
-    '404':
-      $ref: ../../components/responses.yaml#/Not-found
-  tags:
-    - Database Security
-  operationId: get_db-_user-name-_prune
 post:
   summary: Prune user's channels
   description: |-
-    Remove specified channels from a user's channel access. The request specifies which channels should be pruned from the user's admin_channels and collection_access.
+    Remove specified channels from a user's channel access. The request specifies which channels should be compacted from the user's admin_channels and collection_access.
 
     Required Sync Gateway RBAC roles:
 
@@ -76,11 +38,6 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/UserChannelInfo
           example:
-            admin_channels:
-              - channel1
-            all_channels:
-              - channel1
-              - channel3
             collection_access:
               scope1:
                 collection1:
@@ -102,4 +59,4 @@ post:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Security
-  operationId: post_db-_user-name-_prune
+  operationId: post_db-_user-name-_history-compact
