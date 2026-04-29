@@ -29,12 +29,13 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 
-	// Get returns the given revision, and stores if not already cached.
-	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, error)
+	// Get returns the given revision, and stores if not already cached. Will return true if Get results in successful
+	// load to check for memory eviction.
+	Get(ctx context.Context, docID, versionString string, collectionID uint32, loadBackup bool) (DocumentRevision, bool, error)
 
-	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
-	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, err error)
+	// GetActive returns the current revision for the given doc ID, and stores if not already cached. Will return true
+	// if GetActive results in successful load to check for memory eviction.
+	GetActive(ctx context.Context, docID string, collectionID uint32) (docRev DocumentRevision, checkForMemoryEviction bool, err error)
 
 	// Peek returns the given revision if present in the cache
 	Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool)
@@ -106,13 +107,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStores map[uint
 	if cacheOptions.ShardCount > 1 {
 		return NewShardedLRURevisionCache(cacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 	}
-
-	var deltaCache *LRUDeltaCache
-	if initDeltaCache {
-		deltaCache = NewLRUDeltaCache(cacheOptions, deltaSyncStats, backingStores)
-	}
-
-	return NewRevisionCacheOrchestrator(NewLRURevisionCache(cacheOptions, backingStores, revCacheStats), deltaCache)
+	return NewRevisionCacheOrchestrator(cacheOptions, backingStores, revCacheStats, deltaSyncStats, initDeltaCache)
 }
 
 type RevisionCacheOptions struct {
@@ -152,12 +147,14 @@ func newCollectionRevisionCache(revCache *RevisionCache, collectionID uint32) co
 
 // Get is for per collection access to Get method
 func (c *collectionRevisionCache) Get(ctx context.Context, docID, versionString string, loadBackup bool) (DocumentRevision, error) {
-	return (*c.revCache).Get(ctx, docID, versionString, c.collectionID, loadBackup)
+	docRev, _, err := (*c.revCache).Get(ctx, docID, versionString, c.collectionID, loadBackup)
+	return docRev, err
 }
 
 // GetActive is for per collection access to GetActive method
 func (c *collectionRevisionCache) GetActive(ctx context.Context, docID string) (DocumentRevision, error) {
-	return (*c.revCache).GetActive(ctx, docID, c.collectionID)
+	docRev, _, err := (*c.revCache).GetActive(ctx, docID, c.collectionID)
+	return docRev, err
 }
 
 // Peek is for per collection access to Peek method
@@ -363,34 +360,6 @@ type IDandCV struct {
 	Version      uint64
 	Source       string
 	CollectionID uint32
-}
-
-// RevisionDelta stores data about a delta between a revision and ToRevID.
-type RevisionDelta struct {
-	ToRevID               string                  // Target revID for the delta
-	ToCV                  string                  // Target CV for the delta
-	DeltaBytes            []byte                  // The actual delta
-	AttachmentStorageMeta []AttachmentStorageMeta // Storage metadata of all attachments present on ToRevID
-	RevisionHistory       []string                // Revision history from parent of ToRevID to source revID, in descending order
-	HlvHistory            string                  // HLV History in CBL format
-	ToDeleted             bool                    // Flag if ToRevID is a tombstone
-	totalDeltaBytes       int64                   // totalDeltaBytes is the total bytes for channels, revisions and body on the delta itself
-}
-
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
-	revDelta := RevisionDelta{
-		ToRevID:               toRevision.RevID,
-		DeltaBytes:            deltaBytes,
-		AttachmentStorageMeta: toRevAttStorageMeta,
-		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
-		HlvHistory:            toRevision.HlvHistory,
-		ToDeleted:             deleted,
-	}
-	if toRevision.CV != nil {
-		revDelta.ToCV = toRevision.CV.String()
-	}
-	revDelta.CalculateDeltaBytes()
-	return revDelta
 }
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
