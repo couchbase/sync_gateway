@@ -126,7 +126,7 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 			if cas != dbMgr.CAS {
 				dbMgr.resyncHandler(false)
 				dbMgr.lock.Lock()
-				dbMgr.lock.Unlock()
+				defer dbMgr.lock.Unlock()
 				dbMgr.CAS = cas
 			}
 			return
