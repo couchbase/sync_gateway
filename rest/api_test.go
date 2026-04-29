@@ -3908,3 +3908,56 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
 	assert.Nil(t, body[db.BodyCV])
 }
+
+func TestDocumentChannelHistoryCompact(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	var body db.Body
+
+	// Create a document with a single channel assignment
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"channels": ["test"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	err := json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	syncData, err := collection.GetDocSyncData(ctx, "doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
+
+	// Remove all channels - creates history entry for the removed channel
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev="+body["rev"].(string), `{"channels": []}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
+
+	// Add multiple channels - generates history for the previously removed channel
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 2)
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
+	require.Len(t, syncData.ChannelSetHistory, 1)
+	assert.Equal(t, syncData.ChannelSetHistory[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+
+	// Compact history at sequence 2 and verify history is cleared
+	err = collection.CompactDocChannelHistory(ctx, "doc", 2)
+	require.NoError(t, err)
+	syncData, err = collection.GetDocSyncData(ctx, "doc")
+	assert.NoError(t, err)
+	assert.Nil(t, syncData.ChannelSetHistory)
+}
