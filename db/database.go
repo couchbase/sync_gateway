@@ -2598,3 +2598,13 @@ func (db *DatabaseContext) usingRosmar() bool {
 func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
 	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }
+
+// InitializeOfflineMode starts polling the database state when the database transitions to offline mode.
+// This enables the database to detect state changes (such as resync requests) from other nodes in the cluster
+// while it is offline. The polling mechanism watches the metadata store for updates to the database state
+// document and invokes registered handlers when changes are detected.
+func (db *DatabaseContext) InitializeOfflineMode() {
+	// TODO: Add the appropriate handler function to handle this
+	db.DBStateMgr.AddResyncFunc(TempResyncHandler)
+	db.DBStateMgr.StartPolling(db.CancelContext)
+}

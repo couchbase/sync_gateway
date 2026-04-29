@@ -1084,3 +1084,30 @@ func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
 	}
 }
+
+// CaptureLogOutput captures log output during the execution of a function.
+// It redirects the console logger's output to a buffer, runs the provided function,
+// and returns the captured log output as a string.
+func CaptureLogOutput(t testing.TB, fn func()) string {
+	t.Helper()
+	logger := consoleLogger.Load()
+	if logger == nil {
+		return ""
+	}
+
+	var buf bytes.Buffer
+	originalOutput := logger.output
+
+	logger.logger.SetOutput(&buf)
+	defer func() {
+		if originalOutput != nil {
+			logger.logger.SetOutput(originalOutput)
+		} else {
+			logger.logger.SetOutput(os.Stderr)
+		}
+	}()
+
+	fn()
+
+	return buf.String()
+}

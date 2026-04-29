@@ -18,9 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestUpdateState verifies that UpdateState persists the state document and updates the in-memory State and
-// CAS, and returns an error when the CAS is stale.
-func TestUpdateState(t *testing.T) {
+// TestDatabaseStateUpdate verifies that UpdateState persists the state document and updates the in-memory State and CAS
+func TestDatabaseStateUpdate(t *testing.T) {
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
 	defer tBucket.Close(ctx)
@@ -234,5 +233,22 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		// confirming the goroutine has stopped.
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, called)
+	})
+
+	t.Run("Polling without state being created", func(t *testing.T) {
+		// Verifies that polling gracefully handles the case where the state document
+		// does not exist yet. This is the expected initial state, and should not
+		// produce error logs when polled.
+		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
+		mgr := NewDatabaseStateMgr(metadataStore, docID)
+		mgr.pollingInterval = 10 * time.Millisecond
+
+		output := base.CaptureLogOutput(t, func() {
+			mgr.StartPolling(ctx)
+			time.Sleep(200 * time.Millisecond)
+			mgr.StopPolling()
+		})
+
+		assert.NotContains(t, output, "error while polling for offline database state")
 	})
 }

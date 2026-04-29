@@ -385,10 +385,6 @@ func (h *handler) handlePostResync() error {
 			if err != nil {
 				return err
 			}
-			err = h.db.DBStateMgr.UpdateState(db.DatabaseState{ResyncRunning: true})
-			if err != nil {
-				base.WarnfCtx(h.ctx(), "Error updating state for 'resyncing' database: %v", err)
-			}
 			h.writeRawJSON(status)
 			base.Audit(h.ctx(), base.AuditIDDatabaseResyncStart, base.AuditFields{
 				"collections":          resyncPostReqBody.Scope,
@@ -418,10 +414,6 @@ func (h *handler) handlePostResync() error {
 		}
 
 		status, err := h.db.ResyncManager.GetStatus(h.ctx())
-		if err != nil {
-			return err
-		}
-		err = h.db.DBStateMgr.DeleteState()
 		if err != nil {
 			return err
 		}

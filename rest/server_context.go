@@ -1080,9 +1080,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if !startOnlineProcesses {
-		// TODO: Add the appropriate handler function to handle this
-		dbcontext.DBStateMgr.AddResyncFunc(db.TempResyncHandler)
-		dbcontext.DBStateMgr.StartPolling(dbcontext.CancelContext)
+		dbcontext.InitializeOfflineMode()
 		return dbcontext, nil
 	}
 
