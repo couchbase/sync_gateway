@@ -306,7 +306,7 @@ func TestExtractRowID(t *testing.T) {
 
 // TestBuildDualMetadataUnionStatement verifies that buildDualMetadataUnionStatement produces
 // well-formed UNION ALL N1QL statements with the correct keyspace substitutions, sort_order
-// literal injection, inner ORDER BY stripping, and outer ORDER BY construction.
+// literal injection, inner ORDER BY stripping, outer ORDER BY construction, and limit doubling.
 func TestBuildDualMetadataUnionStatement(t *testing.T) {
 	primaryKS := "`bucket`.`_system`.`_mobile`"
 	fallbackKS := "`bucket`.`_default`.`_default`"
@@ -317,8 +317,9 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 		statement         string
 		wantPrimaryKSInQ  string
 		wantFallbackKSInQ string
-		wantOuterOrderBy  string // expected suffix after "ORDER BY"
-		wantLimitInArm    string // expected LIMIT token present in each arm (empty = no LIMIT)
+		wantOuterOrderBy  string // expected ORDER BY columns (without trailing LIMIT)
+		wantLimitInArm    string // expected doubled LIMIT in each arm (empty = no LIMIT)
+		wantOuterLimit    string // expected doubled LIMIT on the outer UNION ALL (empty = no LIMIT)
 	}{
 		{
 			name: "basic query without ORDER BY",
@@ -326,7 +327,7 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 				"FROM $_keyspace WHERE type = 'user'",
 			wantPrimaryKSInQ:  primaryKS,
 			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  dualMetadataSortOrderKey,
+			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
 		},
 		{
 			name: "query with alias, no ORDER BY",
@@ -334,7 +335,7 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 				"FROM $_keyspace AS sgQueryKeyspaceAlias WHERE type = 'role'",
 			wantPrimaryKSInQ:  primaryKS,
 			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  dualMetadataSortOrderKey,
+			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
 		},
 		{
 			name: "query with ORDER BY META(alias).id",
@@ -344,7 +345,7 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 			),
 			wantPrimaryKSInQ:  primaryKS,
 			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  dualMetadataSortOrderKey + ", id",
+			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
 		},
 		{
 			name: "query with ORDER BY META(alias).id and LIMIT",
@@ -354,8 +355,9 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 			),
 			wantPrimaryKSInQ:  primaryKS,
 			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  dualMetadataSortOrderKey + ", id",
-			wantLimitInArm:    "LIMIT 10",
+			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
+			wantLimitInArm:    "LIMIT 20",
+			wantOuterLimit:    "LIMIT 20",
 		},
 	}
 
@@ -365,10 +367,6 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 
 			assert.True(t, strings.HasPrefix(result, "("), "should start with opening paren")
 			assert.Contains(t, result, ") UNION ALL (", "should contain UNION ALL joining the sub-queries")
-
-			// The result must end with the outer ORDER BY clause.
-			assert.True(t, strings.HasSuffix(result, " ORDER BY "+tc.wantOuterOrderBy),
-				"result should end with outer ORDER BY %q; got: %s", tc.wantOuterOrderBy, result)
 
 			// Both keyspaces should appear in the output.
 			assert.Contains(t, result, tc.wantPrimaryKSInQ, "primary keyspace should be in result")
@@ -381,6 +379,16 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 			// KeyspaceQueryToken must not appear in the output.
 			assert.NotContains(t, result, base.KeyspaceQueryToken, "token must be fully replaced")
 
+			// The result must contain the outer ORDER BY clause.
+			assert.Contains(t, result, " ORDER BY "+tc.wantOuterOrderBy,
+				"result should contain outer ORDER BY %q; got: %s", tc.wantOuterOrderBy, result)
+
+			// If a LIMIT was expected, verify it appears at the end of the full statement.
+			if tc.wantOuterLimit != "" {
+				assert.True(t, strings.HasSuffix(result, tc.wantOuterLimit),
+					"result should end with outer %s; got: %s", tc.wantOuterLimit, result)
+			}
+
 			// Split on UNION ALL to inspect each arm individually.
 			// The second part will include the trailing outer ORDER BY; both arms must contain
 			// the correct FROM clause.
@@ -392,13 +400,17 @@ func TestBuildDualMetadataUnionStatement(t *testing.T) {
 			// Inner ORDER BY must not appear inside either arm (it was lifted to outer scope).
 			assert.NotContains(t, parts[0], " ORDER BY ", "primary arm must not contain inner ORDER BY")
 			// parts[1] includes the outer ORDER BY suffix; strip it before checking.
-			armTwo := strings.TrimSuffix(parts[1], " ORDER BY "+tc.wantOuterOrderBy)
+			outerSuffix := " ORDER BY " + tc.wantOuterOrderBy
+			if tc.wantOuterLimit != "" {
+				outerSuffix += " " + tc.wantOuterLimit
+			}
+			armTwo := strings.TrimSuffix(parts[1], outerSuffix)
 			assert.NotContains(t, armTwo, " ORDER BY ", "fallback arm must not contain inner ORDER BY")
 
-			// If the original statement had a LIMIT it must be re-attached to each arm.
+			// If the original statement had a LIMIT it must be doubled and present in each arm.
 			if tc.wantLimitInArm != "" {
-				assert.Contains(t, parts[0], tc.wantLimitInArm, "primary arm must contain LIMIT")
-				assert.Contains(t, armTwo, tc.wantLimitInArm, "fallback arm must contain LIMIT")
+				assert.Contains(t, parts[0], tc.wantLimitInArm, "primary arm must contain doubled LIMIT")
+				assert.Contains(t, armTwo, tc.wantLimitInArm, "fallback arm must contain doubled LIMIT")
 			}
 		})
 	}
@@ -461,6 +473,26 @@ func TestSplitStatement(t *testing.T) {
 			assert.Equal(t, tc.wantCore, core)
 			assert.Equal(t, tc.wantOrderBy, orderBy)
 			assert.Equal(t, tc.wantLimitClause, limit)
+		})
+	}
+}
+
+// TestDoubleLimitClause verifies that doubleLimitClause correctly doubles numeric LIMIT values.
+func TestDoubleLimitClause(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", ""},
+		{" LIMIT 3", " LIMIT 6"},
+		{" LIMIT 10", " LIMIT 20"},
+		{" LIMIT 100", " LIMIT 200"},
+		{" LIMIT 1", " LIMIT 2"},
+		{" LIMIT 0", " LIMIT 0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.want, doubleLimitClause(tc.input))
 		})
 	}
 }

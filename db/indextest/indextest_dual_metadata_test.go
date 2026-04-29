@@ -13,6 +13,7 @@
 package indextest
 
 import (
+	"fmt"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -301,4 +302,128 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 	// The primary-store version of bob must take precedence over the fallback-store version.
 	assert.Equal(t, "bob@primary.example", results["bob"].Email,
 		"primary datastore version of bob should be preferred over fallback")
+}
+
+// TestGetUsersPaginationDualMetadataStore verifies that GetUsers correctly paginates through
+// all users when the internal QueryPaginationLimit is much smaller than the total number of
+// users.  Users are spread across the primary and fallback metadata stores with deliberate
+// duplicates to validate that:
+//
+//   - The pagination loop inside GetUsers fetches every page until exhausted.
+//   - Duplicate usernames present in both stores are deduplicated to a single entry.
+//   - The primary-store version is preferred for duplicates.
+//   - The final result set contains exactly the expected number of unique users.
+func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+
+	primaryStore := bucket.GetMobileSystemDataStore()
+	fallbackStore := bucket.DefaultDataStore()
+	ms := base.NewMetadataStore(primaryStore, fallbackStore)
+
+	// Initialise data indexes on the default collection.
+	setupIndexes(t, bucket, testIndexCreationOptions{
+		numPartitions:          db.DefaultNumIndexPartitions,
+		useLegacySyncDocsIndex: false,
+		useXattrs:              true,
+	})
+
+	// Initialise principal indexes on both the primary and fallback metadata stores.
+	indexOptions := db.InitializeIndexOptions{
+		NumReplicas:                0,
+		LegacySyncDocsIndex:        false,
+		UseXattrs:                  true,
+		NumPartitions:              db.DefaultNumIndexPartitions,
+		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+	}
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(t, ctx, ms, indexOptions))
+
+	// Use a very small pagination limit to force multiple pagination rounds inside GetUsers.
+	const paginationLimit = 3
+
+	dbOptions := getDatabaseContextOptions(false)
+	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
+	dbOptions.EnableXattr = true
+	dbOptions.MetadataStore = ms
+	dbOptions.QueryPaginationLimit = paginationLimit
+
+	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)
+	t.Cleanup(func() { database.Close(dbCtx) })
+
+	authOpts := auth.AuthenticatorOptions{
+		LogCtx:   ctx,
+		MetaKeys: base.DefaultMetadataKeys,
+	}
+
+	createAndSaveUser := func(t *testing.T, store base.DataStore, username, email string) {
+		t.Helper()
+		authr := auth.NewAuthenticator(store, nil, authOpts)
+		user, err := authr.NewUser(username, "password", nil)
+		require.NoError(t, err)
+		require.NoError(t, user.SetEmail(email))
+		require.NoError(t, authr.Save(user))
+	}
+
+	// ── Seed users ──
+	// Primary-only users (10 users).
+	for i := range 10 {
+		name := fmt.Sprintf("primary-only-%03d", i)
+		createAndSaveUser(t, primaryStore, name, name+"@primary.example")
+	}
+
+	// Fallback-only users (10 users).
+	for i := range 10 {
+		name := fmt.Sprintf("fallback-only-%03d", i)
+		createAndSaveUser(t, fallbackStore, name, name+"@fallback.example")
+	}
+
+	// Duplicate users present in both stores (5 users).
+	// Primary version has @primary.example, fallback has @fallback.example.
+	for i := range 5 {
+		name := fmt.Sprintf("dup-user-%03d", i)
+		createAndSaveUser(t, primaryStore, name, name+"@primary.example")
+		createAndSaveUser(t, fallbackStore, name, name+"@fallback.example")
+	}
+
+	// Total unique users: 10 (primary-only) + 10 (fallback-only) + 5 (duplicates) = 25.
+	const expectedUniqueUsers = 25
+
+	// Call GetUsers with limit=0 (no result cap) — pagination is driven by QueryPaginationLimit.
+	users, err := database.GetUsers(dbCtx, 0)
+	require.NoError(t, err)
+	require.Len(t, users, expectedUniqueUsers,
+		"GetUsers should return all %d unique users across paginated queries (pagination limit=%d)",
+		expectedUniqueUsers, paginationLimit)
+
+	// Build a lookup of returned users keyed by name for dedup and priority assertions.
+	usersByName := make(map[string]auth.PrincipalConfig, len(users))
+	for _, u := range users {
+		require.NotNil(t, u.Name)
+		_, exists := usersByName[*u.Name]
+		assert.False(t, exists, "duplicate user %q returned by GetUsers", *u.Name)
+		usersByName[*u.Name] = u
+	}
+
+	// Verify all primary-only users are present.
+	for i := range 10 {
+		name := fmt.Sprintf("primary-only-%03d", i)
+		assert.Contains(t, usersByName, name)
+	}
+
+	// Verify all fallback-only users are present.
+	for i := range 10 {
+		name := fmt.Sprintf("fallback-only-%03d", i)
+		assert.Contains(t, usersByName, name)
+	}
+
+	// Verify duplicate users are present with primary-store email (primary takes priority).
+	for i := range 5 {
+		name := fmt.Sprintf("dup-user-%03d", i)
+		require.Contains(t, usersByName, name)
+		require.NotNil(t, usersByName[name].Email)
+		assert.Equal(t, name+"@primary.example", *usersByName[name].Email,
+			"duplicate user %q should use the primary-store version", name)
+	}
 }

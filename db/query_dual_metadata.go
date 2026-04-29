@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,10 +20,10 @@ import (
 )
 
 // dualMetadataSortOrderKey is the N1QL column alias injected as a numeric literal into each
-// arm of the UNION ALL query to enforce primary-before-fallback ordering. Primary arms receive
-// value 0; fallback arms receive value 1. The outer ORDER BY uses this column as its first
-// sort key, ensuring all primary rows are returned before any fallback rows regardless of
-// N1QL's internal execution order.
+// arm of the UNION ALL query. Primary arms receive value 0; fallback arms receive value 1.
+// The outer ORDER BY places sort_order after id, so that for equal document IDs the
+// primary-store row (0) is returned before the fallback-store row (1). This guarantees the
+// unionDedupIterator's "first seen wins" strategy always selects the primary-store version.
 const dualMetadataSortOrderKey = "sort_order"
 
 // dualMetadataN1QLQuery executes a single UNION ALL N1QL statement across both the primary
@@ -32,16 +33,17 @@ const dualMetadataSortOrderKey = "sort_order"
 // The original statement (which may still contain base.KeyspaceQueryToken) is expanded by
 // buildDualMetadataUnionStatement into two fully-qualified sub-queries joined with UNION ALL.
 // A sort_order literal (0=primary, 1=fallback) is injected into each arm, and a single outer
-// ORDER BY sort_order[, <original order>] guarantees that all primary rows precede all
-// fallback rows in the result stream. unionDedupIterator relies on this ordering: "first seen
-// wins" always selects the primary-store version when the same META().id exists in both stores.
+// ORDER BY id[, <original order>], sort_order ensures document IDs are monotonically
+// non-decreasing (required for startKey-based pagination) while for equal IDs the primary-store
+// row sorts first (required for correct deduplication by unionDedupIterator).
 //
 // The combined query is executed against the fallback (default) store. Because both keyspaces
 // are referenced with fully-qualified names, the fallback store's query_context does not
 // restrict access to the primary keyspace.
 //
-// When a query limit is present in the statement it applies independently to each sub-query,
-// so the merged stream may return up to 2x the requested limit of unique rows.
+// Any LIMIT clause from the original statement is moved from the individual arms to the outer
+// UNION ALL and doubled to account for worst-case duplicate overlap. This prevents per-arm
+// limits from permanently hiding results when the two stores have interleaved ID ranges.
 func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryName string,
 	statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool,
 	dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (sgbucket.QueryResultIterator, error) {
@@ -73,25 +75,36 @@ func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryNam
 // the actual fully-qualified keyspace name.
 //
 // Any ORDER BY clause present in the original statement is stripped from the individual arms
-// and re-applied as a single outer ORDER BY on the full UNION ALL result, with sort_order
-// prepended so that primary rows always sort before fallback rows. Any LIMIT clause is
-// preserved in each arm so it continues to apply independently per sub-query.
+// and re-applied as a single outer ORDER BY on the full UNION ALL result. The outer ORDER BY
+// uses the document id as the primary sort key (for correct startKey-based pagination) and
+// appends sort_order so that for equal IDs the primary-store row (0) precedes the
+// fallback-store row (1), enabling unionDedupIterator's "first seen wins" deduplication.
+//
+// Any LIMIT clause is doubled on both the individual arms and the outer UNION ALL to account
+// for worst-case duplicate overlap between the two stores (each document can appear at most
+// twice — once per store). The per-arm doubled limit bounds how many rows each sub-query
+// reads, while the outer doubled limit caps the merged stream. With at most 2 copies per ID,
+// 2*N raw rows always yield at least N unique results after deduplication, ensuring the
+// pagination termination condition in GetUsers works correctly.
 //
 // The outer ORDER BY translates META(<alias>).id references to just `id`, which is the
 // projected column name at the UNION ALL result scope.
 //
-// Example output (simplified, no inner ORDER BY, no LIMIT):
+// Example output (simplified, original LIMIT 3):
 //
 //	(SELECT name, META(alias).id, 0 AS sort_order
-//	   FROM `bucket`.`_system`.`_mobile` AS alias WHERE ...)
+//	   FROM `bucket`.`_system`.`_mobile` AS alias WHERE ... LIMIT 6)
 //	UNION ALL
 //	(SELECT name, META(alias).id, 1 AS sort_order
-//	   FROM `bucket`.`_default`.`_default` AS alias WHERE ...)
-//	ORDER BY sort_order, id
+//	   FROM `bucket`.`_default`.`_default` AS alias WHERE ... LIMIT 6)
+//	ORDER BY id, sort_order LIMIT 6
 func buildDualMetadataUnionStatement(statement, primaryEscapedKeyspace, fallbackEscapedKeyspace string) string {
 	// Strip the inner ORDER BY so the outer ORDER BY governs the full merged result.
-	// Any LIMIT clause is re-attached to each arm so it continues to bound each sub-query.
+	// The LIMIT clause is extracted, doubled, and applied to both each arm (bounding per-store
+	// read cost) and the outer UNION ALL (capping the merged stream).
 	coreStmt, innerOrderBy, limitClause := splitStatement(statement)
+
+	doubledLimit := doubleLimitClause(limitClause)
 
 	// " FROM $_keyspace" appears exactly once in each principal query statement. We prepend the
 	// sort_order literal to the SELECT column list by inserting before the FROM token, then
@@ -105,23 +118,22 @@ func buildDualMetadataUnionStatement(statement, primaryEscapedKeyspace, fallback
 			1,
 		)
 		arm := strings.ReplaceAll(withMeta, base.KeyspaceQueryToken, escapedKeyspace)
-		return arm + limitClause
+		return arm + doubledLimit
 	}
 
 	union := "(" + inject(primaryEscapedKeyspace, 0) + ") UNION ALL (" + inject(fallbackEscapedKeyspace, 1) + ")"
 
-	// Build the outer ORDER BY: sort_order (0=primary, 1=fallback) takes precedence so all
-	// primary rows precede all fallback rows in the merged stream.  The original inner ORDER BY
-	// columns are appended so document ordering within each store is preserved.
-	// META(<alias>).id is translated to just `id` because at the outer UNION ALL scope the
-	// document key is projected by its field name.
-	outerOrderBy := dualMetadataSortOrderKey
+	// Build the outer ORDER BY: id first (for correct startKey-based pagination), then
+	// sort_order so that for equal document IDs the primary-store row (0) precedes the
+	// fallback-store row (1). Any original inner ORDER BY columns are used as the id portion;
+	// META(<alias>).id is translated to just `id` at the outer UNION ALL scope.
+	outerOrderBy := "id"
 	if innerOrderBy != "" {
-		adapted := strings.ReplaceAll(innerOrderBy, fmt.Sprintf("META(%s).id", base.KeyspaceQueryAlias), "id")
-		outerOrderBy += ", " + adapted
+		outerOrderBy = strings.ReplaceAll(innerOrderBy, fmt.Sprintf("META(%s).id", base.KeyspaceQueryAlias), "id")
 	}
+	outerOrderBy += ", " + dualMetadataSortOrderKey
 
-	return union + " ORDER BY " + outerOrderBy
+	return union + " ORDER BY " + outerOrderBy + doubledLimit
 }
 
 // splitStatement splits a N1QL statement into three parts following the standard clause order:
@@ -154,16 +166,35 @@ func splitStatement(stmt string) (core, orderByColumns, limitClause string) {
 	return core, remainder[:limitIdx], remainder[limitIdx:]
 }
 
+// doubleLimitClause parses a LIMIT clause string (e.g. " LIMIT 10") and returns a new clause
+// with the limit value doubled (e.g. " LIMIT 20"). If the clause is empty or cannot be parsed
+// the original clause is returned unchanged.
+func doubleLimitClause(limitClause string) string {
+	if limitClause == "" {
+		return ""
+	}
+	trimmed := strings.TrimSpace(limitClause)
+	upper := strings.ToUpper(trimmed)
+	if !strings.HasPrefix(upper, "LIMIT ") {
+		return limitClause
+	}
+	numStr := strings.TrimSpace(trimmed[len("LIMIT "):])
+	n, err := strconv.Atoi(numStr)
+	if err != nil {
+		return limitClause
+	}
+	return fmt.Sprintf(" LIMIT %d", n*2)
+}
+
 // unionDedupIterator wraps a single sgbucket.QueryResultIterator (typically the result of a
 // UNION ALL query) and emits each unique META().id exactly once.
 //
 // Deduplication relies on the sort_order column injected by buildDualMetadataUnionStatement:
-// the outer ORDER BY sort_order guarantees that all primary-keyspace rows (sort_order=0)
-// are returned before any fallback-keyspace rows (sort_order=1). As a result, "first seen
-// wins" always selects the primary-store version when the same document exists in both
-// keystores. The sort_order column injected by buildDualMetadataUnionStatement
-// is present in each emitted row but are harmlessly ignored by callers that unmarshal into
-// typed structs.
+// the outer ORDER BY id, sort_order guarantees that for equal document IDs the primary-keyspace
+// row (sort_order=0) is returned before the fallback-keyspace row (sort_order=1). As a result,
+// "first seen wins" always selects the primary-store version when the same document exists in
+// both keystores. The sort_order column is present in each emitted row but is harmlessly
+// ignored by callers that unmarshal into typed structs.
 type unionDedupIterator struct {
 	iter    sgbucket.QueryResultIterator
 	seenIDs map[string]struct{}
