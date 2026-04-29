@@ -486,7 +486,7 @@ OIDC-login-page-handler:
     - authenticated
 Document:
   description: |-
-    A Sync Gateway document. The document body is a flat JSON object whose fields are the application's own data; Sync Gateway metadata is inlined into the same object using reserved `_`-prefixed field names (`_id`, `_rev`, `_exp`, etc.) listed below. Any field that does not start with `_` is treated as user data and stored verbatim on the document.
+    A Sync Gateway document. The document body is a JSON object whose top-level fields are the application's own data; Sync Gateway metadata is inlined into the same object using reserved `_`-prefixed field names (`_id`, `_rev`, `_exp`, etc.) listed below. Any top-level field that does not start with `_` is treated as user data and stored verbatim, and field values can be any valid JSON (including nested objects and arrays).
   type: object
   additionalProperties:
     x-additionalPropertiesName: propertyname
