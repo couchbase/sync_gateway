@@ -539,6 +539,7 @@ func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
 				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
+				m.saveInitializationError(replicationCfg, err)
 				continue
 			}
 			m.activeReplicatorsLock.Lock()
@@ -566,6 +567,9 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		user, err := m.dbContext.Authenticator(m.loggingCtx).GetUser(config.RunAs)
 		if err != nil {
 			return nil, err
+		}
+		if user == nil {
+			return nil, base.RedactErrorf("run_as user %s not found", base.UD(config.RunAs))
 		}
 		activeDB.SetUser(user)
 	}
@@ -732,6 +736,29 @@ func (m *sgReplicateManager) replicationComplete(replicationID string) {
 	}
 }
 
+// saveInitializationError persists an error status for a replication that failed to initialise,
+// so that GetReplicationStatus returns ReplicationStateError instead of the target state.
+func (m *sgReplicateManager) saveInitializationError(config *ReplicationCfg, initErr error) {
+	status := &ReplicationStatus{
+		ID:           config.ID,
+		Status:       ReplicationStateError,
+		ErrorMessage: initErr.Error(),
+	}
+	expirySecs := int(m.dbContext.Options.LocalDocExpirySecs)
+	if config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull {
+		pushKey := m.dbContext.MetadataKeys.ReplicationStatusKey(PushCheckpointID(config.ID))
+		if err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pushKey, status, expirySecs); err != nil {
+			base.WarnfCtx(m.loggingCtx, "Unable to persist error status for replication %s: %v", base.UD(config.ID), err)
+		}
+	}
+	if config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull {
+		pullKey := m.dbContext.MetadataKeys.ReplicationStatusKey(PullCheckpointID(config.ID))
+		if err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pullKey, status, expirySecs); err != nil {
+			base.WarnfCtx(m.loggingCtx, "Unable to persist error status for replication %s: %v", base.UD(config.ID), err)
+		}
+	}
+}
+
 func (m *sgReplicateManager) Stop() {
 
 	// Close subscribe terminator first to stop subscribing/responding to cluster config changes prior to
@@ -801,6 +828,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
 					base.WarnfCtx(m.loggingCtx, "Error initializing upserted replication %s: %v", replicationID, initError)
+					m.saveInitializationError(replicationCfg, initError)
 				} else {
 					m.activeReplicators[replicationID] = replicator
 					activeReplicator = replicator
@@ -830,6 +858,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
 					base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, initError)
+					m.saveInitializationError(replicationCfg, initError)
 					continue
 				}
 				m.activeReplicators[replicationID] = replicator
