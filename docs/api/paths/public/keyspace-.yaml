@@ -22,6 +22,8 @@ post:
       application/json:
         schema:
           $ref: ../../components/schemas.yaml#/Document
+        example:
+          foo: bar
   responses:
     '200':
       description: New document revision created successfully.

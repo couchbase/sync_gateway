@@ -84,6 +84,9 @@ put:
       application/json:
         schema:
           $ref: ../../components/schemas.yaml#/Document
+        example:
+          _rev: 1-64d4a1f179db5c1848fe52967b47c166
+          foo: bar
   responses:
     '201':
       description: Created

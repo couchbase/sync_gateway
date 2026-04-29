@@ -19,7 +19,8 @@ Document-If-Match:
   required: false
   schema:
     type: string
-  description: An optimistic concurrency control (OCC) value used to prevent conflicts. Use the value returned in the ETag response header of the GET request for the resource being updated, or the latest known Revision Tree ID or Current Version of the document.
+  description: |-
+    An optimistic concurrency control (OCC) value used to prevent conflicts. Use the value returned in the ETag response header of the GET request for the resource being updated, or the latest known Revision Tree ID or Current Version of the document. When upserting a single document by ID (`PUT /{db}/{doc}`), the `_rev` field in the request body and the `rev` query parameter serve the same purpose as this header; supply exactly one of the three.
 Include-channels:
   name: channels
   in: query
