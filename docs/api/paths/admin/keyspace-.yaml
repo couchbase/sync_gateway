@@ -24,6 +24,10 @@ post:
           $ref: ../../components/schemas.yaml#/Document
         example:
           foo: bar
+          _attachments:
+            hello.txt:
+              content_type: text/plain
+              data: aGVsbG8=
   responses:
     '200':
       description: New document revision created successfully.

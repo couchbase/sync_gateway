@@ -87,6 +87,10 @@ put:
         example:
           _rev: 1-64d4a1f179db5c1848fe52967b47c166
           foo: bar
+          _attachments:
+            hello.txt:
+              content_type: text/plain
+              data: aGVsbG8=
   responses:
     '201':
       description: Created
