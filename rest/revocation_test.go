@@ -2251,6 +2251,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 func TestRevocationMessage(t *testing.T) {
 	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeyHTTP, base.KeyCache)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
