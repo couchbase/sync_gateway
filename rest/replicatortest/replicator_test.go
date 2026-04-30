@@ -732,18 +732,17 @@ func TestReplicationStatusActions(t *testing.T) {
 			close(doneChan)
 			statusWg.Wait()
 		}()
-		statusWg.Add(1)
-		go func() {
-			defer statusWg.Done()
+		statusWg.Go(func() {
 			for {
 				select {
 				case <-doneChan:
 					return
-				default:
+				// wait just long enough to release control back to go scheduler if GOMAXPROCS=1
+				case <-time.After(5 * time.Millisecond):
+					_ = rt1.GetReplicationStatus(replicationID)
 				}
-				_ = rt1.GetReplicationStatus(replicationID)
 			}
-		}()
+		})
 
 		// wait for document originally written to rt2 to arrive at rt1
 		changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
