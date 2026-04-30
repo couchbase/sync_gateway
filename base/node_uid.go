@@ -19,34 +19,29 @@ import (
 	"sort"
 )
 
-// nodeUIDLength is the expected length of a valid node UID
-// (128-bit value encoded as a 32-character lowercase hex string).
+// nodeUIDLength is the expected length of a valid node UID (128-bit value encoded as a 32-character lowercase hex string)
 const nodeUIDLength = 32
 
-// GenerateNodeUID derives a stable 32-character hex node UID from a fingerprint of the
-// current host (hostname + sorted non-loopback interface MAC addresses) combined with the
-// supplied listen addresses. Including listen addresses (typically the public and admin
-// API interfaces) lets two Sync Gateway processes running on the same host produce
-// distinct UIDs. The same instance produces the same UID across restarts without any
-// persistent state. Only if no fingerprint inputs can be collected do we fall back to a
-// random ID.
+// GenerateNodeUID derives a stable 32-character hex node UID from a fingerprint of the SG's process and its host.
+// Components: hostname + NIC MAC addresses + API listen addresses.
+// The same SG instance on the same hardware produces the same UID across restarts without any persistent state.
+//
+// Only if no fingerprint inputs can be collected do we fall back to a random ID.
 func GenerateNodeUID(ctx context.Context, listenAddrs ...string) (string, error) {
-	hostname, macs := collectNodeFingerprint(ctx)
+	hostname, macs := nodeFingerprint(ctx)
 	if hostname == "" && len(macs) == 0 && len(listenAddrs) == 0 {
-		WarnfCtx(ctx, "Could not collect hostname, interface MACs, or listen addresses for deterministic node UID — falling back to random")
+		WarnfCtx(ctx, "Could not collect hostname, interface MACs, or listen addresses for deterministic node UID — falling back to random node UID")
 		return GenerateRandomID()
 	}
+
 	return deterministicNodeUID(hostname, macs, listenAddrs), nil
 }
 
-// collectNodeFingerprint reads the hostname and non-empty hardware addresses of all
-// network interfaces (loopback and interfaces without a MAC are skipped). Either
-// component may be empty if the system call fails; both empty means we cannot
-// fingerprint the host.
-func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string) {
-	if h, err := os.Hostname(); err == nil {
-		hostname = h
-	} else {
+// nodeFingerprint reads the hostname and non-empty hardware addresses of all network interfaces.
+// Either component may be empty if the system call fails; both empty means we cannot fingerprint the host.
+func nodeFingerprint(ctx context.Context) (hostname string, macs []string) {
+	hostname, err := os.Hostname()
+	if err != nil {
 		WarnfCtx(ctx, "Could not read hostname for node UID fingerprint: %v", err)
 	}
 
@@ -55,6 +50,7 @@ func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string
 		WarnfCtx(ctx, "Could not enumerate network interfaces for node UID fingerprint: %v", err)
 		return hostname, nil
 	}
+
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -63,15 +59,19 @@ func collectNodeFingerprint(ctx context.Context) (hostname string, macs []string
 			macs = append(macs, mac)
 		}
 	}
+
 	return hostname, macs
 }
 
-// deterministicNodeUID produces a 32-char lowercase hex digest over the canonical
-// fingerprint: hostname, then MACs sorted lexicographically, then listen addresses sorted
-// lexicographically. Each component is length-prefixed (uint32 little-endian) before being
-// hashed, so no in-band separator can collide with characters that may legitimately appear
-// in a hostname, MAC, or address. Deterministic ordering keeps the input bytes stable across
-// restarts. Pure function — exposed unexported for tests.
+// deterministicNodeUID produces a 32-char lowercase hex digest for the given:
+//  1. hostname
+//  2. All network interface MACs
+//  3. SG REST API listen addresses
+//
+// This ensures that we can calculate a unique identifier for a given Sync Gateway process even under these conditions:
+//  1. Different hostnames but same listen addresses (common case)
+//  2. Same host shared across multiple listen addresses (uncommon but often test setups ... '2-node' on ports 4984 and 5984 for example)
+//  3. Same hostname different physical hardware (uncommon but default/unconfigured hostname setups may cause this)
 func deterministicNodeUID(hostname string, macs []string, listenAddrs []string) string {
 	sortedMACs := append([]string(nil), macs...)
 	sort.Strings(sortedMACs)

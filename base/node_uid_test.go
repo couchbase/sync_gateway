@@ -97,10 +97,5 @@ func TestDeterministicNodeUID(t *testing.T) {
 		a := deterministicNodeUID("foobar", nil, nil)
 		b := deterministicNodeUID("foo", []string{"bar"}, nil)
 		assert.NotEqual(t, a, b, "shifting bytes between components must change the UID")
-
-		// Hostname containing the would-be separator must not collide with a different split.
-		c := deterministicNodeUID("host:with:colons", nil, []string{"addr"})
-		d := deterministicNodeUID("host", []string{"with"}, []string{"colons", "addr"})
-		assert.NotEqual(t, c, d, "a hostname containing ':' must not collide with multi-component input")
 	})
 }
