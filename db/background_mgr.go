@@ -52,7 +52,8 @@ const (
 
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
-	BackgroundManagerStatus
+	status                                 BackgroundManagerStatus
+	statusLock                             sync.RWMutex
 	name                                   string
 	lastError                              error
 	terminator                             *base.SafeTerminator
@@ -124,7 +125,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 	}
 
 	b.resetStatus()
-	b.StartTime = time.Now().UTC()
+	b.setStartTime(time.Now().UTC())
 
 	// If we're resuming a cluster-aware process, try to reuse the previous start time
 	if processClusterStatus != nil {
@@ -135,7 +136,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 		}
 		if err := base.JSONUnmarshal(processClusterStatus, &clusterStatus); err == nil {
 			if !clusterStatus.Status.StartTime.IsZero() {
-				b.StartTime = clusterStatus.Status.StartTime
+				b.setStartTime(clusterStatus.Status.StartTime)
 			}
 		}
 	}
@@ -179,13 +180,13 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 
 		b.Terminate()
 
-		b.lock.Lock()
-		if b.State == BackgroundProcessStateStopping {
-			b.State = BackgroundProcessStateStopped
-		} else if b.State != BackgroundProcessStateError {
-			b.State = BackgroundProcessStateCompleted
+		b.statusLock.Lock()
+		if b.status.State == BackgroundProcessStateStopping {
+			b.status.State = BackgroundProcessStateStopped
+		} else if b.status.State != BackgroundProcessStateError {
+			b.status.State = BackgroundProcessStateCompleted
 		}
-		b.lock.Unlock()
+		b.statusLock.Unlock()
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
@@ -251,10 +252,10 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 			}
 		}(b.terminator)
 
-		b.State = BackgroundProcessStateRunning
+		b.setRunState(BackgroundProcessStateRunning)
 		return nil
 	}
-	if b.mode() == backgroundManagerModeLocal && b.State == BackgroundProcessStateRunning {
+	if b.mode() == backgroundManagerModeLocal && b.GetRunState() == BackgroundProcessStateRunning {
 		return processAlreadyRunningErr
 	}
 
@@ -262,19 +263,19 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 		if b.clusterStateIs(ctx, BackgroundProcessStateStopping) {
 			return errBackgroundManagerAlreadyStopping
 		}
-		if b.State == BackgroundProcessStateRunning {
+		if b.GetRunState() == BackgroundProcessStateRunning {
 			return nil
 		}
 	}
 
-	if b.State == BackgroundProcessStateStopping {
+	if b.GetRunState() == BackgroundProcessStateStopping {
 		return errBackgroundManagerAlreadyStopping
 	}
 
 	// Now we know that we're the only running process we should instantiate these values
 	b.terminator = base.NewSafeTerminator()
 
-	b.State = BackgroundProcessStateRunning
+	b.setRunState(BackgroundProcessStateRunning)
 	return nil
 }
 
@@ -336,10 +337,10 @@ func (b *BackgroundManager) GetStatus(ctx context.Context) ([]byte, error) {
 }
 
 func (b *BackgroundManager) getStatusLocal() ([]byte, []byte, error) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
 
-	backgroundStatus := b.BackgroundManagerStatus
+	backgroundStatus := b.status
 	if string(backgroundStatus.State) == "" {
 		backgroundStatus.State = BackgroundProcessStateCompleted
 	}
@@ -416,8 +417,14 @@ func (b *BackgroundManager) resetStatus() {
 	defer b.lock.Unlock()
 
 	b.lastError = nil
-	b.LastErrorMessage = ""
+	b.setLastErrorMessage("")
 	b.Process.ResetStatus()
+}
+
+func (b *BackgroundManager) setLastErrorMessage(msg string) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	b.status.LastErrorMessage = msg
 }
 
 func (b *BackgroundManager) Stop() error {
@@ -464,29 +471,47 @@ func (b *BackgroundManager) markStop() error {
 		}
 
 		// If this is the node running the service
-		if b.State == BackgroundProcessStateRunning {
-			b.State = BackgroundProcessStateStopping
+		if b.GetRunState() == BackgroundProcessStateRunning {
+			b.setRunState(BackgroundProcessStateStopping)
 		}
 
 		return nil
 	}
 
-	if b.State == BackgroundProcessStateStopping {
+	if b.GetRunState() == BackgroundProcessStateStopping {
 		return errBackgroundManagerAlreadyStopping
 	}
 
-	if b.State == BackgroundProcessStateCompleted || b.State == BackgroundProcessStateStopped || b.State == BackgroundProcessStateError {
+	if b.GetRunState() == BackgroundProcessStateCompleted || b.GetRunState() == BackgroundProcessStateStopped || b.GetRunState() == BackgroundProcessStateError {
 		return processAlreadyStoppedErr
 	}
 
-	b.State = BackgroundProcessStateStopping
+	b.setRunState(BackgroundProcessStateStopping)
 	return nil
 }
 
 func (b *BackgroundManager) GetRunState() BackgroundProcessState {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	return b.State
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	return b.status.State
+}
+
+func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	b.status.State = state
+}
+
+func (b *BackgroundManager) getStartTime() time.Time {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	return b.status.StartTime
+}
+
+func (b *BackgroundManager) setStartTime(startTime time.Time) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	b.status.StartTime = startTime
 }
 
 func (b *BackgroundManager) SetError(err error) {
@@ -494,7 +519,7 @@ func (b *BackgroundManager) SetError(err error) {
 	defer b.lock.Unlock()
 
 	b.lastError = err
-	b.State = BackgroundProcessStateError
+	b.setRunState(BackgroundProcessStateError)
 	b.Terminate()
 }
 
@@ -557,7 +582,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 				if err != nil {
 					return nil, nil, false, err
 				}
-				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateError}, bucketState) && b.State == BackgroundProcessStateRunning {
+				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
 					return nil, nil, false, errStatusNotRunning
 				}
 			}
@@ -650,7 +675,7 @@ func (b *BackgroundManager) watchStatusDocMultiNode(ctx context.Context) (bool, 
 		return false, err
 	}
 
-	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}, state) && b.State == BackgroundProcessStateRunning {
+	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}, state) && b.GetRunState() == BackgroundProcessStateRunning {
 		_ = b.markStop()
 		b.terminator.Close()
 		return true, nil

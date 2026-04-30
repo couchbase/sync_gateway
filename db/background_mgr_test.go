@@ -294,7 +294,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	err := mgr1.Start(ctx, nil)
 	require.NoError(t, err)
 
-	origStartTime := mgr1.StartTime
+	origStartTime := mgr1.getStartTime()
 	require.False(t, origStartTime.IsZero())
 
 	err = mgr1.UpdateStatusClusterAware(ctx)
@@ -319,5 +319,5 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = mgr2.Stop() }()
 
-	require.Equal(t, origStartTime, mgr2.StartTime, "mgr2 should have reused the start time from the cluster status doc")
+	require.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have reused the start time from the cluster status doc")
 }
