@@ -734,10 +734,10 @@ func TestReplicationStatusActions(t *testing.T) {
 		}()
 		statusWg.Add(1)
 		go func() {
+			defer statusWg.Done()
 			for {
 				select {
 				case <-doneChan:
-					statusWg.Done()
 					return
 				default:
 				}
