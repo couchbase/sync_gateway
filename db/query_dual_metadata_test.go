@@ -11,16 +11,16 @@ package db
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // mockQueryResultIterator is an in-memory QueryResultIterator backed by a slice of raw JSON
-// byte slices, used to test unionDedupIterator without a real database.
+// byte slices, used to test mergedDedupIterator without a real database.
 type mockQueryResultIterator struct {
 	rows     [][]byte
 	pos      int
@@ -61,8 +61,7 @@ func (m *mockQueryResultIterator) Close() error {
 	return m.closeErr
 }
 
-// marshalRow builds a minimal principal-row JSON byte slice with id and name fields,
-// mimicking a row from the UNION ALL query used by buildDualMetadataUnionStatement.
+// marshalRow builds a minimal principal-row JSON byte slice with id and name fields.
 func marshalRow(id, name string) []byte {
 	row, err := base.JSONMarshal(map[string]string{"id": id, "name": name})
 	if err != nil {
@@ -71,17 +70,17 @@ func marshalRow(id, name string) []byte {
 	return row
 }
 
-// TestUnionDedupIteratorPrimaryOnly verifies that all primary rows are emitted when there are
-// no fallback rows in the UNION ALL stream.
-func TestUnionDedupIteratorPrimaryOnly(t *testing.T) {
+// TestMergedDedupIteratorPrimaryOnly verifies that all primary rows are emitted when there are
+// no fallback rows.
+func TestMergedDedupIteratorPrimaryOnly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	// Simulate UNION ALL output with only primary rows (no fallback rows).
-	stream := newMockIterator([][]byte{
+	primary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
+	fallback := newMockIterator(nil)
 
-	iter := newUnionDedupIterator(stream)
+	iter := newMergedDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -96,17 +95,17 @@ func TestUnionDedupIteratorPrimaryOnly(t *testing.T) {
 	assert.Equal(t, "_sync:user:bob", rows[1].Id)
 }
 
-// TestUnionDedupIteratorFallbackOnly verifies that all fallback rows are emitted when there
-// are no primary rows in the UNION ALL stream.
-func TestUnionDedupIteratorFallbackOnly(t *testing.T) {
+// TestMergedDedupIteratorFallbackOnly verifies that all fallback rows are emitted when there
+// are no primary rows.
+func TestMergedDedupIteratorFallbackOnly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	// Simulate UNION ALL output with only fallback rows.
-	stream := newMockIterator([][]byte{
+	primary := newMockIterator(nil)
+	fallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:carol", "carol"),
 		marshalRow("_sync:role:editor", "editor"),
 	})
 
-	iter := newUnionDedupIterator(stream)
+	iter := newMergedDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -121,31 +120,31 @@ func TestUnionDedupIteratorFallbackOnly(t *testing.T) {
 	assert.Equal(t, "_sync:role:editor", rows[1].Id)
 }
 
-// TestUnionDedupIteratorEmpty verifies that an empty UNION ALL stream is handled cleanly.
-func TestUnionDedupIteratorEmpty(t *testing.T) {
-	iter := newUnionDedupIterator(newMockIterator(nil))
+// TestMergedDedupIteratorEmpty verifies that empty iterators are handled cleanly.
+func TestMergedDedupIteratorEmpty(t *testing.T) {
+	iter := newMergedDedupIterator(newMockIterator(nil), newMockIterator(nil), 0)
 	var row principalRow
 	assert.False(t, iter.Next(context.Background(), &row))
 	require.NoError(t, iter.Close())
 }
 
-// TestUnionDedupIteratorDeduplicatesPrimaryPreferred verifies that when the same META().id
-// appears in both the primary and fallback sections of the UNION ALL stream, only the primary
-// version (which appears first) is emitted. The Name field is different per store so the test
-// can confirm which copy was chosen.
-func TestUnionDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
+// TestMergedDedupIteratorDeduplicatesPrimaryPreferred verifies that when the same ID
+// appears in both primary and fallback, only the primary version is emitted. Results are
+// in sorted ID order.
+func TestMergedDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 	ctx := base.TestCtx(t)
-	// Primary rows appear first in the UNION ALL stream, fallback rows second.
-	stream := newMockIterator([][]byte{
+	// Both iterators sorted by ID.
+	primary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice-primary"),
 		marshalRow("_sync:user:bob", "bob-primary"),
-		// Fallback section: alice and bob are duplicates, carol is new.
+	})
+	fallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice-fallback"),
 		marshalRow("_sync:user:bob", "bob-fallback"),
 		marshalRow("_sync:user:carol", "carol-fallback"),
 	})
 
-	iter := newUnionDedupIterator(stream)
+	iter := newMergedDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -165,19 +164,19 @@ func TestUnionDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 	assert.Equal(t, "carol-fallback", rows[2].Name, "fallback-only doc should be emitted")
 }
 
-// TestUnionDedupIteratorAllDuplicates verifies that when every fallback doc is a duplicate of
-// a primary doc, only the primary docs are returned (no extras).
-func TestUnionDedupIteratorAllDuplicates(t *testing.T) {
+// TestMergedDedupIteratorAllDuplicates verifies that when every fallback doc is a duplicate of
+// a primary doc, only the primary docs are returned.
+func TestMergedDedupIteratorAllDuplicates(t *testing.T) {
 	ctx := base.TestCtx(t)
-	stream := newMockIterator([][]byte{
-		// Primary section.
+	primary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice-primary"),
 		marshalRow("_sync:user:bob", "bob-primary"),
-		// Fallback section — identical IDs.
+	})
+	fallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
-	iter := newUnionDedupIterator(stream)
+	iter := newMergedDedupIterator(primary, fallback, 0)
 	var result []principalRow
 	for {
 		var row principalRow
@@ -194,18 +193,46 @@ func TestUnionDedupIteratorAllDuplicates(t *testing.T) {
 	assert.Equal(t, "bob-primary", result[1].Name)
 }
 
-// TestUnionDedupIteratorNextBytes verifies that NextBytes returns raw JSON and that
+// TestMergedDedupIteratorMergeSortOrder verifies that interleaved IDs from both stores are
+// emitted in globally sorted order.
+func TestMergedDedupIteratorMergeSortOrder(t *testing.T) {
+	ctx := base.TestCtx(t)
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("C", "c"),
+		marshalRow("E", "e"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("D", "d"),
+		marshalRow("F", "f"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 0)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B", "C", "D", "E", "F"}, ids)
+}
+
+// TestMergedDedupIteratorNextBytes verifies that NextBytes returns raw JSON and that
 // deduplication still works through the raw-bytes path.
-func TestUnionDedupIteratorNextBytes(t *testing.T) {
-	stream := newMockIterator([][]byte{
-		// Primary section.
+func TestMergedDedupIteratorNextBytes(t *testing.T) {
+	primary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
-		// Fallback section: alice is a duplicate, bob is new.
+	})
+	fallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice-dup"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newUnionDedupIterator(stream)
+	iter := newMergedDedupIterator(primary, fallback, 0)
 	var rawRows [][]byte
 	for {
 		raw := iter.NextBytes()
@@ -220,35 +247,284 @@ func TestUnionDedupIteratorNextBytes(t *testing.T) {
 	assert.Contains(t, string(rawRows[1]), "bob")
 }
 
-// TestUnionDedupIteratorClosesProperly verifies that Close propagates to the underlying
-// iterator, even after partial iteration.
-func TestUnionDedupIteratorClosesProperly(t *testing.T) {
+// TestMergedDedupIteratorClosesProperly verifies that Close propagates to both underlying
+// iterators, even after partial iteration.
+func TestMergedDedupIteratorClosesProperly(t *testing.T) {
 	ctx := base.TestCtx(t)
-	mock := newMockIterator([][]byte{
+	mockPrimary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
+	})
+	mockFallback := newMockIterator([][]byte{
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newUnionDedupIterator(mock)
+	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	require.True(t, iter.Next(ctx, &row))
 	require.NoError(t, iter.Close())
-	assert.True(t, mock.closed, "underlying iterator should be closed")
+	assert.True(t, mockPrimary.closed, "primary iterator should be closed")
+	assert.True(t, mockFallback.closed, "fallback iterator should be closed")
 }
 
-// TestUnionDedupIteratorOne verifies the One helper returns the first row and closes the
-// underlying iterator.
-func TestUnionDedupIteratorOne(t *testing.T) {
+// TestMergedDedupIteratorOne verifies the One helper returns the first row and closes both
+// iterators.
+func TestMergedDedupIteratorOne(t *testing.T) {
 	ctx := base.TestCtx(t)
-	mock := newMockIterator([][]byte{
+	mockPrimary := newMockIterator([][]byte{
 		marshalRow("_sync:user:alice", "alice"),
 	})
+	mockFallback := newMockIterator(nil)
 
-	iter := newUnionDedupIterator(mock)
+	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	require.NoError(t, iter.One(ctx, &row))
 	assert.Equal(t, "_sync:user:alice", row.Id)
-	assert.True(t, mock.closed)
+	assert.True(t, mockPrimary.closed)
+	assert.True(t, mockFallback.closed)
+}
+
+// TestMergedDedupIteratorSafeBoundary verifies the safe-boundary mechanism: when a source
+// exhausts at exactly limit rows, the iterator stops emitting rows from the other source
+// whose IDs exceed the exhausted source's last ID. This prevents pagination cursor jumping.
+func TestMergedDedupIteratorSafeBoundary(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// Simulate LIMIT 2: primary returns [A, E] (2 rows = limit), fallback returns [B, C] (2 rows = limit).
+	// Without boundary, merged output would be [A, B, C, E] and cursor would jump to E, skipping D.
+	// With boundary: fallback exhausts at 2==limit → boundary=C. E > C → stop.
+	// Output: [A, B, C]. Next page starts at C and picks up D.
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("E", "e"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("C", "c"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 2)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B", "C"}, ids, "E should be suppressed by safe boundary at C")
+}
+
+// TestMergedDedupIteratorSafeBoundaryPrimaryExhausts verifies the boundary when primary
+// exhausts first.
+func TestMergedDedupIteratorSafeBoundaryPrimaryExhausts(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 2: primary [A, B] hit limit → boundary = B. fallback [C, D] → C > B → stop
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("B", "b"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("C", "c"),
+		marshalRow("D", "d"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 2)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B"}, ids, "C and D should be suppressed by safe boundary at B")
+}
+
+// TestMergedDedupIteratorNoBoundaryWhenBelowLimit verifies that when a source returns fewer
+// than limit rows (truly exhausted), no boundary is set and all remaining rows from the other
+// source are emitted.
+func TestMergedDedupIteratorNoBoundaryWhenBelowLimit(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 5, primary returns 2 rows (< 5, truly exhausted), fallback returns 3.
+	// No boundary should be set — all results should be emitted.
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("C", "c"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("D", "d"),
+		marshalRow("E", "e"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 5)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B", "C", "D", "E"}, ids, "all rows should be emitted when below limit")
+}
+
+// TestMergedDedupIteratorBoundaryWithDuplicates verifies the safe boundary works correctly
+// when there are duplicate IDs across stores.
+func TestMergedDedupIteratorBoundaryWithDuplicates(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 3: primary [A, B, C] (hit limit), fallback [A, D, E] (hit limit).
+	// Merge: A(primary, dup fallback discarded), B, C. Primary exhausts at 3==limit → boundary=C.
+	// Fallback next peek: D > C → stop.
+	// Output: [A, B, C].
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a-primary"),
+		marshalRow("B", "b-primary"),
+		marshalRow("C", "c-primary"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("A", "a-fallback"),
+		marshalRow("D", "d-fallback"),
+		marshalRow("E", "e-fallback"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 3)
+	var rows []principalRow
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		rows = append(rows, row)
+	}
+	require.NoError(t, iter.Close())
+	require.Len(t, rows, 3)
+	assert.Equal(t, "A", rows[0].Id)
+	assert.Equal(t, "a-primary", rows[0].Name, "primary preferred for duplicate")
+	assert.Equal(t, "B", rows[1].Id)
+	assert.Equal(t, "C", rows[2].Id)
+}
+
+// TestMergedDedupIteratorUnlimited verifies that with limit=0, all rows from both stores are
+// emitted without any boundary constraint.
+func TestMergedDedupIteratorUnlimited(t *testing.T) {
+	ctx := base.TestCtx(t)
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("E", "e"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("C", "c"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 0)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B", "C", "E"}, ids, "all rows emitted when unlimited")
+}
+
+// TestMergedDeduplicateWithDuplicate verifies duplicates in differing orders from each store still produce the right result
+func TestMergedDeduplicateWithDuplicate(t *testing.T) {
+	ctx := base.TestCtx(t)
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("C", "c"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("C", "c"),
+		marshalRow("D", "d"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 0)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
+	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "C", "D"}, ids)
+}
+
+// TestMergedDedupIteratorPaginationSimulation simulates the pagination loop used by GetUsers
+// to verify that no IDs are missed across multiple pages when the stores have interleaved IDs.
+func TestMergedDedupIteratorPaginationSimulation(t *testing.T) {
+	// Full dataset:
+	//   primary: [A, D, G, J]
+	//   fallback: [B, C, E, F, H, I]
+	// Expected global sorted unique: [A, B, C, D, E, F, G, H, I, J]
+	// Pagination limit: 2 per page
+
+	type storeData struct {
+		primary  []string
+		fallback []string
+	}
+	data := storeData{
+		primary:  []string{"A", "D", "G", "J"},
+		fallback: []string{"B", "C", "E", "F", "H", "I"},
+	}
+
+	const limit = 2
+	var allCollected []string
+	startKey := ""
+	maxPages := 20 // safety limit
+
+	for page := range maxPages {
+		// Simulate the per-store query: filter rows >= startKey, then take first `limit`.
+		filterAndLimit := func(ids []string) [][]byte {
+			var rows [][]byte
+			for _, id := range ids {
+				if id >= startKey {
+					rows = append(rows, marshalRow(id, id))
+					if len(rows) >= limit {
+						break
+					}
+				}
+			}
+			return rows
+		}
+		primary := newMockIterator(filterAndLimit(data.primary))
+		fallback := newMockIterator(filterAndLimit(data.fallback))
+		iter := newMergedDedupIterator(primary, fallback, limit)
+
+		ctx := base.TestCtx(t)
+		resultCount := 0
+		for {
+			var row principalRow
+			if !iter.Next(ctx, &row) {
+				break
+			}
+			// Skip the overlapping first row (same as GetUsers pagination logic).
+			if resultCount == 0 && startKey != "" && row.Id == startKey {
+				resultCount++
+				continue
+			}
+			startKey = row.Id
+			resultCount++
+			allCollected = append(allCollected, row.Id)
+		}
+		_ = iter.Close()
+
+		if resultCount < limit {
+			break
+		}
+		require.Less(t, page, maxPages-1, "pagination should terminate")
+	}
+
+	assert.Equal(t, []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}, allCollected,
+		"all IDs should be collected across paginated queries")
 }
 
 // TestExtractRowID verifies that extractRowID correctly extracts the META().id value from
@@ -289,11 +565,6 @@ func TestExtractRowID(t *testing.T) {
 			raw:      nil,
 			expected: "",
 		},
-		{
-			name:     "row with sort_order column",
-			raw:      []byte(`{"id":"_sync:user:alice","name":"alice","sort_order":0}`),
-			expected: "_sync:user:alice",
-		},
 	}
 
 	for _, tc := range tests {
@@ -304,195 +575,351 @@ func TestExtractRowID(t *testing.T) {
 	}
 }
 
-// TestBuildDualMetadataUnionStatement verifies that buildDualMetadataUnionStatement produces
-// well-formed UNION ALL N1QL statements with the correct keyspace substitutions, sort_order
-// literal injection, inner ORDER BY stripping, outer ORDER BY construction, and limit doubling.
-func TestBuildDualMetadataUnionStatement(t *testing.T) {
-	primaryKS := "`bucket`.`_system`.`_mobile`"
-	fallbackKS := "`bucket`.`_default`.`_default`"
-	alias := base.KeyspaceQueryAlias
+// TestMergedDedupIteratorBothExhaustAtLimit verifies behaviour when both sources exhaust at
+// exactly limit rows simultaneously. The first source to exhaust during the merge sets the
+// boundary; the second source's remaining rows beyond the boundary are suppressed.
+func TestMergedDedupIteratorBothExhaustAtLimit(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 2. primary: [A, C], fallback: [B, D].
+	// Merge: A(primary), B(fallback), C(primary). After C emitted, peekPrimary → nil.
+	// primaryConsumed=2==limit → boundary=C. peekFallback has D already peeked.
+	// D > C → stop.
+	// Output: [A, B, C].
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("C", "c"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("D", "d"),
+	})
 
-	tests := []struct {
-		name              string
-		statement         string
-		wantPrimaryKSInQ  string
-		wantFallbackKSInQ string
-		wantOuterOrderBy  string // expected ORDER BY columns (without trailing LIMIT)
-		wantLimitInArm    string // expected doubled LIMIT in each arm (empty = no LIMIT)
-		wantOuterLimit    string // expected doubled LIMIT on the outer UNION ALL (empty = no LIMIT)
-	}{
-		{
-			name: "basic query without ORDER BY",
-			statement: "SELECT META($_keyspace).id AS id, name " +
-				"FROM $_keyspace WHERE type = 'user'",
-			wantPrimaryKSInQ:  primaryKS,
-			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
-		},
-		{
-			name: "query with alias, no ORDER BY",
-			statement: "SELECT META(sgQueryKeyspaceAlias).id AS id, name " +
-				"FROM $_keyspace AS sgQueryKeyspaceAlias WHERE type = 'role'",
-			wantPrimaryKSInQ:  primaryKS,
-			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
-		},
-		{
-			name: "query with ORDER BY META(alias).id",
-			statement: fmt.Sprintf(
-				"SELECT META(%s).id, name FROM $_keyspace AS %s WHERE type = 'user' ORDER BY META(%s).id",
-				alias, alias, alias,
-			),
-			wantPrimaryKSInQ:  primaryKS,
-			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
-		},
-		{
-			name: "query with ORDER BY META(alias).id and LIMIT",
-			statement: fmt.Sprintf(
-				"SELECT META(%s).id, name FROM $_keyspace AS %s WHERE type = 'user' ORDER BY META(%s).id LIMIT 10",
-				alias, alias, alias,
-			),
-			wantPrimaryKSInQ:  primaryKS,
-			wantFallbackKSInQ: fallbackKS,
-			wantOuterOrderBy:  "id, " + dualMetadataSortOrderKey,
-			wantLimitInArm:    "LIMIT 20",
-			wantOuterLimit:    "LIMIT 20",
-		},
+	iter := newMergedDedupIterator(primary, fallback, 2)
+	var ids []string
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		ids = append(ids, row.Id)
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := buildDualMetadataUnionStatement(tc.statement, primaryKS, fallbackKS)
-
-			assert.True(t, strings.HasPrefix(result, "("), "should start with opening paren")
-			assert.Contains(t, result, ") UNION ALL (", "should contain UNION ALL joining the sub-queries")
-
-			// Both keyspaces should appear in the output.
-			assert.Contains(t, result, tc.wantPrimaryKSInQ, "primary keyspace should be in result")
-			assert.Contains(t, result, tc.wantFallbackKSInQ, "fallback keyspace should be in result")
-
-			// sort_order literals 0 (primary) and 1 (fallback) must both be injected.
-			assert.Contains(t, result, "0 AS "+dualMetadataSortOrderKey, "primary arm must have sort_order=0")
-			assert.Contains(t, result, "1 AS "+dualMetadataSortOrderKey, "fallback arm must have sort_order=1")
-
-			// KeyspaceQueryToken must not appear in the output.
-			assert.NotContains(t, result, base.KeyspaceQueryToken, "token must be fully replaced")
-
-			// The result must contain the outer ORDER BY clause.
-			assert.Contains(t, result, " ORDER BY "+tc.wantOuterOrderBy,
-				"result should contain outer ORDER BY %q; got: %s", tc.wantOuterOrderBy, result)
-
-			// If a LIMIT was expected, verify it appears at the end of the full statement.
-			if tc.wantOuterLimit != "" {
-				assert.True(t, strings.HasSuffix(result, tc.wantOuterLimit),
-					"result should end with outer %s; got: %s", tc.wantOuterLimit, result)
-			}
-
-			// Split on UNION ALL to inspect each arm individually.
-			// The second part will include the trailing outer ORDER BY; both arms must contain
-			// the correct FROM clause.
-			parts := strings.SplitN(result, " UNION ALL ", 2)
-			require.Len(t, parts, 2, "should have exactly two UNION ALL arms")
-			assert.Contains(t, parts[0], "FROM "+tc.wantPrimaryKSInQ)
-			assert.Contains(t, parts[1], "FROM "+tc.wantFallbackKSInQ)
-
-			// Inner ORDER BY must not appear inside either arm (it was lifted to outer scope).
-			assert.NotContains(t, parts[0], " ORDER BY ", "primary arm must not contain inner ORDER BY")
-			// parts[1] includes the outer ORDER BY suffix; strip it before checking.
-			outerSuffix := " ORDER BY " + tc.wantOuterOrderBy
-			if tc.wantOuterLimit != "" {
-				outerSuffix += " " + tc.wantOuterLimit
-			}
-			armTwo := strings.TrimSuffix(parts[1], outerSuffix)
-			assert.NotContains(t, armTwo, " ORDER BY ", "fallback arm must not contain inner ORDER BY")
-
-			// If the original statement had a LIMIT it must be doubled and present in each arm.
-			if tc.wantLimitInArm != "" {
-				assert.Contains(t, parts[0], tc.wantLimitInArm, "primary arm must contain doubled LIMIT")
-				assert.Contains(t, armTwo, tc.wantLimitInArm, "fallback arm must contain doubled LIMIT")
-			}
-		})
-	}
+	require.NoError(t, iter.Close())
+	assert.Equal(t, []string{"A", "B", "C"}, ids,
+		"first-to-exhaust sets boundary; D beyond boundary C should be suppressed")
 }
 
-// TestSplitStatement verifies that splitStatement correctly separates the core query, ORDER BY
-// columns, and LIMIT clause for a variety of input shapes.
-func TestSplitStatement(t *testing.T) {
-	tests := []struct {
-		name            string
-		stmt            string
-		wantCore        string
-		wantOrderBy     string
-		wantLimitClause string
-	}{
-		{
-			name:        "no ORDER BY, no LIMIT",
-			stmt:        "SELECT name FROM ks WHERE type = 'user'",
-			wantCore:    "SELECT name FROM ks WHERE type = 'user'",
-			wantOrderBy: "",
-		},
-		{
-			name:        "ORDER BY only",
-			stmt:        "SELECT name FROM ks WHERE type = 'user' ORDER BY META(alias).id",
-			wantCore:    "SELECT name FROM ks WHERE type = 'user'",
-			wantOrderBy: "META(alias).id",
-		},
-		{
-			name:            "ORDER BY and LIMIT",
-			stmt:            "SELECT name FROM ks WHERE type = 'user' ORDER BY META(alias).id LIMIT 100",
-			wantCore:        "SELECT name FROM ks WHERE type = 'user'",
-			wantOrderBy:     "META(alias).id",
-			wantLimitClause: " LIMIT 100",
-		},
-		{
-			name:            "bare LIMIT, no ORDER BY",
-			stmt:            "SELECT name FROM ks LIMIT 50",
-			wantCore:        "SELECT name FROM ks",
-			wantOrderBy:     "",
-			wantLimitClause: " LIMIT 50",
-		},
-		{
-			name:            "ORDER BY with multiple columns and LIMIT",
-			stmt:            "SELECT a, b FROM ks ORDER BY a, b DESC LIMIT 10",
-			wantCore:        "SELECT a, b FROM ks",
-			wantOrderBy:     "a, b DESC",
-			wantLimitClause: " LIMIT 10",
-		},
-		{
-			name:        "case-insensitive ORDER BY",
-			stmt:        "SELECT name FROM ks order by name",
-			wantCore:    "SELECT name FROM ks",
-			wantOrderBy: "name",
-		},
-	}
+// TestMergedDedupIteratorBoundaryIsExclusive verifies that a row whose ID equals the safe
+// boundary is still emitted (the check is row.id > boundary, not >=).
+func TestMergedDedupIteratorBoundaryIsExclusive(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 2. primary: [B, D] (exhausts at limit → boundary=D).
+	// fallback: [A, D, E].
+	// Merge: A(fallback), B(primary), D==D → emit D(primary), discard D(fallback).
+	// Primary exhausts at 2==limit → boundary=D.
+	// Fallback peeks E. E > D → stop.
+	// Output: [A, B, D]. D itself is emitted even though it equals boundary.
+	primary := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("D", "d-primary"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("D", "d-fallback"),
+		marshalRow("E", "e"),
+	})
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			core, orderBy, limit := splitStatement(tc.stmt)
-			assert.Equal(t, tc.wantCore, core)
-			assert.Equal(t, tc.wantOrderBy, orderBy)
-			assert.Equal(t, tc.wantLimitClause, limit)
-		})
+	iter := newMergedDedupIterator(primary, fallback, 2)
+	var rows []principalRow
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		rows = append(rows, row)
 	}
+	require.NoError(t, iter.Close())
+	require.Len(t, rows, 3)
+	assert.Equal(t, "A", rows[0].Id)
+	assert.Equal(t, "B", rows[1].Id)
+	assert.Equal(t, "D", rows[2].Id)
+	assert.Equal(t, "d-primary", rows[2].Name, "primary preferred for duplicate at boundary")
 }
 
-// TestDoubleLimitClause verifies that doubleLimitClause correctly doubles numeric LIMIT values.
-func TestDoubleLimitClause(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"", ""},
-		{" LIMIT 3", " LIMIT 6"},
-		{" LIMIT 10", " LIMIT 20"},
-		{" LIMIT 100", " LIMIT 200"},
-		{" LIMIT 1", " LIMIT 2"},
-		{" LIMIT 0", " LIMIT 0"},
+// TestMergedDedupIteratorPaginationSimulationWithDuplicates simulates the GetUsers pagination
+// loop when both stores contain overlapping IDs. This verifies that duplicates are correctly
+// handled across page boundaries and no IDs are missed or emitted twice.
+func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
+	// Full dataset:
+	//   primary:  [A, B, D, F, G]
+	//   fallback: [B, C, D, E, G, H]
+	// Global sorted unique: [A, B, C, D, E, F, G, H]
+	// Pagination limit: 3 per page
+
+	type storeData struct {
+		primary  []string
+		fallback []string
 	}
-	for _, tc := range tests {
-		t.Run(tc.input, func(t *testing.T) {
-			assert.Equal(t, tc.want, doubleLimitClause(tc.input))
-		})
+	data := storeData{
+		primary:  []string{"A", "B", "D", "F", "G"},
+		fallback: []string{"B", "C", "D", "E", "G", "H"},
 	}
+
+	const limit = 3
+	var allCollected []string
+	startKey := ""
+	maxPages := 20
+
+	for page := range maxPages {
+		filterAndLimit := func(ids []string) [][]byte {
+			var rows [][]byte
+			for _, id := range ids {
+				if id >= startKey {
+					rows = append(rows, marshalRow(id, id))
+					if len(rows) >= limit {
+						break
+					}
+				}
+			}
+			return rows
+		}
+		primary := newMockIterator(filterAndLimit(data.primary))
+		fallback := newMockIterator(filterAndLimit(data.fallback))
+		iter := newMergedDedupIterator(primary, fallback, limit)
+
+		ctx := base.TestCtx(t)
+		resultCount := 0
+		for {
+			var row principalRow
+			if !iter.Next(ctx, &row) {
+				break
+			}
+			if resultCount == 0 && startKey != "" && row.Id == startKey {
+				resultCount++
+				continue
+			}
+			startKey = row.Id
+			resultCount++
+			allCollected = append(allCollected, row.Id)
+		}
+		_ = iter.Close()
+
+		if resultCount < limit {
+			break
+		}
+		require.Less(t, page, maxPages-1, "pagination should terminate")
+	}
+
+	assert.Equal(t, []string{"A", "B", "C", "D", "E", "F", "G", "H"}, allCollected,
+		"all unique IDs should be collected across paginated queries with duplicates")
+}
+
+// TestMergedDedupIteratorPaginationSimulationHeavySkew simulates pagination when one store
+// has many more rows than the other, verifying that the boundary mechanism handles asymmetric
+// distributions without skipping IDs.
+func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
+	// primary: [A, Z]  (only 2 rows, big gap)
+	// fallback: [B, C, D, E, F, G, H, I, J]  (9 rows, dense)
+	// Global sorted unique: [A, B, C, D, E, F, G, H, I, J, Z]
+	// Pagination limit: 3
+
+	type storeData struct {
+		primary  []string
+		fallback []string
+	}
+	data := storeData{
+		primary:  []string{"A", "Z"},
+		fallback: []string{"B", "C", "D", "E", "F", "G", "H", "I", "J"},
+	}
+
+	const limit = 3
+	var allCollected []string
+	startKey := ""
+	maxPages := 20
+
+	for page := range maxPages {
+		filterAndLimit := func(ids []string) [][]byte {
+			var rows [][]byte
+			for _, id := range ids {
+				if id >= startKey {
+					rows = append(rows, marshalRow(id, id))
+					if len(rows) >= limit {
+						break
+					}
+				}
+			}
+			return rows
+		}
+		primary := newMockIterator(filterAndLimit(data.primary))
+		fallback := newMockIterator(filterAndLimit(data.fallback))
+		iter := newMergedDedupIterator(primary, fallback, limit)
+
+		ctx := base.TestCtx(t)
+		resultCount := 0
+		for {
+			var row principalRow
+			if !iter.Next(ctx, &row) {
+				break
+			}
+			if resultCount == 0 && startKey != "" && row.Id == startKey {
+				resultCount++
+				continue
+			}
+			startKey = row.Id
+			resultCount++
+			allCollected = append(allCollected, row.Id)
+		}
+		_ = iter.Close()
+
+		if resultCount < limit {
+			break
+		}
+		require.Less(t, page, maxPages-1, "pagination should terminate")
+	}
+
+	assert.Equal(t, []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "Z"}, allCollected,
+		"all IDs should be collected with heavily skewed store sizes")
+}
+
+// TestMergedDedupIteratorCloseErrorPropagation verifies that Close returns the primary
+// iterator's error when both iterators return errors, and the fallback iterator's error when
+// only the fallback fails.
+func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
+	t.Run("both_errors_returns_primary", func(t *testing.T) {
+		mockPrimary := newMockIterator(nil)
+		mockPrimary.closeErr = fmt.Errorf("primary close error")
+		mockFallback := newMockIterator(nil)
+		mockFallback.closeErr = fmt.Errorf("fallback close error")
+
+		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		err := iter.Close()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "primary close error",
+			"primary error should take precedence")
+		assert.True(t, mockPrimary.closed)
+		assert.True(t, mockFallback.closed, "fallback should still be closed even when primary errors")
+	})
+
+	t.Run("only_fallback_error", func(t *testing.T) {
+		mockPrimary := newMockIterator(nil)
+		mockFallback := newMockIterator(nil)
+		mockFallback.closeErr = fmt.Errorf("fallback close error")
+
+		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		err := iter.Close()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "fallback close error")
+	})
+
+	t.Run("no_errors", func(t *testing.T) {
+		mockPrimary := newMockIterator(nil)
+		mockFallback := newMockIterator(nil)
+
+		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		require.NoError(t, iter.Close())
+	})
+}
+
+// TestMergedDedupIteratorOneEmpty verifies that One returns sgbucket.ErrNoRows when both
+// iterators are empty, and that both iterators are closed.
+func TestMergedDedupIteratorOneEmpty(t *testing.T) {
+	ctx := base.TestCtx(t)
+	mockPrimary := newMockIterator(nil)
+	mockFallback := newMockIterator(nil)
+
+	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	var row principalRow
+	err := iter.One(ctx, &row)
+	require.ErrorIs(t, err, sgbucket.ErrNoRows)
+	assert.True(t, mockPrimary.closed, "primary should be closed after One")
+	assert.True(t, mockFallback.closed, "fallback should be closed after One")
+}
+
+// TestMergedDedupIteratorOneFallbackRow verifies that One returns the first row when it comes
+// from the fallback store (not just primary).
+func TestMergedDedupIteratorOneFallbackRow(t *testing.T) {
+	ctx := base.TestCtx(t)
+	mockPrimary := newMockIterator(nil)
+	mockFallback := newMockIterator([][]byte{
+		marshalRow("_sync:user:alice", "alice"),
+	})
+
+	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	var row principalRow
+	require.NoError(t, iter.One(ctx, &row))
+	assert.Equal(t, "_sync:user:alice", row.Id)
+	assert.True(t, mockPrimary.closed)
+	assert.True(t, mockFallback.closed)
+}
+
+// TestMergedDedupIteratorBoundaryWithDiscardedDuplicates verifies that discarded fallback
+// duplicates still count toward fallbackConsumed, correctly triggering the safe boundary when
+// fallback has consumed exactly limit rows (including discards).
+func TestMergedDedupIteratorBoundaryWithDiscardedDuplicates(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 3. primary: [A, B, C] (3 rows = limit). fallback: [A, B, D] (3 rows = limit).
+	// Merge: A(primary, discard A-fallback), B(primary, discard B-fallback), C(primary).
+	// Primary exhausts at 3==limit → boundary=C.
+	// Fallback peek: D (already consumed A,B as discards → fallbackConsumed=2).
+	// D > C → stop.
+	// Output: [A, B, C].
+	// Key: fallback consumed 2 rows that were discarded + has D peeked but never consumed.
+	// The boundary is set by primary exhausting, not by fallback's consumed count.
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a-primary"),
+		marshalRow("B", "b-primary"),
+		marshalRow("C", "c-primary"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("A", "a-fallback"),
+		marshalRow("B", "b-fallback"),
+		marshalRow("D", "d-fallback"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 3)
+	var rows []principalRow
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		rows = append(rows, row)
+	}
+	require.NoError(t, iter.Close())
+	require.Len(t, rows, 3)
+	assert.Equal(t, "A", rows[0].Id)
+	assert.Equal(t, "a-primary", rows[0].Name, "primary preferred")
+	assert.Equal(t, "B", rows[1].Id)
+	assert.Equal(t, "b-primary", rows[1].Name, "primary preferred")
+	assert.Equal(t, "C", rows[2].Id)
+	// D from fallback should be suppressed because D > boundary C.
+}
+
+// TestMergedDedupIteratorNextBytesWithBoundary verifies that the safe boundary works correctly
+// when consuming via the NextBytes path (raw JSON bytes).
+func TestMergedDedupIteratorNextBytesWithBoundary(t *testing.T) {
+	// LIMIT 2. primary: [A, E], fallback: [B, C].
+	// Boundary set by fallback at C. E > C → suppressed.
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("E", "e"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("C", "c"),
+	})
+
+	iter := newMergedDedupIterator(primary, fallback, 2)
+	var rawRows [][]byte
+	for {
+		raw := iter.NextBytes()
+		if raw == nil {
+			break
+		}
+		rawRows = append(rawRows, raw)
+	}
+	require.NoError(t, iter.Close())
+	require.Len(t, rawRows, 3, "E should be suppressed by boundary at C")
+	assert.Contains(t, string(rawRows[0]), `"A"`)
+	assert.Contains(t, string(rawRows[1]), `"B"`)
+	assert.Contains(t, string(rawRows[2]), `"C"`)
 }

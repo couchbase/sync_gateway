@@ -11,248 +11,236 @@ package db
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// dualMetadataSortOrderKey is the N1QL column alias injected as a numeric literal into each
-// arm of the UNION ALL query. Primary arms receive value 0; fallback arms receive value 1.
-// The outer ORDER BY places sort_order after id, so that for equal document IDs the
-// primary-store row (0) is returned before the fallback-store row (1). This guarantees the
-// unionDedupIterator's "first seen wins" strategy always selects the primary-store version.
-const dualMetadataSortOrderKey = "sort_order"
-
-// dualMetadataN1QLQuery executes a single UNION ALL N1QL statement across both the primary
-// and fallback datastores of a *base.MetadataStore and returns a unionDedupIterator over the
-// combined result stream.
+// dualMetadataN1QLQuery executes the same N1QL statement independently against both the
+// primary and fallback datastores of a *base.MetadataStore, then returns a
+// mergedDedupIterator that merge-sorts the two result streams by document ID, deduplicating
+// and preferring the primary-store version when both contain the same document.
 //
-// The original statement (which may still contain base.KeyspaceQueryToken) is expanded by
-// buildDualMetadataUnionStatement into two fully-qualified sub-queries joined with UNION ALL.
-// A sort_order literal (0=primary, 1=fallback) is injected into each arm, and a single outer
-// ORDER BY id[, <original order>], sort_order ensures document IDs are monotonically
-// non-decreasing (required for startKey-based pagination) while for equal IDs the primary-store
-// row sorts first (required for correct deduplication by unionDedupIterator).
+// The statement must still contain base.KeyspaceQueryToken; each store's Query method
+// replaces this token with its own escaped keyspace before execution.
 //
-// The combined query is executed against the fallback (default) store. Because both keyspaces
-// are referenced with fully-qualified names, the fallback store's query_context does not
-// restrict access to the primary keyspace.
-//
-// Any LIMIT clause from the original statement is moved from the individual arms to the outer
-// UNION ALL and doubled to account for worst-case duplicate overlap. This prevents per-arm
-// limits from permanently hiding results when the two stores have interleaved ID ranges.
+// The statement should NOT include a LIMIT clause — callers pass the desired limit separately.
+// When limit > 0, each per-store query appends LIMIT <limit>. The mergedDedupIterator uses
+// the limit to detect when a source hit its LIMIT (consumed exactly limit rows) vs. was truly
+// exhausted (consumed fewer). When a source hits its LIMIT, the iterator establishes a "safe
+// boundary" at that source's last emitted ID and stops returning rows from the other source
+// beyond that boundary. This prevents the pagination cursor from jumping over IDs that the
+// limited source may still have, without doubling the per-store LIMIT.
 func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryName string,
 	statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool,
-	dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (sgbucket.QueryResultIterator, error) {
+	dbStats *base.DbStats, slowQueryWarningThreshold time.Duration, limit int) (sgbucket.QueryResultIterator, error) {
 
-	primaryN1QL, ok := base.AsN1QLStore(ms.Primary())
-	if !ok {
-		return nil, fmt.Errorf("primary datastore (%T) does not support N1QL", ms.Primary())
-	}
-	fallbackN1QL, ok := base.AsN1QLStore(ms.Fallback())
-	if !ok {
-		return nil, fmt.Errorf("fallback datastore (%T) does not support N1QL", ms.Fallback())
+	storeStatement := statement
+	if limit > 0 {
+		storeStatement = fmt.Sprintf("%s LIMIT %d", statement, limit)
 	}
 
-	unionStatement := buildDualMetadataUnionStatement(statement, primaryN1QL.EscapedKeyspace(), fallbackN1QL.EscapedKeyspace())
-
-	// Execute against the fallback (default) store. Both keyspaces are fully-qualified in the
-	// statement, so the fallback store's query_context does not restrict which keyspaces are
-	// accessible.
-	iter, err := N1QLQueryWithStats(ctx, ms.Fallback(), queryName, unionStatement, params, consistency, adhoc, dbStats, slowQueryWarningThreshold)
+	primaryIter, err := N1QLQueryWithStats(ctx, ms.Primary(), queryName, storeStatement, params, consistency, adhoc, dbStats, slowQueryWarningThreshold)
 	if err != nil {
-		return nil, fmt.Errorf("dual metadata UNION ALL N1QL query: %w", err)
-	}
-	return newUnionDedupIterator(iter), nil
-}
-
-// buildDualMetadataUnionStatement expands a single-keyspace N1QL statement into a UNION ALL
-// across the primary and fallback keyspaces. A sort_order literal is injected into each arm's
-// SELECT list (0 for primary, 1 for fallback), and base.KeyspaceQueryToken is replaced with
-// the actual fully-qualified keyspace name.
-//
-// Any ORDER BY clause present in the original statement is stripped from the individual arms
-// and re-applied as a single outer ORDER BY on the full UNION ALL result. The outer ORDER BY
-// uses the document id as the primary sort key (for correct startKey-based pagination) and
-// appends sort_order so that for equal IDs the primary-store row (0) precedes the
-// fallback-store row (1), enabling unionDedupIterator's "first seen wins" deduplication.
-//
-// Any LIMIT clause is doubled on both the individual arms and the outer UNION ALL to account
-// for worst-case duplicate overlap between the two stores (each document can appear at most
-// twice — once per store). The per-arm doubled limit bounds how many rows each sub-query
-// reads, while the outer doubled limit caps the merged stream. With at most 2 copies per ID,
-// 2*N raw rows always yield at least N unique results after deduplication, ensuring the
-// pagination termination condition in GetUsers works correctly.
-//
-// The outer ORDER BY translates META(<alias>).id references to just `id`, which is the
-// projected column name at the UNION ALL result scope.
-//
-// Example output (simplified, original LIMIT 3):
-//
-//	(SELECT name, META(alias).id, 0 AS sort_order
-//	   FROM `bucket`.`_system`.`_mobile` AS alias WHERE ... LIMIT 6)
-//	UNION ALL
-//	(SELECT name, META(alias).id, 1 AS sort_order
-//	   FROM `bucket`.`_default`.`_default` AS alias WHERE ... LIMIT 6)
-//	ORDER BY id, sort_order LIMIT 6
-func buildDualMetadataUnionStatement(statement, primaryEscapedKeyspace, fallbackEscapedKeyspace string) string {
-	// Strip the inner ORDER BY so the outer ORDER BY governs the full merged result.
-	// The LIMIT clause is extracted, doubled, and applied to both each arm (bounding per-store
-	// read cost) and the outer UNION ALL (capping the merged stream).
-	coreStmt, innerOrderBy, limitClause := splitStatement(statement)
-
-	doubledLimit := doubleLimitClause(limitClause)
-
-	// " FROM $_keyspace" appears exactly once in each principal query statement. We prepend the
-	// sort_order literal to the SELECT column list by inserting before the FROM token, then
-	// replace the token with the actual escaped keyspace name.
-	inject := func(escapedKeyspace string, sortOrder int) string {
-		fromToken := " FROM " + base.KeyspaceQueryToken
-		withMeta := strings.Replace(
-			coreStmt,
-			fromToken,
-			fmt.Sprintf(", %d AS %s%s", sortOrder, dualMetadataSortOrderKey, fromToken),
-			1,
-		)
-		arm := strings.ReplaceAll(withMeta, base.KeyspaceQueryToken, escapedKeyspace)
-		return arm + doubledLimit
+		return nil, fmt.Errorf("dual metadata primary N1QL query: %w", err)
 	}
 
-	union := "(" + inject(primaryEscapedKeyspace, 0) + ") UNION ALL (" + inject(fallbackEscapedKeyspace, 1) + ")"
-
-	// Build the outer ORDER BY: id first (for correct startKey-based pagination), then
-	// sort_order so that for equal document IDs the primary-store row (0) precedes the
-	// fallback-store row (1). Any original inner ORDER BY columns are used as the id portion;
-	// META(<alias>).id is translated to just `id` at the outer UNION ALL scope.
-	outerOrderBy := "id"
-	if innerOrderBy != "" {
-		outerOrderBy = strings.ReplaceAll(innerOrderBy, fmt.Sprintf("META(%s).id", base.KeyspaceQueryAlias), "id")
-	}
-	outerOrderBy += ", " + dualMetadataSortOrderKey
-
-	return union + " ORDER BY " + outerOrderBy + doubledLimit
-}
-
-// splitStatement splits a N1QL statement into three parts following the standard clause order:
-// core (everything before ORDER BY), orderByColumns (the ORDER BY expression list without the
-// "ORDER BY" keyword), and limitClause (the LIMIT clause including the "LIMIT" keyword).
-//
-// All keyword matching is case-insensitive. If ORDER BY or LIMIT are absent the corresponding
-// return values are empty strings.
-func splitStatement(stmt string) (core, orderByColumns, limitClause string) {
-	upper := strings.ToUpper(stmt)
-
-	orderByIdx := strings.LastIndex(upper, " ORDER BY ")
-	if orderByIdx < 0 {
-		// No ORDER BY; check for a bare LIMIT (unusual but possible).
-		limitIdx := strings.LastIndex(upper, " LIMIT ")
-		if limitIdx < 0 {
-			return stmt, "", ""
-		}
-		return stmt[:limitIdx], "", stmt[limitIdx:]
-	}
-
-	core = stmt[:orderByIdx]
-	remainder := stmt[orderByIdx+len(" ORDER BY "):]
-
-	upperRemainder := strings.ToUpper(remainder)
-	limitIdx := strings.Index(upperRemainder, " LIMIT ")
-	if limitIdx < 0 {
-		return core, remainder, ""
-	}
-	return core, remainder[:limitIdx], remainder[limitIdx:]
-}
-
-// doubleLimitClause parses a LIMIT clause string (e.g. " LIMIT 10") and returns a new clause
-// with the limit value doubled (e.g. " LIMIT 20"). If the clause is empty or cannot be parsed
-// the original clause is returned unchanged.
-func doubleLimitClause(limitClause string) string {
-	if limitClause == "" {
-		return ""
-	}
-	trimmed := strings.TrimSpace(limitClause)
-	upper := strings.ToUpper(trimmed)
-	if !strings.HasPrefix(upper, "LIMIT ") {
-		return limitClause
-	}
-	numStr := strings.TrimSpace(trimmed[len("LIMIT "):])
-	n, err := strconv.Atoi(numStr)
+	fallbackIter, err := N1QLQueryWithStats(ctx, ms.Fallback(), queryName, storeStatement, params, consistency, adhoc, dbStats, slowQueryWarningThreshold)
 	if err != nil {
-		return limitClause
+		_ = primaryIter.Close()
+		return nil, fmt.Errorf("dual metadata fallback N1QL query: %w", err)
 	}
-	return fmt.Sprintf(" LIMIT %d", n*2)
+
+	return newMergedDedupIterator(primaryIter, fallbackIter, limit), nil
 }
 
-// unionDedupIterator wraps a single sgbucket.QueryResultIterator (typically the result of a
-// UNION ALL query) and emits each unique META().id exactly once.
+// peekedRow holds a row that has been read from a source iterator but not yet emitted.
+type peekedRow struct {
+	raw []byte
+	id  string
+}
+
+// mergedDedupIterator performs a sorted merge of two sgbucket.QueryResultIterators (primary and
+// fallback), emitting rows in ascending document-ID order. When both iterators contain a row
+// with the same ID, only the primary version is emitted.
 //
-// Deduplication relies on the sort_order column injected by buildDualMetadataUnionStatement:
-// the outer ORDER BY id, sort_order guarantees that for equal document IDs the primary-keyspace
-// row (sort_order=0) is returned before the fallback-keyspace row (sort_order=1). As a result,
-// "first seen wins" always selects the primary-store version when the same document exists in
-// both keystores. The sort_order column is present in each emitted row but is harmlessly
-// ignored by callers that unmarshal into typed structs.
-type unionDedupIterator struct {
-	iter    sgbucket.QueryResultIterator
-	seenIDs map[string]struct{}
+// Both source iterators must return rows sorted by META().id ascending (the standard ordering
+// for principal queries). The merge maintains this ordering in the output.
+//
+// When limit > 0, the iterator tracks how many rows each source produced. If a source returns
+// exactly limit rows and then exhausts, it may have been truncated by the N1QL LIMIT. In that
+// case a "safe boundary" is set to that source's last ID, and no further rows from the other
+// source with IDs beyond the boundary are emitted. This prevents the pagination cursor from
+// advancing past IDs the limited source might still have, ensuring subsequent pages do not
+// skip results. When a source returns fewer than limit rows, it is truly exhausted and no
+// boundary is imposed.
+type mergedDedupIterator struct {
+	primary      sgbucket.QueryResultIterator
+	fallback     sgbucket.QueryResultIterator
+	primaryPeek  *peekedRow
+	fallbackPeek *peekedRow
+
+	// Per-source consumed counts and last IDs for safe-boundary detection.
+	primaryConsumed  int
+	fallbackConsumed int
+	lastPrimaryID    string
+	lastFallbackID   string
+	limit            int // per-store N1QL LIMIT; 0 = unlimited
+
+	// Safe boundary: when a source exhausts at exactly limit rows, boundary is set to its
+	// last consumed ID. Rows from the other source with ID > boundary are suppressed.
+	boundary    string
+	hasBoundary bool
+
+	primaryDone  bool
+	fallbackDone bool
 }
 
-// Compile-time assertion that *unionDedupIterator implements sgbucket.QueryResultIterator.
-var _ sgbucket.QueryResultIterator = (*unionDedupIterator)(nil)
+// Compile-time assertion that *mergedDedupIterator implements sgbucket.QueryResultIterator.
+var _ sgbucket.QueryResultIterator = (*mergedDedupIterator)(nil)
 
-func newUnionDedupIterator(iter sgbucket.QueryResultIterator) *unionDedupIterator {
-	return &unionDedupIterator{
-		iter:    iter,
-		seenIDs: make(map[string]struct{}),
+func newMergedDedupIterator(primary, fallback sgbucket.QueryResultIterator, limit int) *mergedDedupIterator {
+	return &mergedDedupIterator{
+		primary:  primary,
+		fallback: fallback,
+		limit:    limit,
 	}
 }
 
-// NextBytes returns the raw JSON bytes of the next non-duplicate row, or nil when exhausted.
-// Rows whose META().id has already been emitted are silently skipped.
-func (u *unionDedupIterator) NextBytes() []byte {
-	for {
-		raw := u.iter.NextBytes()
-		if raw == nil {
-			return nil
-		}
-		id := extractRowID(raw)
-		if _, exists := u.seenIDs[id]; exists {
-			continue
-		}
-		u.seenIDs[id] = struct{}{}
-		return raw
+// peekPrimary ensures primaryPeek is populated. Returns false if the primary iterator is
+// exhausted.
+func (m *mergedDedupIterator) peekPrimary() bool {
+	if m.primaryPeek != nil {
+		return true
 	}
+	if m.primaryDone {
+		return false
+	}
+	raw := m.primary.NextBytes()
+	if raw == nil {
+		m.primaryDone = true
+		// If consumed exactly limit rows, primary may have been truncated.
+		if m.limit > 0 && m.primaryConsumed >= m.limit && !m.hasBoundary {
+			m.boundary = m.lastPrimaryID
+			m.hasBoundary = true
+		}
+		return false
+	}
+	m.primaryConsumed++
+	m.primaryPeek = &peekedRow{raw: raw, id: extractRowID(raw)}
+	return true
 }
 
-// Next unmarshals the next non-duplicate row into valuePtr. Returns false when exhausted.
-func (u *unionDedupIterator) Next(ctx context.Context, valuePtr any) bool {
-	raw := u.NextBytes()
+// peekFallback ensures fallbackPeek is populated. Returns false if the fallback iterator is
+// exhausted.
+func (m *mergedDedupIterator) peekFallback() bool {
+	if m.fallbackPeek != nil {
+		return true
+	}
+	if m.fallbackDone {
+		return false
+	}
+	raw := m.fallback.NextBytes()
+	if raw == nil {
+		m.fallbackDone = true
+		// If consumed exactly limit rows, fallback may have been truncated.
+		if m.limit > 0 && m.fallbackConsumed >= m.limit && !m.hasBoundary {
+			m.boundary = m.lastFallbackID
+			m.hasBoundary = true
+		}
+		return false
+	}
+	m.fallbackConsumed++
+	m.fallbackPeek = &peekedRow{raw: raw, id: extractRowID(raw)}
+	return true
+}
+
+// NextBytes returns the raw JSON bytes of the next row from the sorted merge, or nil when
+// both iterators are exhausted or the safe boundary has been reached.
+func (m *mergedDedupIterator) NextBytes() []byte {
+	hasPrimary := m.peekPrimary()
+	hasFallback := m.peekFallback()
+
+	if !hasPrimary && !hasFallback {
+		return nil
+	}
+
+	// Determine which row to emit based on merge-sort comparison.
+	var row *peekedRow
+	var fromPrimary bool
+
+	switch {
+	case hasPrimary && !hasFallback:
+		row = m.primaryPeek
+		fromPrimary = true
+	case !hasPrimary && hasFallback:
+		row = m.fallbackPeek
+		fromPrimary = false
+	case m.primaryPeek.id < m.fallbackPeek.id:
+		row = m.primaryPeek
+		fromPrimary = true
+	case m.primaryPeek.id > m.fallbackPeek.id:
+		row = m.fallbackPeek
+		fromPrimary = false
+	default:
+		// Equal IDs — prefer primary, discard fallback.
+		row = m.primaryPeek
+		fromPrimary = true
+		m.lastFallbackID = m.fallbackPeek.id
+		m.fallbackPeek = nil // discard duplicate
+	}
+
+	// Check safe boundary: do not emit rows beyond the boundary.
+	if m.hasBoundary && row.id > m.boundary {
+		return nil
+	}
+
+	// Consume the selected row and track the last ID for boundary detection.
+	if fromPrimary {
+		m.lastPrimaryID = row.id
+		m.primaryPeek = nil
+	} else {
+		m.lastFallbackID = row.id
+		m.fallbackPeek = nil
+	}
+
+	return row.raw
+}
+
+// Next unmarshals the next merged row into valuePtr. Returns false when exhausted.
+func (m *mergedDedupIterator) Next(ctx context.Context, valuePtr any) bool {
+	raw := m.NextBytes()
 	if raw == nil {
 		return false
 	}
 	if err := base.JSONUnmarshal(raw, valuePtr); err != nil {
-		base.WarnfCtx(ctx, "unionDedupIterator: failed to unmarshal row: %v", err)
+		base.WarnfCtx(ctx, "mergedDedupIterator: failed to unmarshal row: %v", err)
 		return false
 	}
 	return true
 }
 
-// One unmarshals the first non-duplicate row into valuePtr and closes the iterator.
-// Returns sgbucket.ErrNoRows when the stream is empty.
-func (u *unionDedupIterator) One(ctx context.Context, valuePtr any) error {
-	defer func() { _ = u.Close() }()
-	if !u.Next(ctx, valuePtr) {
+// One unmarshals the first merged row into valuePtr and closes both iterators.
+// Returns sgbucket.ErrNoRows when no rows are available.
+func (m *mergedDedupIterator) One(ctx context.Context, valuePtr any) error {
+	defer func() {
+		_ = m.Close()
+	}()
+	if !m.Next(ctx, valuePtr) {
 		return sgbucket.ErrNoRows
 	}
 	return nil
 }
 
-// Close closes the underlying iterator.
-func (u *unionDedupIterator) Close() error {
-	return u.iter.Close()
+// Close closes both the primary and fallback iterators.
+func (m *mergedDedupIterator) Close() error {
+	primaryErr := m.primary.Close()
+	fallbackErr := m.fallback.Close()
+	if primaryErr != nil {
+		return primaryErr
+	}
+	return fallbackErr
 }
 
 // idOnlyRow is a minimal struct used to extract META().id from a raw N1QL result row.

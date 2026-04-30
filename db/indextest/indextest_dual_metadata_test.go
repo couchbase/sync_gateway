@@ -314,7 +314,6 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 //   - The primary-store version is preferred for duplicates.
 //   - The final result set contains exactly the expected number of unique users.
 func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	t.Cleanup(func() { bucket.Close(ctx) })
@@ -426,4 +425,116 @@ func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
 		assert.Equal(t, name+"@primary.example", *usersByName[name].Email,
 			"duplicate user %q should use the primary-store version", name)
 	}
+}
+
+// TestQueryRolesDualMetadataStore verifies that QueryRoles and QueryAllRoles correctly
+// deduplicate role results when using a dual MetadataStore. Roles are written to both
+// the primary and fallback stores, and the primary version is preferred for duplicates.
+//
+// Test data:
+//   - "admin":     primary only
+//   - "editor":    both stores; primary has name="editor" (written first), fallback also has it
+//   - "viewer":    fallback only
+//
+// Expected: three unique roles with "editor" from primary store.
+func TestQueryRolesDualMetadataStore(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+
+	primaryStore := bucket.GetMobileSystemDataStore()
+	fallbackStore := bucket.DefaultDataStore()
+	ms := base.NewMetadataStore(primaryStore, fallbackStore)
+
+	setupIndexes(t, bucket, testIndexCreationOptions{
+		numPartitions:          db.DefaultNumIndexPartitions,
+		useLegacySyncDocsIndex: false,
+		useXattrs:              true,
+	})
+
+	indexOptions := db.InitializeIndexOptions{
+		NumReplicas:                0,
+		LegacySyncDocsIndex:        false,
+		UseXattrs:                  true,
+		NumPartitions:              db.DefaultNumIndexPartitions,
+		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+	}
+	require.NoError(t, db.InitializeDualMetadataStoreIndexes(t, ctx, ms, indexOptions))
+
+	dbOptions := getDatabaseContextOptions(false)
+	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
+	dbOptions.EnableXattr = true
+	dbOptions.MetadataStore = ms
+
+	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)
+	t.Cleanup(func() { database.Close(dbCtx) })
+
+	authOpts := auth.AuthenticatorOptions{
+		LogCtx:   ctx,
+		MetaKeys: base.DefaultMetadataKeys,
+	}
+
+	createAndSaveRole := func(t *testing.T, store base.DataStore, roleName string) {
+		t.Helper()
+		authr := auth.NewAuthenticator(store, nil, authOpts)
+		role, err := authr.NewRole(roleName, nil)
+		require.NoError(t, err)
+		require.NoError(t, authr.Save(role))
+	}
+
+	createAndSaveRole(t, primaryStore, "admin")   // primary only
+	createAndSaveRole(t, primaryStore, "editor")  // both stores
+	createAndSaveRole(t, fallbackStore, "editor") // duplicate in fallback
+	createAndSaveRole(t, fallbackStore, "viewer") // fallback only
+
+	metaKeys := base.DefaultMetadataKeys
+
+	type principalQueryRow struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	drainIter := func(t *testing.T, iter sgbucket.QueryResultIterator) map[string]principalQueryRow {
+		t.Helper()
+		results := make(map[string]principalQueryRow)
+		var row principalQueryRow
+		for iter.Next(dbCtx, &row) {
+			results[row.ID] = row
+			row = principalQueryRow{}
+		}
+		require.NoError(t, iter.Close())
+		return results
+	}
+
+	t.Run("QueryRoles", func(t *testing.T) {
+		iter, err := database.QueryRoles(dbCtx, "", 0)
+		require.NoError(t, err)
+
+		results := drainIter(t, iter)
+
+		adminKey := metaKeys.RoleKey("admin")
+		editorKey := metaKeys.RoleKey("editor")
+		viewerKey := metaKeys.RoleKey("viewer")
+
+		require.Len(t, results, 3, "expected exactly 3 unique roles after deduplication")
+		assert.Contains(t, results, adminKey, "admin should be present")
+		assert.Contains(t, results, editorKey, "editor should be present")
+		assert.Contains(t, results, viewerKey, "viewer should be present")
+	})
+
+	t.Run("QueryAllRoles", func(t *testing.T) {
+		iter, err := database.QueryAllRoles(dbCtx, "", 0)
+		require.NoError(t, err)
+
+		results := drainIter(t, iter)
+
+		adminKey := metaKeys.RoleKey("admin")
+		editorKey := metaKeys.RoleKey("editor")
+		viewerKey := metaKeys.RoleKey("viewer")
+
+		require.Len(t, results, 3, "expected exactly 3 unique roles after deduplication")
+		assert.Contains(t, results, adminKey, "admin should be present")
+		assert.Contains(t, results, editorKey, "editor should be present")
+		assert.Contains(t, results, viewerKey, "viewer should be present")
+	})
 }
