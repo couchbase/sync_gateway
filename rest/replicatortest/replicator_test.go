@@ -728,18 +728,21 @@ func TestReplicationStatusActions(t *testing.T) {
 		// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
 		doneChan := make(chan struct{})
 		var statusWg sync.WaitGroup
-		statusWg.Add(1)
-		go func() {
+		defer func() {
+			close(doneChan)
+			statusWg.Wait()
+		}()
+		statusWg.Go(func() {
 			for {
 				select {
 				case <-doneChan:
-					statusWg.Done()
 					return
-				default:
+				// wait just long enough to release control back to go scheduler if GOMAXPROCS=1
+				case <-time.After(5 * time.Millisecond):
+					_ = rt1.GetReplicationStatus(replicationID)
 				}
-				_ = rt1.GetReplicationStatus(replicationID)
 			}
-		}()
+		})
 
 		// wait for document originally written to rt2 to arrive at rt1
 		changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -789,10 +792,6 @@ func TestReplicationStatusActions(t *testing.T) {
 			return status.DocsCheckedPull == 2 && status.DocsRead == 0
 		})
 		assert.NoError(t, statError)
-
-		// Terminate status goroutine
-		close(doneChan)
-		statusWg.Wait()
 	})
 }
 
