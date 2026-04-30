@@ -8,12 +8,12 @@
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 post:
-  summary: Prune Channel History of Document
+  summary: Compact Channel History of Document
   description: |-
-    Prunes channel history entries from one or more documents before a specified sequence number.
+    Compacts inactive channel history entries from one or more documents before a specified sequence number.
 
-    This endpoint removes all channel entries that were recorded before the specified sequence number,
-    effectively cleaning up historical channel membership information while preserving recent changes.
+    This endpoint removes all inactive channel entries (for sequences before the specified sequence number where the document left the channel),
+    effectively cleaning up historical channel membership information while preserving active channels and recent changes.
     This is useful for reducing storage overhead when maintaining large document histories.
 
     Required Sync Gateway RBAC roles:
@@ -27,9 +27,9 @@ post:
           properties:
             docIDs:
               description: |-
-                List of document IDs whose channel history should be pruned.
-                Only the channel entries for these specific documents will be affected.
-                Other documents in the keyspace will not be modified.
+                List of document IDs whose inactive channel history should be compacted.
+                Only the inactive channel entries for these specific documents will be affected.
+                Other documents and active channels in the keyspace will not be modified.
               type: array
               items:
                 type: string
@@ -38,20 +38,20 @@ post:
                 - doc2
             seqNo:
               description: |-
-                The sequence number threshold. All channel entries recorded before this sequence number
-                will be removed from the specified documents. Channel entries at or after this sequence
-                number will be preserved. This allows you to clean up old history while keeping recent
-                changes intact.
+                The sequence number threshold. Inactive channel entries for sequences before this number
+                (sequences at which the document left the channel) will be removed from the specified documents.
+                Active channels and inactive channel entries at or after this sequence number will be preserved.
+                This allows you to clean up old history while keeping recent changes intact.
               type: number
               example: 12345
   responses:
     "200":
       description: |-
-        Successfully pruned channel history from the specified documents.
-        Returns a mapping of document IDs to the list of channels that remain after pruning.
+        Successfully compacted channel history from the specified documents.
+        Returns a mapping of document IDs to the list of channels that were compacted.
 
-        **Note:** If a document ID is not present in the response, it means no channels were pruned for that document.
-        This can occur if the document does not exist or has no channel history before the specified sequence number.
+        If a document ID has an empty array, it means no channels were pruned for that document.
+
       content:
         application/json:
           schema:
@@ -61,11 +61,9 @@ post:
               items:
                 type: string
               description: |-
-                Array of channel names that remain for the corresponding document after pruning.
-                Channels with all entries before the specified sequence number have been removed.
+                Array of channel names that were compacted.
             description: |-
-              A mapping of document IDs (keys) to arrays of remaining channels (values).
-              Each entry shows which channels still have history entries at or after the pruned sequence number.
+              A mapping of document IDs (keys) to arrays of compacted channels (values).
             example:
               doc1:
                 - channel1
@@ -84,4 +82,4 @@ post:
 
   tags:
     - Document
-  operationId: post_keyspace-_prune
+  operationId: post_keyspace-_history-compact

@@ -1,0 +1,70 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+get:
+  summary: Get Channel History of Document
+  description: |-
+    Retrieves all inactive channels in the channel history before a particular sequence number.
+
+    This endpoint returns the inactive channels associated with a document (sequences at which the document left the channel)
+    that have history entries before the specified sequence number.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - name: docID
+      in: query
+      description: The document ID whose channel history should be retrieved.
+      required: true
+      schema:
+        type: string
+      example: doc1
+    - name: seqNo
+      in: query
+      description: |-
+        The sequence number threshold. All inactive channels with history entries for sequences before this number
+        (sequences at which the document left the channel) will be returned.
+      required: true
+      schema:
+        type: number
+      example: 12345
+  responses:
+    "200":
+      description: |-
+        Successfully retrieved inactive channel history for the specified document.
+        Returns a mapping of the document ID to the list of inactive channels that have history before the sequence number.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+              description: |-
+                Array of inactive channel names that have history entries before the specified sequence number.
+            description: |-
+              A mapping of document ID (key) to arrays of inactive channels (values).
+            example:
+              doc1:
+                - channel1
+                - channel2
+    "400":
+      description: 'Bad request. This could be due to missing or invalid query parameters such as missing docID or invalid seqNo value.'
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    "403":
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+
+  tags:
+    - Document
+  operationId: get_keyspace-_history
