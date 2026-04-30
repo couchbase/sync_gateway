@@ -3101,7 +3101,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
-	resp.RequireStatus(http.StatusBadGateway) // gocb v2.12.1 returns a timeout error instead of an auth error here
+	resp.RequireStatus(http.StatusForbidden)
 
 	// Wrong credentials should fail
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
