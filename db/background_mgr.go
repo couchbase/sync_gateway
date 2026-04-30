@@ -299,7 +299,7 @@ func (b *BackgroundManager) clusterStateIs(ctx context.Context, state Background
 	return clusterState == state
 }
 
-// getClusterStatusState gets the current background process state of the cluster and its CAS.
+// getClusterStatusState gets the current background process state of the cluster.
 func (b *BackgroundManager) getClusterStatusState(ctx context.Context) (BackgroundProcessState, error) {
 	docID := b.clusterAwareOptions.StatusDocID()
 	statusRaw, _, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, docID, "status")
@@ -451,7 +451,6 @@ func (b *BackgroundManager) Stop(ctx context.Context) error {
 	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
-		// Use a detached context for status update as the original context might be cancelled
 		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
@@ -509,8 +508,8 @@ func (b *BackgroundManager) markStop() error {
 
 // GetRunState returns the in memory state of the background process. This may different from the serialized bucket state.
 func (b *BackgroundManager) GetRunState() BackgroundProcessState {
-	b.statusLock.Lock()
-	defer b.statusLock.Unlock()
+	b.statusLock.RLock()
+	defer b.statusLock.RUnlock()
 	return b.status.State
 }
 
@@ -523,8 +522,8 @@ func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 
 // getStartTime returns the current start time of the background process from an in memory value. This may be different from the seraialized start time. If no start time is present, returns nil time.Time.
 func (b *BackgroundManager) getStartTime() time.Time {
-	b.statusLock.Lock()
-	defer b.statusLock.Unlock()
+	b.statusLock.RLock()
+	defer b.statusLock.RUnlock()
 	return b.status.StartTime
 }
 
