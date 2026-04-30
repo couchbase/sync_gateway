@@ -45,6 +45,10 @@ var errBackgroundManagerAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnav
 
 var errBackgroundManagerStatusNotRunning = errors.New("status in bucket is not running, but local status is, avoiding overwriting local status to bucket")
 
+var errBackgroundManagerProcessAlreadyRunning = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
+
+var errBackgroundManagerProcessAlreadyStopped = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
+
 type BackgroundProcessAction string
 
 const (
@@ -115,6 +119,9 @@ func (b *BackgroundManager) GetName() string {
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) error {
 	err := b.markStart(ctx)
 	if err != nil {
+		if b.mode() == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
+			return nil
+		}
 		return err
 	}
 
@@ -218,8 +225,6 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	processAlreadyRunningErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
-
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
 	if b.mode() == backgroundManagerModeSingleNode {
 		_, err := b.clusterAwareOptions.metadataStore.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
@@ -230,7 +235,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 			if err == nil && status.ShouldStop {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
 			}
-			return processAlreadyRunningErr
+			return errBackgroundManagerProcessAlreadyRunning
 		}
 
 		// Now we know that we're the only running process we should instantiate these values
@@ -257,17 +262,15 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 		b.setRunState(BackgroundProcessStateRunning)
 		return nil
 	}
-	if b.mode() == backgroundManagerModeLocal && b.GetRunState() == BackgroundProcessStateRunning {
-		return processAlreadyRunningErr
-	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
 		if b.clusterStateIs(ctx, BackgroundProcessStateStopping) {
 			return errBackgroundManagerAlreadyStopping
 		}
-		if b.GetRunState() == BackgroundProcessStateRunning {
-			return nil
-		}
+	}
+
+	if b.GetRunState() == BackgroundProcessStateRunning {
+		return errBackgroundManagerProcessAlreadyRunning
 	}
 
 	if b.GetRunState() == BackgroundProcessStateStopping {
@@ -431,6 +434,9 @@ func (b *BackgroundManager) setLastErrorMessage(msg string) {
 
 func (b *BackgroundManager) Stop(ctx context.Context) error {
 	if err := b.markStop(); err != nil {
+		if errors.Is(err, errBackgroundManagerProcessAlreadyStopped) || errors.Is(err, errBackgroundManagerAlreadyStopping) {
+			return nil
+		}
 		return err
 	}
 
@@ -454,7 +460,6 @@ func (b *BackgroundManager) Terminate() {
 }
 
 func (b *BackgroundManager) markStop() error {
-	processAlreadyStoppedErr := base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -462,7 +467,7 @@ func (b *BackgroundManager) markStop() error {
 		_, _, err := b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
-				return processAlreadyStoppedErr
+				return errBackgroundManagerProcessAlreadyStopped
 			}
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to verify whether a process is running: %v", err)
 		}
@@ -485,7 +490,7 @@ func (b *BackgroundManager) markStop() error {
 	}
 
 	if b.GetRunState() == BackgroundProcessStateCompleted || b.GetRunState() == BackgroundProcessStateStopped || b.GetRunState() == BackgroundProcessStateError {
-		return processAlreadyStoppedErr
+		return errBackgroundManagerProcessAlreadyStopped
 	}
 
 	b.setRunState(BackgroundProcessStateStopping)
@@ -583,7 +588,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 				if err != nil {
 					return nil, nil, false, err
 				}
-				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
+				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
 					return nil, nil, false, errBackgroundManagerStatusNotRunning
 				}
 			}
