@@ -59,16 +59,24 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 
 	// Verify that each expected index is present and online on both stores.
 	for _, store := range []base.DataStore{primaryStore, fallbackStore} {
-		n1qlStore, err := base.NewClusterOnlyN1QLStore(
-			gocbBucket.GetCluster(),
-			gocbBucket.BucketName(),
-			store.ScopeName(),
-			store.CollectionName(),
-		)
-		require.NoError(t, err)
 
-		indexesMeta, err := base.GetSystemCollectionIndexesMeta(ctx, n1qlStore, base.SystemScope, base.SystemCollectionMobile, expectedIndexes)
-		require.NoError(t, err)
+		var indexesMeta map[string]base.IndexMeta
+		if store.GetName() == primaryStore.GetName() {
+			n1qlStore, err := base.NewClusterOnlyN1QLStore(
+				gocbBucket.GetCluster(),
+				gocbBucket.BucketName(),
+				store.ScopeName(),
+				store.CollectionName(),
+			)
+			require.NoError(t, err)
+			indexesMeta, err = base.GetSystemCollectionIndexesMeta(ctx, n1qlStore, base.SystemScope, base.SystemCollectionMobile, expectedIndexes)
+			require.NoError(t, err)
+		} else {
+			fallbackN1QLStore, ok := base.AsN1QLStore(fallbackStore)
+			require.True(t, ok)
+			indexesMeta, err = base.GetIndexesMeta(ctx, fallbackN1QLStore, expectedIndexes)
+			require.NoError(t, err)
+		}
 
 		for _, indexName := range expectedIndexes {
 			meta, found := indexesMeta[indexName]
