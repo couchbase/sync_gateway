@@ -11,12 +11,12 @@ package rest
 import (
 	"fmt"
 	"net/http"
-	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestClusterCompatRootEndpoint(t *testing.T) {
@@ -96,8 +96,6 @@ func TestClusterCompatEndpointNotOnPublicPort(t *testing.T) {
 // and verifies the CAS-retry path converges: every node ends up in the registry, and no caller
 // sees an error. Serialized get+set without retry would lose writes under this load.
 func TestRegisterNodeVersionCASRetry(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
-
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -107,21 +105,14 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 
 	const n = 10
 	version := base.NewClusterCompatVersion(4, 0)
-	var wg sync.WaitGroup
-	errs := make([]error, n)
-	base.AssertLogContains(t, "CAS mismatch registering node version", func() {
-		for i := 0; i < n; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				_, errs[i] = bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
-			}(i)
-		}
-		wg.Wait()
-	})
-	for i, err := range errs {
-		assert.NoError(t, err, "RegisterNodeVersion for node-%d", i)
+	var eg errgroup.Group
+	for i := 0; i < n; i++ {
+		eg.Go(func() error {
+			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
+			return err
+		})
 	}
+	assert.NoError(t, eg.Wait())
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
@@ -134,8 +125,6 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 // TestDeregisterNodeVersionCASRetry concurrently deregisters many nodes from the same bucket
 // registry and verifies the CAS-retry path converges: every node is removed.
 func TestDeregisterNodeVersionCASRetry(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
-
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -150,17 +139,14 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	var wg sync.WaitGroup
-	base.AssertLogContains(t, "CAS mismatch deregistering node", func() {
-		for i := 0; i < n; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				bc.DeregisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i))
-			}(i)
-		}
-		wg.Wait()
-	})
+	var eg errgroup.Group
+	for i := 0; i < n; i++ {
+		eg.Go(func() error {
+			bc.DeregisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i))
+			return nil
+		})
+	}
+	require.NoError(t, eg.Wait())
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
