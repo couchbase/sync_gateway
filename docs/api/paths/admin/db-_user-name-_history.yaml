@@ -9,36 +9,27 @@ parameters:
   - $ref: ../../components/parameters.yaml#/db
   - $ref: ../../components/parameters.yaml#/user-name
 get:
-  summary: Get user's channel information
+  summary: Get user's channel history information
   description: |-
-    Retrieve the channel access information for a user, including admin channels, all channels, and collection access configuration.
+    Retrieve the Channel history of the specified user.
 
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect
   responses:
     '200':
-      description: User channel information retrieved successfully
+      description: User channel history information retrieved successfully
       content:
         application/json:
           schema:
-            $ref: ../../components/schemas.yaml#/UserChannelInfo
+            $ref: ../../components/schemas.yaml#/UserChannelHistory
           example:
-            admin_channels:
-              - channel1
-              - channel2
-            all_channels:
-              - channel1
-              - channel2
-              - channel3
-            collection_access:
-              scope1:
-                collection1:
-                  admin_channels:
-                    - scoped_channel1
-                  all_channels:
-                    - scoped_channel1
-                    - scoped_channel2
+            scope1:
+              collection1:
+                - channel1
+                - channel2
+              collection2:
+                - channel3
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
