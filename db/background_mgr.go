@@ -43,6 +43,8 @@ const (
 // state.
 var errBackgroundManagerAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
 
+var errBackgroundManagerStatusNotRunning = errors.New("status in bucket is not running, but local status is, avoiding overwriting local status to bucket")
+
 type BackgroundProcessAction string
 
 const (
@@ -427,16 +429,16 @@ func (b *BackgroundManager) setLastErrorMessage(msg string) {
 	b.status.LastErrorMessage = msg
 }
 
-func (b *BackgroundManager) Stop() error {
+func (b *BackgroundManager) Stop(ctx context.Context) error {
 	if err := b.markStop(); err != nil {
 		return err
 	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
 		// Use a detached context for status update as the original context might be cancelled
-		err := b.UpdateStatusClusterAware(context.Background())
+		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
-			base.WarnfCtx(context.Background(), "Failed to update cluster status to stopping: %v", err)
+			base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
 		}
 	}
 
@@ -565,7 +567,6 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
 func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
-	errStatusNotRunning := errors.New("status in bucket is running, local status is not")
 	docID := b.clusterAwareOptions.StatusDocID()
 	_, err := b.clusterAwareOptions.metadataStore.Update(docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		status, metadata, err := b.getStatusLocal()
@@ -583,7 +584,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 					return nil, nil, false, err
 				}
 				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
-					return nil, nil, false, errStatusNotRunning
+					return nil, nil, false, errBackgroundManagerStatusNotRunning
 				}
 			}
 		}
@@ -631,7 +632,7 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware(ctx context.Context) 
 	}
 
 	if status.ShouldStop {
-		err = b.Stop()
+		err = b.Stop(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
 		}
@@ -654,7 +655,7 @@ func (b *BackgroundManager) startPollingMultiNodeStatus(ctx context.Context, ter
 				continue
 			}
 			err = b.updateMultiNodeClusterAwareStatus(ctx)
-			if err != nil {
+			if err != nil && !errors.Is(err, errBackgroundManagerStatusNotRunning) {
 				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
 			}
 		case <-terminator.Done():

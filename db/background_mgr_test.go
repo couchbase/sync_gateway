@@ -126,7 +126,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 				assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 			}, 5*time.Second, 100*time.Millisecond)
 
-			err = mgr.Stop()
+			err = mgr.Stop(ctx)
 			require.NoError(t, err)
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -164,9 +164,9 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	// 1. Start mgr1
 	err := mgr1.Start(ctx, nil)
 	require.NoError(t, err)
-	defer func() { _ = mgr1.Stop() }()
+	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
 
-	// 2. Try to start mgr1 again (should fail)
+	// 2. Try to start mgr1 again
 	err = mgr1.Start(ctx, nil)
 	require.NoError(t, err)
 
@@ -179,7 +179,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	}
 	err = mgr2.Start(ctx, nil)
 	require.NoError(t, err)
-	defer func() { _ = mgr2.Stop() }()
+	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
 	// Both should be running
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -188,7 +188,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// 4. Stop via mgr1
-	err = mgr1.Stop()
+	err = mgr1.Stop(ctx)
 	require.NoError(t, err)
 
 	// Both should stop because they watch the same status doc
@@ -235,13 +235,13 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 
 	// Start all simultaneously
 	var wg sync.WaitGroup
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_ = managers[i].Start(ctx, nil)
+			assert.NoError(t, managers[i].Start(ctx, nil))
 		}(i)
-		defer func(i int) { _ = managers[i].Stop() }(i)
+		defer func(i int) { assert.NoError(t, managers[i].Stop(ctx)) }(i)
 	}
 	wg.Wait()
 
@@ -257,7 +257,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_ = managers[i].Stop()
+			assert.NoError(t, managers[i].Stop(ctx))
 		}(i)
 	}
 	wg.Wait()
@@ -300,7 +300,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	err = mgr1.UpdateStatusClusterAware(ctx)
 	require.NoError(t, err)
 
-	err = mgr1.Stop()
+	err = mgr1.Stop(ctx)
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -317,7 +317,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	}
 	err = mgr2.Start(ctx, nil)
 	require.NoError(t, err)
-	defer func() { _ = mgr2.Stop() }()
+	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
 	require.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have reused the start time from the cluster status doc")
 }
