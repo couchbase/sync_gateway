@@ -680,10 +680,13 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	}
 
 	var queryStatement string
+	var queryName string
 	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
+		queryName = QueryAllRolesUsingRoleIdx.name
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
+		queryName = QueryAllRolesUsingSyncDocsIdx.name
 	}
 
 	params := make(map[string]any)
@@ -692,13 +695,13 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
 	// LIMIT is handled internally by dualMetadataN1QLQuery; do not append it to the statement.
 	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
-		return dualMetadataN1QLQuery(ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+		return dualMetadataN1QLQuery(ctx, ms, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 	}
 
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 type AllDocsViewQueryRow struct {
