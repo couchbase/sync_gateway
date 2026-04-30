@@ -43,10 +43,13 @@ const (
 // state.
 var errBackgroundManagerAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
 
+// errBackgroundManagerStatusNotRunning is returned when the bucket status is not running but the local status is.
 var errBackgroundManagerStatusNotRunning = errors.New("status in bucket is not running, but local status is, avoiding overwriting local status to bucket")
 
+// errBackgroundManagerProcessAlreadyRunning is returned when an action to Start a process occurs but it is already running.
 var errBackgroundManagerProcessAlreadyRunning = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
 
+// errBackgroundManagerProcessAlreadyStopped is returned when an action to Stop a process occurs but it is already stopped.
 var errBackgroundManagerProcessAlreadyStopped = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
 type BackgroundProcessAction string
@@ -79,7 +82,7 @@ type ClusterAwareBackgroundManagerOptions struct {
 	metadataStore base.DataStore
 	metaKeys      *base.MetadataKeys
 	processSuffix string
-	MultiNode     bool
+	MultiNode     bool // If true, the background manager is expected to run on all nodes of a Sync Gateway cluster.
 
 	lastSuccessfulHeartbeatUnix base.AtomicInt
 }
@@ -310,6 +313,8 @@ func (b *BackgroundManager) getClusterStatusState(ctx context.Context) (Backgrou
 	return state, nil
 
 }
+
+// getBackgroundManagerState returns the getBackgroundManagerState from raw bytes of the status document.
 func getBackgroundManagerState(statusRaw []byte) (BackgroundProcessState, error) {
 	var clusterStatus struct {
 		Status BackgroundProcessState `json:"status"`
@@ -422,16 +427,21 @@ func (b *BackgroundManager) resetStatus() {
 	defer b.lock.Unlock()
 
 	b.lastError = nil
-	b.setLastErrorMessage("")
+	b.clearLastErrorMessage()
 	b.Process.ResetStatus()
 }
 
-func (b *BackgroundManager) setLastErrorMessage(msg string) {
+// setLastErrorMessage sets the last error message
+func (b *BackgroundManager) clearLastErrorMessage() {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
-	b.status.LastErrorMessage = msg
+	b.status.LastErrorMessage = ""
 }
 
+// Stop triggers a Stop of the background process. This will transition the state to BackgroundProcessStateStopping and
+// return from this function.
+//
+// This will return an error if the status is not in a running state, as already stopped or stopping.
 func (b *BackgroundManager) Stop(ctx context.Context) error {
 	if err := b.markStop(); err != nil {
 		if errors.Is(err, errBackgroundManagerProcessAlreadyStopped) || errors.Is(err, errBackgroundManagerAlreadyStopping) {
@@ -497,30 +507,35 @@ func (b *BackgroundManager) markStop() error {
 	return nil
 }
 
+// GetRunState returns the in memory state of the background process. This may different from the serialized bucket state.
 func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 	return b.status.State
 }
 
+// setRunState sets the in memory state of the background process. This does not updated the serialized bucket state.
 func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 	b.status.State = state
 }
 
+// getStartTime returns the current start time of the background process from an in memory value. This may be different from the seraialized start time. If no start time is present, returns nil time.Time.
 func (b *BackgroundManager) getStartTime() time.Time {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 	return b.status.StartTime
 }
 
+// setStartTime sets the start time of the background process to an in memory value. This does not update the serialized bucket state.
 func (b *BackgroundManager) setStartTime(startTime time.Time) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 	b.status.StartTime = startTime
 }
 
+// SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
 func (b *BackgroundManager) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
@@ -530,6 +545,7 @@ func (b *BackgroundManager) SetError(err error) {
 	b.Terminate()
 }
 
+// UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
 func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error {
 	switch b.mode() {
 	case backgroundManagerModeSingleNode:
@@ -647,6 +663,9 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware(ctx context.Context) 
 	return nil
 }
 
+// startPollingMultiNodeStatus starts a loop which polls the status document for changes. If the status document
+// indicates that the process should stop, then this will trigger a stop of the local process. This is used for
+// multi-node cluster aware background managers where we want all nodes to stop if any node triggers a stop.
 func (b *BackgroundManager) startPollingMultiNodeStatus(ctx context.Context, terminator *base.SafeTerminator) {
 	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 	for {
@@ -702,6 +721,7 @@ const (
 	backgroundManagerModeMultiNode
 )
 
+// mode returns the running mode a BackgroundManager.
 func (b *BackgroundManager) mode() backgroundManagerMode {
 	if b.clusterAwareOptions == nil {
 		return backgroundManagerModeLocal
