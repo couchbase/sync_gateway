@@ -728,6 +728,10 @@ func TestReplicationStatusActions(t *testing.T) {
 		// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
 		doneChan := make(chan struct{})
 		var statusWg sync.WaitGroup
+		defer func() {
+			close(doneChan)
+			statusWg.Wait()
+		}()
 		statusWg.Add(1)
 		go func() {
 			for {
@@ -789,10 +793,6 @@ func TestReplicationStatusActions(t *testing.T) {
 			return status.DocsCheckedPull == 2 && status.DocsRead == 0
 		})
 		assert.NoError(t, statError)
-
-		// Terminate status goroutine
-		close(doneChan)
-		statusWg.Wait()
 	})
 }
 
