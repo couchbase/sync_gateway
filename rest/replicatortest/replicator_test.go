@@ -6430,6 +6430,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 		for _, test := range conflictResolutionTests {
 			t.Run(test.name, func(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
+				base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 				activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
 
