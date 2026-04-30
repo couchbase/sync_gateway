@@ -260,7 +260,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
-		return base.RedactErrorf("failed to marshall _mou when attempting to compact channel history for doc: %s. Error: %v")
+		return base.RedactErrorf("failed to marshall _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
 	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
