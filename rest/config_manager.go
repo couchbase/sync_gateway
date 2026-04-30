@@ -705,7 +705,7 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 
 // RegisterNodeVersion registers or updates a node's version and heartbeat in the given bucket's registry.
 // Uses CAS retry on conflict. Returns the updated registry for min-version computation.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUUID string, version base.ClusterCompatVersion) (*GatewayRegistry, error) {
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID string, version base.ClusterCompatVersion) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -714,9 +714,9 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		if registry.Nodes == nil {
 			registry.Nodes = make(map[string]*base.RegistryNode)
 		}
-		registry.Nodes[nodeUUID] = &base.RegistryNode{
+		registry.Nodes[nodeUID] = &base.RegistryNode{
 			Version:     version,
-			HeartbeatAt: time.Now(),
+			HeartbeatAt: time.Now().UTC(),
 		}
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
@@ -733,29 +733,27 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 
 // DeregisterNodeVersion removes a node's version entry from the given bucket's registry.
 // Best-effort with CAS retry — errors are logged but not fatal.
-func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName, nodeUUID string) {
+func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName, nodeUID string) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to get registry for node deregistration from bucket %s: %v", base.MD(bucketName), err)
 			return
 		}
-		if registry.Nodes == nil {
+		if _, exists := registry.Nodes[nodeUID]; !exists {
+			// Already gone (or registry was never written) — nothing to do.
 			return
 		}
-		if _, exists := registry.Nodes[nodeUUID]; !exists {
-			return
-		}
-		delete(registry.Nodes, nodeUUID)
+		delete(registry.Nodes, nodeUID)
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
-		if err != nil {
-			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
-				continue
-			}
-			base.WarnfCtx(ctx, "Failed to deregister node from bucket %s: %v", base.MD(bucketName), err)
+		if err == nil {
+			return
 		}
-		return
+		if !base.IsCasMismatch(err) {
+			base.WarnfCtx(ctx, "Failed to deregister node from bucket %s: %v", base.MD(bucketName), err)
+			return
+		}
+		base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 	}
 	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 }

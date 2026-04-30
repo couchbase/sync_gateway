@@ -104,7 +104,7 @@ type ServerContext struct {
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect                // singleton instance for this server's sgcollect_info process
-	NodeUUID                      string                    // Stable identifier for this SG node, derived deterministically from host fingerprint
+	NodeUID                       string                    // Stable identifier for this SG node, derived deterministically from host fingerprint
 	ClusterCompat                 base.ClusterCompatChecker // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn           // supply a custom function for buckets, used for testing only
 }
@@ -215,12 +215,12 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		}
 	}
 
-	nodeUUID, err := base.GenerateNodeUUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
+	nodeUID, err := base.GenerateNodeUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
 	if err != nil {
-		base.WarnfCtx(ctx, "Failed to generate node UUID: %v — using LogContextID as fallback", err)
-		nodeUUID = sc.LogContextID
+		base.WarnfCtx(ctx, "Failed to generate node UID: %v — using LogContextID as fallback", err)
+		nodeUID = sc.LogContextID
 	}
-	sc.NodeUUID = nodeUUID
+	sc.NodeUID = nodeUID
 
 	sc.startStatsLogger(ctx)
 

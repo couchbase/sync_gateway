@@ -2491,8 +2491,7 @@ func (h *handler) handleGetClusterInfo() error {
 	return nil
 }
 
-// handleGetClusterCompat returns the cluster compatibility version, per-node versions, and
-// per-bucket node registrations.
+// handleGetClusterCompat returns the cluster compatibility version and per-node versions.
 func (h *handler) handleGetClusterCompat() error {
 	if h.server.ClusterCompat == nil {
 		return base.HTTPErrorf(http.StatusNotImplemented, "cluster compat tracking not yet available in non-persistent mode")
@@ -2500,7 +2499,6 @@ func (h *handler) handleGetClusterCompat() error {
 	resp := clusterCompatResponse{
 		ClusterCompatVersion: h.server.ClusterCompat.ClusterCompatVersion(),
 		Nodes:                h.server.ClusterCompat.NodeVersions(),
-		Buckets:              h.server.ClusterCompat.BucketNodes(),
 	}
 	base.Audit(h.ctx(), base.AuditIDClusterCompatRead, nil)
 	h.writeJSON(resp)

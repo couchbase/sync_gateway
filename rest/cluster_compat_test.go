@@ -66,22 +66,9 @@ func TestClusterCompatEndpoint(t *testing.T) {
 	require.NotNil(t, ccResp.ClusterCompatVersion)
 	assert.Equal(t, base.NodeClusterCompatVersion, *ccResp.ClusterCompatVersion)
 
-	// Should have at least one node (this node)
-	assert.GreaterOrEqual(t, len(ccResp.Nodes), 1)
-
-	// Should have at least one bucket with node registrations
-	assert.GreaterOrEqual(t, len(ccResp.Buckets), 1)
-
-	// Verify this node appears in at least one bucket
-	nodeUUID := rt.ServerContext().NodeUUID
-	foundNode := false
-	for _, bucket := range ccResp.Buckets {
-		if _, ok := bucket.Nodes[nodeUUID]; ok {
-			foundNode = true
-			break
-		}
-	}
-	assert.True(t, foundNode, "This node's UUID should appear in at least one bucket's node registrations")
+	// This node should appear in the per-node version map
+	nodeUID := rt.ServerContext().NodeUID
+	assert.Equal(t, base.NodeClusterCompatVersion, ccResp.Nodes[nodeUID])
 }
 
 func TestClusterCompatEndpointNotOnPublicPort(t *testing.T) {
@@ -185,5 +172,5 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 	nodes := ccm.NodeVersions()
 	assert.Equal(t, older, nodes["synthetic-old"])
 	assert.Equal(t, newer, nodes["synthetic-new"])
-	assert.Equal(t, base.NodeClusterCompatVersion, nodes[rt.ServerContext().NodeUUID])
+	assert.Equal(t, base.NodeClusterCompatVersion, nodes[rt.ServerContext().NodeUID])
 }
