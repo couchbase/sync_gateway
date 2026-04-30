@@ -271,8 +271,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 	r.Handle("/_cluster_info",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo, handlerOptions{sgcollect: true})).Methods("GET")
-	r.Handle("/_cluster_compat",
-		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterCompat, handlerOptions{sgcollect: true})).Methods("GET")
 
 	r.Handle("/_status",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus, handlerOptions{sgcollect: true})).Methods("GET")

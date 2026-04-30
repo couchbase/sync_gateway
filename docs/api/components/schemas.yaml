@@ -3289,24 +3289,6 @@ ClusterCompatVersion:
   nullable: true
   example: '4.1'
   title: Cluster Compatibility Version
-ClusterCompatResponse:
-  description: Response body for the `GET /_cluster_compat` endpoint.
-  type: object
-  properties:
-    cluster_compat_version:
-      description: |-
-        The minimum cluster compatibility version across all nodes in the cluster.
-
-        This is `null` when no version has been computed yet (e.g. first startup before nodes have registered).
-      allOf:
-        - $ref: '#/ClusterCompatVersion'
-    nodes:
-      description: Map of node UID to the cluster compatibility version reported by that node.
-      type: object
-      additionalProperties:
-        x-additionalPropertiesName: nodeUID
-        $ref: '#/NodeVersion'
-  title: Cluster Compatibility Response
 DiagnosticFunctionException:
   description: The exception thrown during evaluation (if any).
   type: string
@@ -3333,6 +3315,20 @@ ClusterInfo:
     legacy_config:
       description: Indicates if the server is using legacy (non persistent) configuration.
       type: boolean
+    cluster_compat_version:
+      description: |-
+        The minimum cluster compatibility version across all nodes in the cluster.
+
+        Omitted when no version has been computed yet (e.g. first startup before nodes have registered,
+        or when running in legacy non-persistent config mode).
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+    nodes:
+      description: Map of node UID to the cluster compatibility version reported by that node.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: nodeUID
+        $ref: '#/NodeVersion'
     buckets:
       description: Map of bucket names to bucket information.
       type: object

@@ -55,9 +55,8 @@ const (
 	AuditIDSyncGatewayProfiling         AuditID = 53304
 
 	// SG cluster events
-	AuditIDClusterInfoRead   AuditID = 53350
-	AuditIDClusterCompatRead AuditID = 53355
-	AuditIDPostUpgrade       AuditID = 54043
+	AuditIDClusterInfoRead AuditID = 53350
+	AuditIDPostUpgrade     AuditID = 54043
 
 	// Database events
 	AuditIDCreateDatabase  AuditID = 54000
@@ -459,14 +458,6 @@ var AuditEvents = events{
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
 		Description:        "Sync Gateway cluster info was viewed",
-		EnabledByDefault:   true,
-		FilteringPermitted: true,
-		EventType:          eventTypeAdmin,
-		IsGlobalEvent:      true,
-	},
-	AuditIDClusterCompatRead: {
-		Name:               "Sync Gateway cluster compat read",
-		Description:        "Sync Gateway cluster compatibility version was viewed",
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,

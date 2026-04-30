@@ -255,12 +255,6 @@ func minClusterCompatVersion(nodes map[string]base.ClusterCompatVersion) base.Cl
 	return base.MinClusterCompatVersion(versions...)
 }
 
-// clusterCompatResponse is the JSON response for the /_cluster_compat endpoint.
-type clusterCompatResponse struct {
-	ClusterCompatVersion *base.ClusterCompatVersion           `json:"cluster_compat_version"`
-	Nodes                map[string]base.ClusterCompatVersion `json:"nodes,omitempty"`
-}
-
 // clusterCompatVersionEqual compares two possibly-nil ClusterCompatVersion pointers.
 func clusterCompatVersionEqual(a, b *base.ClusterCompatVersion) bool {
 	if a == nil && b == nil {

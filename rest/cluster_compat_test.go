@@ -46,7 +46,9 @@ func TestClusterCompatRootEndpoint(t *testing.T) {
 	assert.Equal(t, base.NodeClusterCompatVersion.String(), pubRootResp.ClusterCompatVersion)
 }
 
-func TestClusterCompatEndpoint(t *testing.T) {
+// TestClusterCompatInClusterInfoEndpoint verifies that /_cluster_info exposes
+// the aggregated cluster compatibility version and the per-node version map.
+func TestClusterCompatInClusterInfoEndpoint(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -55,28 +57,18 @@ func TestClusterCompatEndpoint(t *testing.T) {
 	require.True(t, ok)
 	ccm.Refresh(base.TestCtx(t))
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_compat", "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	var ccResp clusterCompatResponse
-	err := base.JSONUnmarshal(resp.BodyBytes(), &ccResp)
+	var info ClusterInfo
+	err := base.JSONUnmarshal(resp.BodyBytes(), &info)
 	require.NoError(t, err)
 
-	// Should have a cluster compat version matching this node's version
-	require.NotNil(t, ccResp.ClusterCompatVersion)
-	assert.Equal(t, base.NodeClusterCompatVersion, *ccResp.ClusterCompatVersion)
+	require.NotNil(t, info.ClusterCompatVersion)
+	assert.Equal(t, base.NodeClusterCompatVersion, *info.ClusterCompatVersion)
 
-	// This node should appear in the per-node version map
 	nodeUID := rt.ServerContext().NodeUID
-	assert.Equal(t, base.NodeClusterCompatVersion, ccResp.Nodes[nodeUID])
-}
-
-func TestClusterCompatEndpointNotOnPublicPort(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	resp := rt.SendRequest(http.MethodGet, "/_cluster_compat", "")
-	assert.Equal(t, http.StatusNotFound, resp.Code, "/_cluster_compat should not be accessible on public port")
+	assert.Equal(t, base.NodeClusterCompatVersion, info.Nodes[nodeUID])
 }
 
 // TestRegisterNodeVersionCASRetry concurrently registers many nodes in the same bucket registry
