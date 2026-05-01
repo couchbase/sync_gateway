@@ -103,10 +103,10 @@ type ServerContext struct {
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
-	SGCollect                     *sgCollect                // singleton instance for this server's sgcollect_info process
-	NodeUID                       string                    // Stable identifier for this SG node, derived deterministically from host fingerprint
-	ClusterCompat                 base.ClusterCompatChecker // Tracks cluster-wide minimum SG version for compat gating
-	connectToBucketFn             db.OpenBucketFn           // supply a custom function for buckets, used for testing only
+	SGCollect                     *sgCollect            // singleton instance for this server's sgcollect_info process
+	NodeUID                       string                // Stable identifier for this SG node, derived deterministically from host fingerprint
+	ClusterCompat                 *clusterCompatManager // Tracks cluster-wide minimum SG version for compat gating
+	connectToBucketFn             db.OpenBucketFn       // supply a custom function for buckets, used for testing only
 }
 
 type ActiveReplicationsCounter struct {
@@ -295,8 +295,8 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	}
 
 	// deregister this node from cluster compat tracking before closing bootstrap connection
-	if ccm, ok := sc.ClusterCompat.(*clusterCompatManager); ok {
-		ccm.Stop(ctx)
+	if sc.ClusterCompat != nil {
+		sc.ClusterCompat.Stop(ctx)
 	}
 
 	// close cached bootstrap bucket connections for config polling
@@ -2176,9 +2176,8 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 
 	// Initialize the cluster compat manager before loading configs so that database loads
 	// triggered by fetchAndLoadConfigs can lazily register this node in the buckets they use.
-	ccm := &clusterCompatManager{sc: sc}
-	ccm.Start(ctx)
-	sc.ClusterCompat = ccm
+	sc.ClusterCompat = &clusterCompatManager{sc: sc}
+	sc.ClusterCompat.Start(ctx)
 
 	count, err := sc.fetchAndLoadConfigs(ctx, true)
 	if err != nil {
@@ -2214,7 +2213,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					if count > 0 {
 						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
 					}
-					ccm.Refresh(ctx)
+					sc.ClusterCompat.Refresh(ctx)
 				}
 			}
 		}()

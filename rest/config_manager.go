@@ -273,7 +273,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		}
 		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 	}
-	return 0, fmt.Errorf("UpdateConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
+	return 0, base.RedactErrorf("UpdateConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
 }
 
 // DeleteConfig deletes a database config
@@ -362,7 +362,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		}
 		base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
 	}
-	return fmt.Errorf("DeleteConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
+	return base.RedactErrorf("DeleteConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
 }
 
 // WaitForConflictingUpdates is called when an upsert is in conflict with previous versions found in the registry.  Previous
@@ -728,7 +728,7 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		}
 		return registry, nil
 	}
-	return nil, fmt.Errorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+	return nil, base.RedactErrorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 }
 
 // DeregisterNodeVersion removes a node's version entry from the given bucket's registry.

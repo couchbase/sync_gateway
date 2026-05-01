@@ -91,16 +91,6 @@ type RegistryNode struct {
 	HeartbeatAt time.Time            `json:"heartbeat_at"`
 }
 
-// ClusterCompatChecker provides read-only access to the cluster compatibility version.
-type ClusterCompatChecker interface {
-	// ClusterCompatVersion returns a copy of the current cluster compat version, or nil if not yet computed.
-	ClusterCompatVersion() *ClusterCompatVersion
-	ClusterIsAtLeast(major, minor uint8) bool
-	// NodeVersions returns the cluster compat version of each node in the cluster, keyed by node UID.
-	// This is the union of nodes across all bucket registries.
-	NodeVersions() map[string]ClusterCompatVersion
-}
-
 // ParseClusterCompatVersion parses a "major.minor" string into a ClusterCompatVersion.
 func ParseClusterCompatVersion(s string) (ClusterCompatVersion, error) {
 	parts := strings.SplitN(s, ".", 2)

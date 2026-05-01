@@ -24,8 +24,8 @@ func TestClusterCompatRootEndpoint(t *testing.T) {
 	defer rt.Close()
 
 	// Trigger a refresh now that a database/bucket exists
-	ccm, ok := rt.ServerContext().ClusterCompat.(*clusterCompatManager)
-	require.True(t, ok)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
 	ccm.Refresh(base.TestCtx(t))
 
 	// Admin port should include cluster_compat_version
@@ -46,15 +46,37 @@ func TestClusterCompatRootEndpoint(t *testing.T) {
 	assert.Equal(t, base.NodeClusterCompatVersion.String(), pubRootResp.ClusterCompatVersion)
 }
 
-// TestClusterCompatInClusterInfoEndpoint verifies that /_cluster_info exposes
-// the aggregated cluster compatibility version and the per-node version map.
-func TestClusterCompatInClusterInfoEndpoint(t *testing.T) {
+// TestClusterCompatInStatusEndpoint verifies that /_status exposes the aggregated
+// cluster compatibility version and this node's UID.
+func TestClusterCompatInStatusEndpoint(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
 	// Trigger a refresh now that a database/bucket exists
-	ccm, ok := rt.ServerContext().ClusterCompat.(*clusterCompatManager)
-	require.True(t, ok)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(base.TestCtx(t))
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	var status Status
+	err := base.JSONUnmarshal(resp.BodyBytes(), &status)
+	require.NoError(t, err)
+
+	assert.Equal(t, base.NodeClusterCompatVersion.String(), status.ClusterCompatVersion)
+	assert.Equal(t, rt.ServerContext().NodeUID, status.NodeUID)
+}
+
+// TestClusterCompatNodesInClusterInfoRegistry verifies that the per-node version map
+// is exposed via the bucket registry returned by /_cluster_info — registry data is the
+// source of truth, /_cluster_info does not surface it as a top-level field.
+func TestClusterCompatNodesInClusterInfoRegistry(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
 	ccm.Refresh(base.TestCtx(t))
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
@@ -64,11 +86,15 @@ func TestClusterCompatInClusterInfoEndpoint(t *testing.T) {
 	err := base.JSONUnmarshal(resp.BodyBytes(), &info)
 	require.NoError(t, err)
 
-	require.NotNil(t, info.ClusterCompatVersion)
-	assert.Equal(t, base.NodeClusterCompatVersion, *info.ClusterCompatVersion)
+	bucketName := rt.Bucket().GetName()
+	bucket, ok := info.Buckets[bucketName]
+	require.True(t, ok, "bucket %s should be in cluster info", bucketName)
+	require.NotNil(t, bucket.Registry)
 
 	nodeUID := rt.ServerContext().NodeUID
-	assert.Equal(t, base.NodeClusterCompatVersion, info.Nodes[nodeUID])
+	registryNode, ok := bucket.Registry.Nodes[nodeUID]
+	require.True(t, ok, "node %s should be in bucket registry", nodeUID)
+	assert.Equal(t, base.NodeClusterCompatVersion, registryNode.Version)
 }
 
 // TestRegisterNodeVersionCASRetry concurrently registers many nodes in the same bucket registry
@@ -153,8 +179,8 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 	_, err = bc.RegisterNodeVersion(ctx, bucketName, "synthetic-new", newer)
 	require.NoError(t, err)
 
-	ccm, ok := rt.ServerContext().ClusterCompat.(*clusterCompatManager)
-	require.True(t, ok)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
 	ccm.Refresh(ctx)
 
 	got := ccm.ClusterCompatVersion()

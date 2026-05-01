@@ -1655,9 +1655,11 @@ type DatabaseStatus struct {
 }
 
 type Status struct {
-	Databases map[string]DatabaseStatus `json:"databases"`
-	Version   string                    `json:"version"`
-	Vendor    vendor                    `json:"vendor"`
+	Databases            map[string]DatabaseStatus `json:"databases"`
+	Version              string                    `json:"version"`
+	Vendor               vendor                    `json:"vendor"`
+	NodeUID              string                    `json:"node_uid,omitempty"`
+	ClusterCompatVersion string                    `json:"cluster_compat_version,omitempty"`
 }
 
 func (h *handler) handleGetStatus() error {
@@ -1671,6 +1673,12 @@ func (h *handler) handleGetStatus() error {
 	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
 		status.Vendor.Version = base.ProductAPIVersion
+		status.NodeUID = h.server.NodeUID
+		if h.server.ClusterCompat != nil {
+			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
+				status.ClusterCompatVersion = v.String()
+			}
+		}
 	}
 
 	for _, database := range h.server._databases {
@@ -2433,10 +2441,8 @@ func (h *handler) putReplicationStatus() error {
 
 // Cluster information, returned by _cluster_info API request
 type ClusterInfo struct {
-	LegacyConfig         bool                                 `json:"legacy_config,omitempty"`
-	ClusterCompatVersion *base.ClusterCompatVersion           `json:"cluster_compat_version,omitempty"`
-	Nodes                map[string]base.ClusterCompatVersion `json:"nodes,omitempty"`
-	Buckets              map[string]BucketInfo                `json:"buckets,omitempty"`
+	LegacyConfig bool                  `json:"legacy_config,omitempty"`
+	Buckets      map[string]BucketInfo `json:"buckets,omitempty"`
 }
 
 type BucketInfo struct {
@@ -2486,11 +2492,6 @@ func (h *handler) handleGetClusterInfo() error {
 			}
 			clusterInfo.Buckets[bucketName] = bucketInfo
 		}
-	}
-
-	if h.server.ClusterCompat != nil {
-		clusterInfo.ClusterCompatVersion = h.server.ClusterCompat.ClusterCompatVersion()
-		clusterInfo.Nodes = h.server.ClusterCompat.NodeVersions()
 	}
 
 	base.Audit(h.ctx(), base.AuditIDClusterInfoRead, nil)

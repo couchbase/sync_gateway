@@ -17,8 +17,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-var _ base.ClusterCompatChecker = (*clusterCompatManager)(nil)
-
 // clusterCompatManager tracks the minimum Sync Gateway version across all nodes in the cluster.
 // It is used to gate metadata writes so that new formats are only used once all nodes have been
 // upgraded.
