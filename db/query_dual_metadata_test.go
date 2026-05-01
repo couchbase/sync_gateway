@@ -20,7 +20,7 @@ import (
 )
 
 // mockQueryResultIterator is an in-memory QueryResultIterator backed by a slice of raw JSON
-// byte slices, used to test mergedDedupIterator without a real database.
+// byte slices, used to test dualMetadataStorePrincipalDedupIterator without a real database.
 type mockQueryResultIterator struct {
 	rows     [][]byte
 	pos      int
@@ -80,7 +80,7 @@ func TestMergedDedupIteratorPrimaryOnly(t *testing.T) {
 	})
 	fallback := newMockIterator(nil)
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -105,7 +105,7 @@ func TestMergedDedupIteratorFallbackOnly(t *testing.T) {
 		marshalRow("_sync:role:editor", "editor"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -122,7 +122,7 @@ func TestMergedDedupIteratorFallbackOnly(t *testing.T) {
 
 // TestMergedDedupIteratorEmpty verifies that empty iterators are handled cleanly.
 func TestMergedDedupIteratorEmpty(t *testing.T) {
-	iter := newMergedDedupIterator(newMockIterator(nil), newMockIterator(nil), 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(newMockIterator(nil), newMockIterator(nil), 0)
 	var row principalRow
 	assert.False(t, iter.Next(context.Background(), &row))
 	require.NoError(t, iter.Close())
@@ -144,7 +144,7 @@ func TestMergedDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 		marshalRow("_sync:user:carol", "carol-fallback"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -176,7 +176,7 @@ func TestMergedDedupIteratorAllDuplicates(t *testing.T) {
 		marshalRow("_sync:user:alice", "alice"),
 		marshalRow("_sync:user:bob", "bob"),
 	})
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var result []principalRow
 	for {
 		var row principalRow
@@ -208,7 +208,7 @@ func TestMergedDedupIteratorMergeSortOrder(t *testing.T) {
 		marshalRow("F", "f"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var ids []string
 	for {
 		var row principalRow
@@ -232,7 +232,7 @@ func TestMergedDedupIteratorNextBytes(t *testing.T) {
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var rawRows [][]byte
 	for {
 		raw := iter.NextBytes()
@@ -258,7 +258,7 @@ func TestMergedDedupIteratorClosesProperly(t *testing.T) {
 		marshalRow("_sync:user:bob", "bob"),
 	})
 
-	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	require.True(t, iter.Next(ctx, &row))
 	require.NoError(t, iter.Close())
@@ -275,7 +275,7 @@ func TestMergedDedupIteratorOne(t *testing.T) {
 	})
 	mockFallback := newMockIterator(nil)
 
-	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	require.NoError(t, iter.One(ctx, &row))
 	assert.Equal(t, "_sync:user:alice", row.Id)
@@ -301,7 +301,7 @@ func TestMergedDedupIteratorSafeBoundary(t *testing.T) {
 		marshalRow("C", "c"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 2)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
 	var ids []string
 	for {
 		var row principalRow
@@ -328,7 +328,7 @@ func TestMergedDedupIteratorSafeBoundaryPrimaryExhausts(t *testing.T) {
 		marshalRow("D", "d"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 2)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
 	var ids []string
 	for {
 		var row principalRow
@@ -358,7 +358,7 @@ func TestMergedDedupIteratorNoBoundaryWhenBelowLimit(t *testing.T) {
 		marshalRow("E", "e"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 5)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 5)
 	var ids []string
 	for {
 		var row principalRow
@@ -390,7 +390,7 @@ func TestMergedDedupIteratorBoundaryWithDuplicates(t *testing.T) {
 		marshalRow("E", "e-fallback"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 3)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 3)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -420,7 +420,7 @@ func TestMergedDedupIteratorUnlimited(t *testing.T) {
 		marshalRow("C", "c"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var ids []string
 	for {
 		var row principalRow
@@ -445,7 +445,7 @@ func TestMergedDeduplicateWithDuplicate(t *testing.T) {
 		marshalRow("D", "d"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 0)
 	var ids []string
 	for {
 		var row principalRow
@@ -497,7 +497,7 @@ func TestMergedDedupIteratorPaginationSimulation(t *testing.T) {
 		}
 		primary := newMockIterator(filterAndLimit(data.primary))
 		fallback := newMockIterator(filterAndLimit(data.fallback))
-		iter := newMergedDedupIterator(primary, fallback, limit)
+		iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, limit)
 
 		ctx := base.TestCtx(t)
 		resultCount := 0
@@ -619,7 +619,7 @@ func TestMergedDedupIteratorBothExhaustAtLimit(t *testing.T) {
 		marshalRow("D", "d"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 2)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
 	var ids []string
 	for {
 		var row principalRow
@@ -653,7 +653,7 @@ func TestMergedDedupIteratorBoundaryIsExclusive(t *testing.T) {
 		marshalRow("E", "e"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 2)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -709,7 +709,7 @@ func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
 		}
 		primary := newMockIterator(filterAndLimit(data.primary))
 		fallback := newMockIterator(filterAndLimit(data.fallback))
-		iter := newMergedDedupIterator(primary, fallback, limit)
+		iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, limit)
 
 		ctx := base.TestCtx(t)
 		resultCount := 0
@@ -776,7 +776,7 @@ func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
 		}
 		primary := newMockIterator(filterAndLimit(data.primary))
 		fallback := newMockIterator(filterAndLimit(data.fallback))
-		iter := newMergedDedupIterator(primary, fallback, limit)
+		iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, limit)
 
 		ctx := base.TestCtx(t)
 		resultCount := 0
@@ -815,7 +815,7 @@ func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
 		mockFallback := newMockIterator(nil)
 		mockFallback.closeErr = fmt.Errorf("fallback close error")
 
-		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 		err := iter.Close()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "primary close error",
@@ -829,7 +829,7 @@ func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
 		mockFallback := newMockIterator(nil)
 		mockFallback.closeErr = fmt.Errorf("fallback close error")
 
-		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 		err := iter.Close()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fallback close error")
@@ -839,7 +839,7 @@ func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
 		mockPrimary := newMockIterator(nil)
 		mockFallback := newMockIterator(nil)
 
-		iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+		iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 		require.NoError(t, iter.Close())
 	})
 }
@@ -851,7 +851,7 @@ func TestMergedDedupIteratorOneEmpty(t *testing.T) {
 	mockPrimary := newMockIterator(nil)
 	mockFallback := newMockIterator(nil)
 
-	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	err := iter.One(ctx, &row)
 	require.ErrorIs(t, err, sgbucket.ErrNoRows)
@@ -868,7 +868,7 @@ func TestMergedDedupIteratorOneFallbackRow(t *testing.T) {
 		marshalRow("_sync:user:alice", "alice"),
 	})
 
-	iter := newMergedDedupIterator(mockPrimary, mockFallback, 0)
+	iter := newDualMetadataStorePrincipalDedupIterator(mockPrimary, mockFallback, 0)
 	var row principalRow
 	require.NoError(t, iter.One(ctx, &row))
 	assert.Equal(t, "_sync:user:alice", row.Id)
@@ -900,7 +900,7 @@ func TestMergedDedupIteratorBoundaryWithDiscardedDuplicates(t *testing.T) {
 		marshalRow("D", "d-fallback"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 3)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 3)
 	var rows []principalRow
 	for {
 		var row principalRow
@@ -933,7 +933,7 @@ func TestMergedDedupIteratorNextBytesWithBoundary(t *testing.T) {
 		marshalRow("C", "c"),
 	})
 
-	iter := newMergedDedupIterator(primary, fallback, 2)
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
 	var rawRows [][]byte
 	for {
 		raw := iter.NextBytes()
@@ -947,4 +947,34 @@ func TestMergedDedupIteratorNextBytesWithBoundary(t *testing.T) {
 	assert.Contains(t, string(rawRows[0]), `"A"`)
 	assert.Contains(t, string(rawRows[1]), `"B"`)
 	assert.Contains(t, string(rawRows[2]), `"C"`)
+}
+
+func TestMergeDeudupIteratorBoundryIsDuplicate(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// LIMIT 2. primary: [A, C], fallback: [B, C].
+	// Boundary set by primary at C. C from fallback is duplicate and should be discarded, not emitted.
+	primary := newMockIterator([][]byte{
+		marshalRow("A", "a"),
+		marshalRow("C", "c-primary"),
+	})
+	fallback := newMockIterator([][]byte{
+		marshalRow("B", "b"),
+		marshalRow("C", "c-fallback"),
+	})
+
+	iter := newDualMetadataStorePrincipalDedupIterator(primary, fallback, 2)
+	var rows []principalRow
+	for {
+		var row principalRow
+		if !iter.Next(ctx, &row) {
+			break
+		}
+		rows = append(rows, row)
+	}
+	require.NoError(t, iter.Close())
+	require.Len(t, rows, 3)
+	assert.Equal(t, "A", rows[0].Id)
+	assert.Equal(t, "B", rows[1].Id)
+	assert.Equal(t, "C", rows[2].Id)
+	assert.Equal(t, "c-primary", rows[2].Name, "primary version of C should be preferred and emitted at boundary; fallback C should be discarded")
 }

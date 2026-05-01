@@ -20,14 +20,14 @@ import (
 
 // dualMetadataN1QLQuery executes the same N1QL statement independently against both the
 // primary and fallback datastores of a *base.MetadataStore, then returns a
-// mergedDedupIterator that merge-sorts the two result streams by document ID, deduplicating
+// dualMetadataStorePrincipalDedupIterator that merge-sorts the two result streams by document ID, deduplicating
 // and preferring the primary-store version when both contain the same document.
 //
 // The statement must still contain base.KeyspaceQueryToken; each store's Query method
 // replaces this token with its own escaped keyspace before execution.
 //
 // The statement should NOT include a LIMIT clause — callers pass the desired limit separately.
-// When limit > 0, each per-store query appends LIMIT <limit>. The mergedDedupIterator uses
+// When limit > 0, each per-store query appends LIMIT <limit>. The dualMetadataStorePrincipalDedupIterator uses
 // the limit to detect when a source hit its LIMIT (consumed exactly limit rows) vs. was truly
 // exhausted (consumed fewer). When a source hits its LIMIT, the iterator establishes a "safe
 // boundary" at that source's last emitted ID and stops returning rows from the other source
@@ -53,7 +53,7 @@ func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryNam
 		return nil, fmt.Errorf("dual metadata fallback N1QL query: %w", err)
 	}
 
-	return newMergedDedupIterator(primaryIter, fallbackIter, limit), nil
+	return newDualMetadataStorePrincipalDedupIterator(primaryIter, fallbackIter, limit), nil
 }
 
 // peekedRow holds a row that has been read from a source iterator but not yet emitted.
@@ -62,7 +62,7 @@ type peekedRow struct {
 	id  string
 }
 
-// mergedDedupIterator performs a sorted merge of two sgbucket.QueryResultIterators (primary and
+// dualMetadataStorePrincipalDedupIterator performs a sorted merge of two sgbucket.QueryResultIterators (primary and
 // fallback), emitting rows in ascending document-ID order. When both iterators contain a row
 // with the same ID, only the primary version is emitted.
 //
@@ -76,7 +76,7 @@ type peekedRow struct {
 // advancing past IDs the limited source might still have, ensuring subsequent pages do not
 // skip results. When a source returns fewer than limit rows, it is truly exhausted and no
 // boundary is imposed.
-type mergedDedupIterator struct {
+type dualMetadataStorePrincipalDedupIterator struct {
 	primary      sgbucket.QueryResultIterator
 	fallback     sgbucket.QueryResultIterator
 	primaryPeek  *peekedRow
@@ -98,11 +98,11 @@ type mergedDedupIterator struct {
 	fallbackDone bool
 }
 
-// Compile-time assertion that *mergedDedupIterator implements sgbucket.QueryResultIterator.
-var _ sgbucket.QueryResultIterator = (*mergedDedupIterator)(nil)
+// Compile-time assertion that *dualMetadataStorePrincipalDedupIterator implements sgbucket.QueryResultIterator.
+var _ sgbucket.QueryResultIterator = (*dualMetadataStorePrincipalDedupIterator)(nil)
 
-func newMergedDedupIterator(primary, fallback sgbucket.QueryResultIterator, limit int) *mergedDedupIterator {
-	return &mergedDedupIterator{
+func newDualMetadataStorePrincipalDedupIterator(primary, fallback sgbucket.QueryResultIterator, limit int) *dualMetadataStorePrincipalDedupIterator {
+	return &dualMetadataStorePrincipalDedupIterator{
 		primary:  primary,
 		fallback: fallback,
 		limit:    limit,
@@ -111,7 +111,7 @@ func newMergedDedupIterator(primary, fallback sgbucket.QueryResultIterator, limi
 
 // peekPrimary ensures primaryPeek is populated. Returns false if the primary iterator is
 // exhausted.
-func (m *mergedDedupIterator) peekPrimary() bool {
+func (m *dualMetadataStorePrincipalDedupIterator) peekPrimary() bool {
 	if m.primaryPeek != nil {
 		return true
 	}
@@ -136,7 +136,7 @@ func (m *mergedDedupIterator) peekPrimary() bool {
 
 // peekFallback ensures fallbackPeek is populated. Returns false if the fallback iterator is
 // exhausted.
-func (m *mergedDedupIterator) peekFallback() bool {
+func (m *dualMetadataStorePrincipalDedupIterator) peekFallback() bool {
 	if m.fallbackPeek != nil {
 		return true
 	}
@@ -161,7 +161,7 @@ func (m *mergedDedupIterator) peekFallback() bool {
 
 // NextBytes returns the raw JSON bytes of the next row from the sorted merge, or nil when
 // both iterators are exhausted or the safe boundary has been reached.
-func (m *mergedDedupIterator) NextBytes() []byte {
+func (m *dualMetadataStorePrincipalDedupIterator) NextBytes() []byte {
 	hasPrimary := m.peekPrimary()
 	hasFallback := m.peekFallback()
 
@@ -171,54 +171,52 @@ func (m *mergedDedupIterator) NextBytes() []byte {
 
 	// Determine which row to emit based on merge-sort comparison.
 	var row *peekedRow
-	var fromPrimary bool
 
 	switch {
 	case hasPrimary && !hasFallback:
 		row = m.primaryPeek
-		fromPrimary = true
+		m.lastPrimaryID = row.id
+		m.primaryPeek = nil // consume primary row
 	case !hasPrimary && hasFallback:
 		row = m.fallbackPeek
-		fromPrimary = false
+		m.lastFallbackID = row.id
+		m.fallbackPeek = nil // consume fallback row
 	case m.primaryPeek.id < m.fallbackPeek.id:
 		row = m.primaryPeek
-		fromPrimary = true
+		m.lastPrimaryID = row.id
+		m.primaryPeek = nil // consume primary row
 	case m.primaryPeek.id > m.fallbackPeek.id:
 		row = m.fallbackPeek
-		fromPrimary = false
+		m.lastFallbackID = row.id
+		m.fallbackPeek = nil // consume fallback row
 	default:
 		// Equal IDs — prefer primary, discard fallback.
 		row = m.primaryPeek
-		fromPrimary = true
+		m.lastPrimaryID = row.id
+		m.primaryPeek = nil // consume primary row
 		m.lastFallbackID = m.fallbackPeek.id
 		m.fallbackPeek = nil // discard duplicate
 	}
 
-	// Check safe boundary: do not emit rows beyond the boundary.
+	// Suppress rows from the other source that fall beyond the safe boundary. The boundary is
+	// the last ID emitted by the source that hit its LIMIT, so any row with id == boundary was
+	// already emitted (or deduped away via the default case above). Only rows strictly after
+	// the boundary are unsafe, hence > rather than >=.
 	if m.hasBoundary && row.id > m.boundary {
 		return nil
-	}
-
-	// Consume the selected row and track the last ID for boundary detection.
-	if fromPrimary {
-		m.lastPrimaryID = row.id
-		m.primaryPeek = nil
-	} else {
-		m.lastFallbackID = row.id
-		m.fallbackPeek = nil
 	}
 
 	return row.raw
 }
 
 // Next unmarshals the next merged row into valuePtr. Returns false when exhausted.
-func (m *mergedDedupIterator) Next(ctx context.Context, valuePtr any) bool {
+func (m *dualMetadataStorePrincipalDedupIterator) Next(ctx context.Context, valuePtr any) bool {
 	raw := m.NextBytes()
 	if raw == nil {
 		return false
 	}
 	if err := base.JSONUnmarshal(raw, valuePtr); err != nil {
-		base.WarnfCtx(ctx, "mergedDedupIterator: failed to unmarshal row: %v", err)
+		base.WarnfCtx(ctx, "dualMetadataStorePrincipalDedupIterator: failed to unmarshal row: %v", err)
 		return false
 	}
 	return true
@@ -226,7 +224,7 @@ func (m *mergedDedupIterator) Next(ctx context.Context, valuePtr any) bool {
 
 // One unmarshals the first merged row into valuePtr and closes both iterators.
 // Returns sgbucket.ErrNoRows when no rows are available.
-func (m *mergedDedupIterator) One(ctx context.Context, valuePtr any) error {
+func (m *dualMetadataStorePrincipalDedupIterator) One(ctx context.Context, valuePtr any) error {
 	defer func() {
 		_ = m.Close()
 	}()
@@ -237,7 +235,7 @@ func (m *mergedDedupIterator) One(ctx context.Context, valuePtr any) error {
 }
 
 // Close closes both the primary and fallback iterators.
-func (m *mergedDedupIterator) Close() error {
+func (m *dualMetadataStorePrincipalDedupIterator) Close() error {
 	primaryErr := m.primary.Close()
 	fallbackErr := m.fallback.Close()
 	if primaryErr != nil {
