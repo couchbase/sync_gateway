@@ -142,14 +142,15 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 	// If we're resuming a cluster-aware process, try to reuse the previous start time
 	if processClusterStatus != nil {
 		var clusterStatus struct {
-			Status struct {
-				StartTime time.Time `json:"start_time"`
-			} `json:"status"`
+			Status BackgroundManagerStatus `json:"status"`
 		}
-		if err := base.JSONUnmarshal(processClusterStatus, &clusterStatus); err == nil {
-			if !clusterStatus.Status.StartTime.IsZero() {
-				b.setStartTime(clusterStatus.Status.StartTime)
-			}
+
+		err := base.JSONUnmarshal(processClusterStatus, &clusterStatus)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyAll, "Could not get the cluster status before calling BackgroundManager.Run %v", err)
+		}
+		if clusterStatus.Status.State == BackgroundProcessStateRunning && !clusterStatus.Status.StartTime.IsZero() {
+			b.setStartTime(clusterStatus.Status.StartTime)
 		}
 	}
 

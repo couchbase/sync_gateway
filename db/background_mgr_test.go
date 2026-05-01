@@ -319,5 +319,58 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
-	require.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have reused the start time from the cluster status doc")
+	require.NotEqual(t, origStartTime, mgr2.getStartTime())
+}
+
+func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := context.Background()
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore()
+	metaKeys := base.NewMetadataKeys("test-multi-start-time")
+
+	options := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "multi-start-time",
+		MultiNode:     true,
+	}
+
+	process1 := &MockProcess{}
+	mgr1 := &BackgroundManager{
+		name:                "mgr1",
+		clusterAwareOptions: options,
+		Process:             process1,
+	}
+
+	// 1. Start mgr1
+	err := mgr1.Start(ctx, nil)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
+
+	// Wait for mgr1 to be running and have a start time
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
+		assert.False(c, mgr1.getStartTime().IsZero())
+	}, 5*time.Second, 100*time.Millisecond)
+
+	origStartTime := mgr1.getStartTime()
+
+	// Ensure mgr1 has updated its status to the cluster
+	err = mgr1.UpdateStatusClusterAware(ctx)
+	require.NoError(t, err)
+
+	// 2. Start mgr2 (MultiNode)
+	process2 := &MockProcess{}
+	mgr2 := &BackgroundManager{
+		name:                "mgr2",
+		clusterAwareOptions: options,
+		Process:             process2,
+	}
+
+	err = mgr2.Start(ctx, nil)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
+
+	assert.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have inherited mgr1's start time")
 }
