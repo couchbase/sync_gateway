@@ -160,29 +160,17 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 	writeUser(t, fallbackStore, bobKey, "bob-fallback") // bob also in fallback (duplicate)
 	writeUser(t, fallbackStore, carolKey, "carol")      // carol: fallback only
 
-	type principalQueryRow struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-
-	// drainIter collects all rows from a query iterator into a map keyed by META().id.
-	drainIter := func(t *testing.T, iter sgbucket.QueryResultIterator) map[string]principalQueryRow {
-		t.Helper()
-		results := make(map[string]principalQueryRow)
-		var row principalQueryRow
-		for iter.Next(dbCtx, &row) {
-			results[row.ID] = row
-			row = principalQueryRow{} // reset
-		}
-		require.NoError(t, iter.Close())
-		return results
-	}
-
 	t.Run("QueryPrincipals", func(t *testing.T) {
 		iter, err := database.QueryPrincipals(dbCtx, "", 0)
 		require.NoError(t, err)
 
-		results := drainIter(t, iter)
+		results := make(map[string]db.PrincipalRow)
+		var row db.PrincipalRow
+		for iter.Next(dbCtx, &row) {
+			results[row.Id] = row
+			row = db.PrincipalRow{}
+		}
+		require.NoError(t, iter.Close())
 
 		require.Len(t, results, 3, "expected exactly 3 unique principals after deduplication")
 		require.Contains(t, results, aliceKey, "alice should be present")
@@ -198,7 +186,13 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		iter, err := database.QueryUsers(dbCtx, "", 0)
 		require.NoError(t, err)
 
-		results := drainIter(t, iter)
+		results := make(map[string]db.QueryUsersRow)
+		var row db.QueryUsersRow
+		for iter.Next(dbCtx, &row) {
+			results[row.ID] = row
+			row = db.QueryUsersRow{}
+		}
+		require.NoError(t, iter.Close())
 
 		require.Len(t, results, 3, "expected exactly 3 unique users after deduplication")
 		require.Contains(t, results, aliceKey)
@@ -497,18 +491,14 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 
 	metaKeys := base.DefaultMetadataKeys
 
-	type principalQueryRow struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-
-	drainIter := func(t *testing.T, iter sgbucket.QueryResultIterator) map[string]principalQueryRow {
+	// drainIter collects all rows from a query iterator into a map keyed by META().id.
+	drainIter := func(t *testing.T, iter sgbucket.QueryResultIterator) map[string]db.PrincipalRow {
 		t.Helper()
-		results := make(map[string]principalQueryRow)
-		var row principalQueryRow
+		results := make(map[string]db.PrincipalRow)
+		var row db.PrincipalRow
 		for iter.Next(dbCtx, &row) {
-			results[row.ID] = row
-			row = principalQueryRow{}
+			results[row.Id] = row
+			row = db.PrincipalRow{}
 		}
 		require.NoError(t, iter.Close())
 		return results

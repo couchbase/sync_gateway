@@ -9,7 +9,6 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -18,10 +17,20 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// identifiableRow is implemented by query row types that carry a document ID, enabling the
+// generic dualMetadataStorePrincipalDedupIterator to extract IDs for merge-sort comparison
+// without a separate parsing step.
+type identifiableRow interface {
+	rowID() string
+}
+
 // dualMetadataN1QLQuery executes the same N1QL statement independently against both the
 // primary and fallback datastores of a *base.MetadataStore, then returns a
 // dualMetadataStorePrincipalDedupIterator that merge-sorts the two result streams by document ID, deduplicating
 // and preferring the primary-store version when both contain the same document.
+//
+// The type parameter T determines the row struct used for unmarshaling; it must implement
+// identifiableRow so the iterator can extract document IDs for merge-sort comparison.
 //
 // The statement must still contain base.KeyspaceQueryToken; each store's Query method
 // replaces this token with its own escaped keyspace before execution.
@@ -33,7 +42,7 @@ import (
 // boundary" at that source's last emitted ID and stops returning rows from the other source
 // beyond that boundary. This prevents the pagination cursor from jumping over IDs that the
 // limited source may still have, without doubling the per-store LIMIT.
-func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryName string,
+func dualMetadataN1QLQuery[T identifiableRow](ctx context.Context, ms *base.MetadataStore, queryName string,
 	statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool,
 	dbStats *base.DbStats, slowQueryWarningThreshold time.Duration, limit int) (sgbucket.QueryResultIterator, error) {
 
@@ -53,18 +62,16 @@ func dualMetadataN1QLQuery(ctx context.Context, ms *base.MetadataStore, queryNam
 		return nil, fmt.Errorf("dual metadata fallback N1QL query: %w", err)
 	}
 
-	return newDualMetadataStorePrincipalDedupIterator(primaryIter, fallbackIter, limit), nil
-}
-
-// peekedRow holds a row that has been read from a source iterator but not yet emitted.
-type peekedRow struct {
-	raw []byte
-	id  string
+	return newDualMetadataStorePrincipalDedupIterator[T](primaryIter, fallbackIter, limit), nil
 }
 
 // dualMetadataStorePrincipalDedupIterator performs a sorted merge of two sgbucket.QueryResultIterators (primary and
 // fallback), emitting rows in ascending document-ID order. When both iterators contain a row
 // with the same ID, only the primary version is emitted.
+//
+// The type parameter T must implement identifiableRow so that the iterator can extract the
+// document ID from each row for merge-sort comparison. Each source row is unmarshaled exactly
+// once at peek time; the merged result is copied directly into the caller's pointer in Next.
 //
 // Both source iterators must return rows sorted by META().id ascending (the standard ordering
 // for principal queries). The merge maintains this ordering in the output.
@@ -76,11 +83,11 @@ type peekedRow struct {
 // advancing past IDs the limited source might still have, ensuring subsequent pages do not
 // skip results. When a source returns fewer than limit rows, it is truly exhausted and no
 // boundary is imposed.
-type dualMetadataStorePrincipalDedupIterator struct {
+type dualMetadataStorePrincipalDedupIterator[T identifiableRow] struct {
 	primary      sgbucket.QueryResultIterator
 	fallback     sgbucket.QueryResultIterator
-	primaryPeek  *peekedRow
-	fallbackPeek *peekedRow
+	primaryPeek  *T
+	fallbackPeek *T
 
 	// Per-source consumed counts and last IDs for safe-boundary detection.
 	primaryConsumed  int
@@ -98,28 +105,25 @@ type dualMetadataStorePrincipalDedupIterator struct {
 	fallbackDone bool
 }
 
-// Compile-time assertion that *dualMetadataStorePrincipalDedupIterator implements sgbucket.QueryResultIterator.
-var _ sgbucket.QueryResultIterator = (*dualMetadataStorePrincipalDedupIterator)(nil)
-
-func newDualMetadataStorePrincipalDedupIterator(primary, fallback sgbucket.QueryResultIterator, limit int) *dualMetadataStorePrincipalDedupIterator {
-	return &dualMetadataStorePrincipalDedupIterator{
+func newDualMetadataStorePrincipalDedupIterator[T identifiableRow](primary, fallback sgbucket.QueryResultIterator, limit int) *dualMetadataStorePrincipalDedupIterator[T] {
+	return &dualMetadataStorePrincipalDedupIterator[T]{
 		primary:  primary,
 		fallback: fallback,
 		limit:    limit,
 	}
 }
 
-// peekPrimary ensures primaryPeek is populated. Returns false if the primary iterator is
-// exhausted.
-func (m *dualMetadataStorePrincipalDedupIterator) peekPrimary() bool {
+// peekPrimary ensures primaryPeek is populated by reading and unmarshaling the next row from
+// the primary source iterator. Returns false if the primary iterator is exhausted.
+func (m *dualMetadataStorePrincipalDedupIterator[T]) peekPrimary(ctx context.Context) bool {
 	if m.primaryPeek != nil {
 		return true
 	}
 	if m.primaryDone {
 		return false
 	}
-	raw := m.primary.NextBytes()
-	if raw == nil {
+	var row T
+	if !m.primary.Next(ctx, &row) {
 		m.primaryDone = true
 		// Only an exhaustion after consuming exactly limit rows indicates the source may
 		// have been truncated by the per-store LIMIT and therefore needs a safe boundary.
@@ -130,21 +134,21 @@ func (m *dualMetadataStorePrincipalDedupIterator) peekPrimary() bool {
 		return false
 	}
 	m.primaryConsumed++
-	m.primaryPeek = &peekedRow{raw: raw, id: extractRowID(raw)}
+	m.primaryPeek = &row
 	return true
 }
 
-// peekFallback ensures fallbackPeek is populated. Returns false if the fallback iterator is
-// exhausted.
-func (m *dualMetadataStorePrincipalDedupIterator) peekFallback() bool {
+// peekFallback ensures fallbackPeek is populated by reading and unmarshaling the next row from
+// the fallback source iterator. Returns false if the fallback iterator is exhausted.
+func (m *dualMetadataStorePrincipalDedupIterator[T]) peekFallback(ctx context.Context) bool {
 	if m.fallbackPeek != nil {
 		return true
 	}
 	if m.fallbackDone {
 		return false
 	}
-	raw := m.fallback.NextBytes()
-	if raw == nil {
+	var row T
+	if !m.fallback.Next(ctx, &row) {
 		m.fallbackDone = true
 		// Only an exhaustion after consuming exactly limit rows indicates the source may
 		// have been truncated by the per-store LIMIT and therefore needs a safe boundary.
@@ -155,68 +159,83 @@ func (m *dualMetadataStorePrincipalDedupIterator) peekFallback() bool {
 		return false
 	}
 	m.fallbackConsumed++
-	m.fallbackPeek = &peekedRow{raw: raw, id: extractRowID(raw)}
+	m.fallbackPeek = &row
 	return true
 }
 
-// NextBytes returns the raw JSON bytes of the next row from the sorted merge, or nil when
-// both iterators are exhausted or the safe boundary has been reached.
-func (m *dualMetadataStorePrincipalDedupIterator) NextBytes() []byte {
-	hasPrimary := m.peekPrimary()
-	hasFallback := m.peekFallback()
+// NextBytes is a no-op stub that satisfies the sgbucket.QueryResultIterator interface. Callers
+// should use Next instead, which performs the merge-sort and returns typed rows.
+func (m *dualMetadataStorePrincipalDedupIterator[T]) NextBytes() []byte {
+	return nil
+}
+
+// Next populates valuePtr with the next merged row. Returns false when both iterators are
+// exhausted or the safe boundary has been reached. valuePtr must be a *T.
+func (m *dualMetadataStorePrincipalDedupIterator[T]) Next(ctx context.Context, valuePtr any) bool {
+	hasPrimary := m.peekPrimary(ctx)
+	hasFallback := m.peekFallback(ctx)
 
 	if !hasPrimary && !hasFallback {
-		return nil
+		return false
+	}
+
+	// Extract IDs from the peeked rows for merge-sort comparison.
+	var primaryID, fallbackID string
+	if hasPrimary {
+		primaryID = (*m.primaryPeek).rowID()
+	}
+	if hasFallback {
+		fallbackID = (*m.fallbackPeek).rowID()
 	}
 
 	// Determine which row to emit based on merge-sort comparison.
-	var row *peekedRow
+	var selected *T
 
 	switch {
 	case hasPrimary && !hasFallback:
-		row = m.primaryPeek
-		m.lastPrimaryID = row.id
-		m.primaryPeek = nil // consume primary row
+		selected = m.primaryPeek
+		m.lastPrimaryID = primaryID
+		m.primaryPeek = nil
 	case !hasPrimary && hasFallback:
-		row = m.fallbackPeek
-		m.lastFallbackID = row.id
-		m.fallbackPeek = nil // consume fallback row
-	case m.primaryPeek.id < m.fallbackPeek.id:
-		row = m.primaryPeek
-		m.lastPrimaryID = row.id
-		m.primaryPeek = nil // consume primary row
-	case m.primaryPeek.id > m.fallbackPeek.id:
-		row = m.fallbackPeek
-		m.lastFallbackID = row.id
-		m.fallbackPeek = nil // consume fallback row
+		selected = m.fallbackPeek
+		m.lastFallbackID = fallbackID
+		m.fallbackPeek = nil
+	case primaryID < fallbackID:
+		selected = m.primaryPeek
+		m.lastPrimaryID = primaryID
+		m.primaryPeek = nil
+	case primaryID > fallbackID:
+		selected = m.fallbackPeek
+		m.lastFallbackID = fallbackID
+		m.fallbackPeek = nil
 	default:
 		// Equal IDs — prefer primary, discard fallback.
-		row = m.primaryPeek
-		m.lastPrimaryID = row.id
-		m.primaryPeek = nil // consume primary row
-		m.lastFallbackID = m.fallbackPeek.id
-		m.fallbackPeek = nil // discard duplicate
+		selected = m.primaryPeek
+		m.lastPrimaryID = primaryID
+		m.primaryPeek = nil
+		m.lastFallbackID = fallbackID
+		m.fallbackPeek = nil
 	}
+
+	selectedID := (*selected).rowID()
 
 	// Suppress rows from the other source that fall beyond the safe boundary. The boundary is
 	// the last ID emitted by the source that hit its LIMIT, so any row with id == boundary was
 	// already emitted (or deduped away via the default case above). Only rows strictly after
 	// the boundary are unsafe, hence > rather than >=.
-	if m.hasBoundary && row.id > m.boundary {
-		return nil
-	}
-
-	return row.raw
-}
-
-// Next unmarshals the next merged row into valuePtr. Returns false when exhausted.
-func (m *dualMetadataStorePrincipalDedupIterator) Next(ctx context.Context, valuePtr any) bool {
-	raw := m.NextBytes()
-	if raw == nil {
+	if m.hasBoundary && selectedID > m.boundary {
 		return false
 	}
-	if err := base.JSONUnmarshal(raw, valuePtr); err != nil {
-		base.WarnfCtx(ctx, "dualMetadataStorePrincipalDedupIterator: failed to unmarshal row: %v", err)
+
+	// valuePtr arrives as any because Next must satisfy the sgbucket.QueryResultIterator
+	// interface. At runtime it must be a *T — the same concrete type the iterator was
+	// instantiated with. The assertion enforces this contract: a mismatch means the caller
+	// is passing a pointer to a different struct, which would silently produce zero values
+	// without this guard.
+	if ptr, ok := valuePtr.(*T); ok {
+		*ptr = *selected
+	} else {
+		base.WarnfCtx(ctx, "dualMetadataStorePrincipalDedupIterator: type mismatch: expected %T, got %T", (*T)(nil), valuePtr)
 		return false
 	}
 	return true
@@ -224,7 +243,7 @@ func (m *dualMetadataStorePrincipalDedupIterator) Next(ctx context.Context, valu
 
 // One unmarshals the first merged row into valuePtr and closes both iterators.
 // Returns sgbucket.ErrNoRows when no rows are available.
-func (m *dualMetadataStorePrincipalDedupIterator) One(ctx context.Context, valuePtr any) error {
+func (m *dualMetadataStorePrincipalDedupIterator[T]) One(ctx context.Context, valuePtr any) error {
 	defer func() {
 		_ = m.Close()
 	}()
@@ -235,40 +254,11 @@ func (m *dualMetadataStorePrincipalDedupIterator) One(ctx context.Context, value
 }
 
 // Close closes both the primary and fallback iterators.
-func (m *dualMetadataStorePrincipalDedupIterator) Close() error {
+func (m *dualMetadataStorePrincipalDedupIterator[T]) Close() error {
 	primaryErr := m.primary.Close()
 	fallbackErr := m.fallback.Close()
 	if primaryErr != nil {
 		return primaryErr
 	}
 	return fallbackErr
-}
-
-// idFieldKey is the byte pattern used to locate the "id" field in raw N1QL JSON result rows.
-var idFieldKey = []byte(`"id":"`)
-
-// extractRowID extracts the META().id value from a raw N1QL result row using a byte-level
-// scan rather than a full JSON unmarshal. This avoids double-parsing overhead since callers
-// of Next() will unmarshal the same raw bytes again into the destination struct.
-//
-// This is safe because N1QL results are machine-generated flat JSON objects with predictable
-// structure; the "id" field is always a top-level string key.
-//
-// Returns an empty string if the bytes cannot be scanned or the "id" field is absent.
-func extractRowID(raw []byte) string {
-	idx := bytes.Index(raw, idFieldKey)
-	if idx < 0 {
-		return ""
-	}
-	start := idx + len(idFieldKey)
-	for i := start; i < len(raw); i++ {
-		if raw[i] == '\\' {
-			i++ // skip escaped character
-			continue
-		}
-		if raw[i] == '"' {
-			return string(raw[start:i])
-		}
-	}
-	return ""
 }
