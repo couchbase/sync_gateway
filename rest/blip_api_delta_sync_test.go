@@ -1384,6 +1384,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				// import doc
 				version1, _ := rt.GetDoc(docID)
 
+				rt.WaitForPendingChanges()
 				if tc.filteredChannels != "" {
 					btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Channels: tc.filteredChannels, Continuous: true})
 				} else {
