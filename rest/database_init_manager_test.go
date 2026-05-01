@@ -309,9 +309,9 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	WaitForChannel(t, doneChan1, "modified init done chan")
 	WaitForChannel(t, doneChan2, "modified init done chan")
 
-	// Verify initialization was run for 5 collections (three for db1, two for db2)
-	// _mobile, _default, collection1, collection2, collection3 but _default
-	// and _mobile is checked for both
+	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
+	// The distinct collections are _mobile, _default, collection1, collection2, and
+	// collection3, but _default and _mobile are checked for both databases.
 	totalCount := atomic.LoadInt64(&collectionCount)
 	require.Equal(t, int64(7), totalCount)
 
@@ -408,7 +408,7 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	WaitForChannel(t, databaseCompleteChannel, "database 1 init complete")
 	WaitForChannel(t, databaseCompleteChannel, "database 2 init complete")
 
-	// Verify initialization was run for 6 collections (four for db1, four for db2)
+	// Verify initialization was run for 8 collections (four for db1, four for db2)
 	// _mobile, _default, collection1, collection2
 	totalCount := atomic.LoadInt64(&collectionCount)
 	require.Equal(t, int64(8), totalCount)

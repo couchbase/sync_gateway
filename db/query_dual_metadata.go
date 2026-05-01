@@ -9,6 +9,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -120,8 +121,9 @@ func (m *mergedDedupIterator) peekPrimary() bool {
 	raw := m.primary.NextBytes()
 	if raw == nil {
 		m.primaryDone = true
-		// If consumed exactly limit rows, primary may have been truncated.
-		if m.limit > 0 && m.primaryConsumed >= m.limit && !m.hasBoundary {
+		// Only an exhaustion after consuming exactly limit rows indicates the source may
+		// have been truncated by the per-store LIMIT and therefore needs a safe boundary.
+		if m.limit > 0 && m.primaryConsumed == m.limit && !m.hasBoundary {
 			m.boundary = m.lastPrimaryID
 			m.hasBoundary = true
 		}
@@ -144,8 +146,9 @@ func (m *mergedDedupIterator) peekFallback() bool {
 	raw := m.fallback.NextBytes()
 	if raw == nil {
 		m.fallbackDone = true
-		// If consumed exactly limit rows, fallback may have been truncated.
-		if m.limit > 0 && m.fallbackConsumed >= m.limit && !m.hasBoundary {
+		// Only an exhaustion after consuming exactly limit rows indicates the source may
+		// have been truncated by the per-store LIMIT and therefore needs a safe boundary.
+		if m.limit > 0 && m.fallbackConsumed == m.limit && !m.hasBoundary {
 			m.boundary = m.lastFallbackID
 			m.hasBoundary = true
 		}
@@ -243,18 +246,31 @@ func (m *mergedDedupIterator) Close() error {
 	return fallbackErr
 }
 
-// idOnlyRow is a minimal struct used to extract META().id from a raw N1QL result row.
-// All principal query SELECT clauses serialise META(<alias>).id as the top-level "id" field.
-type idOnlyRow struct {
-	ID string `json:"id"`
-}
+// idFieldKey is the byte pattern used to locate the "id" field in raw N1QL JSON result rows.
+var idFieldKey = []byte(`"id":"`)
 
-// extractRowID extracts the META().id value from a raw N1QL result row JSON byte slice.
-// Returns an empty string if the bytes cannot be parsed or the "id" field is absent.
+// extractRowID extracts the META().id value from a raw N1QL result row using a byte-level
+// scan rather than a full JSON unmarshal. This avoids double-parsing overhead since callers
+// of Next() will unmarshal the same raw bytes again into the destination struct.
+//
+// This is safe because N1QL results are machine-generated flat JSON objects with predictable
+// structure; the "id" field is always a top-level string key.
+//
+// Returns an empty string if the bytes cannot be scanned or the "id" field is absent.
 func extractRowID(raw []byte) string {
-	var row idOnlyRow
-	if err := base.JSONUnmarshal(raw, &row); err != nil {
+	idx := bytes.Index(raw, idFieldKey)
+	if idx < 0 {
 		return ""
 	}
-	return row.ID
+	start := idx + len(idFieldKey)
+	for i := start; i < len(raw); i++ {
+		if raw[i] == '\\' {
+			i++ // skip escaped character
+			continue
+		}
+		if raw[i] == '"' {
+			return string(raw[start:i])
+		}
+	}
+	return ""
 }

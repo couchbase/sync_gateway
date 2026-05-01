@@ -565,6 +565,31 @@ func TestExtractRowID(t *testing.T) {
 			raw:      nil,
 			expected: "",
 		},
+		{
+			name:     "escaped characters in id value",
+			raw:      []byte(`{"id":"_sync:user:alice\\bob","name":"alice"}`),
+			expected: `_sync:user:alice\\bob`,
+		},
+		{
+			name:     "id not first field",
+			raw:      []byte(`{"name":"alice","email":"a@b.com","id":"_sync:user:alice"}`),
+			expected: "_sync:user:alice",
+		},
+		{
+			name:     "empty JSON object",
+			raw:      []byte(`{}`),
+			expected: "",
+		},
+		{
+			name:     "id with numeric value not string",
+			raw:      []byte(`{"id":12345}`),
+			expected: "",
+		},
+		{
+			name:     "id pattern embedded in field value does not cause false match",
+			raw:      []byte(`{"desc":"contains \"id\":\"fake\"","id":"_sync:user:real"}`),
+			expected: "_sync:user:real",
+		},
 	}
 
 	for _, tc := range tests {
