@@ -18,7 +18,8 @@ post:
 
     Required Sync Gateway RBAC roles:
 
-    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
   requestBody:
     content:
       application/json:
@@ -27,9 +28,7 @@ post:
           properties:
             doc_ids:
               description: |-
-                List of document IDs whose inactive channel history should be compacted.
-                Only the inactive channel entries for these specific documents will be affected.
-                Other documents and active channels in the keyspace will not be modified.
+                List of document IDs whose inactive channel should be compacted.
               type: array
               items:
                 type: string
@@ -38,10 +37,7 @@ post:
                 - doc2
             seq:
               description: |-
-                The sequence number threshold. Inactive channel entries for sequences before this number
-                (sequences at which the document left the channel) will be removed from the specified documents.
-                Active channels and inactive channel entries at or after this sequence number will be preserved.
-                This allows you to clean up old history while keeping recent changes intact.
+                Channel history for inactive channels having end sequences earlier than this sequence will be removed from the specified document's metadata.
               type: number
               example: 12345
   responses:

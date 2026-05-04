@@ -12,12 +12,10 @@ get:
   description: |-
     Retrieves all inactive channels in the channel history before a particular sequence number.
 
-    This endpoint returns the inactive channels associated with a document (sequences at which the document left the channel)
-    that have history entries before the specified sequence number.
-
     Required Sync Gateway RBAC roles:
 
-    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
   parameters:
     - name: doc_id
       in: query
