@@ -105,7 +105,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 				metadataStore: metadataStore,
 				metaKeys:      metaKeys,
 				processSuffix: "multi",
-				MultiNode:     true,
+				multiNode:     true,
 			},
 		},
 	}
@@ -151,7 +151,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		processSuffix: "multi-trans",
-		MultiNode:     true,
+		multiNode:     true,
 	}
 
 	process1 := &MockProcess{}
@@ -217,7 +217,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		processSuffix: "multi-simul",
-		MultiNode:     true,
+		multiNode:     true,
 	}
 
 	numNodes := 5
@@ -281,7 +281,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		processSuffix: "start-time",
-		MultiNode:     false,
+		multiNode:     false,
 	}
 
 	process1 := &MockProcess{}
@@ -333,7 +333,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		processSuffix: "multi-start-time",
-		MultiNode:     true,
+		multiNode:     true,
 	}
 
 	process1 := &MockProcess{}

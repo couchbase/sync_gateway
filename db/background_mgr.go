@@ -41,7 +41,7 @@ const (
 
 // errBackgroundManagerAlreadyStopping is returned when a Start or Stop is called while the process is in the Stopping
 // state.
-var errBackgroundManagerAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
+var errBackgroundManagerStatusAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
 
 // errBackgroundManagerStatusNotRunning is returned when the bucket status is not running but the local status is.
 var errBackgroundManagerStatusNotRunning = errors.New("status in bucket is not running, but local status is, avoiding overwriting local status to bucket")
@@ -82,7 +82,7 @@ type ClusterAwareBackgroundManagerOptions struct {
 	metadataStore base.DataStore
 	metaKeys      *base.MetadataKeys
 	processSuffix string
-	MultiNode     bool // If true, the background manager is expected to run on all nodes of a Sync Gateway cluster.
+	multiNode     bool // If true, the background manager is expected to run on all nodes of a Sync Gateway cluster.
 
 	lastSuccessfulHeartbeatUnix base.AtomicInt
 }
@@ -269,7 +269,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 
 	if b.mode() == backgroundManagerModeMultiNode {
 		if b.clusterStateIs(ctx, BackgroundProcessStateStopping) {
-			return errBackgroundManagerAlreadyStopping
+			return errBackgroundManagerStatusAlreadyStopping
 		}
 	}
 
@@ -278,7 +278,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 	}
 
 	if b.GetRunState() == BackgroundProcessStateStopping {
-		return errBackgroundManagerAlreadyStopping
+		return errBackgroundManagerStatusAlreadyStopping
 	}
 
 	// Now we know that we're the only running process we should instantiate these values
@@ -378,6 +378,8 @@ func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, e
 		return nil, err
 	}
 
+	// In multi node mode, there is no heartbeat document. Each time a node comes online, it is expected to resume the
+	// background process.
 	if b.mode() == backgroundManagerModeMultiNode {
 		return status, nil
 	}
@@ -444,21 +446,13 @@ func (b *BackgroundManager) clearLastErrorMessage() {
 //
 // This will return an error if the status is not in a running state, as already stopped or stopping.
 func (b *BackgroundManager) Stop(ctx context.Context) error {
-	if err := b.markStop(); err != nil {
-		if errors.Is(err, errBackgroundManagerProcessAlreadyStopped) || errors.Is(err, errBackgroundManagerAlreadyStopping) {
+	if err := b.markStop(ctx); err != nil {
+		if errors.Is(err, errBackgroundManagerProcessAlreadyStopped) || errors.Is(err, errBackgroundManagerStatusAlreadyStopping) {
 			return nil
 		}
 		return err
 	}
-
-	if b.mode() == backgroundManagerModeMultiNode {
-		err := b.UpdateStatusClusterAware(ctx)
-		if err != nil {
-			base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
-		}
-	}
-
-	b.Terminate()
+	b.stopProcess(ctx)
 	return nil
 }
 
@@ -469,10 +463,11 @@ func (b *BackgroundManager) Terminate() {
 	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
 
-func (b *BackgroundManager) markStop() error {
+func (b *BackgroundManager) markStop(ctx context.Context) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
+	currentState := b.GetRunState()
 	if b.mode() == backgroundManagerModeSingleNode {
 		_, _, err := b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
@@ -488,22 +483,21 @@ func (b *BackgroundManager) markStop() error {
 		}
 
 		// If this is the node running the service
-		if b.GetRunState() == BackgroundProcessStateRunning {
+		if currentState == BackgroundProcessStateRunning {
 			b.setRunState(BackgroundProcessStateStopping)
 		}
 
 		return nil
 	}
 
-	if b.GetRunState() == BackgroundProcessStateStopping {
-		return errBackgroundManagerAlreadyStopping
+	if currentState == BackgroundProcessStateStopping {
+		return errBackgroundManagerStatusAlreadyStopping
 	}
 
-	if b.GetRunState() == BackgroundProcessStateCompleted || b.GetRunState() == BackgroundProcessStateStopped || b.GetRunState() == BackgroundProcessStateError {
+	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, currentState) {
 		return errBackgroundManagerProcessAlreadyStopped
 	}
 
-	b.setRunState(BackgroundProcessStateStopping)
 	return nil
 }
 
@@ -671,16 +665,14 @@ func (b *BackgroundManager) startPollingMultiNodeStatus(ctx context.Context, ter
 	for {
 		select {
 		case <-ticker.C:
-			triggerStop, err := b.watchStatusDocMultiNode(ctx)
+			err := b.updateMultiNodeClusterAwareStatus(ctx)
 			if err != nil {
-				base.WarnfCtx(ctx, "Failed to watch poll status doc: %v, will retry", err)
-			}
-			if triggerStop {
-				continue
-			}
-			err = b.updateMultiNodeClusterAwareStatus(ctx)
-			if err != nil && !errors.Is(err, errBackgroundManagerStatusNotRunning) {
-				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
+				if errors.Is(err, errBackgroundManagerStatusNotRunning) {
+					b.stopProcess(ctx)
+					return
+				} else {
+					base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
+				}
 			}
 		case <-terminator.Done():
 			ticker.Stop()
@@ -689,24 +681,19 @@ func (b *BackgroundManager) startPollingMultiNodeStatus(ctx context.Context, ter
 	}
 }
 
-// watchMultiNodeStatus polls the status document in the bucket. If another instance has stopped the process,
-// or it encounter a fatal error, then this node should stop.
-func (b *BackgroundManager) watchStatusDocMultiNode(ctx context.Context) (bool, error) {
-	state, err := b.getClusterStatusState(ctx)
-	if err != nil {
-		if base.IsDocNotFoundError(err) {
-			return false, nil
+// stopProcess terminates the locally running process.
+func (b *BackgroundManager) stopProcess(ctx context.Context) {
+	b.setRunState(BackgroundProcessStateStopping)
+	b.terminator.Close()
+
+	// Update the status to stopping for a multi node system indicating to other nodes to stop
+	if b.mode() == backgroundManagerModeMultiNode {
+		err := b.UpdateStatusClusterAware(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
 		}
-		return false, err
 	}
 
-	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}, state) && b.GetRunState() == BackgroundProcessStateRunning {
-		_ = b.markStop()
-		b.terminator.Close()
-		return true, nil
-	}
-
-	return false, nil
 }
 
 // backgroundManagerMode defines the types of BackgroundManager that can run.
@@ -726,7 +713,7 @@ func (b *BackgroundManager) mode() backgroundManagerMode {
 	if b.clusterAwareOptions == nil {
 		return backgroundManagerModeLocal
 	}
-	if b.clusterAwareOptions.MultiNode {
+	if b.clusterAwareOptions.multiNode {
 		return backgroundManagerModeMultiNode
 	}
 	return backgroundManagerModeSingleNode
