@@ -147,7 +147,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 
 		err := base.JSONUnmarshal(processClusterStatus, &clusterStatus)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyAll, "Could not get the cluster status before calling BackgroundManager.Run %v", err)
+			base.InfofCtx(ctx, base.KeyAll, "Could not unmarshal the cluster status before calling BackgroundManager.Run %v", err)
 		}
 		if clusterStatus.Status.State == BackgroundProcessStateRunning && !clusterStatus.Status.StartTime.IsZero() {
 			b.setStartTime(clusterStatus.Status.StartTime)
