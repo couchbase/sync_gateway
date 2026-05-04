@@ -33,7 +33,7 @@ require (
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
-	github.com/shirou/gopsutil/v4 v4.26.3
+	github.com/shirou/gopsutil/v4 v4.26.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.50.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
