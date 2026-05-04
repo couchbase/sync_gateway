@@ -483,9 +483,7 @@ func (b *BackgroundManager) markStop(ctx context.Context) error {
 		}
 
 		// If this is the node running the service
-		if currentState == BackgroundProcessStateRunning {
-			b.setRunState(BackgroundProcessStateStopping)
-		}
+		b.compareAndSwapRunState(BackgroundProcessStateRunning, BackgroundProcessStateStopping)
 
 		return nil
 	}
@@ -497,6 +495,7 @@ func (b *BackgroundManager) markStop(ctx context.Context) error {
 	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, currentState) {
 		return errBackgroundManagerProcessAlreadyStopped
 	}
+	b.setRunState(BackgroundProcessStateStopping)
 
 	return nil
 }
@@ -683,10 +682,11 @@ func (b *BackgroundManager) startPollingMultiNodeStatus(ctx context.Context, ter
 
 // stopProcess terminates the locally running process.
 func (b *BackgroundManager) stopProcess(ctx context.Context) {
-	b.setRunState(BackgroundProcessStateStopping)
 	b.terminator.Close()
+	b.compareAndSwapRunState(BackgroundProcessStateRunning, BackgroundProcessStateStopping)
 
-	// Update the status to stopping for a multi node system indicating to other nodes to stop
+	// Update the status to stopping for a multi node system. This was already updated in markStop for a single node
+	// process.
 	if b.mode() == backgroundManagerModeMultiNode {
 		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
@@ -694,6 +694,15 @@ func (b *BackgroundManager) stopProcess(ctx context.Context) {
 		}
 	}
 
+}
+
+// compareAndSwapRunState does a compare and swap on the run state. If the existing state does not match the old state then no update occurs.
+func (b *BackgroundManager) compareAndSwapRunState(oldState BackgroundProcessState, newState BackgroundProcessState) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	if b.status.State == oldState {
+		b.status.State = newState
+	}
 }
 
 // backgroundManagerMode defines the types of BackgroundManager that can run.
