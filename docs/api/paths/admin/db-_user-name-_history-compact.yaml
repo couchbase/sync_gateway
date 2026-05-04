@@ -16,6 +16,7 @@ post:
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect
+    * Sync Gateway Application
   requestBody:
     description: Channels to be pruned from the user
     content:

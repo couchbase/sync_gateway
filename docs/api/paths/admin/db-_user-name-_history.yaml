@@ -11,11 +11,13 @@ parameters:
 get:
   summary: Get user's channel history information
   description: |-
-    Retrieve the Channel history of the specified user.
+    Retrieve the channel history of the specified user.
 
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
   responses:
     '200':
       description: User channel history information retrieved successfully
