@@ -132,6 +132,7 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 			return
 		}
 		base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
+		return
 	}
 	if cas == dbMgr.CAS {
 		return
