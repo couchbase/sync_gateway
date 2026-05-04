@@ -1086,28 +1086,30 @@ func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 }
 
 // CaptureLogOutput captures log output during the execution of a function.
-// It redirects the console logger's output to a buffer, runs the provided function,
-// and returns the captured log output as a string.
+// It creates a temporary logger with output redirected to a buffer, atomically swaps
+// the global logger for the duration of the function, and returns the captured output.
+// This approach is thread-safe and properly flushes buffered logs before returning.
 func CaptureLogOutput(t testing.TB, fn func()) string {
 	t.Helper()
-	logger := consoleLogger.Load()
-	if logger == nil {
+	var buf bytes.Buffer
+
+	config := &ConsoleLoggerConfig{
+		ColorEnabled: Ptr(false),
+		FileLoggerConfig: FileLoggerConfig{
+			Enabled: Ptr(true),
+		},
+	}
+	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
+	if err != nil {
 		return ""
 	}
+	tempLogger.logger.SetOutput(&buf)
 
-	var buf bytes.Buffer
-	originalOutput := logger.output
-
-	logger.logger.SetOutput(&buf)
-	defer func() {
-		if originalOutput != nil {
-			logger.logger.SetOutput(originalOutput)
-		} else {
-			logger.logger.SetOutput(os.Stderr)
-		}
-	}()
+	oldLogger := consoleLogger.Swap(tempLogger)
+	defer consoleLogger.Store(oldLogger)
 
 	fn()
 
+	FlushLogBuffers()
 	return buf.String()
 }

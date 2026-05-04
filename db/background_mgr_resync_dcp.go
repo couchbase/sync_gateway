@@ -150,7 +150,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	err = db.DBStateMgr.UpdateState(DatabaseState{ResyncRunning: true})
 	if err != nil {
-		base.WarnfCtx(ctx, "Error updating state for 'resyncing' database: %v", err)
+		return fmt.Errorf("error updating state for 'resyncing' database: %w", err)
 	}
 
 	var doneChan chan error
