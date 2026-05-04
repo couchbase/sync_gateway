@@ -75,7 +75,7 @@ func TestGetState(t *testing.T) {
 	})
 }
 
-// TestDeleteState verifies that DeleteState removes the state document, and returns an error when called
+// TestDeleteState verifies that DeleteState removes the state document, and returns no error when called
 // again after the document has already been removed.
 func TestDeleteState(t *testing.T) {
 	ctx := base.TestCtx(t)
