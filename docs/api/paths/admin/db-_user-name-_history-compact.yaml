@@ -18,26 +18,28 @@ post:
     * Sync Gateway Architect
     * Sync Gateway Application
   requestBody:
-    description: Channels to be pruned from the user
+    description: Channels to be compacted from the user
     content:
       application/json:
         schema:
-          $ref: ../../components/schemas.yaml#/UserChannelHistory
+          $ref: ../../components/schemas.yaml#/UserHistory
         example:
-          scope1:
-            collection1:
-              - scoped_channel1
+          channels:
+            scope1:
+              collection1:
+                - scoped_channel1
   responses:
     '200':
-      description: Channels pruned successfully from user
+      description: Channels compacted successfully from user
       content:
         application/json:
           schema:
-            $ref: ../../components/schemas.yaml#/UserChannelHistory
+            $ref: ../../components/schemas.yaml#/UserHistory
           example:
-            scope1:
-              collection1:
-                - scoped_channel2
+            channels:
+              scope1:
+                collection1:
+                  - scoped_channel2
     '400':
       description: Bad request. Invalid channel names or malformed request body.
       content:

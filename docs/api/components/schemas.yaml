@@ -3379,17 +3379,21 @@ RegistryScope:
       items:
         type: string
 
-UserChannelHistory:
-  description: User's channel history organized by scope and collection.
+UserHistory:
+  description: User history containing various history types organized by scope and collection.
   type: object
-  additionalProperties:
-    description: An object keyed by scope name.
-    type: object
-    x-additionalPropertiesName: scopename
-    additionalProperties:
-      description: An array of channel names for the collection.
-      type: array
-      x-additionalPropertiesName: collectionname
-      items:
-        type: string
-  title: UserChannelHistory
+  properties:
+    channels:
+      description: Channel history organized by scope and collection.
+      type: object
+      additionalProperties:
+        description: An object keyed by scope name.
+        type: object
+        x-additionalPropertiesName: scopename
+        additionalProperties:
+          description: An array of channel names for the collection.
+          type: array
+          x-additionalPropertiesName: collectionname
+          items:
+            type: string
+  title: UserHistory

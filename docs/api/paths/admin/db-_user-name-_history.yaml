@@ -24,14 +24,15 @@ get:
       content:
         application/json:
           schema:
-            $ref: ../../components/schemas.yaml#/UserChannelHistory
+            $ref: ../../components/schemas.yaml#/UserHistory
           example:
-            scope1:
-              collection1:
-                - channel1
-                - channel2
-              collection2:
-                - channel3
+            channels:
+              scope1:
+                collection1:
+                  - channel1
+                  - channel2
+                collection2:
+                  - channel3
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized-database
     '404':
