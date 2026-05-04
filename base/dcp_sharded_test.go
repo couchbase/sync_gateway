@@ -725,6 +725,12 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 	defer bucket.Close(t.Context())
 	datastore := bucket.GetMetadataStore()
 
+	waitTime := 100 * time.Millisecond
+	if !UnitTestUrlIsWalrus() || IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
+		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
+		waitTime = 10 * time.Second
+	}
+
 	// Polling should stop when context is cancelled
 	t.Run("start_polling_stops_on_context_cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancelCause(t.Context())
@@ -810,7 +816,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		// Wait for poll to detect the change
 		require.Eventually(t, func() bool {
 			return eventCount.Load() >= 1
-		}, 100*time.Millisecond, 5*time.Millisecond, "event should be fired within poll interval")
+		}, waitTime, 5*time.Millisecond, "event should be fired within poll interval")
 	})
 
 	// Multiple sequential changes should all be detected over time
@@ -849,7 +855,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		// Wait for first event
 		require.Eventually(t, func() bool {
 			return eventCount.Load() >= 1
-		}, 100*time.Millisecond, 5*time.Millisecond, "first update should be detected")
+		}, waitTime, 5*time.Millisecond, "first update should be detected")
 
 		// Second update
 		err = datastore.Set(key, 0, nil, []byte(`{"version": 3}`))
@@ -858,7 +864,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		// Wait for second event
 		require.Eventually(t, func() bool {
 			return eventCount.Load() >= 2
-		}, 100*time.Millisecond, 5*time.Millisecond, "second update should be detected")
+		}, waitTime, 5*time.Millisecond, "second update should be detected")
 
 		// Third update
 		err = datastore.Set(key, 0, nil, []byte(`{"version": 4}`))
@@ -867,7 +873,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		// Wait for third event
 		require.Eventually(t, func() bool {
 			return eventCount.Load() >= 3
-		}, 100*time.Millisecond, 5*time.Millisecond, "third update should be detected")
+		}, waitTime, 5*time.Millisecond, "third update should be detected")
 	})
 
 	// No polling should occur after context is cancelled
