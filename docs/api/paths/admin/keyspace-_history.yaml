@@ -31,28 +31,31 @@ get:
         (sequences at which the document left the channel) will be returned.
       required: true
       schema:
-        type: number
+        type: integer
+        minimum: 0
       example: 12345
   responses:
     '200':
       description: |-
         Successfully retrieved inactive channel history for the specified document.
-        Returns a mapping of the document ID to the list of inactive channels that have history before the sequence number.
+        Returns the list of inactive channels that have history before the sequence number for the requested document.
       content:
         application/json:
           schema:
             type: object
-            additionalProperties:
-              x-additionalPropertiesName: doc_id
-              type: array
-              items:
-                type: string
-              description: |-
-                Array of inactive channel names that have history entries before the specified sequence number.
+            required:
+              - channels
+            properties:
+              channels:
+                type: array
+                items:
+                  type: string
+                description: |-
+                  Array of inactive channel names that have history entries before the specified sequence number.
             description: |-
-              A mapping of document ID (key) to arrays of inactive channels (values).
+              Inactive channel history for the requested document.
             example:
-              doc1:
+              channels:
                 - channel1
                 - channel2
     '400':

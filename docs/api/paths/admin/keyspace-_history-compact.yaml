@@ -19,16 +19,18 @@ post:
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Application
-    * Sync Gateway Application Read Only
   requestBody:
     content:
       application/json:
         schema:
           type: object
+          required:
+            - doc_ids
+            - seq
           properties:
             doc_ids:
               description: |-
-                List of document IDs whose inactive channel should be compacted.
+                List of document IDs whose inactive channels should be compacted.
               type: array
               items:
                 type: string
@@ -38,7 +40,9 @@ post:
             seq:
               description: |-
                 Channel history for inactive channels having end sequences earlier than this sequence will be removed from the specified document's metadata.
-              type: number
+              type: integer
+              format: int64
+              minimum: 0
               example: 12345
   responses:
     '200':
