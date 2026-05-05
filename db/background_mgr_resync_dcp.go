@@ -103,6 +103,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		return nil
 	}
 
+	if statusDoc.ResyncID != "" {
+		err := r.purgeCheckpoints(ctx, db, statusDoc.ResyncID)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to delete checkpoints for previous resync ID %q: %v, these will be abandoned and unused", statusDoc.ResyncID, err)
+		}
+	}
+
 	newID, err := uuid.NewRandom()
 	if err != nil {
 		return err
@@ -112,11 +119,94 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, resyncID string) error {
+	if resyncID == "" {
+		return errors.New("resyncID is required to delete checkpoints")
+	}
+	checkpointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, resyncID, r.Distributed)
+	if !r.Distributed {
+		dcpClient, err := r.newDCPClient(ctx, db, false)
+		if err != nil {
+			return fmt.Errorf("error creating DCP client to delete checkpoints for resync ID %q: %v", resyncID, err)
+		}
+		return dcpClient.PurgeCheckpoints()
+	}
+	vbCount, err := db.Bucket.GetMaxVbno()
+	if err != nil {
+		return fmt.Errorf("error getting vb count for checkpoint deletion: %v", err)
+	}
+	return base.DeleteShardedDCPCheckpoints(ctx, db.MetadataStore, vbCount, checkpointPrefix)
+}
+
 // SetVBUUIDs updates vbuuids in the manager.
 func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.VBUUIDs = vbuuids
+}
+
+func (r *ResyncManagerDCP) getDCPCallback(ctx context.Context, db *Database, regenerateSequences bool) sgbucket.FeedEventCallbackFunc {
+	return func(event sgbucket.FeedEvent) bool {
+		docID := string(event.Key)
+		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
+
+		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
+		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
+			return true
+		}
+		// Don't want to process raw binary docs
+		// The binary check should suffice but for additional safety also check for empty bodies. This will also avoid
+		// processing tombstones.
+		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
+			return true
+		}
+
+		// We only want to process full docs. Not any sync docs.
+		if strings.HasPrefix(docID, base.SyncDocPrefix) {
+			return true
+		}
+
+		r.DocsProcessed.Add(1)
+		db.DbStats.Database().ResyncNumProcessed.Add(1)
+		databaseCollection := db.CollectionByID[event.CollectionID]
+		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
+		ctx = databaseCollection.AddCollectionContext(ctx)
+		doc, err := bucketDocumentFromFeed(event)
+		if err != nil {
+			base.WarnfCtx(ctx, "Resync: Error getting document from DCP event for doc %q: %v", base.UD(docID), err)
+			return false
+		}
+		err = (&DatabaseCollectionWithUser{
+			DatabaseCollection: databaseCollection,
+		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
+
+		if err == nil {
+			r.DocsChanged.Add(1)
+			db.DbStats.Database().ResyncNumChanged.Add(1)
+			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
+		} else if err != base.ErrUpdateCancel {
+			base.WarnfCtx(ctx, "Resync: Error updating doc %q: %v", base.UD(docID), err)
+			return false
+		}
+		return true
+	}
+}
+
+// newDCPClient creates a DCP client for resync with the appropriate options and callback.
+func (r *ResyncManagerDCP) newDCPClient(ctx context.Context, db *Database, regenerateSequences bool) (base.DCPClient, error) {
+	clientOptions := getResyncDCPClientOptions(
+		db.DatabaseContext,
+		r.ResyncID,
+		r.ResyncedCollections.ToCollectionNameSet(),
+		r.getDCPCallback(ctx, db, regenerateSequences),
+		r.Distributed,
+	)
+	dcpClient, err := base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
+	if err != nil {
+		base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
+		return nil, err
+	}
+	return dcpClient, nil
 }
 
 // Run starts a DCP feed to process documents for resync.
@@ -282,9 +372,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		defer resyncCbgtContext.Stop(ctx)
 	} else {
 
-		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
-		var err error
-		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
+		dcpClient, err = r.newDCPClient(ctx, db, regenerateSequences)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err

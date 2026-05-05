@@ -54,6 +54,17 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 
 func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
 	newRunInit := func() error {
+		if a.MigrationID != "" {
+			dcpClient, err := a.newDCPClient(ctx, a.databaseCtx)
+			if err != nil {
+				return fmt.Errorf("Could not create a DCP client when preparing to reset checkpoints: %w", err)
+			}
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resetting checkpoints for new migration run with migration ID: %s", a.MigrationID)
+			err = dcpClient.PurgeCheckpoints()
+			if err != nil {
+				return fmt.Errorf("Could not purge checkpoints when preparing for new migration run: %w", err)
+			}
+		}
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
 			return err
@@ -92,19 +103,9 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 	return newRunInit()
 }
 
-func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	db := a.databaseCtx
-	migrationLoggingID := "Migration: " + a.MigrationID
-
-	persistClusterStatus := func() {
-		err := persistClusterStatusCallback(ctx)
-		if err != nil {
-			base.WarnfCtx(ctx, "[%s] Failed to persist latest cluster status for attachment migration: %v", migrationLoggingID, err)
-		}
-	}
-	defer persistClusterStatus()
-
-	callback := func(event sgbucket.FeedEvent) bool {
+func (a *AttachmentMigrationManager) getDCPCallback(ctx context.Context, db *DatabaseContext) sgbucket.FeedEventCallbackFunc {
+	migrationLoggingID := a.migrationLoggingID()
+	return func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		collection := db.CollectionByID[event.CollectionID]
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", migrationLoggingID, event.Opcode, base.UD(docID))
@@ -157,26 +158,56 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		a.docsChanged.Add(1)
 		return true
 	}
+}
 
-	scopes, currCollectionIDs, err := getCollectionsForAttachmentMigration(db)
+// newDCPClient creates a DCP client for the attachment migration process.
+func (a *AttachmentMigrationManager) newDCPClient(ctx context.Context, db *DatabaseContext) (base.DCPClient, error) {
+	scopes, _, err := getCollectionsForAttachmentMigration(db)
+	if err != nil {
+		return nil, err
+	}
+	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, a.getDCPCallback(ctx, db))
+	return base.NewDCPClient(ctx, db.Bucket, dcpOptions)
+}
+
+func (a *AttachmentMigrationManager) migrationLoggingID() string {
+	return "Migration: " + a.MigrationID
+}
+
+func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	db := a.databaseCtx
+	migrationLoggingID := a.migrationLoggingID()
+
+	persistClusterStatus := func() {
+		err := persistClusterStatusCallback(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "[%s] Failed to persist latest cluster status for attachment migration: %v", migrationLoggingID, err)
+		}
+	}
+	defer persistClusterStatus()
+
+	_, currCollectionIDs, err := getCollectionsForAttachmentMigration(db)
 	if err != nil {
 		return err
 	}
-	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
-
 	// check for mismatch in collection id's between current collections on the db and prev run
 
-	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
-	if err != nil {
-		return err
-	}
-
+	shouldPurgeCheckpoints := a.shouldResetCheckpoints(ctx, db, getMigrationDCPClientOptions(db, a.MigrationID, nil, nil).CheckpointPrefix, currCollectionIDs)
 	a.SetCollectionIDs(currCollectionIDs)
-	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, dcpOptions)
+
+	dcpClient, err := a.newDCPClient(ctx, db)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment migration DCP client: %v", migrationLoggingID, err)
 		return err
 	}
+	if shouldPurgeCheckpoints {
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
+		err := dcpClient.PurgeCheckpoints()
+		if err != nil {
+			return err
+		}
+	}
+
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for attachment migration", migrationLoggingID)
 
 	doneChan, err := dcpClient.Start()
@@ -321,31 +352,18 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
-// resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
+// shouldResetCheckpoints returns true if the collection data does not match the previous data.
+func (a *AttachmentMigrationManager) shouldResetCheckpoints(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) bool {
 	// if we are on our first run, no collections will be defined on the manager yet
 	if len(a.CollectionIDs) == 0 {
-		return nil
+		return false
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
-			return err
-		}
-		return nil
+		return true
 	}
 	slices.Sort(collectionIDs)
 	slices.Sort(a.CollectionIDs)
-	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
-	if purgeNeeded != 0 {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return slices.Compare(collectionIDs, a.CollectionIDs) != 0
 }
 
 // getCollectionsForAttachmentMigration will get all datastores.

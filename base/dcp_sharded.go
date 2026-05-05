@@ -22,9 +22,10 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -233,7 +234,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 
 	vbNo, err := opts.Bucket.GetMaxVbno()
 	if err != nil {
-		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(opts.Bucket.GetName()).Redact())
+		return RedactErrorf("Unable to retrieve maxVbNo for bucket %s: %w", MD(opts.Bucket.GetName()), err)
 	}
 
 	numPartitions := opts.NumPartitions
@@ -308,7 +309,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 
 	_, indexDefsMap, err := manager.GetIndexDefs(true)
 	if err != nil {
-		return "", errors.Wrapf(err, "Error calling CBGT GetIndexDefs() on index: %s", indexName)
+		return "", fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
 	}
 
 	indexDef, ok := indexDefsMap[indexName]
@@ -919,4 +920,19 @@ func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error)
 		}
 		dcpFeed.NotifyMgrOnClose()
 	}
+}
+
+func DeleteShardedDCPCheckpoints(ctx context.Context, datastore DataStore, vbCount uint16, checkpointPrefix string) error {
+	var errs []error
+	for vbNo := range vbCount {
+		checkpointID := fmt.Sprintf("%s_%d", checkpointPrefix, vbNo)
+		err := datastore.Delete(checkpointID)
+		if err != nil && !IsDocNotFoundError(err) {
+			errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
+		}
+	}
+	if errs != nil {
+		return errors.Join(errs...)
+	}
+	return nil
 }
