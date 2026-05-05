@@ -115,6 +115,10 @@ paths:
     $ref: './paths/admin/db-_index_init.yaml'
   '/{keyspace}/_purge':
     $ref: './paths/admin/keyspace-_purge.yaml'
+  '/{keyspace}/_history':
+    $ref: './paths/admin/keyspace-_history.yaml'
+  '/{keyspace}/_history/compact':
+    $ref: './paths/admin/keyspace-_history-compact.yaml'
   '/{db}/_flush':
     $ref: './paths/admin/db-_flush.yaml'
   '/{db}/_online':
