@@ -660,7 +660,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	}
 
 	// Stop All background processors
-	bgManagers := context.stopBackgroundManagers()
+	bgManagers := context.stopBackgroundManagers(ctx)
 
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
@@ -680,7 +680,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 // stopBackgroundManagers stops any running BackgroundManager.
 // Returns a list of BackgroundManager it signalled to stop
-func (dbCtx *DatabaseContext) stopBackgroundManagers() (stopped []*BackgroundManager) {
+func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []*BackgroundManager) {
 	for _, manager := range []*BackgroundManager{
 		dbCtx.ResyncManager,
 		dbCtx.AttachmentCompactionManager,
@@ -688,7 +688,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers() (stopped []*BackgroundMan
 		dbCtx.AsyncIndexInitManager,
 		dbCtx.AttachmentMigrationManager,
 	} {
-		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop() == nil {
+		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
 			stopped = append(stopped, manager)
 		}
 	}

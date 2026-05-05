@@ -104,7 +104,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		for {
 			stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
 			if stats.DocsProcessed >= 200 {
-				err = attachMigrationMgr.Stop()
+				err = attachMigrationMgr.Stop(ctx)
 				require.NoError(t, err)
 				break
 			}

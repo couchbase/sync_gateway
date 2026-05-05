@@ -3826,7 +3826,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	callbackFunc := func() {
 		queryCount++
 		if queryCount == 2 {
-			assert.NoError(t, db.TombstoneCompactionManager.Stop())
+			assert.NoError(t, db.TombstoneCompactionManager.Stop(ctx))
 		}
 	}
 
@@ -4412,7 +4412,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			bgManagers := db.stopBackgroundManagers()
+			bgManagers := db.stopBackgroundManagers(ctx)
 			assert.Len(t, bgManagers, testCase.expected, "Unexpected Num of BackgroundManagers returned")
 		})
 	}
@@ -4459,7 +4459,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
-		err = bgMngr.Stop()
+		err = bgMngr.Stop(ctx)
 		require.NoError(t, err)
 
 		startTime := time.Now()
@@ -4477,7 +4477,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
-		err = bgMngr.Stop()
+		err = bgMngr.Stop(ctx)
 		require.NoError(t, err)
 
 		startTime := time.Now()
@@ -4495,7 +4495,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		ctx := base.TestCtx(t)
 		err := stoppableBgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
-		err = stoppableBgMngr.Stop()
+		err = stoppableBgMngr.Stop(ctx)
 		require.NoError(t, err)
 
 		unstoppableBgMngr := &BackgroundManager{
@@ -4505,7 +4505,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		err = unstoppableBgMngr.Start(ctx, map[string]any{})
 		require.NoError(t, err)
-		err = unstoppableBgMngr.Stop()
+		err = unstoppableBgMngr.Stop(ctx)
 		require.NoError(t, err)
 
 		startTime := time.Now()

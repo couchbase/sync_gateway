@@ -120,7 +120,7 @@ func TestResyncDCPInit(t *testing.T) {
 			defer db.Close(ctx)
 
 			defer func() {
-				_ = db.ResyncManager.Stop()
+				_ = db.ResyncManager.Stop(ctx)
 				// this gets called by background manager in each Start call.
 				// We have to manually call this for tests only to reset docsChanged/docsProcessed counters
 				db.ResyncManager.resetStatus()
@@ -190,7 +190,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		waitForResyncDocsProcessed(t, db, 300)
-		require.NoError(t, db.ResyncManager.Stop())
+		require.NoError(t, db.ResyncManager.Stop(ctx))
 	}()
 
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
@@ -272,7 +272,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 			if distributed {
 				waitForResyncDocsChanged(t, db, int64(docsToCreate))
-				err := db.ResyncManager.Stop()
+				err := db.ResyncManager.Stop(ctx)
 				require.NoError(t, err)
 			} else {
 				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
@@ -362,7 +362,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		waitForResyncDocsProcessed(t, db, 2000)
-		require.NoError(t, db.ResyncManager.Stop())
+		require.NoError(t, db.ResyncManager.Stop(ctx))
 	}()
 
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
@@ -443,7 +443,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 		for {
 			stats := getResyncStats(t, db)
 			if stats.DocsProcessed >= (docsPerCollection / 5) {
-				err = db.ResyncManager.Stop()
+				err = db.ResyncManager.Stop(ctx)
 				require.NoError(t, err)
 				break
 			}

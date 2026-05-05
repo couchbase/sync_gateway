@@ -437,7 +437,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		}
 		if triggerStopCallback {
 			triggerStopCallback = false
-			err = testDB2.AttachmentCompactionManager.Stop()
+			err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 			assert.NoError(t, err)
 		}
 		return nil
@@ -583,7 +583,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		}
 		if triggerStopCallback {
 			triggerStopCallback = false
-			err = testDB2.AttachmentCompactionManager.Stop()
+			err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 			assert.NoError(t, err)
 		}
 		return nil

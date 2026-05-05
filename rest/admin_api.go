@@ -429,7 +429,7 @@ func (h *handler) handlePostIndexInit() error {
 
 	if action == "stop" {
 		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
-		if err := h.db.AsyncIndexInitManager.Stop(); err != nil {
+		if err := h.db.AsyncIndexInitManager.Stop(h.ctx()); err != nil {
 			return err
 		}
 		b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())

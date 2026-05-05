@@ -162,7 +162,7 @@ func (h *handler) handleAttachmentMigration() error {
 		}
 		h.writeRawJSON(status)
 	} else if action == string(db.BackgroundProcessActionStop) {
-		err := h.db.AttachmentMigrationManager.Stop()
+		err := h.db.AttachmentMigrationManager.Stop(h.ctx())
 		if err != nil {
 			return err
 		}
@@ -230,7 +230,7 @@ func (h *handler) handleCompact() error {
 				return base.HTTPErrorf(http.StatusBadRequest, "Database compact is not running")
 			}
 
-			err := h.db.TombstoneCompactionManager.Stop()
+			err := h.db.TombstoneCompactionManager.Stop(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -263,7 +263,7 @@ func (h *handler) handleCompact() error {
 			auditFields[base.AuditFieldCompactionReset] = h.getBoolQuery("dry_run")
 			base.Audit(h.ctx(), base.AuditIDDatabaseCompactStart, auditFields)
 		} else if action == string(db.BackgroundProcessActionStop) {
-			err := h.db.AttachmentCompactionManager.Stop()
+			err := h.db.AttachmentCompactionManager.Stop(h.ctx())
 			if err != nil {
 				return err
 			}
@@ -416,7 +416,7 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		err := h.db.ResyncManager.Stop()
+		err := h.db.ResyncManager.Stop(h.ctx())
 		if err != nil {
 			return err
 		}
