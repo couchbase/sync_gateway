@@ -147,6 +147,7 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 
 func (r *ResyncManagerDCP) getDCPCallback(ctx context.Context, db *Database, regenerateSequences bool) sgbucket.FeedEventCallbackFunc {
 	return func(event sgbucket.FeedEvent) bool {
+		ctx := ctx // copy ctx so it doesn't get modified by multiple copies of this function running simultaneously
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
 
