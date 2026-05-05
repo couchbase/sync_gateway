@@ -1494,7 +1494,7 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 //
 // Race setup:
 //  1. An SDK Delete tombstones a doc triggering on demand import for get pathway so OnDemandImportForGet is called with isDelete=true.
-//  2. The first WriteUpdateWithXattrs callback succeeds and produces an updatedDoc for the
+//  2. The first import callback succeeds and produces an updatedDoc for the
 //     import tombstone write.
 //  3. LeakyDataStore.UpdateCallback fires SetRaw resurrects the tombstone as a live document with
 //     no _sync xattr, advancing the CAS.
