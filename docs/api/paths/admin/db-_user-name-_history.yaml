@@ -1,0 +1,42 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
+get:
+  summary: Get user's channel history information
+  description: |-
+    Retrieve the channel history of the specified user.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      description: User channel history information retrieved successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/UserHistory
+          example:
+            channels:
+              scope1:
+                collection1:
+                  - channel1
+                  - channel2
+                collection2:
+                  - channel3
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  operationId: get_db-_user-name-_history
