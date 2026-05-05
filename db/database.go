@@ -1173,7 +1173,7 @@ outerLoop:
 				//principalName = viewRow.Key
 				startKey = viewRow.Key
 			} else {
-				var queryRow principalRow
+				var queryRow PrincipalRow
 				found := results.Next(ctx, &queryRow)
 				if !found {
 					break
@@ -1360,7 +1360,7 @@ outerLoop:
 				skipAddition = true
 			}
 
-			var queryRow principalRow
+			var queryRow PrincipalRow
 			found := results.Next(ctx, &queryRow)
 			if !found {
 				break

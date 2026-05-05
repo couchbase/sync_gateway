@@ -63,6 +63,10 @@ type principalsViewRow struct {
 	Value bool   // 'isUser' flag
 }
 
+func (r principalsViewRow) rowID() string {
+	return r.ID
+}
+
 func isInternalDDoc(ddocName string) bool {
 	return strings.HasPrefix(ddocName, "sync_")
 }

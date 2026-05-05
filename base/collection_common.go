@@ -32,6 +32,10 @@ func DefaultScopeAndCollectionName() ScopeAndCollectionName {
 	return ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}
 }
 
+func MobileSystemScopeAndCollectionName() ScopeAndCollectionName {
+	return ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile}
+}
+
 func NewScopeAndCollectionName(scope, collection string) ScopeAndCollectionName {
 	return ScopeAndCollectionName{
 		Scope:      scope,

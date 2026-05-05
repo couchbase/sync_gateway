@@ -143,6 +143,12 @@ func (c *Collection) CreatePrimaryIndex(ctx context.Context, indexName string, o
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error {
+	// CBS omits _system scope indexes from system:indexes (used by the gocb CollectionQueryIndexManager
+	// backing indexManager.GetAllIndexes), so for system-scope collections we must use
+	// WaitForSystemCollectionIndexesOnline which queries system:all_indexes instead.
+	if c.ScopeName() == SystemScope {
+		return WaitForSystemCollectionIndexesOnline(ctx, c, c.ScopeName(), c.CollectionName(), indexNames, option)
+	}
 	keyspace := strings.Join([]string{c.BucketName(), c.ScopeName(), c.CollectionName()}, ".")
 	return WaitForIndexesOnline(ctx, keyspace, c.indexManager(), indexNames, option)
 }

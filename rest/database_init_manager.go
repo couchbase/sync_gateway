@@ -224,7 +224,8 @@ func (m *DatabaseInitManager) cancelWorkers() {
 // the metadata collection
 func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
 	if len(config.Scopes) == 0 {
-		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
+		// todo: only init these mobile collection indexes when required?
+		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
 	}
 
 	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
@@ -242,6 +243,8 @@ func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
 	}
 
 	collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+	// todo: only init these indexes when required?
+	collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
 
 	return collectionInitData
 }

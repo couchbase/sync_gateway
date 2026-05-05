@@ -29,9 +29,13 @@ type QueryIdRow struct {
 }
 
 // Used for queries that only return doc id
-type principalRow struct {
+type PrincipalRow struct {
 	Id   string
 	Name string
+}
+
+func (r PrincipalRow) rowID() string {
+	return r.Id
 }
 
 const (
@@ -264,6 +268,10 @@ type QueryUsersRow struct {
 	Name     string `json:"name"`
 	Email    string `json:"email,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
+}
+
+func (r QueryUsersRow) rowID() string {
+	return r.ID
 }
 
 var QueryUsers = SGQuery{
@@ -573,11 +581,15 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	// LIMIT is handled internally by dualMetadataN1QLQuery; do not append it to the statement.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	}
+
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -589,9 +601,13 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	// LIMIT is handled internally by dualMetadataN1QLQuery; build the statement without it.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		queryStatement, params := context.BuildUsersQuery(startKey, 0)
+		return dualMetadataN1QLQuery[QueryUsersRow](ctx, ms, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	}
 	queryStatement, params := context.BuildUsersQuery(startKey, limit)
-
-	// N1QL Query
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -632,9 +648,13 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	// LIMIT is handled internally by dualMetadataN1QLQuery; build the statement without it.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		queryStatement, params := context.BuildRolesQuery(startKey, 0)
+		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	}
 	queryStatement, params := context.BuildRolesQuery(startKey, limit)
-
-	// N1QL Query
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
@@ -668,21 +688,28 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	}
 
 	var queryStatement string
+	var queryName string
 	if !context.UseLegacySyncDocsIndex() {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs(), context.numIndexPartitions())
+		queryName = QueryAllRolesUsingRoleIdx.name
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs(), context.numIndexPartitions())
+		queryName = QueryAllRolesUsingSyncDocsIdx.name
 	}
 
 	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
+	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
+	// LIMIT is handled internally by dualMetadataN1QLQuery; do not append it to the statement.
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
+		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	}
+
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 type AllDocsViewQueryRow struct {

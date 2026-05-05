@@ -353,6 +353,29 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 
 	tbp.Logf(ctx, "Starting bucket init function")
 
+	if !skipGSI {
+		mobileSystemDataStore, err := b.NamedDataStore(base.MobileSystemScopeAndCollectionName())
+		if err != nil {
+			return err
+		}
+		systemCollectionInitOptions := InitializeIndexOptions{
+			UseXattrs:                  true,
+			NumReplicas:                0,
+			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
+			LegacySyncDocsIndex:        false,
+			MetadataIndexes:            IndexesMetadataOnly,
+			NumPartitions:              DefaultNumIndexPartitions,
+		}
+		systemN1QLStore, ok := base.AsN1QLStore(mobileSystemDataStore)
+		if !ok {
+			return fmt.Errorf("bucket %T was not a N1QL store", b)
+		}
+
+		if err := InitializeIndexes(ctx, systemN1QLStore, systemCollectionInitOptions); err != nil {
+			return err
+		}
+	}
+
 	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
@@ -1110,4 +1133,38 @@ func (c *collectionRevisionCache) PutRevEntry(t *testing.T, ctx context.Context,
 	if value.memState.CompareAndSwap(memStateLoading, memStateSized) {
 		cache.memoryController.incrementBytesCount(docRev.MemoryBytes)
 	}
+}
+
+// InitializeDualMetadataStoreIndexes initializes the principal indexes (IndexSyncDocs,
+// IndexUser, IndexRole) on both the primary and fallback datastores of a MetadataStore.
+// This is required during metadata migration when user and role documents may be present in
+// both datastores and both must be queryable via N1QL.
+//
+// options.MetadataIndexes is forced to IndexesMetadataOnly for primary store so that only
+// metadata-specific principal indexes are created given user non metadata docs cannot be stored here.
+// Fallback store initialises whatever is passed.
+// This is test only function, metadata store indexes for databases are created during Database Init
+func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metadataStore *base.MetadataStore, options InitializeIndexOptions) error {
+	t.Helper()
+	primaryOptions := options
+
+	primaryN1QL, ok := base.AsN1QLStore(metadataStore.Primary())
+	if !ok {
+		return fmt.Errorf("primary datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Primary())
+	}
+	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
+	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
+	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
+		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
+	}
+
+	fallbackN1QL, ok := base.AsN1QLStore(metadataStore.Fallback())
+	if !ok {
+		return fmt.Errorf("fallback datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Fallback())
+	}
+	fallbackCtx := base.CollectionLogCtx(ctx, metadataStore.Fallback().ScopeName(), metadataStore.Fallback().CollectionName())
+	if err := InitializeIndexes(fallbackCtx, fallbackN1QL, options); err != nil {
+		return fmt.Errorf("initializing indexes on fallback metadata store: %w", err)
+	}
+	return nil
 }

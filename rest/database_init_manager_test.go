@@ -91,7 +91,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	// Use waitChannel to have collectionCallback block, to simulate long-running creation
 	testSignalChannel := make(chan error)
 	singleCollectionInitChannel := make(chan error)
-	expectedCollectionCount := int64(3) // default, collection1, collection2
+	expectedCollectionCount := int64(4) // _mobile, _default, collection1, collection2
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
 	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
@@ -225,7 +225,8 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 
 	// Verify initialization was run for four collections (one prior to cancellation, three for subsequent init)
 	totalCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(4), totalCount)
+	// _mobile, _default, collection1, collection2, collection3
+	require.Equal(t, int64(5), totalCount)
 
 }
 
@@ -308,9 +309,11 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	WaitForChannel(t, doneChan1, "modified init done chan")
 	WaitForChannel(t, doneChan2, "modified init done chan")
 
-	// Verify initialization was run for 5 collections (three for db1, two for db2)
+	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
+	// The distinct collections are _mobile, _default, collection1, collection2, and
+	// collection3, but _default and _mobile are checked for both databases.
 	totalCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(5), totalCount)
+	require.Equal(t, int64(7), totalCount)
 
 }
 
@@ -405,9 +408,10 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	WaitForChannel(t, databaseCompleteChannel, "database 1 init complete")
 	WaitForChannel(t, databaseCompleteChannel, "database 2 init complete")
 
-	// Verify initialization was run for 6 collections (three for db1, three for db2)
+	// Verify initialization was run for 8 collections (four for db1, four for db2)
+	// _mobile, _default, collection1, collection2
 	totalCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(6), totalCount)
+	require.Equal(t, int64(8), totalCount)
 
 }
 
@@ -474,8 +478,9 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	WaitForChannel(t, doneChan1, "done chan 1")
 	wg.Wait()
 
-	// Verify initialization was run for 6 collections, since it runs on 3 collections twice
-	require.Equal(t, int64(6), collectionCount.Load())
+	// Verify initialization was run for 8 collections, since it runs on 4 collections twice
+	// _mobile, _default, collection1, collection2
+	require.Equal(t, int64(8), collectionCount.Load())
 
 	// Expect two database complete callbacks, since initialization is run twice
 	require.Equal(t, int64(2), databaseCompleteCount.Load())
@@ -519,7 +524,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				},
 			},
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -530,7 +536,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				},
 			},
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -542,6 +549,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
@@ -554,6 +562,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
