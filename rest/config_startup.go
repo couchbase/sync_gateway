@@ -103,6 +103,7 @@ type StartupConfig struct {
 type BootstrapConfig struct {
 	ConfigGroupID         string               `json:"group_id,omitempty"                help:"The config group ID to use when discovering databases. Allows for non-homogenous configuration"`
 	ConfigUpdateFrequency *base.ConfigDuration `json:"config_update_frequency,omitempty" help:"How often to poll Couchbase Server for new config changes. Default: 10s"`
+	NodeHeartbeatExpiry   *base.ConfigDuration `json:"node_heartbeat_expiry,omitempty"   help:"How long since a node's last heartbeat before its cluster compat registry entry is pruned. Minimum is 2x the configured config_update_frequency. Default: 60s"`
 	Server                string               `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
 	Username              string               `json:"username,omitempty"                help:"Username for authenticating to server"`
 	Password              string               `json:"password,omitempty"                help:"Password for authenticating to server"`

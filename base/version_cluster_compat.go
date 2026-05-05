@@ -84,8 +84,8 @@ func (v *ClusterCompatVersion) UnmarshalJSON(data []byte) error {
 }
 
 // RegistryNode represents a single Sync Gateway node's version registration in the cluster.
-// HeartbeatAt is currently informational only; staleness-based pruning is deferred to
-// CBG-5219.
+// HeartbeatAt is rewritten on every register call; entries whose HeartbeatAt is older than
+// the configured node heartbeat expiry are pruned by RegisterNodeVersion.
 type RegistryNode struct {
 	Version     ClusterCompatVersion `json:"version"`
 	HeartbeatAt time.Time            `json:"heartbeat_at"`

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -113,7 +114,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	var eg errgroup.Group
 	for i := 0; i < n; i++ {
 		eg.Go(func() error {
-			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
+			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version, time.Hour)
 			return err
 		})
 	}
@@ -140,7 +141,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	const n = 10
 	version := base.NewClusterCompatVersion(4, 0)
 	for i := 0; i < n; i++ {
-		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version)
+		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version, time.Hour)
 		require.NoError(t, err)
 	}
 
@@ -174,9 +175,9 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 
 	older := base.NewClusterCompatVersion(3, 5)
 	newer := base.NewClusterCompatVersion(4, 0)
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, "synthetic-old", older)
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, "synthetic-old", older, time.Hour)
 	require.NoError(t, err)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "synthetic-new", newer)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "synthetic-new", newer, time.Hour)
 	require.NoError(t, err)
 
 	ccm := rt.ServerContext().ClusterCompat
@@ -191,4 +192,168 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 	assert.Equal(t, older, nodes["synthetic-old"])
 	assert.Equal(t, newer, nodes["synthetic-new"])
 	assert.Equal(t, base.NodeClusterCompatVersion, nodes[rt.ServerContext().NodeUID])
+}
+
+// setNodeHeartbeatAt rewrites HeartbeatAt for a single node entry in the bucket registry.
+// The registry write is CAS-checked so concurrent callers (e.g. the polling loop) can't
+// silently clobber it.
+func setNodeHeartbeatAt(t *testing.T, rt *RestTester, bucketName, nodeUID string, hb time.Time) {
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	node, ok := registry.Nodes[nodeUID]
+	require.True(t, ok, "node %s must exist before mutating its heartbeat", nodeUID)
+	node.HeartbeatAt = hb
+	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+}
+
+// TestClusterCompatPruneStaleOnRefresh seeds a peer with an expired heartbeat and verifies
+// that the next Refresh prunes it and removes it from the manager's cached node set.
+func TestClusterCompatPruneStaleOnRefresh(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	// Seed a peer with a fresh heartbeat, then mutate it to be older than the expiry window.
+	stalePeer := "stale-peer"
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5), time.Hour)
+	require.NoError(t, err)
+	setNodeHeartbeatAt(t, rt, bucketName, stalePeer, time.Now().Add(-2*ccm.heartbeatExpiry()))
+
+	// Force-refresh past the rate limit.
+	ccm.lastRefreshAt = time.Time{}
+	ccm.Refresh(ctx)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.NotContains(t, registry.Nodes, stalePeer, "stale peer should have been pruned by Refresh")
+	assert.Contains(t, registry.Nodes, rt.ServerContext().NodeUID, "self should remain after Refresh")
+	assert.NotContains(t, ccm.NodeVersions(), stalePeer, "stale peer should not be in cached node set")
+}
+
+// TestClusterCompatPruneStaleOnRegisterBucket seeds a peer with an expired heartbeat and
+// verifies that calling RegisterBucket through the startup path prunes it.
+func TestClusterCompatPruneStaleOnRegisterBucket(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	stalePeer := "stale-peer"
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5), time.Hour)
+	require.NoError(t, err)
+	setNodeHeartbeatAt(t, rt, bucketName, stalePeer, time.Now().Add(-2*ccm.heartbeatExpiry()))
+
+	// Drop bucket tracking so RegisterBucket re-runs the startup path.
+	ccm.mu.Lock()
+	delete(ccm.trackedBuckets, bucketName)
+	ccm.mu.Unlock()
+	ccm.RegisterBucket(ctx, bucketName)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.NotContains(t, registry.Nodes, stalePeer, "stale peer should have been pruned by RegisterBucket")
+	assert.Contains(t, registry.Nodes, rt.ServerContext().NodeUID, "self should be present after RegisterBucket")
+}
+
+// TestClusterCompatPruneSelfNotPruned verifies that even with self's HeartbeatAt rewritten
+// far in the past, RegisterNodeVersion retains self (since it's about to refresh self's
+// heartbeat in the same write) — preventing the registry from going to an empty Nodes map.
+func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+	selfUID := rt.ServerContext().NodeUID
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	// Make sure self is registered, then make its heartbeat ancient.
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, base.NodeClusterCompatVersion, time.Hour)
+	require.NoError(t, err)
+	staleTime := time.Now().Add(-100 * ccm.heartbeatExpiry())
+	setNodeHeartbeatAt(t, rt, bucketName, selfUID, staleTime)
+
+	// Re-register with a non-zero expiry. Self must survive and have a fresh heartbeat.
+	registry, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, base.NodeClusterCompatVersion, ccm.heartbeatExpiry())
+	require.NoError(t, err)
+	require.Contains(t, registry.Nodes, selfUID)
+	assert.True(t, registry.Nodes[selfUID].HeartbeatAt.After(staleTime), "self's heartbeat must have been refreshed")
+}
+
+// TestClusterCompatPruneFreshPeerNotPruned verifies that a peer with a fresh heartbeat
+// survives a Refresh.
+func TestClusterCompatPruneFreshPeerNotPruned(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	freshPeer := "fresh-peer"
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, freshPeer, base.NewClusterCompatVersion(3, 5), time.Hour)
+	require.NoError(t, err)
+
+	ccm.lastRefreshAt = time.Time{}
+	ccm.Refresh(ctx)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Contains(t, registry.Nodes, freshPeer, "fresh peer should not be pruned")
+}
+
+// TestClusterCompatHeartbeatExpiryConfigurable verifies the runtime expiry getter trusts
+// the configured value (validation enforces the 2x floor — see TestStartupConfigValidate*)
+// and falls back to defaultNodeHeartbeatExpiry when unset.
+func TestClusterCompatHeartbeatExpiryConfigurable(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	// Unset → defaultNodeHeartbeatExpiry.
+	rt.ServerContext().Config.Bootstrap.NodeHeartbeatExpiry = nil
+	assert.Equal(t, defaultNodeHeartbeatExpiry, ccm.heartbeatExpiry())
+
+	// Configured value is honored verbatim.
+	want := 17 * ccm.refreshInterval()
+	rt.ServerContext().Config.Bootstrap.NodeHeartbeatExpiry = base.NewConfigDuration(want)
+	assert.Equal(t, want, ccm.heartbeatExpiry())
+}
+
+// TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
+// ConfigUpdateFrequency verbatim — no silent floor. The validator is responsible for rejecting
+// pathological combinations (see TestStartupConfigNodeHeartbeatExpiryValidation), so the
+// runtime must not disagree with what the validator approved.
+func TestClusterCompatRefreshIntervalUnclamped(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+
+	for _, d := range []time.Duration{500 * time.Millisecond, time.Second, 30 * time.Second} {
+		rt.ServerContext().Config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(d)
+		assert.Equal(t, d, ccm.refreshInterval(), "refreshInterval should return the configured value verbatim for %s", d)
+	}
 }
