@@ -216,6 +216,67 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+// CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
+// This is used to truncate stale channel assignment history to reduce storage overhead.
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) (err error) {
+	key := realDocID(docid)
+	if key == "" {
+		return base.HTTPErrorf(400, "Invalid doc ID")
+	}
+
+	_, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
+	if err != nil {
+		return
+	}
+
+	doc, err := c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+	if err != nil {
+		return
+	}
+
+	var compactedChannelHistory []ChannelSetEntry
+	for _, channel := range doc.SyncData.ChannelSetHistory {
+		if channel.Start > seq {
+			compactedChannelHistory = append(compactedChannelHistory, channel)
+		}
+	}
+
+	doc.SyncData.ChannelSetHistory = compactedChannelHistory
+
+	rawSyncXattr, err := base.JSONMarshal(doc.SyncData)
+	if err != nil {
+		return base.RedactErrorf("failed to marshall sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
+	}
+
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyCRUD, `Could not determine the revSeqNo when attempting to compact channel history for doc: %s. Error: %v`, base.UD(docid), err)
+	}
+
+	metadataOnlyUpdate := &MetadataOnlyUpdate{
+		HexCAS:           expandMacroCASValueString,
+		PreviousHexCAS:   doc.SyncData.Cas,
+		PreviousRevSeqNo: revSeqNo,
+	}
+	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+	if err != nil {
+		return base.RedactErrorf("failed to marshall _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
+	}
+
+	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
+	opts := &sgbucket.MutateInOptions{}
+	spec := append(macroExpandSpec(base.SyncXattrName), sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
+	opts.MacroExpansion = spec
+	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
+
+	updatedXattr := map[string][]byte{
+		base.SyncXattrName: rawSyncXattr,
+		base.MouXattrName:  rawMouXattr,
+	}
+	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
+	return err
+}
+
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
 func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.UserXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
