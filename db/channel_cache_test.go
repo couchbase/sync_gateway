@@ -630,7 +630,7 @@ func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
 	_, _, err = collection.Put(ctx, doc3, Body{"channels": activeChannel})
 	require.NoError(t, err)
 
-	collection.WaitForPendingChanges(ctx)
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 	// prime channel cache, doc2 and doc3 should be in cache
 	changesOptions := ChangesOptions{
@@ -671,7 +671,7 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		revID3, _, _ := collection.Put(ctx, "doc3", Body{"channels": activeChannel})
 		_, _, _ = collection.Put(ctx, "doc3", Body{"channels": "other", "_rev": revID3})
 
-		collection.WaitForPendingChanges(ctx)
+		require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
@@ -705,7 +705,7 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		// doc3: active (seq 4) - cache
 		_, _, _ = collection.Put(ctx, "doc3", Body{"channels": activeChannel})
 
-		collection.WaitForPendingChanges(ctx)
+		require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
@@ -738,7 +738,7 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		revID2, _, _ := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
 		_, _, _ = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
 
-		collection.WaitForPendingChanges(ctx)
+		require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
