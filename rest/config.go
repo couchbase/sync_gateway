@@ -1613,6 +1613,12 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 
 	sc := NewServerContext(ctx, config, persistentConfig)
 
+	nodeUID, err := base.GenerateNodeUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
+	if err != nil {
+		return nil, err
+	}
+	sc.NodeUID = nodeUID
+
 	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
 		err := sc.CheckSupportedCouchbaseVersion(ctx)
 		if err != nil {
@@ -2074,6 +2080,7 @@ func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[str
 func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup, loadFromBucket bool) (applied bool, err error) {
 	ctx := nonContextStruct.Ctx
 
+	// TODO: CBG-5266 - Remove/replace with clusterCompatVersion downgrade check
 	nodeSGVersion := sc.BootstrapContext.sgVersion
 	err = sc.BootstrapContext.CheckMinorDowngrade(ctx, *cnf.Bucket, nodeSGVersion)
 	if err != nil {
@@ -2091,6 +2098,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	if !isInitialStartup {
+		// TODO: CBG-5266 - Remove/replace with clusterCompatVersion check
 		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
 		if nodeSGVersion.Less(configSGVersion) {
 			base.WarnfCtx(ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
@@ -2123,9 +2131,16 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// by any output
 	cnf.Version = ""
 
+	// TODO: CBG-5266 - Remove after clusterCompatVersion downgrade checks in place
 	err = sc.BootstrapContext.SetSGVersion(ctx, *cnf.Bucket, nodeSGVersion)
 	if err != nil {
 		return false, nil
+	}
+
+	// Register this node in the bucket's registry now that we know SG is serving a
+	// database here. Registration is lazy — we never touch buckets SG is not serving.
+	if sc.ClusterCompat != nil {
+		sc.ClusterCompat.RegisterBucket(ctx, *cnf.Bucket)
 	}
 
 	// Prevent database from being unsuspended when it is suspended

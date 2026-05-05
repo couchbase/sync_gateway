@@ -1655,9 +1655,11 @@ type DatabaseStatus struct {
 }
 
 type Status struct {
-	Databases map[string]DatabaseStatus `json:"databases"`
-	Version   string                    `json:"version"`
-	Vendor    vendor                    `json:"vendor"`
+	Databases            map[string]DatabaseStatus `json:"databases"`
+	Version              string                    `json:"version"`
+	Vendor               vendor                    `json:"vendor"`
+	NodeUID              string                    `json:"node_uid,omitempty"`
+	ClusterCompatVersion string                    `json:"cluster_compat_version,omitempty"`
 }
 
 func (h *handler) handleGetStatus() error {
@@ -1671,6 +1673,12 @@ func (h *handler) handleGetStatus() error {
 	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
 		status.Vendor.Version = base.ProductAPIVersion
+		status.NodeUID = h.server.NodeUID
+		if h.server.ClusterCompat != nil {
+			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
+				status.ClusterCompatVersion = v.String()
+			}
+		}
 	}
 
 	for _, database := range h.server._databases {

@@ -2975,6 +2975,18 @@ Status:
     vendor:
       allOf:
         - $ref: '#/Vendor'
+    node_uid:
+      description: |-
+        Stable identifier for this Sync Gateway node, derived deterministically from host
+        fingerprint. Omitted if `api.hide_product_version=true`.
+      type: string
+    cluster_compat_version:
+      description: |-
+        The minimum cluster compatibility version (`"major.minor"`) across all nodes in the
+        cluster. Omitted if `api.hide_product_version=true`, or when no version has been
+        computed yet (e.g. first startup before nodes have registered).
+      type: string
+      example: '4.1'
   title: Status
 NodeInfo:
   type: object
@@ -3002,6 +3014,18 @@ NodeInfo:
         `true` if the sync gateway node is running in persistent config mode.
       type: boolean
       example: true
+    node_uid:
+      description: |-
+        Stable identifier for this Sync Gateway node, derived deterministically from host
+        fingerprint. Omitted if `api.hide_product_version=true`.
+      type: string
+    cluster_compat_version:
+      description: |-
+        The minimum cluster compatibility version (`"major.minor"`) across all nodes in the
+        cluster. Omitted if `api.hide_product_version=true`, or when no version has been
+        computed yet (e.g. first startup before nodes have registered).
+      type: string
+      example: '4.1'
   required:
     - couchdb
     - vendor
@@ -3277,6 +3301,16 @@ CORS:
         type: string
       example: ["https://example.com"]
   title: Cors Configuration
+ClusterCompatVersion:
+  description: |-
+    A Sync Gateway cluster compatibility version, represented as a `"major.minor"` string (e.g. `"4.1"`).
+
+    This is the minimum version across all nodes in the cluster and is used to gate new metadata formats
+    until all nodes have been upgraded.
+  type: string
+  nullable: true
+  example: '4.1'
+  title: Cluster Compatibility Version
 DiagnosticFunctionException:
   description: The exception thrown during evaluation (if any).
   type: string
@@ -3299,6 +3333,9 @@ DiagnosticFunctionLogging:
 
 ClusterInfo:
   type: object
+  description: |-
+    Cluster information returned by `/_cluster_info`. Per-node version data is exposed via
+    each bucket's `registry.nodes`; aggregated cluster compatibility is available from `/_status`.
   properties:
     legacy_config:
       description: Indicates if the server is using legacy (non persistent) configuration.
@@ -3342,6 +3379,29 @@ GatewayRegistry:
       type: string
       format: date-time
       description: Time the registry was created
+    nodes:
+      description: |-
+        Map of node UID to that node's version registration. Populated by Sync Gateway nodes
+        that have a database loaded on this bucket; used to compute the cluster compatibility
+        version. Omitted on registries written by older Sync Gateway versions that did not
+        track per-node versions.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: nodeUID
+        $ref: '#/RegistryNode'
+
+RegistryNode:
+  type: object
+  description: A single Sync Gateway node's version registration in a bucket registry.
+  properties:
+    version:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: The cluster compatibility version reported by this node.
+    heartbeat_at:
+      type: string
+      format: date-time
+      description: Time of the node's last heartbeat write to this registry.
 
 RegistryConfigGroup:
   type: object

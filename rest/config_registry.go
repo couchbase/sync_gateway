@@ -45,11 +45,12 @@ import (
 //		}
 type GatewayRegistry struct {
 	cas          uint64
-	Version      string                          `json:"version"`       // Registry version
-	ConfigGroups map[string]*RegistryConfigGroup `json:"config_groups"` // Map of config groups, keyed by config group ID
-	SGVersion    base.ComparableBuildVersion     `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
-	UpdatedAt    time.Time                       `json:"updated_at"`    // Time the registry was last updated
-	CreatedAt    time.Time                       `json:"created_at"`    // Time the registry was created
+	Version      string                          `json:"version"`         // Registry version
+	ConfigGroups map[string]*RegistryConfigGroup `json:"config_groups"`   // Map of config groups, keyed by config group ID
+	SGVersion    base.ComparableBuildVersion     `json:"sg_version"`      // Latest patch version of Sync Gateway that touched the registry
+	UpdatedAt    time.Time                       `json:"updated_at"`      // Time the registry was last updated
+	CreatedAt    time.Time                       `json:"created_at"`      // Time the registry was created
+	Nodes        map[string]*base.RegistryNode   `json:"nodes,omitempty"` // Map of node UID to node version registration
 }
 
 const GatewayRegistryVersion = "1.0"
