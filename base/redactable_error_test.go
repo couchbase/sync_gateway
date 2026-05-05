@@ -9,9 +9,11 @@
 package base
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRedactErrorf(t *testing.T) {
@@ -45,6 +47,77 @@ func TestRedactErrorf(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactableError_IsAs(t *testing.T) {
+	innerErr := &customErr{msg: "inner error"}
+	re := RedactErrorf("wrapped: %w", innerErr)
+
+	t.Run("errors.Is", func(t *testing.T) {
+		require.ErrorIs(t, re, innerErr)
+	})
+
+	t.Run("errors.As", func(t *testing.T) {
+		var target *customErr
+		assert.True(t, errors.As(re, &target), "errors.As(re, &target) should be true")
+		assert.Equal(t, innerErr, target)
+
+		var redactedTarget *RedactableError
+		assert.True(t, errors.As(re, &redactedTarget), "errors.As(re, &redactedTarget) should be true")
+		assert.Equal(t, re, redactedTarget)
+	})
+
+	t.Run("errors.AsType", func(t *testing.T) {
+		err := &customErr{msg: "err"}
+		re := RedactErrorf("wrapped: %w", err)
+
+		target, ok := errors.AsType[*customErr](re)
+		assert.True(t, ok)
+		assert.Equal(t, err, target)
+
+		redactedTarget, ok := errors.AsType[*RedactableError](re)
+		assert.True(t, ok)
+		assert.Equal(t, re, redactedTarget)
+	})
+
+	t.Run("errors.As value type", func(t *testing.T) {
+		err := customValErr("val error")
+		re := RedactErrorf("wrapped: %w", err)
+
+		var target customValErr
+		assert.True(t, errors.As(re, &target))
+		assert.Equal(t, err, target)
+	})
+
+	t.Run("errors.AsType value type", func(t *testing.T) {
+		err := customValErr("val error")
+		re := RedactErrorf("wrapped: %w", err)
+
+		target, ok := errors.AsType[customValErr](re)
+		assert.True(t, ok)
+		assert.Equal(t, err, target)
+	})
+
+	t.Run("Multiple wraps", func(t *testing.T) {
+		err1 := &customErr{msg: "err1"}
+		err2 := &customErr{msg: "err2"}
+		re2 := RedactErrorf("err1: %w, err2: %w", err1, err2)
+
+		assert.True(t, errors.Is(re2, err1))
+		assert.True(t, errors.Is(re2, err2))
+
+		var target *customErr
+		assert.True(t, errors.As(re2, &target))
+		assert.Equal(t, err1, target) // errors.As returns the first one it finds
+	})
+}
+
+type customErr struct{ msg string }
+
+func (e *customErr) Error() string { return e.msg }
+
+type customValErr string
+
+func (e customValErr) Error() string { return string(e) }
 
 func BenchmarkRedactErrorf(b *testing.B) {
 	fmt := "Couldn't get user %q: "
