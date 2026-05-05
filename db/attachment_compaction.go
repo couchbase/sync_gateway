@@ -424,7 +424,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 // attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with an attachment compaction xattr. Returns
 // the DCP checkpoint prefix and any error encountered.
-func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (base.DCPClient, error) {
+func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 
@@ -523,15 +523,16 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
-		return nil, err
+		return "", err
 	}
+	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		// simplify close in CBG-2234
 		_ = dcpClient.Close()
-		return dcpClient, err
+		return metadataKeyPrefix, err
 	}
 
 	select {
@@ -544,18 +545,18 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment compaction DCP client! %v", compactionLoggingID, err)
-			return dcpClient, err
+			return metadataKeyPrefix, err
 		}
 
 		err = <-doneChan
 		if err != nil {
-			return dcpClient, err
+			return metadataKeyPrefix, err
 		}
 
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction was terminated", compactionLoggingID)
 	}
 
-	return dcpClient, err
+	return metadataKeyPrefix, err
 }
 
 // getCompactionIDSubDocPath is just a tiny helper func that just concatenates the subdoc path we're using to store

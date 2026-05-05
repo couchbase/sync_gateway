@@ -203,9 +203,9 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	_, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
+	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	require.NoError(t, err)
-	//require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
 
 	for _, docID := range singleMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
@@ -391,9 +391,9 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	dcpClient, err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
+	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -499,7 +499,19 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateStopped)
+	err = WaitForConditionWithOptions(t, func() bool {
+		var status AttachmentManagerResponse
+		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal(rawStatus, &status)
+		require.NoError(t, err)
+
+		if status.State == BackgroundProcessStateStopped {
+			return true
+		}
+
+		return false
+	}, 200, 1000)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	triggerCallback = true

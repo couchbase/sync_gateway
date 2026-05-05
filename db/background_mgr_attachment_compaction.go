@@ -11,12 +11,10 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
 )
@@ -104,31 +102,6 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 	return newRunInit()
 }
 
-func (a *AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, compactionID string, db *Database, dataStore sgbucket.DataStore) error {
-	fakeCallback := func(event sgbucket.FeedEvent) bool { return false }
-	var errs []error
-	for _, phase := range []attachmentCompactionPhase{MarkPhase, CleanupPhase} {
-		clientOptions := getCompactionDCPClientOptions(
-			db,
-			compactionID,
-			base.NewCollectionNameSet(dataStore),
-			phase,
-			fakeCallback,
-		)
-
-		dcpClient, err := base.NewDCPClient(ctx, db.Bucket, clientOptions)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("Could not create a dcp client phase %q in order to purge checkpoints: %w", phase, err))
-			continue
-		}
-		err = dcpClient.PurgeCheckpoints()
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error purging checkpoints for phase %q: %w", phase, err))
-		}
-	}
-	return errors.Join(errs...)
-}
-
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
@@ -170,7 +143,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 					return false, err, nil
 				}
 
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, dcpClient.PurgeCheckpoints)
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, MarkPhase, dcpClient.GetMetadataKeyPrefix())
 			}
 			return shouldRetry, err, nil
 		}
@@ -196,9 +169,9 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			dcpClient, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
-			if err != nil && dcpClient != nil {
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, dcpClient.PurgeCheckpoints)
+			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			if err != nil {
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
 			}
 			return shouldRetry, err, nil
 		}
@@ -217,13 +190,13 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
-func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase attachmentCompactionPhase, checkpointPurgeFunc base.DCPCheckpointPurgeFunc) (bool, error) {
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase attachmentCompactionPhase, keyPrefix string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.CompactID)
-		err = checkpointPurgeFunc()
+		err = PurgeDCPCheckpoints(ctx, database.DatabaseContext, keyPrefix, a.CompactID)
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err
