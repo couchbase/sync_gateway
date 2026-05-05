@@ -69,6 +69,11 @@ const (
 
 	DefaultUseTLSServer = true
 
+	// DefaultUseSystemMetadataCollection is the default for BootstrapConfig.UseSystemMetadataCollection
+	// in this version of Sync Gateway. Subject to change in future versions as part of the
+	// opt-in -> opt-out -> remove lifecycle for the system metadata collection feature.
+	DefaultUseSystemMetadataCollection = false
+
 	DefaultMinConfigFetchInterval = time.Second
 
 	tapFeedType = "tap"
@@ -1644,6 +1649,7 @@ func (sc *ServerContext) StartupAuditFields() base.AuditFields {
 		base.AuditFieldSGVersion:                      base.LongVersionString,
 		base.AuditFieldUseTLSServer:                   sc.Config.Bootstrap.UseTLSServer,
 		base.AuditFieldServerTLSSkipVerify:            sc.Config.Bootstrap.ServerTLSSkipVerify,
+		base.AuditFieldUseSystemMetadataCollection:    sc.Config.Bootstrap.UseSystemMetadataCollection,
 		base.AuditFieldAdminInterfaceAuthentication:   sc.Config.API.AdminInterfaceAuthentication,
 		base.AuditFieldMetricsInterfaceAuthentication: sc.Config.API.MetricsInterfaceAuthentication,
 		base.AuditFieldLogFilePath:                    sc.Config.Logging.LogFilePath,

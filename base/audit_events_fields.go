@@ -46,6 +46,7 @@ const (
 	AuditFieldSGVersion                      = "sg_version"
 	AuditFieldUseTLSServer                   = "use_tls_server"
 	AuditFieldServerTLSSkipVerify            = "server_tls_skip_verify"
+	AuditFieldUseSystemMetadataCollection    = "use_system_metadata_collection"
 	AuditFieldAdminInterfaceAuthentication   = "admin_interface_authentication"
 	AuditFieldMetricsInterfaceAuthentication = "metrics_interface_authentication"
 	AuditFieldLogFilePath                    = "log_file_path"

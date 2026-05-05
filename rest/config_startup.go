@@ -31,10 +31,11 @@ const (
 func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	config := StartupConfig{
 		Bootstrap: BootstrapConfig{
-			ConfigGroupID:         PersistentConfigDefaultGroupID,
-			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
-			ServerTLSSkipVerify:   base.Ptr(false),
-			UseTLSServer:          base.Ptr(DefaultUseTLSServer),
+			ConfigGroupID:               PersistentConfigDefaultGroupID,
+			ConfigUpdateFrequency:       base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
+			ServerTLSSkipVerify:         base.Ptr(false),
+			UseTLSServer:                base.Ptr(DefaultUseTLSServer),
+			UseSystemMetadataCollection: base.Ptr(DefaultUseSystemMetadataCollection),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -110,6 +111,8 @@ type BootstrapConfig struct {
 	X509CertPath          string               `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath           string               `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
 	UseTLSServer          *bool                `json:"use_tls_server,omitempty"          help:"Enforces a secure or non-secure server scheme"`
+
+	UseSystemMetadataCollection *bool `json:"use_system_metadata_collection,omitempty" help:"If true, Sync Gateway uses the _system._mobile metadata collection and triggers a one-time migration of any metadata in the default collection."`
 }
 
 type APIConfig struct {
