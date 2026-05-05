@@ -189,6 +189,7 @@ var AuditEvents = events{
 			AuditFieldSGVersion:                      "version string",
 			AuditFieldUseTLSServer:                   true,
 			AuditFieldServerTLSSkipVerify:            true,
+			AuditFieldUseSystemMetadataCollection:    true,
 			AuditFieldAdminInterfaceAuthentication:   true,
 			AuditFieldMetricsInterfaceAuthentication: true,
 			AuditFieldLogFilePath:                    "/log/file/path",
