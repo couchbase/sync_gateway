@@ -144,6 +144,7 @@ func TestMetadataKeys(t *testing.T) {
 		backgroundProcessStatusPrefix    string // with backgroundID
 		resyncHeartbeatPrefix            string
 		resyncCfgPrefix                  string
+		databaseStateKey                 string
 	}{
 		{
 			metadataID:                       "",
@@ -168,6 +169,7 @@ func TestMetadataKeys(t *testing.T) {
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
 			resyncHeartbeatPrefix:            "_sync:resync_hb:",
 			resyncCfgPrefix:                  "_sync:resync_cfg:",
+			databaseStateKey:                 "_sync:state",
 		},
 		{
 			metadataID:                       "",
@@ -192,6 +194,7 @@ func TestMetadataKeys(t *testing.T) {
 			backgroundProcessStatusPrefix:    "_sync:background_process:status:backgroundID",
 			resyncHeartbeatPrefix:            "_sync:resync_hb:",
 			resyncCfgPrefix:                  "_sync:resync_cfg:",
+			databaseStateKey:                 "_sync:state",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -216,6 +219,7 @@ func TestMetadataKeys(t *testing.T) {
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
 			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
+			databaseStateKey:                 "_sync:m_aMetadataID:state",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -240,6 +244,7 @@ func TestMetadataKeys(t *testing.T) {
 			backgroundProcessStatusPrefix:    "_sync:m_aMetadataID:background_process:status:backgroundID",
 			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
+			databaseStateKey:                 "_sync:m_aMetadataID:state",
 		},
 	}
 
@@ -275,6 +280,7 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.backgroundProcessStatusPrefix, metadataKeys.BackgroundProcessStatusPrefix("backgroundID"))
 			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix())
 			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix())
+			require.Equal(t, test.databaseStateKey, metadataKeys.DatabaseStateKey())
 		})
 	}
 }

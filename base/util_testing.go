@@ -1084,3 +1084,32 @@ func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
 	}
 }
+
+// CaptureLogOutput captures log output during the execution of a function.
+// It creates a temporary logger with output redirected to a buffer, atomically swaps
+// the global logger for the duration of the function, and returns the captured output.
+// This approach is thread-safe and properly flushes buffered logs before returning.
+func CaptureLogOutput(t testing.TB, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+
+	config := &ConsoleLoggerConfig{
+		ColorEnabled: Ptr(false),
+		FileLoggerConfig: FileLoggerConfig{
+			Enabled: Ptr(true),
+		},
+	}
+	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
+	if err != nil {
+		return ""
+	}
+	tempLogger.logger.SetOutput(&buf)
+
+	oldLogger := consoleLogger.Swap(tempLogger)
+	defer consoleLogger.Store(oldLogger)
+
+	fn()
+
+	FlushLogBuffers()
+	return buf.String()
+}

@@ -1080,6 +1080,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if !startOnlineProcesses {
+		dbcontext.InitializeOfflineMode()
 		return dbcontext, nil
 	}
 

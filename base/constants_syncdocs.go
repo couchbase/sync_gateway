@@ -43,6 +43,7 @@ const (
 	MetaKeySessionPrefix                                       // "session:"
 	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
 	MetaKeyResyncCfgPrefix                                     // "resync_cfg:"
+	MetaKeyDatabaseState                                       // "state"
 )
 
 var metadataKeyNames = []string{
@@ -61,6 +62,7 @@ var metadataKeyNames = []string{
 	"session:",                      // stores a session
 	"resync_hb:",                    // document prefix used to store resync data
 	"resync_cfg:",                   // document prefix used to store resync cfg data
+	"state",                         // stores the database state
 }
 
 func (m metadataKey) String() string {
@@ -115,6 +117,7 @@ type MetadataKeys struct {
 	sessionPrefix             string
 	resyncHeartbeaterPrefix   string
 	resyncCfgPrefix           string
+	databaseState             string
 }
 
 // sha1HashLength is the number of characters in a sha1
@@ -139,6 +142,7 @@ var DefaultMetadataKeys = &MetadataKeys{
 	sessionPrefix:             formatDefaultMetadataKey(MetaKeySessionPrefix),
 	resyncHeartbeaterPrefix:   formatDefaultMetadataKey(MetaKeyResyncHeartBeaterPrefix),
 	resyncCfgPrefix:           formatDefaultMetadataKey(MetaKeyResyncCfgPrefix),
+	databaseState:             formatDefaultMetadataKey(MetaKeyDatabaseState),
 }
 
 // NewMetadataKeys returns MetadataKeys for the specified MetadataID  If metadataID is empty string, returns the default (legacy) metadata keys.
@@ -164,6 +168,7 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 			sessionPrefix:             formatInvertedMetadataKey(metadataID, MetaKeySessionPrefix),
 			resyncHeartbeaterPrefix:   formatMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
 			resyncCfgPrefix:           formatMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
+			databaseState:             formatMetadataKey(metadataID, MetaKeyDatabaseState),
 		}
 	}
 }
@@ -369,6 +374,14 @@ func (m *MetadataKeys) BackgroundProcessHeartbeatPrefix(processSuffix string) st
 //	format: _sync:background_process:status:[processSuffix]  (default)
 func (m *MetadataKeys) BackgroundProcessStatusPrefix(processSuffix string) string {
 	return m.backgroundStatusPrefix + processSuffix
+}
+
+// DatabaseStateKey returns the key used to store the database state document.
+//
+//	format: _sync:{m_$}:state (collections aware)
+//	format: _sync:state       (default)
+func (m *MetadataKeys) DatabaseStateKey() string {
+	return m.databaseState
 }
 
 // formatMetadataKey formats key into the form _sync:m_[metadataID]:[metaKey]
