@@ -119,6 +119,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+// purgeCheckpoints removes checkpoints for a given resyncID.
 func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, resyncID string) error {
 	if resyncID == "" {
 		return errors.New("resyncID is required to delete checkpoints")
@@ -135,7 +136,7 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, r
 	if err != nil {
 		return fmt.Errorf("error getting vb count for checkpoint deletion: %v", err)
 	}
-	return base.DeleteShardedDCPCheckpoints(ctx, db.MetadataStore, vbCount, checkpointPrefix)
+	return base.PurgeShardedDCPCheckpoints(ctx, db.MetadataStore, vbCount, checkpointPrefix)
 }
 
 // SetVBUUIDs updates vbuuids in the manager.
@@ -145,6 +146,7 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 	r.VBUUIDs = vbuuids
 }
 
+// getDCPCallback returns function to process DCP events for resync.
 func (r *ResyncManagerDCP) getDCPCallback(ctx context.Context, db *Database, regenerateSequences bool) sgbucket.FeedEventCallbackFunc {
 	return func(event sgbucket.FeedEvent) bool {
 		ctx := ctx // copy ctx so it doesn't get modified by multiple copies of this function running simultaneously
@@ -248,51 +250,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
-	callback := func(event sgbucket.FeedEvent) bool {
-		docID := string(event.Key)
-		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
-
-		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
-		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
-			return true
-		}
-		// Don't want to process raw binary docs
-		// The binary check should suffice but for additional safety also check for empty bodies. This will also avoid
-		// processing tombstones.
-		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
-			return true
-		}
-
-		// We only want to process full docs. Not any sync docs.
-		if strings.HasPrefix(docID, base.SyncDocPrefix) {
-			return true
-		}
-
-		r.DocsProcessed.Add(1)
-		db.DbStats.Database().ResyncNumProcessed.Add(1)
-		databaseCollection := db.CollectionByID[event.CollectionID]
-		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
-		ctx := databaseCollection.AddCollectionContext(ctx)
-		doc, err := bucketDocumentFromFeed(event)
-		if err != nil {
-			base.WarnfCtx(ctx, "Resync: Error getting document from DCP event for doc %q: %v", base.UD(docID), err)
-			return false
-		}
-		err = (&DatabaseCollectionWithUser{
-			DatabaseCollection: databaseCollection,
-		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
-
-		if err == nil {
-			r.DocsChanged.Add(1)
-			db.DbStats.Database().ResyncNumChanged.Add(1)
-			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
-		} else if err != base.ErrUpdateCancel {
-			base.WarnfCtx(ctx, "Resync: Error updating doc %q: %v", base.UD(docID), err)
-			return false
-		}
-		return true
-	}
-
 	if r.hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
@@ -321,7 +278,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, err := base.NewDCPDest(ctx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
+			resyncDest, err := base.NewDCPDest(ctx, r.getDCPCallback(ctx, db, regenerateSequences), db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}

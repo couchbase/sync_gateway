@@ -18,9 +18,6 @@ import (
 	"github.com/couchbaselabs/rosmar"
 )
 
-// DCPCheckpointPurgeFunc allows purging of DCP Checkpoints
-type DCPCheckpointPurgeFunc func() error
-
 // DCPClient is an interface for all DCP implementations.
 type DCPClient interface {
 	// Start will start the DCP feed. It returns a channel marking the end of the feed.
