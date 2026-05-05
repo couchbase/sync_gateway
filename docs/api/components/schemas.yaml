@@ -2298,6 +2298,10 @@ Startup-config:
           description: Allow empty server CA Cert Path without attempting to use system root pool
           type: boolean
           default: false
+        use_system_metadata_collection:
+          description: If true, Sync Gateway uses the `_system._mobile` metadata collection and triggers a one-time migration of any metadata in the default collection.
+          type: boolean
+          default: false
         use_tls_server:
           description: Enforces a secure or non-secure server scheme
           type: boolean
