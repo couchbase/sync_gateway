@@ -23,7 +23,7 @@ func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...an
 		_ = fmt.Sprintf(format, args...)
 	}
 	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
-	FatalfCtx(ctx, format, args...)
+	FatalfCtx(ctx, "TestBucketPool Fatal Error, exiting test harness: "+format, args...)
 }
 
 // Logf formats the given test bucket logging and logs to stderr.
