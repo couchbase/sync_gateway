@@ -79,7 +79,7 @@ func getCbgtDest(ctx context.Context, indexParams string, restart func()) (cbgt.
 // getNewPIndexImplType finds the correct cbgt.Dest based on the indexParams provided. Looks up the dest based on a key in params set by Sync Gateway.
 func getNewPIndexImplType(ctx context.Context) func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 	newPIndexImpl := func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 
 		dest, err := getCbgtDest(ctx, indexParams, restart)
 		if err != nil {
