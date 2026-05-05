@@ -1535,7 +1535,8 @@ func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
 			return
 		}
 		resurrectOnce.Do(func() {
-			_ = docDatastore.SetRaw(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+			err := docDatastore.SetRaw(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+			require.NoError(t, err)
 		})
 	})
 
@@ -1552,9 +1553,10 @@ func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
 	// UpdateCallback now acts only during the import write, not Put.
 	importTriggered = true
 
-	// Ensure GetDocSyncData will handling nil doc returned from on demand import event when ErrImportCancelled returned
+	// Ensure GetDocSyncData will handle a nil doc returned from an on-demand import event when ErrImportCancelled is returned.
 	_, err = collection.GetDocSyncData(ctx, docID)
 	require.Error(t, err, "expected an error when import is cancelled mid-flight, not a panic")
+	require.True(t, base.IsDocNotFoundError(err), "expected a document-not-found error after import is cancelled mid-flight, got: %v", err)
 }
 
 // getBucketDocument reads the current version of a document and turns it into a sgbucket.BucketDocument. This is
