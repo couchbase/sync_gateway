@@ -86,6 +86,27 @@ func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType D
 	listener.OnChangeCallback(event, docType)
 }
 
+// cachingFeedCollections returns the set of (scope, collection) pairs that the caching DCP
+// feed must subscribe to. When metadataStore is a *base.MetadataStore (active during the
+// metadata migration window), both its primary (_system._mobile) and fallback
+// (_default._default) datastores are included so that _sync:* mutations are observed
+// regardless of which collection currently holds the doc.
+func cachingFeedCollections(metadataStore base.DataStore, scopes map[string]Scope) base.CollectionNameSet {
+	collectionNames := base.NewCollectionNameSet()
+	if ms, ok := metadataStore.(*base.MetadataStore); ok {
+		collectionNames.Add(ms.Primary())
+		collectionNames.Add(ms.Fallback())
+	} else {
+		collectionNames.Add(metadataStore)
+	}
+	for scopeName, collections := range scopes {
+		for collectionName := range collections.Collections {
+			collectionNames.Add(sgbucket.DataStoreNameImpl{Scope: scopeName, Collection: collectionName})
+		}
+	}
+	return collectionNames
+}
+
 // Starts a changeListener on a given Bucket.
 func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, dbStats *expvar.Map, scopes map[string]Scope, metadataStore base.DataStore) error {
 
@@ -93,13 +114,7 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 
-	collectionNames := base.NewCollectionNameSet()
-	collectionNames.Add(metadataStore)
-	for scopeName, collections := range scopes {
-		for collectionName := range collections.Collections {
-			collectionNames.Add(sgbucket.DataStoreNameImpl{Scope: scopeName, Collection: collectionName})
-		}
-	}
+	collectionNames := cachingFeedCollections(metadataStore, scopes)
 	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
 
 	opts := base.DCPClientOptions{
