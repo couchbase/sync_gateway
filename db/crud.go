@@ -193,6 +193,12 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
+			// importDoc swallows ErrImportCancelled (e.g. SG purge race), returning
+			// (nil, nil). Treat that the same as not found.
+			if doc == nil {
+				base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.", base.UD(docid))
+				return emptySyncData, base.ErrNotFound
+			}
 		}
 
 		return doc.SyncData, nil
