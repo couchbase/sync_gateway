@@ -703,9 +703,19 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 	return nil
 }
 
-// RegisterNodeVersion registers or updates a node's version and heartbeat in the given bucket's registry.
-// Uses CAS retry on conflict. Returns the updated registry for min-version computation.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID string, version base.ClusterCompatVersion) (*GatewayRegistry, error) {
+// RegisterNodeVersion registers or updates a node's version and heartbeat in the given bucket's
+// registry, and prunes stale node entries. All mutations are bundled into a single CAS-checked
+// write per attempt.
+//
+// Self (nodeUID) is always retained: even if a stale prior entry for this node exists, it is
+// not pruned by the prune step — it is overwritten with a fresh heartbeat in the same write.
+// This guarantees the registry never ends up with an empty Nodes map after a successful call.
+//
+// heartbeatExpiry must be positive; the validator enforces this for user-supplied configs and
+// the runtime fallback ensures a sane default (see clusterCompatManager.heartbeatExpiry).
+//
+// Uses CAS retry on conflict. Returns the registry as written.
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID string, version base.ClusterCompatVersion, heartbeatExpiry time.Duration) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -714,6 +724,7 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		if registry.Nodes == nil {
 			registry.Nodes = make(map[string]*base.RegistryNode)
 		}
+		pruned := pruneStaleNodes(registry.Nodes, nodeUID, heartbeatExpiry)
 		registry.Nodes[nodeUID] = &base.RegistryNode{
 			Version:     version,
 			HeartbeatAt: time.Now().UTC(),
@@ -725,6 +736,9 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 				continue
 			}
 			return nil, fmt.Errorf("failed to write registry for node registration: %w", err)
+		}
+		if len(pruned) > 0 {
+			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(bucketName), base.MD(pruned))
 		}
 		return registry, nil
 	}
@@ -756,6 +770,24 @@ func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName
 		base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 	}
 	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
+// pruneStaleNodes deletes entries from nodes whose HeartbeatAt is older than expiry. The
+// selfUID entry is always retained — the caller is responsible for refreshing it. Returns
+// the UIDs of pruned entries (in non-deterministic order).
+func pruneStaleNodes(nodes map[string]*base.RegistryNode, selfUID string, expiry time.Duration) []string {
+	cutoff := time.Now().UTC().Add(-expiry)
+	var pruned []string
+	for uid, node := range nodes {
+		if uid == selfUID {
+			continue
+		}
+		if node.HeartbeatAt.Before(cutoff) {
+			delete(nodes, uid)
+			pruned = append(pruned, uid)
+		}
+	}
+	return pruned
 }
 
 // getRegistryAndDatabase retrieves both the gateway registry and database config for the specified dbName and groupID.

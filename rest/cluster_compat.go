@@ -17,6 +17,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// defaultNodeHeartbeatExpiry is the fallback expiry used when node_heartbeat_expiry is unset.
+// Sized to tolerate several missed refreshes (at the default config_update_frequency of 10s) before pruning a peer.
+const defaultNodeHeartbeatExpiry = 60 * time.Second
+
 // clusterCompatManager tracks the minimum Sync Gateway version across all nodes in the cluster.
 // It is used to gate metadata writes so that new formats are only used once all nodes have been
 // upgraded.
@@ -26,9 +30,9 @@ import (
 // so buckets this SG node is not serving are never touched. Heartbeats and version
 // recomputation are driven by the config polling goroutine.
 //
-// TODO: CBG-5219 - A node that crashes or is killed before Stop() runs will leave a stale
-// entry in the registry, pinning the min version to its last reported value.
-// Pruning of stale heartbeats is deferred to follow-up ticket.
+// Stale node entries (HeartbeatAt older than the configured heartbeat expiry — see
+// heartbeatExpiry()) are pruned by RegisterNodeVersion as part of the same CAS-checked
+// registry write that refreshes self's heartbeat.
 type clusterCompatManager struct {
 	sc *ServerContext
 	// trackedBuckets is intent: the buckets this node has declared ownership of via
@@ -60,14 +64,24 @@ func (m *clusterCompatManager) getCachedVersion() *base.ClusterCompatVersion {
 // refreshInterval is the rate-limit window for periodic Refresh calls. The heartbeat write
 // to each bucket's registry doc only needs to happen well within the (eventual) heartbeat
 // expiry — rewriting on every poll tick just churns CAS for no benefit and worsens contention
-// with other nodes' simultaneous refreshes. Falls back to the default if ConfigUpdateFrequency
-// is unset or sub-second (some test setups effectively disable polling).
+// with other nodes' simultaneous refreshes. Returns the configured ConfigUpdateFrequency
+// verbatim. The validator rejects non-positive values for end users; a zero value can still
+// reach this code path via test-only post-Validate overrides that disable polling, in which
+// case we fall back to the default so heartbeat math remains coherent.
 func (m *clusterCompatManager) refreshInterval() time.Duration {
-	freq := m.sc.Config.Bootstrap.ConfigUpdateFrequency.Value()
-	if freq <= time.Second {
-		freq = persistentConfigDefaultUpdateFrequency
+	if v := m.sc.Config.Bootstrap.ConfigUpdateFrequency.Value(); v > 0 {
+		return v
 	}
-	return freq
+	return persistentConfigDefaultUpdateFrequency
+}
+
+// heartbeatExpiry returns the configured node heartbeat expiry, or defaultNodeHeartbeatExpiry if unset.
+// The minimum value is enforced at config validation time (StartupConfig.Validate) so trust the config value here.
+func (m *clusterCompatManager) heartbeatExpiry() time.Duration {
+	if cfg := m.sc.Config.Bootstrap.NodeHeartbeatExpiry; cfg != nil {
+		return cfg.Value()
+	}
+	return defaultNodeHeartbeatExpiry
 }
 
 // Start initializes the manager. It does not write to any bucket — node registration is
@@ -114,7 +128,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	m.trackedBuckets[bucket] = struct{}{}
 	m.mu.Unlock()
 
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, base.NodeClusterCompatVersion)
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, base.NodeClusterCompatVersion, m.heartbeatExpiry())
 	if err != nil {
 		// Bucket stays tracked — the next Refresh will retry the registry write.
 		base.WarnfCtx(ctx, "Failed to register node version for bucket %s: %v", base.MD(bucket), err)
@@ -221,12 +235,13 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 	}
 
 	nodeVersion := base.NodeClusterCompatVersion
+	expiry := m.heartbeatExpiry()
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
 	succeeded := 0
 	for _, bucket := range buckets {
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, nodeVersion)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, nodeVersion, expiry)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue

@@ -246,10 +246,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	username, password, _ := testBucket.BucketSpec.Auth.GetCredentials()
 
-	// Disable config polling to avoid test flakiness and increase control of timing.
-	// Rely on on-demand config fetching for consistency.
-	sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
-
 	sc.Bootstrap.Server = testBucket.BucketSpec.Server
 	sc.Bootstrap.Username = username
 	sc.Bootstrap.Password = password
@@ -293,17 +289,24 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
-	if rt.MutateStartupConfig != nil {
-		rt.MutateStartupConfig(&sc)
-	}
-
-	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
-
 	// Allow EE-only config even in CE for testing using group IDs.
 	require.NoError(rt.TB(), sc.Validate(base.TestCtx(rt.TB()), true))
 
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
+
+	// Disable config polling to avoid test flakiness and increase control of timing — rely
+	// on on-demand config fetching for consistency. Applied post-Validate because 0 is not
+	// a valid user-facing value (see StartupConfig.Validate).
+	sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+
+	// MutateStartupConfig runs post-Validate so tests can override RT-set defaults (including
+	// disabling polling, EE-only knobs, etc.) without needing to satisfy user-facing validation.
+	if rt.MutateStartupConfig != nil {
+		rt.MutateStartupConfig(&sc)
+	}
+
+	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 

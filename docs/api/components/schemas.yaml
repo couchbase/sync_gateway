@@ -2252,6 +2252,13 @@ Startup-config:
             This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
           type: string
           default: 10s
+        node_heartbeat_expiry:
+          description: |-
+            How long since a node's last heartbeat before its cluster compat registry entry is pruned. Minimum is 2x the configured `config_update_frequency`.
+
+            This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
+          type: string
+          default: 60s
         group_id:
           description: The config group ID to use when discovering databases. Allows for non-homogenous configuration.
           type: string

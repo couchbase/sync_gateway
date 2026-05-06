@@ -33,6 +33,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 	return map[string]configFlag{
 		"bootstrap.group_id":                       {config: &config.Bootstrap.ConfigGroupID, flagValue: fs.String("bootstrap.group_id", "", "The config group ID to use when discovering databases. Allows for non-homogenous configuration")},
 		"bootstrap.config_update_frequency":        {config: &config.Bootstrap.ConfigUpdateFrequency, flagValue: fs.String("bootstrap.config_update_frequency", persistentConfigDefaultUpdateFrequency.String(), "How often to poll Couchbase Server for new config changes")},
+		"bootstrap.node_heartbeat_expiry":          {config: &config.Bootstrap.NodeHeartbeatExpiry, flagValue: fs.String("bootstrap.node_heartbeat_expiry", "", "How long since a node's last heartbeat before its cluster compat registry entry is pruned. Minimum 2x config_update_frequency. Default: 60s")},
 		"bootstrap.server":                         {config: &config.Bootstrap.Server, flagValue: fs.String("bootstrap.server", "", "Couchbase Server connection string/URL")},
 		"bootstrap.username":                       {config: &config.Bootstrap.Username, flagValue: fs.String("bootstrap.username", "", "Username for authenticating to server")},
 		"bootstrap.password":                       {config: nil, disabled: true, disabledErrorMessage: "Use config file to specify bootstrap password, or use X.509 cert/key path flags instead.", flagValue: fs.String("bootstrap.password", "", "Deprecated and disabled. Do not use. Use config file or X.509 auth.")},

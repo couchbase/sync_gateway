@@ -1188,8 +1188,11 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	// Set up test for persistent config
 	config := BootstrapStartupConfigForTest(t)
 	config.Unsupported.UseXattrConfig = base.Ptr(true)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
+	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times.
+	// Clear NodeHeartbeatExpiry so validation does not enforce the 2x ConfigUpdateFrequency floor — this test
+	// does not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
+	config.Bootstrap.NodeHeartbeatExpiry = nil
 	ctx := base.TestCtx(t)
 	sc, closeFn := StartServerWithConfig(t, &config)
 	defer closeFn()
@@ -1474,8 +1477,11 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 // startBootstrapServerWithoutConfigPolling starts a server with config polling disabled, and returns the server context.
 func startBootstrapServerWithoutConfigPolling(t *testing.T, useXattrConfig bool) (*ServerContext, func()) {
 	config := BootstrapStartupConfigForTest(t)
-	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times
+	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times.
+	// Clear NodeHeartbeatExpiry so validation does not enforce the 2x ConfigUpdateFrequency floor — these
+	// tests do not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
+	config.Bootstrap.NodeHeartbeatExpiry = nil
 	config.Unsupported.UseXattrConfig = base.Ptr(useXattrConfig)
 	return StartServerWithConfig(t, &config)
 }
