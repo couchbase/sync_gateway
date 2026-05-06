@@ -17,7 +17,7 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1489,7 +1489,7 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 
 }
 
-// TestGetDocSyncDataPanicOnImportCancelled reproduces a race condition where importDoc
+// TestGetDocSyncDataOnImportCancelled reproduces a race condition where importDoc
 // returns (nil, nil) via ErrImportCancelled when fetching sync data through GetDocSyncData
 //
 // Race setup:
@@ -1503,7 +1503,7 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 //     the body. Execution falls through to isDelete && doc.GetRevTreeID() == "", which fires and returns ErrImportCancelled.
 //  5. importDoc's switch has no return statement in the ErrImportCancelled case, so it
 //     falls through to return docOut, nil with docOut==nil.
-func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
+func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
 
@@ -1518,10 +1518,10 @@ func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
 	leakyDataStore, ok := base.AsLeakyDataStore(docDatastore)
 	require.True(t, ok)
 
-	// resurrectOnce ensures the SetRaw resurrection only fires on the first
+	// resurrectOnce ensures the Set resurrection only fires on the first
 	// WriteUpdateWithXattrs attempt for the import, not on the CAS-mismatch retry,
 	// preventing an infinite CAS loop.
-	var resurrectOnce sync.Once
+	var resurrectOnce atomic.Bool
 	// importTriggered gates the callback so the SetRaw resurrection only fires
 	// during the import's WriteUpdateWithXattrs call, not during the initial Put.
 	var importTriggered bool
@@ -1534,10 +1534,11 @@ func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
 		if key != docID || !importTriggered {
 			return
 		}
-		resurrectOnce.Do(func() {
-			err := docDatastore.SetRaw(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+		if !resurrectOnce.Load() {
+			err := docDatastore.Set(key, 0, nil, []byte(`{"foo":"resurrected"}`))
 			require.NoError(t, err)
-		})
+			resurrectOnce.Store(true)
+		}
 	})
 
 	// Create doc via SG to establish a _sync xattr with a RevTreeID and a recorded CAS.
@@ -1556,7 +1557,8 @@ func TestGetDocSyncDataPanicOnImportCancelled(t *testing.T) {
 	// Ensure GetDocSyncData will handle a nil doc returned from an on-demand import event when ErrImportCancelled is returned.
 	_, err = collection.GetDocSyncData(ctx, docID)
 	require.Error(t, err, "expected an error when import is cancelled mid-flight, not a panic")
-	require.True(t, base.IsDocNotFoundError(err), "expected a document-not-found error after import is cancelled mid-flight, got: %v", err)
+	base.RequireDocNotFoundError(t, err)
+	require.True(t, resurrectOnce.Load())
 }
 
 // getBucketDocument reads the current version of a document and turns it into a sgbucket.BucketDocument. This is
