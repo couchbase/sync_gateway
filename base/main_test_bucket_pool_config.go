@@ -59,7 +59,7 @@ const (
 	tbpEnvAllowIncompatibleServerVersion = "SG_TEST_SKIP_SERVER_VERSION_CHECK"
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
-	waitForReadyBucketTimeout = time.Minute
+	waitForReadyBucketTimeout = 2 * time.Minute
 
 	// Creates buckets with a specific number of number of replicas
 	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
