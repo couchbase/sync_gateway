@@ -981,4 +981,3 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 func (b *bootstrapContext) standardMetadataID(dbName string) string {
 	return base.SerializeIfLonger(dbName, 40)
 }
-

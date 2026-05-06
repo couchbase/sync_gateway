@@ -167,4 +167,3 @@ func TestLongMetadataID(t *testing.T) {
 	assert.NotEqual(t, rehashMetadataID, longMetadataID)
 
 }
-
