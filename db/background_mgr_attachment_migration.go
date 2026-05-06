@@ -321,6 +321,10 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
+func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *Database, checkpointPrefix string, feedPrefix string) error {
+	return base.PurgeDCPCheckpoints(ctx, db.MetadataStore, checkpointPrefix, feedPrefix, db.dcpFeedMode())
+}
+
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
 func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
@@ -329,7 +333,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		err := base.PurgeDCPCheckpoints(ctx, database.MetadataStore, metadataKeyPrefix, a.MigrationID, database.dcpFeedMode())
 		if err != nil {
 			return err
 		}
@@ -340,7 +344,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		err := base.PurgeDCPCheckpoints(ctx, database.MetadataStore, metadataKeyPrefix, a.MigrationID, database.dcpFeedMode())
 		if err != nil {
 			return err
 		}

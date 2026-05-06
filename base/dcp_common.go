@@ -13,6 +13,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"errors"
 	"expvar"
 	"fmt"
 	"sync"
@@ -20,6 +21,14 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
+)
+
+type DCPFeedMode string
+
+const (
+	DCPFeedGocb    DCPFeedMode = "gocb"
+	DCPFeedRosmar  DCPFeedMode = "rosmar"
+	DCPFeedSharded DCPFeedMode = "cbgt"
 )
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
@@ -281,4 +290,55 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 		return "", fmt.Errorf("Generated DCP feed name is too long: %d characters.  Max length is 200 characters.  Generated name: %s", len(feedName), feedName)
 	}
 	return feedName, nil
+}
+
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedPrefix string, feedMode DCPFeedMode) error {
+
+	switch feedMode {
+	case DCPFeedRosmar:
+		checkpoint := checkpointPrefix + ":" + feedPrefix
+		err := datastore.Delete(checkpoint)
+		if err != nil && !IsDocNotFoundError(err) {
+			return err
+		}
+		return nil
+	case DCPFeedGocb:
+		collection, err := AsCollection(datastore)
+		if err != nil {
+			return RedactErrorf("dataStore %q is not a gocb collection: type %t", MD(datastore.GetName()), datastore)
+		}
+		numVbuckets, err := collection.GetMaxVbno()
+		if err != nil {
+			return err
+		}
+
+		metadata := NewDCPMetadataCS(ctx, datastore, numVbuckets, DefaultNumWorkers, checkpointPrefix)
+		metadata.Purge(ctx, DefaultNumWorkers)
+		return nil
+	case DCPFeedSharded:
+		collection, err := AsCollection(datastore)
+		if err != nil {
+			return RedactErrorf("dataStore %q is not a gocb collection: type %t", MD(datastore.GetName()), datastore)
+		}
+		numVbuckets, err := collection.GetMaxVbno()
+		if err != nil {
+			return err
+		}
+		var errs []error
+		for vbNo := range numVbuckets {
+			checkpointID := fmt.Sprintf("%s_%d", checkpointPrefix, vbNo)
+			err := datastore.Delete(checkpointID)
+			if err != nil && !IsDocNotFoundError(err) {
+				errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
+			}
+		}
+		if errs != nil {
+			return errors.Join(errs...)
+		}
+		return nil
+	default:
+		return fmt.Errorf("Unrecognized dcp feed mode: %s", feedMode)
+	}
+	return nil
 }

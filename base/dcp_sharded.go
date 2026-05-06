@@ -921,19 +921,3 @@ func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error)
 		dcpFeed.NotifyMgrOnClose()
 	}
 }
-
-// PurgeShardedDCPCheckpoints removes the checkpoints created by a cbgt based DCP feed.
-func PurgeShardedDCPCheckpoints(ctx context.Context, datastore DataStore, vbCount uint16, checkpointPrefix string) error {
-	var errs []error
-	for vbNo := range vbCount {
-		checkpointID := fmt.Sprintf("%s_%d", checkpointPrefix, vbNo)
-		err := datastore.Delete(checkpointID)
-		if err != nil && !IsDocNotFoundError(err) {
-			errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
-		}
-	}
-	if errs != nil {
-		return errors.Join(errs...)
-	}
-	return nil
-}
