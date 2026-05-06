@@ -69,12 +69,14 @@ func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, 
 	return sc.getShard(docID).GetActive(ctx, docID, collectionID)
 }
 
-func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
 	sc.getShard(docRev.DocID).Put(ctx, docRev, collectionID)
+	return nil
 }
 
-func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
 	sc.getShard(docRev.DocID).Upsert(ctx, docRev, collectionID)
+	return nil
 }
 
 func (sc *ShardedLRURevisionCache) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {
@@ -261,10 +263,9 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 }
 
 // Put adds a revision to the cache. NOTE: this function only adds an entry keyed by CV
-func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
-	if docRev.History == nil {
-		// TODO: CBG-1948
-		panic("Missing history for RevisionCache.Put")
+func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
+	if !docRev.IsValid() {
+		return base.RedactErrorf("document revision validation failed for doc %s", base.UD(docRev.DocID))
 	}
 
 	value := rc.getValue(ctx, docRev.DocID, docRev.CV.String(), collectionID, true)
@@ -279,10 +280,15 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 		rc.memoryController.incrementBytesCount(docRev.MemoryBytes)
 	}
 	value.store(docRev)
+	return nil
 }
 
 // Upsert a revision in the cache. This function only upserts for CV key
-func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
+	if !docRev.IsValid() {
+		return base.RedactErrorf("document revision validation failed for doc %s", base.UD(docRev.DocID))
+	}
+
 	cvKey := CreateRevisionCacheKey(docRev.DocID, docRev.CV.String(), collectionID)
 
 	numItemsRemoved, cvValue := rc.upsertDocToCache(ctx, cvKey, docRev, collectionID)
@@ -298,6 +304,7 @@ func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision,
 		rc.memoryController.incrementBytesCount(docRev.MemoryBytes)
 	}
 	cvValue.store(docRev)
+	return nil
 }
 
 func (rc *LRURevisionCache) upsertDocToCache(ctx context.Context, cvKey revCacheKey, docRev DocumentRevision, collectionID uint32) (int64, *revCacheValue) {
@@ -503,6 +510,22 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	}
 
 	return docRev, cacheHit, err
+}
+
+// IsValid returns true if the revision is structurally complete.
+// A valid revision must have:
+//   - A non-empty DocID and BodyBytes
+//   - A non-nil CV, non-empty revID
+//   - At least one entry in the History
+func (rev *DocumentRevision) IsValid() bool {
+	if rev == nil {
+		return false
+	}
+
+	hasData := len(rev.BodyBytes) > 0 && rev.DocID != ""
+	hasMetadata := rev.CV != nil && len(rev.History) > 0 && rev.RevID != ""
+
+	return hasData && hasMetadata
 }
 
 // asDocumentRevision copies the rev cache value into a DocumentRevision.  Should only be called for non-empty

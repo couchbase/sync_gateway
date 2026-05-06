@@ -2926,13 +2926,17 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// only insert to revision cache on write if configured to do so
 		if db.dbCtx.Options.RevisionCacheOptions != nil && db.dbCtx.Options.RevisionCacheOptions.InsertOnWrite {
 			if updateRevCache {
+				var insertErr error
 				if createNewRevIDSkipped {
 					// remove revisionID entry if it exists
 					db.revisionCache.Remove(ctx, documentRevision.DocID, documentRevision.RevID)
 					// upsert entry to the cache, this will upsert using CV as key
-					db.revisionCache.Upsert(ctx, documentRevision)
+					insertErr = db.revisionCache.Upsert(ctx, documentRevision)
 				} else {
-					db.revisionCache.Put(ctx, documentRevision)
+					insertErr = db.revisionCache.Put(ctx, documentRevision)
+				}
+				if insertErr != nil {
+					base.DebugfCtx(ctx, base.KeyCRUD, "error adding document %q to revision cache: %v", base.UD(documentRevision.DocID), insertErr)
 				}
 			}
 		}
