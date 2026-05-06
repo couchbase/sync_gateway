@@ -69,6 +69,9 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 	if err != nil {
 		return err
 	}
+	// Audit the unfreeze attempt unconditionally — admins need a record of the action whether
+	// or not it fully applied. The response body distinguishes success from partial failure.
+	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, nil)
 	if _, err := mgr.Unfreeze(h.ctx()); err != nil {
 		if errors.Is(err, ErrUnfreezePartial) {
 			h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
@@ -76,7 +79,6 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, "failed to clear cluster compatibility version freeze: %v", err)
 	}
-	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, nil)
 	state := buildClusterCompatVersionState(mgr)
 	h.writeJSON(state)
 	return nil
