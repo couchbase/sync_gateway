@@ -573,7 +573,7 @@ func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	// With MaxBytes=itemBytes the first item to land fits exactly (itemBytes NOT >
 	// itemBytes, so IsOverCapacity is false). When the second arrives the total
 	// becomes 2*itemBytes > itemBytes, triggerMemoryEviction fires and evicts one item.
-	const itemBytes = int64(32)
+	const itemBytes = int64(34)
 	opts := &RevisionCacheOptions{MaxItemCount: 100, MaxBytes: itemBytes}
 	orchestrator := NewRevisionCacheOrchestrator(
 		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID), revStats, deltaStats, true,
@@ -582,11 +582,11 @@ func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	cv := Version{SourceID: "src", Value: 1}
 	toCV := Version{SourceID: "src", Value: 2}
 
-	// One digest in History → 32 bytes (32 × 1); no channels; empty body → total = 32.
+	// One digest in History → 32 bytes (32 × 1); no channels; body {} (2 bytes) → total = 34.
 	docRev := DocumentRevision{
 		DocID:     "doc1",
 		RevID:     "1-x",
-		BodyBytes: []byte{},
+		BodyBytes: []byte(`{}`),
 		Channels:  nil,
 		History:   Revisions{RevisionsIds: []string{"x"}, RevisionsStart: 1},
 		CV:        &cv,
@@ -607,7 +607,7 @@ func TestConcurrentPutAndUpdateDeltaMemoryEvictsFirstEntry(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-ready
-		orchestrator.Put(ctx, docRev, testCollectionID)
+		require.NoError(t, orchestrator.Put(ctx, docRev, testCollectionID))
 	}()
 
 	go func() {
