@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -439,6 +440,15 @@ func TestClusterCompatDowngradeBlockedByPersistentHWM(t *testing.T) {
 	resp := rt.CreateDatabase("db1", cfg)
 	RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), "newer Sync Gateway cluster compat version")
+
+	// _all_dbs?verbose=true must surface the rejected db with the cluster-compat error code,
+	// so an admin can tell why a config from the bucket failed to load instead of it
+	// silently disappearing from the listing.
+	summaries := rt.ServerContext().allDatabaseSummaries()
+	require.Len(t, summaries, 1)
+	require.NotNil(t, summaries[0].DatabaseError)
+	assert.Equal(t, "db1", summaries[0].DBName)
+	assert.Equal(t, db.DatabaseClusterCompatVersionError, summaries[0].DatabaseError.Code)
 }
 
 // TestClusterCompatDowngradeHWMRatchets verifies that the cluster compat downgrade gate in
