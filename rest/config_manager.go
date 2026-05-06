@@ -707,8 +707,10 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 //
 // The cluster compat downgrade gate is enforced here: if registry.ClusterCompatVersionHWM has
 // a higher major.minor than version, registration is refused with an error and no write
-// occurs. This is the single point of enforcement — the bucket registry is only ever mutated
-// through this function, so the gate cannot be bypassed by callers. registry.SGVersion is
+// occurs. This is the single point of enforcement for cluster compat — every writer that
+// updates Nodes / ClusterCompatVersionHWM goes through this function, so the gate cannot be
+// bypassed by callers updating those fields. Other registry fields (e.g. ConfigGroups) are
+// written by separate code paths and are unaffected by this gate. registry.SGVersion is
 // intentionally not consulted; it is diagnostic-only.
 //
 // Self (nodeUID) is always retained: even if a stale prior entry for this node exists, it is

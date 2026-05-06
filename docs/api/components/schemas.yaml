@@ -3129,6 +3129,7 @@ CollectionNames:
         - 8
         - 9
         - 10
+        - 11
       x-enumDescriptions:
         1: "Error connecting to bucket"
         2: "Collection(s) not available"
@@ -3140,6 +3141,7 @@ CollectionNames:
         8: "Error attempting to start online process"
         9: "Allow conflicts is set to true"
         10: "Enable star channel is set to false"
+        11: "Bucket has metadata from a newer Sync Gateway cluster compat version"
       example: 1
 all_user_channels:
   description: |-
@@ -3381,7 +3383,18 @@ GatewayRegistry:
         $ref: '#/RegistryConfigGroup'
     sg_version:
       type: string
-      description: Latest patch version of Sync Gateway that touched the registry.
+      description: |-
+        Latest full Sync Gateway build version that wrote to the registry. Diagnostic-only —
+        cluster compatibility / downgrade decisions key off `cluster_compat_version_hwm`.
+    cluster_compat_version_hwm:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: |-
+        High-water mark of the cluster compatibility version observed on this bucket. Ratchets
+        up only — once raised, it never decreases. A Sync Gateway node refuses to serve a
+        database on this bucket when this value is greater than its own compat version, blocking
+        downgrades from a higher major.minor that may have written forward-incompatible metadata.
+        Omitted on registries written by older Sync Gateway versions.
     updated_at:
       type: string
       format: date-time
