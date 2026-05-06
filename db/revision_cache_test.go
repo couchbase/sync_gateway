@@ -2882,8 +2882,8 @@ func TestMemoryBasedEvictionRevisionCacheOnly(t *testing.T) {
 }
 
 // makeTestRevision creates a minimal DocumentRevision for memory-accounting tests.
-// MemoryBytes = len(body) because History is an empty (but non-nil) Revisions map
-// and there are no channels, so CalculateBytes contributes 0 history/channel overhead.
+// MemoryBytes = len(body) because History is minimal Revisions map
+// and there are no channels, so CalculateBytes contributes 32 history/channel overhead.
 func makeTestRevision(docID string, cv Version, body string) DocumentRevision {
 	ids := []string{"1-abc"}
 	return DocumentRevision{
@@ -2973,19 +2973,19 @@ func TestUpsertReplacesItemMemoryBytes(t *testing.T) {
 
 	docCV := Version{Value: 1, SourceID: "test"}
 
-	// First Upsert: small body — MemoryBytes = len(`{"v":1}`) = 7.
+	// First Upsert: small body — MemoryBytes = len(`{"v":1}`) = 7 + 32 (history) = 39 bytes total.
 	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":1}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 	assert.Equal(t, int64(39), revStats.cacheMemoryStat.Value(), "first upsert should count 7 bytes")
 
-	// Second Upsert: same doc/CV, larger body — MemoryBytes = 22.
-	// Old bytes (7) must be decremented and new bytes (22) incremented; stat = 22, not 29.
+	// Second Upsert: same doc/CV, larger body + history — MemoryBytes = 54.
+	// Old bytes (39) must be decremented and new bytes (54) incremented; stat = 54, not 39.
 	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":2,"extra":"data"}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value(), "upsert replaces in-place — still 1 item")
 	assert.Equal(t, int64(54), revStats.cacheMemoryStat.Value(),
 		"stat must equal new body size only — no double-counting of old bytes")
 
-	// Third Upsert: smaller body — MemoryBytes = 7.  Stat must shrink, not accumulate.
+	// Third Upsert: smaller body — MemoryBytes = 7 + 32 (bytes for history) = 39.  Stat must shrink, not accumulate.
 	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":3}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 	assert.Equal(t, int64(39), revStats.cacheMemoryStat.Value(), "stat must shrink when the replacement body is smaller")
@@ -3073,7 +3073,7 @@ func TestMemoryStatTracksUsageWithUnlimitedCapacity(t *testing.T) {
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 
 	require.NoError(t, orchestrator.Put(ctx, makeTestRevision("doc2", cv2, `{"v":2,"x":"y"}`), testCollectionID))
-	assert.Equal(t, int64(86), revStats.cacheMemoryStat.Value(), "stat should be the sum of both revision bodies")
+	assert.Equal(t, int64(86), revStats.cacheMemoryStat.Value(), "stat should be the sum of both revision bodies and history overhead")
 	assert.Equal(t, int64(2), revStats.cacheNumItemsStat.Value())
 
 	// Remove rev1 — stat must decrease by exactly rev1's bytes.
@@ -3514,13 +3514,13 @@ func TestRevisionCacheInvalidRevisionError(t *testing.T) {
 	invalidRev := DocumentRevision{}
 
 	t.Run("PutInvalidRevision", func(t *testing.T) {
-		err := orchestrator.Put(ctx, invalidRev, 1)
+		err := orchestrator.Put(ctx, invalidRev, testCollectionID)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "document revision validation failed")
 	})
 
 	t.Run("UpsertInvalidRevision", func(t *testing.T) {
-		err := orchestrator.Upsert(ctx, invalidRev, 1)
+		err := orchestrator.Upsert(ctx, invalidRev, testCollectionID)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "document revision validation failed")
 	})
