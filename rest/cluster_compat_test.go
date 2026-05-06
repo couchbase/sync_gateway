@@ -1206,7 +1206,158 @@ func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
 	assert.Empty(t, missing)
 }
 
+// TestClusterCompatFreezeAndUnfreeze exercises the manager's Freeze/Unfreeze methods:
+// Freeze captures the current cluster compat version into the registry; Unfreeze clears it.
+func TestClusterCompatFreezeAndUnfreeze(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+	require.NotNil(t, ccm.ClusterCompatVersion())
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, freeze)
+	assert.Equal(t, base.NodeClusterCompatVersion, freeze.Version)
+	assert.False(t, freeze.FrozenAt.IsZero())
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	require.NotNil(t, registry.Frozen, "freeze should be persisted to bucket registry")
+	assert.Equal(t, freeze.Version, registry.Frozen.Version)
+
+	residual, err := ccm.Unfreeze(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, residual)
+
+	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Nil(t, registry.Frozen, "freeze should be cleared from bucket registry")
+	assert.Nil(t, ccm.getCachedFreeze())
+}
+
+// TestClusterCompatFreezeIdempotent verifies that calling Freeze a second time returns the
+// existing freeze record rather than refreshing FrozenAt.
+func TestClusterCompatFreezeIdempotent(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	first, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	second, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, first.Version, second.Version)
+	assert.True(t, second.FrozenAt.Equal(first.FrozenAt), "FrozenAt should not change on a no-op re-freeze")
+}
+
+// TestClusterCompatFreezePinsAcrossNodeAdvances seeds peer nodes with a higher version into the
+// registry and verifies that, while frozen, the reported cluster compat version stays at the
+// captured value rather than advancing to the live-node minimum.
+func TestClusterCompatFreezePinsAcrossNodeAdvances(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, freeze)
+	frozenVersion := freeze.Version
+
+	// Seed a peer at a higher version directly into the registry. The freeze pins reporting
+	// at frozenVersion regardless of whether peer registrations would have advanced the
+	// live-node minimum.
+	higher := base.NewClusterCompatVersion(frozenVersion.Major+1, 0)
+	seedRegistryNode(t, rt, bucketName, "synthetic-peer", higher)
+
+	ccm.lastRefreshAt = time.Time{}
+	ccm.Refresh(ctx)
+
+	got := ccm.ClusterCompatVersion()
+	require.NotNil(t, got)
+	assert.Equal(t, frozenVersion, *got, "while frozen, reported version should stay at the frozen value")
+}
+
+// TestClusterCompatFreezeRESTRoundTrip exercises the admin REST endpoints end-to-end.
+func TestClusterCompatFreezeRESTRoundTrip(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	// GET before freeze: cluster_compat_version + nodes, no frozen_cluster_compat_version.
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_compat_version", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var initial ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &initial))
+	require.NotNil(t, initial.ClusterCompatVersion)
+	assert.Equal(t, base.NodeClusterCompatVersion, *initial.ClusterCompatVersion)
+	assert.NotEmpty(t, initial.Nodes)
+	assert.Nil(t, initial.FrozenClusterCompatVersion)
+
+	// POST /freeze: returns 200 with frozen_cluster_compat_version populated.
+	resp = rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var frozen ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &frozen))
+	require.NotNil(t, frozen.FrozenClusterCompatVersion)
+	assert.Equal(t, base.NodeClusterCompatVersion, *frozen.FrozenClusterCompatVersion)
+
+	// GET after freeze: same shape.
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_compat_version", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var afterFreeze ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &afterFreeze))
+	require.NotNil(t, afterFreeze.FrozenClusterCompatVersion)
+
+	// POST /unfreeze: 200 with frozen_cluster_compat_version omitted.
+	resp = rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/unfreeze", "")
+	RequireStatus(t, resp, http.StatusOK)
+	var unfrozen ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &unfrozen))
+	assert.Nil(t, unfrozen.FrozenClusterCompatVersion)
+}
+
+// TestClusterCompatFreezeBeforeVersion verifies the manager refuses to freeze when no
+// cluster compat version has been observed yet (e.g. before RegisterBucket has run).
+func TestClusterCompatFreezeBeforeVersion(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	// Construct a fresh manager that has never refreshed — its cachedVersion is nil.
+	freshManager := &clusterCompatManager{sc: rt.ServerContext()}
+	freshManager.Start(base.TestCtx(t))
+
+	_, err := freshManager.Freeze(base.TestCtx(t))
+	assert.ErrorIs(t, err, ErrFreezeNoVersion)
+}
+
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
+// ConfigUpdateFrequency verbatim — no silent floor. The validator is responsible for rejecting
+// pathological combinations (see TestStartupConfigNodeHeartbeatExpiryValidation), so the
+// runtime must not disagree with what the validator approved.
 func TestClusterCompatRefreshIntervalUnclamped(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()

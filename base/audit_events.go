@@ -55,8 +55,11 @@ const (
 	AuditIDSyncGatewayProfiling         AuditID = 53304
 
 	// SG cluster events
-	AuditIDClusterInfoRead AuditID = 53350
-	AuditIDPostUpgrade     AuditID = 54043
+	AuditIDClusterInfoRead              AuditID = 53350
+	AuditIDClusterCompatVersionRead     AuditID = 53351
+	AuditIDClusterCompatVersionFreeze   AuditID = 53352
+	AuditIDClusterCompatVersionUnfreeze AuditID = 53353
+	AuditIDPostUpgrade                  AuditID = 54043
 
 	// Database events
 	AuditIDCreateDatabase  AuditID = 54000
@@ -459,6 +462,30 @@ var AuditEvents = events{
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
 		Description:        "Sync Gateway cluster info was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionRead: {
+		Name:               "Sync Gateway cluster compatibility version read",
+		Description:        "Sync Gateway cluster compatibility version was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionFreeze: {
+		Name:               "Sync Gateway cluster compatibility version frozen",
+		Description:        "An admin pinned the Sync Gateway cluster compatibility version to its current value",
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionUnfreeze: {
+		Name:               "Sync Gateway cluster compatibility version unfrozen",
+		Description:        "An admin cleared the Sync Gateway cluster compatibility version freeze",
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,

@@ -10,12 +10,26 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
+
+// ErrFreezeNoVersion is returned by clusterCompatManager.Freeze when no cluster compatibility
+// version has been observed yet (e.g. immediately after startup, before any node has registered).
+var ErrFreezeNoVersion = errors.New("cluster compatibility version not yet computed")
+
+// ErrFreezeNoBucketsWritten is returned by clusterCompatManager.Freeze when every tracked
+// bucket write failed. The cluster is unchanged in this case.
+var ErrFreezeNoBucketsWritten = errors.New("freeze could not be applied to any tracked bucket")
+
+// ErrUnfreezePartial is returned by clusterCompatManager.Unfreeze when one or more tracked
+// buckets still hold a freeze record after the operation. The cluster compatibility version
+// may still be held back.
+var ErrUnfreezePartial = errors.New("unfreeze did not fully apply across all tracked buckets")
 
 // defaultNodeHeartbeatExpiry is the fallback expiry used when node_heartbeat_expiry is unset.
 // Sized to tolerate several missed refreshes (at the default config_update_frequency of 10s) before pruning a peer.
@@ -40,9 +54,18 @@ type clusterCompatManager struct {
 	// the manager — a transient RegisterNodeVersion failure must not cause us to drop
 	// ownership or skip the bucket on next refresh / shutdown deregister.
 	trackedBuckets map[string]struct{}
-	// cachedVersion/cachedNodes are observed state from the most recent successful refresh.
+	// cachedNodes is the union of node→version across all tracked bucket registries from
+	// the most recent observation. Input to computeCCV.
+	cachedNodes map[string]base.ClusterCompatVersion
+	// cachedFreeze is the aggregate freeze record across tracked bucket registries: any
+	// bucket having a freeze record means the cluster is frozen; the aggregate Version is
+	// the minimum across those records and FrozenAt is the earliest. Nil when no bucket
+	// reports a freeze. Stored separately for surfacing via the API and audit; its Version
+	// participates in computeCCV alongside the node versions.
+	cachedFreeze *base.RegistryFreeze
+	// cachedVersion is the reported cluster compat version: computeCCV(cachedNodes, cachedFreeze).
+	// Nil when nothing has been observed yet.
 	cachedVersion *base.ClusterCompatVersion
-	cachedNodes   map[string]base.ClusterCompatVersion
 	// appliedDBVersions tracks the database config version this node has successfully
 	// applied, keyed by bucket name then database name. Populated by _applyConfig on
 	// successful load, consumed by RegisterNodeVersion to stamp the registry.
@@ -54,7 +77,8 @@ type clusterCompatManager struct {
 	mu            sync.RWMutex
 }
 
-// getCachedVersion returns a copy of the cached cluster compat version, or nil if not computed.
+// getCachedVersion returns a copy of the currently-reported cluster compat version, or nil
+// if not computed.
 func (m *clusterCompatManager) getCachedVersion() *base.ClusterCompatVersion {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -62,6 +86,17 @@ func (m *clusterCompatManager) getCachedVersion() *base.ClusterCompatVersion {
 		return nil
 	}
 	cp := *m.cachedVersion
+	return &cp
+}
+
+// getCachedFreeze returns a copy of the aggregate cached freeze, or nil if no freeze is set.
+func (m *clusterCompatManager) getCachedFreeze() *base.RegistryFreeze {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.cachedFreeze == nil {
+		return nil
+	}
+	cp := *m.cachedFreeze
 	return &cp
 }
 
@@ -178,14 +213,15 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 		m.releaseBucket(bucket)
 		return err
 	}
-	// Merge this bucket's registry into the cached view and recompute the min. A node
-	// removed from this bucket but still present in another tracked bucket would not
-	// be evicted here — that's reconciled by the periodic Refresh, which rebuilds the
-	// cache from scratch.
-	oldVersion, newVersion := m.mergeRegistryNodesIntoCache(registry.Nodes)
-	base.InfofCtx(ctx, base.KeyConfig, "Registered node %s in bucket %s; cluster compatibility version is %v", m.sc.NodeUID, base.MD(bucket), &newVersion)
-	if oldVersion != nil && *oldVersion != newVersion {
-		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, &newVersion)
+	// Merge this bucket's registry into the cached view and recompute. A node removed from
+	// this bucket but still present in another tracked bucket would not be evicted here —
+	// that's reconciled by the periodic Refresh, which rebuilds the cache from scratch. Same
+	// for the freeze record: a freeze cleared elsewhere stays reflected here until the next
+	// Refresh recomputes the aggregate.
+	oldVersion, newVersion := m.mergeRegistryIntoCache(registry.Nodes, registry.Frozen)
+	base.InfofCtx(ctx, base.KeyConfig, "Registered node %s in bucket %s; cluster compatibility version is %v", m.sc.NodeUID, base.MD(bucket), newVersion)
+	if !clusterCompatVersionEqual(oldVersion, newVersion) {
+		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
 	}
 	return nil
 }
@@ -211,10 +247,10 @@ func (m *clusterCompatManager) releaseBucket(bucket string) {
 	delete(m.trackedBuckets, bucket)
 }
 
-// mergeRegistryNodesIntoCache folds the given bucket's node entries into the cached cluster
-// view, recomputes the cluster compat version, and returns the previous and new cached
-// versions for caller-side change logging.
-func (m *clusterCompatManager) mergeRegistryNodesIntoCache(nodes map[string]*base.RegistryNode) (oldVersion *base.ClusterCompatVersion, newVersion base.ClusterCompatVersion) {
+// mergeRegistryIntoCache folds the given bucket's node entries and freeze record into the
+// cached cluster view, recomputes the cluster compat version, and returns the previous and
+// new cached versions for caller-side change logging.
+func (m *clusterCompatManager) mergeRegistryIntoCache(nodes map[string]*base.RegistryNode, freeze *base.RegistryFreeze) (oldVersion, newVersion *base.ClusterCompatVersion) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.cachedNodes == nil {
@@ -223,9 +259,12 @@ func (m *clusterCompatManager) mergeRegistryNodesIntoCache(nodes map[string]*bas
 	for nodeUID, node := range nodes {
 		m.cachedNodes[nodeUID] = node.Version
 	}
-	newVersion = minClusterCompatVersion(m.cachedNodes)
+	if freeze != nil {
+		m.cachedFreeze = mergeFreeze(m.cachedFreeze, freeze)
+	}
 	oldVersion = m.cachedVersion
-	m.cachedVersion = &newVersion
+	newVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+	m.cachedVersion = newVersion
 	return oldVersion, newVersion
 }
 
@@ -279,28 +318,32 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 		return
 	}
 
-	version, nodes, err := m.refreshNodeRegistrations(ctx)
+	nodes, freeze, err := m.refreshNodeRegistrations(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to refresh cluster compat version: %v", err)
 		return
 	}
-	oldVersion := m.getCachedVersion()
-	if !clusterCompatVersionEqual(oldVersion, version) {
-		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, version)
-	}
+	newVersion := computeCCV(nodes, freeze)
+
 	m.mu.Lock()
-	m.cachedVersion = version
+	oldVersion := m.cachedVersion
 	m.cachedNodes = nodes
+	m.cachedFreeze = freeze
+	m.cachedVersion = newVersion
 	m.lastRefreshAt = time.Now().UTC()
 	m.mu.Unlock()
+
+	if !clusterCompatVersionEqual(oldVersion, newVersion) {
+		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
+	}
 }
 
 // refreshNodeRegistrations iterates the tracked buckets, registers this node, and returns
-// the minimum version across all nodes in those registries and a flat map of all node
-// versions. Returns an error if every tracked bucket failed so callers can leave the
-// previously-cached state in place — stale is preferable to flipping the cluster compat
-// version to nil on a transient bucket outage.
-func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*base.ClusterCompatVersion, map[string]base.ClusterCompatVersion, error) {
+// the per-node version map and the aggregate freeze record across those registries. Returns
+// an error if every tracked bucket failed so callers can leave the previously-cached state
+// in place — stale is preferable to flipping the cluster compat version to nil on a transient
+// bucket outage.
+func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, error) {
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
 		return nil, nil, nil
@@ -311,6 +354,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
+	var aggregateFreeze *base.RegistryFreeze
 	succeeded := 0
 	for _, bucket := range buckets {
 		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry)
@@ -322,22 +366,151 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 		for nodeUID, node := range registry.Nodes {
 			nodeMap[nodeUID] = node.Version
 		}
+		if registry.Frozen != nil {
+			aggregateFreeze = mergeFreeze(aggregateFreeze, registry.Frozen)
+		}
 	}
 	if succeeded == 0 {
 		return nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
 	}
-	minCompatVersion := minClusterCompatVersion(nodeMap)
-	return &minCompatVersion, nodeMap, nil
+	return nodeMap, aggregateFreeze, nil
 }
 
-// minClusterCompatVersion returns the minimum version across the given node map. Returns
-// the zero value when the map is empty.
-func minClusterCompatVersion(nodes map[string]base.ClusterCompatVersion) base.ClusterCompatVersion {
-	versions := make([]base.ClusterCompatVersion, 0, len(nodes))
+// computeCCV returns the reported cluster compat version: the minimum across the live-node
+// versions and the freeze ceiling (when set). Returns nil when no versions are available.
+//
+// The single combining point for all CCV inputs. Future inputs (e.g. an HWM floor) should
+// participate here rather than as a separate override path.
+func computeCCV(nodes map[string]base.ClusterCompatVersion, freeze *base.RegistryFreeze) *base.ClusterCompatVersion {
+	versions := make([]base.ClusterCompatVersion, 0, len(nodes)+1)
 	for _, v := range nodes {
 		versions = append(versions, v)
 	}
-	return base.MinClusterCompatVersion(versions...)
+	if freeze != nil {
+		versions = append(versions, freeze.Version)
+	}
+	if len(versions) == 0 {
+		return nil
+	}
+	v := base.MinClusterCompatVersion(versions...)
+	return &v
+}
+
+// mergeFreeze combines two freeze records into one. The result has the minimum Version (so a
+// lower-versioned freeze wins) and the earliest FrozenAt (the original freeze time). Either
+// argument may be nil. Returns a fresh RegistryFreeze pointer.
+func mergeFreeze(a, b *base.RegistryFreeze) *base.RegistryFreeze {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		cp := *b
+		return &cp
+	}
+	if b == nil {
+		cp := *a
+		return &cp
+	}
+	out := &base.RegistryFreeze{
+		Version:  base.MinClusterCompatVersion(a.Version, b.Version),
+		FrozenAt: a.FrozenAt,
+	}
+	if b.FrozenAt.Before(out.FrozenAt) {
+		out.FrozenAt = b.FrozenAt
+	}
+	return out
+}
+
+// Freeze captures the currently-reported cluster compat version into every tracked bucket
+// registry, pinning the cluster from advancing past it. Success is returned as long as at
+// least one bucket now holds the freeze — the cluster is held back as long as any part of
+// it is frozen, which is the safe direction.
+//
+// Returns ErrFreezeNoVersion if no version has been observed yet (e.g. immediately after
+// startup). Returns ErrFreezeNoBucketsWritten if there are no tracked buckets, or if every
+// bucket write failed. On success, the manager's cached freeze and reported version are
+// updated and the returned record is the aggregate freeze now in effect.
+func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze, error) {
+	current := m.getCachedVersion()
+	if current == nil {
+		return nil, ErrFreezeNoVersion
+	}
+	buckets := m.trackedBucketList()
+	if len(buckets) == 0 {
+		return nil, ErrFreezeNoBucketsWritten
+	}
+	var aggregate *base.RegistryFreeze
+	succeeded := 0
+	for _, bucket := range buckets {
+		freeze, err := m.sc.BootstrapContext.SetRegistryFreeze(ctx, bucket, *current)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to set cluster compat version freeze in bucket %s: %v", base.MD(bucket), err)
+			continue
+		}
+		succeeded++
+		aggregate = mergeFreeze(aggregate, freeze)
+	}
+	if succeeded == 0 {
+		return nil, ErrFreezeNoBucketsWritten
+	}
+	m.mu.Lock()
+	m.cachedFreeze = aggregate
+	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+	m.mu.Unlock()
+	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version frozen at %v (applied to %d/%d tracked buckets)", &aggregate.Version, succeeded, len(buckets))
+	return aggregate, nil
+}
+
+// Unfreeze clears the freeze from every tracked bucket registry. Unlike Freeze, this is
+// success-on-all: if any bucket still has a freeze record after the operation, the cluster
+// remains held back, so an error is returned along with the residual freeze record so the
+// caller can surface the remaining state to the admin.
+//
+// Returns ErrUnfreezePartial if any bucket retains a freeze record. The manager's cached
+// freeze and reported version are rebuilt to reflect the actual state across buckets in
+// either case.
+func (m *clusterCompatManager) Unfreeze(ctx context.Context) (*base.RegistryFreeze, error) {
+	buckets := m.trackedBucketList()
+	if len(buckets) == 0 {
+		m.mu.Lock()
+		m.cachedFreeze = nil
+		m.cachedVersion = computeCCV(m.cachedNodes, nil)
+		m.mu.Unlock()
+		return nil, nil
+	}
+	var residual *base.RegistryFreeze
+	clearFailed := 0
+	for _, bucket := range buckets {
+		err := m.sc.BootstrapContext.ClearRegistryFreeze(ctx, bucket)
+		if err != nil {
+			clearFailed++
+			base.WarnfCtx(ctx, "Failed to clear cluster compat version freeze in bucket %s: %v", base.MD(bucket), err)
+			// Re-read to discover the freeze still in effect on this bucket.
+			registry, getErr := m.sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
+			if getErr != nil {
+				base.WarnfCtx(ctx, "Failed to re-read registry for bucket %s after clear failure: %v", base.MD(bucket), getErr)
+				continue
+			}
+			if registry.Frozen != nil {
+				residual = mergeFreeze(residual, registry.Frozen)
+			}
+		}
+	}
+	m.mu.Lock()
+	m.cachedFreeze = residual
+	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+	m.mu.Unlock()
+	if residual != nil {
+		base.WarnfCtx(ctx, "Cluster compatibility version unfreeze did not fully apply: %d/%d buckets failed; cluster still frozen at %v", clearFailed, len(buckets), &residual.Version)
+		return residual, ErrUnfreezePartial
+	}
+	if clearFailed > 0 {
+		// Buckets failed but no residual freeze on re-read — return error anyway, since the
+		// admin asked for a guarantee and we can't make one.
+		return nil, ErrUnfreezePartial
+	}
+	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version freeze cleared on %d buckets", len(buckets))
+	return nil, nil
 }
 
 // clusterCompatVersionEqual compares two possibly-nil ClusterCompatVersion pointers.

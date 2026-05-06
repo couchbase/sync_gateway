@@ -806,6 +806,61 @@ func minRegistryNodeClusterCompatVersion(nodes map[string]*base.RegistryNode) ba
 	return base.MinClusterCompatVersion(versions...)
 }
 
+// SetRegistryFreeze sets the cluster compat version freeze on the given bucket's registry.
+// If a freeze is already present, it is left unchanged (idempotent). Uses CAS retry on conflict.
+// Returns the freeze record now in effect.
+func (b *bootstrapContext) SetRegistryFreeze(ctx context.Context, bucketName string, version base.ClusterCompatVersion) (*base.RegistryFreeze, error) {
+	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get registry for freeze: %w", err)
+		}
+		if registry.Frozen != nil {
+			return registry.Frozen, nil
+		}
+		freeze := &base.RegistryFreeze{
+			Version:  version,
+			FrozenAt: time.Now().UTC(),
+		}
+		registry.Frozen = freeze
+		err = b.setGatewayRegistry(ctx, bucketName, registry)
+		if err != nil {
+			if base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch setting registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
+				continue
+			}
+			return nil, fmt.Errorf("failed to write registry freeze: %w", err)
+		}
+		return freeze, nil
+	}
+	return nil, base.RedactErrorf("SetRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
+// ClearRegistryFreeze removes the cluster compat version freeze from the given bucket's registry.
+// No-op if no freeze is set. Uses CAS retry on conflict.
+func (b *bootstrapContext) ClearRegistryFreeze(ctx context.Context, bucketName string) error {
+	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
+		if err != nil {
+			return fmt.Errorf("failed to get registry for freeze clear: %w", err)
+		}
+		if registry.Frozen == nil {
+			return nil
+		}
+		registry.Frozen = nil
+		err = b.setGatewayRegistry(ctx, bucketName, registry)
+		if err != nil {
+			if base.IsCasMismatch(err) {
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch clearing registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
+				continue
+			}
+			return fmt.Errorf("failed to write registry freeze clear: %w", err)
+		}
+		return nil
+	}
+	return base.RedactErrorf("ClearRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
 // pruneStaleNodes deletes entries from nodes whose HeartbeatAt is older than expiry. The
 // selfUID entry is always retained — the caller is responsible for refreshing it. Returns
 // the UIDs of pruned entries (in non-deterministic order).

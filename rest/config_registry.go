@@ -57,6 +57,7 @@ type GatewayRegistry struct {
 	UpdatedAt               time.Time                       `json:"updated_at"`                           // Time the registry was last updated
 	CreatedAt               time.Time                       `json:"created_at"`                           // Time the registry was created
 	Nodes                   map[string]*base.RegistryNode   `json:"nodes,omitempty"`                      // Map of node UID to node version registration
+	Frozen                  *base.RegistryFreeze            `json:"frozen,omitempty"`                     // Admin-issued cluster compat version freeze
 }
 
 const GatewayRegistryVersion = "1.0"
