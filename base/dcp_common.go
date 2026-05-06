@@ -23,11 +23,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// DCPFeedMode describes the types of DCP feed that can be run.
 type DCPFeedMode string
 
 const (
-	DCPFeedGocb    DCPFeedMode = "gocb"
-	DCPFeedRosmar  DCPFeedMode = "rosmar"
+	// DCPFeedGocb represents a single node DCP feed for a Couchbase Server bucket.
+	DCPFeedGocb DCPFeedMode = "gocb"
+	// DCPFeedRosmar represents a DCP feed for a rosmar bucket.
+	DCPFeedRosmar DCPFeedMode = "rosmar"
+	// DCPFeedSharded represents a cbgt-based DCP feed for a Couchbase Server bucket.
 	DCPFeedSharded DCPFeedMode = "cbgt"
 )
 
@@ -292,7 +296,8 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 	return feedName, nil
 }
 
-// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
+// PurgeDCPCheckpoints will purge all DCP metadata from previous run a bucket. If the checkpoints are not present, this
+// is not an error.
 func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedPrefix string, feedMode DCPFeedMode) error {
 
 	switch feedMode {
