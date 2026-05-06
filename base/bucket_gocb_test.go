@@ -2843,10 +2843,12 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotZero(t, cas)
-	// CBG-5291: update currently writes to fallback
-	readRawBody, _, err = metaStore.Fallback().GetRaw(updateDocID)
+	// verify in primary, not in fallback
+	readRawBody, _, err = metaStore.Primary().GetRaw(updateDocID)
 	require.NoError(t, err)
 	assert.Equal(t, updateBody, readRawBody)
+	_, _, err = metaStore.Fallback().GetRaw(updateDocID)
+	require.True(t, IsDocNotFoundError(err)) // fallback expects error
 
 	// Test Incr
 	incrDocID := t.Name() + "_incr"
@@ -2917,6 +2919,203 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	exists, err = metaStore.Primary().Exists(removeDocID)
 	require.NoError(t, err)
 	assert.False(t, exists)
+}
+
+// TestMetadataStoreUpdateMigratesFromFallback verifies that an Update against a key that lives only
+// in the fallback store invokes the caller's callback with the fallback value, and writes the result
+// to the primary store (never back to the fallback). This is the core CBG-5291 case.
+func TestMetadataStoreUpdateMigratesFromFallback(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	originalBody := []byte(`{"counter":1}`)
+	ok, err := metaStore.Fallback().Add(docID, 0, originalBody)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	updatedBody := []byte(`{"counter":2}`)
+	var seenByCallback []byte
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		seenByCallback = append([]byte(nil), current...)
+		return updatedBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	assert.Equal(t, originalBody, seenByCallback, "callback must observe the fallback value, not nil")
+
+	// New value lives in primary at the returned CAS.
+	primaryRaw, primaryCas, err := metaStore.Primary().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, updatedBody, primaryRaw)
+	assert.Equal(t, cas, primaryCas)
+
+	// Fallback copy is left untouched - the migration sweep handles cleanup.
+	fallbackRaw, _, err := metaStore.Fallback().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, originalBody, fallbackRaw)
+}
+
+// TestMetadataStoreUpdateExistingPrimary verifies that when the doc already exists in primary,
+// Update goes through the standard CAS path against primary (callback sees primary value, write
+// replaces in primary, fallback is ignored even if it has stale data).
+func TestMetadataStoreUpdateExistingPrimary(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	primaryBody := []byte(`{"src":"primary"}`)
+	fallbackBody := []byte(`{"src":"fallback"}`)
+	ok, err := metaStore.Primary().Add(docID, 0, primaryBody)
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = metaStore.Fallback().Add(docID, 0, fallbackBody)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	updatedBody := []byte(`{"src":"updated"}`)
+	var seenByCallback []byte
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		seenByCallback = append([]byte(nil), current...)
+		return updatedBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	assert.Equal(t, primaryBody, seenByCallback, "callback must observe primary value, not fallback")
+
+	primaryRaw, _, err := metaStore.Primary().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, updatedBody, primaryRaw)
+
+	fallbackRaw, _, err := metaStore.Fallback().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, fallbackBody, fallbackRaw, "fallback is never written by Update")
+}
+
+// TestMetadataStoreUpdateDeleteFallbackOnly verifies the agreed CBG-5291 behaviour: when the
+// callback requests a delete and the doc exists only in fallback, the wrapper is a no-op against
+// primary (no tombstone written) and leaves the fallback copy alone for the migration sweep.
+func TestMetadataStoreUpdateDeleteFallbackOnly(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	originalBody := []byte(`{"counter":1}`)
+	ok, err := metaStore.Fallback().Add(docID, 0, originalBody)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		return nil, nil, true, nil
+	})
+	require.NoError(t, err)
+	assert.Zero(t, cas)
+
+	// Primary stays absent.
+	exists, err := metaStore.Primary().Exists(docID)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// Fallback is untouched.
+	fallbackRaw, _, err := metaStore.Fallback().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, originalBody, fallbackRaw)
+}
+
+// TestMetadataStoreUpdateAfterMigrationComplete verifies that once SetMigrationComplete has been
+// called, fallback contents are ignored entirely - even by Update - and the wrapper behaves as a
+// thin pass-through to the primary's Update.
+func TestMetadataStoreUpdateAfterMigrationComplete(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+	metaStore.SetMigrationComplete()
+
+	docID := t.Name()
+	ok, err := metaStore.Fallback().Add(docID, 0, []byte(`{"counter":99}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	updatedBody := []byte(`{"counter":1}`)
+	var seenByCallback []byte
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		seenByCallback = append([]byte(nil), current...)
+		return updatedBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	assert.Nil(t, seenByCallback, "fallback must not be consulted after migration complete")
+
+	primaryRaw, _, err := metaStore.Primary().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, updatedBody, primaryRaw)
+}
+
+// TestMetadataStoreWriteUpdateWithXattrsMigratesFromFallback is the WriteUpdateWithXattrs analogue
+// of TestMetadataStoreUpdateMigratesFromFallback: the wrapper must surface the fallback body and
+// xattrs to the callback and write the result to primary.
+func TestMetadataStoreWriteUpdateWithXattrsMigratesFromFallback(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	xattrKey := SyncXattrName
+	originalBody := []byte(`{"counter":1}`)
+	originalXattr := []byte(`{"seq":1}`)
+
+	// Seed the fallback store using its own WriteUpdateWithXattrs as an insert.
+	_, err := metaStore.Fallback().WriteUpdateWithXattrs(ctx, docID, []string{xattrKey}, 0, nil, nil,
+		func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+			return sgbucket.UpdatedDoc{
+				Doc:    originalBody,
+				Xattrs: map[string][]byte{xattrKey: originalXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+
+	updatedBody := []byte(`{"counter":2}`)
+	updatedXattr := []byte(`{"seq":2}`)
+	var seenBody []byte
+	var seenXattrs map[string][]byte
+	var seenCas uint64
+	cas, err := metaStore.WriteUpdateWithXattrs(ctx, docID, []string{xattrKey}, 0, nil, nil,
+		func(doc []byte, xattrs map[string][]byte, cb_cas uint64) (sgbucket.UpdatedDoc, error) {
+			seenBody = append([]byte(nil), doc...)
+			seenXattrs = xattrs
+			seenCas = cb_cas
+			return sgbucket.UpdatedDoc{
+				Doc:    updatedBody,
+				Xattrs: map[string][]byte{xattrKey: updatedXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	assert.Equal(t, originalBody, seenBody, "callback must observe fallback body")
+	require.Contains(t, seenXattrs, xattrKey)
+	assert.Equal(t, originalXattr, seenXattrs[xattrKey], "callback must observe fallback xattr")
+	assert.Zero(t, seenCas, "callback must see cas=0 (fallback CAS is never propagated)")
+
+	// New value lives in primary with the expected body and xattr.
+	primaryBody, primaryXattrs, primaryCas, err := metaStore.Primary().GetWithXattrs(ctx, docID, []string{xattrKey})
+	require.NoError(t, err)
+	assert.Equal(t, updatedBody, primaryBody)
+	assert.Equal(t, updatedXattr, primaryXattrs[xattrKey])
+	assert.Equal(t, cas, primaryCas)
 }
 
 func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
