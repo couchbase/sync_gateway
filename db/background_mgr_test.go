@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -63,7 +64,9 @@ func (m *MockProcess) Run(ctx context.Context, options map[string]any, persistCl
 	}
 }
 
-func (m *MockProcess) GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error) {
+func (m *MockProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (m *MockProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) (statusOut []byte, meta []byte, err error) {
 	statusOut, err = base.JSONMarshal(status)
 	return statusOut, nil, err
 }
@@ -373,4 +376,78 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
 	assert.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have inherited mgr1's start time")
+}
+
+func TestResyncMultiNodeStatsAggregation(t *testing.T) {
+	// Simulate two ResyncManagerDCP instances (Node A and Node B)
+	// both working on the same distributed resync.
+
+	ctx := base.TestCtx(t)
+
+	nodeA := &ResyncManagerDCP{
+		ResyncID:    "resync1",
+		Distributed: true,
+	}
+	nodeB := &ResyncManagerDCP{
+		ResyncID:    "resync1",
+		Distributed: true,
+	}
+
+	// 1. Initial state: bucket is empty.
+	var bucketStatus []byte
+
+	// 2. Node A processes 10 docs.
+	for range 10 {
+		nodeA.docsProcessedSinceLastUpdate.Add(1)
+	}
+	assert.Equal(t, int64(10), nodeA.DocsProcessed())
+
+	// 3. Node A updates bucket status.
+	// This simulates updateMultiNodeClusterAwareStatus logic
+	statusA, _, err := nodeA.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateRunning}, bucketStatus)
+	require.NoError(t, err)
+
+	// Marshaling like ResyncManagerStatusDocDCP
+	statusDocA := ResyncManagerStatusDocDCP{
+		ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+			BackgroundManagerStatus: BackgroundManagerStatus{State: BackgroundProcessStateRunning},
+		},
+	}
+	// We need to unmarshal statusA into ResyncManagerResponseDCP
+	err = json.Unmarshal(statusA, &statusDocA.ResyncManagerResponseDCP)
+	require.NoError(t, err)
+	bucketStatus = base.MustJSONMarshal(t, statusDocA)
+
+	// Node A calls SetProcessStatus
+	nodeA.SetProcessStatus(ctx, nil, statusA)
+	assert.Equal(t, int64(10), nodeA.docsProcessedSerialized.Load())
+	assert.Equal(t, int64(0), nodeA.docsProcessedSinceLastUpdate.Load())
+	assert.Equal(t, int64(10), nodeA.DocsProcessed())
+
+	// 4. Node B processes 5 docs.
+	// Node B hasn't polled yet, so its serialized is 0.
+	for i := 0; i < 5; i++ {
+		nodeB.docsProcessedSinceLastUpdate.Add(1)
+	}
+	assert.Equal(t, int64(5), nodeB.DocsProcessed())
+
+	// 5. Node B updates bucket status.
+	// It sees bucketStatus from Node A (contains 10).
+	var statusDocB ResyncManagerStatusDocDCP
+	err = json.Unmarshal(bucketStatus, &statusDocB)
+	require.NoError(t, err)
+
+	// The cluster aware status doc stores the response JSON in its own fields
+	previousStatusForB := base.MustJSONMarshal(t, statusDocB.ResyncManagerResponseDCP)
+
+	statusB, _, err := nodeB.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateRunning}, previousStatusForB)
+	require.NoError(t, err)
+
+	// Regression Check: Does statusB contain 15 (10+5) or just 5?
+	var respB ResyncManagerResponseDCP
+	err = json.Unmarshal(statusB, &respB)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(15), respB.DocsProcessed)
+
 }

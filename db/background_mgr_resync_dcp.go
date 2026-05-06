@@ -28,12 +28,14 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
-	DocsProcessed       base.AtomicInt
-	DocsChanged         base.AtomicInt
-	ResyncID            string
-	VBUUIDs             []uint64
-	useXattrs           bool
-	ResyncedCollections base.CollectionNames
+	docsProcessedSerialized      atomic.Int64
+	docsChangedSerialized        atomic.Int64
+	docsChangedSinceLastUpdate   atomic.Int64
+	docsProcessedSinceLastUpdate atomic.Int64
+	ResyncID                     string
+	VBUUIDs                      []uint64
+	useXattrs                    bool
+	ResyncedCollections          base.CollectionNames
 	resyncCollectionInfo
 	lock        sync.RWMutex
 	Distributed bool
@@ -177,7 +179,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return true
 		}
 
-		r.DocsProcessed.Add(1)
+		r.docsProcessedSinceLastUpdate.Add(1)
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
@@ -192,7 +194,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
 
 		if err == nil {
-			r.DocsChanged.Add(1)
+			r.docsChangedSinceLastUpdate.Add(1)
 			db.DbStats.Database().ResyncNumChanged.Add(1)
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
@@ -303,7 +305,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	select {
 	case <-doneChan:
-		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged.Value(), r.DocsProcessed.Value())
+		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
 		err := dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
@@ -312,7 +314,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged.Value() > 0) {
+		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged() > 0) {
 			err := initializePrincipalDocsIndex(ctx, db)
 			if err != nil {
 				return err
@@ -331,7 +333,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			}
 		}
 
-		if r.DocsChanged.Value() > 0 {
+		if r.DocsChanged() > 0 {
 			endSeq, err := db.sequences.getSequence()
 			if err != nil {
 				return err
@@ -384,7 +386,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 				return err
 			}
 
-			base.InfofCtx(ctx, base.KeyAll, "resync was terminated. Docs changed: %d Docs Processed: %d", r.DocsChanged.Value(), r.DocsProcessed.Value())
+			base.InfofCtx(ctx, base.KeyAll, "resync was terminated. Docs changed: %d Docs Processed: %d", r.DocsChanged(), r.DocsProcessed())
 		}
 	}
 
@@ -419,17 +421,16 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.DocsProcessed.Set(0)
-	r.DocsChanged.Set(0)
+	r.docsProcessedSerialized.Store(0)
+	r.docsProcessedSinceLastUpdate.Store(0)
+	r.docsChangedSerialized.Store(0)
+	r.docsChangedSinceLastUpdate.Store(0)
 	r.ResyncedCollections = nil
 }
 
 func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-
-	r.DocsChanged.Set(docChanged)
-	r.DocsProcessed.Set(docProcessed)
+	r.docsChangedSerialized.Store(docChanged)
+	r.docsProcessedSerialized.Store(docProcessed)
 }
 
 // SetCollectionStatus sets the active collection names being resynced.
@@ -448,16 +449,64 @@ type ResyncManagerResponseDCP struct {
 	CollectionsProcessing map[string][]string `json:"collections_processing,omitempty"`
 }
 
-func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
+// resyncStats is a part of the ResyncManagerResponseDCP struct that only contains the stats fields for efficincy.
+type resyncStats struct {
+	DocsChanged   int64 `json:"docs_changed"`
+	DocsProcessed int64 `json:"docs_processed"`
+}
+
+// SetProcessStatus reports the new status that was serialized to the bucket along with the last status that polled
+// using GetProcessStatus.
+func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus []byte, newStatus []byte) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	var previousStats resyncStats
+	if len(previousStatus) > 0 {
+		err := base.JSONUnmarshal(previousStatus, &previousStats)
+		if err != nil {
+			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %w", string(previousStatus), err)
+			return
+		}
+	}
+	var newStats resyncStats
+	if len(newStatus) > 0 {
+		err := base.JSONUnmarshal(newStatus, &newStats)
+		if err != nil {
+			base.AssertfCtx(ctx, "Could not process current status: %q, resync will lose track of its stats: %s", string(newStatus), err)
+			return
+		}
+	}
+
+	r.docsProcessedSerialized.Store(newStats.DocsProcessed)
+	r.docsChangedSerialized.Store(newStats.DocsChanged)
+	r.docsProcessedSinceLastUpdate.Add(-(newStats.DocsProcessed - previousStats.DocsProcessed))
+	r.docsChangedSinceLastUpdate.Add(-(newStats.DocsChanged - previousStats.DocsChanged))
+}
+
+func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
+
+	var previousStats resyncStats
+	if len(previousStatus) > 0 {
+		err := base.JSONUnmarshal(previousStatus, &previousStats)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Could not process previous status: %q", string(previousStatus))
+		}
+	}
 
 	response := ResyncManagerResponseDCP{
 		BackgroundManagerStatus: status,
 		ResyncID:                r.ResyncID,
-		DocsChanged:             r.DocsChanged.Value(),
-		DocsProcessed:           r.DocsProcessed.Value(),
+		DocsChanged:             previousStats.DocsChanged + r.docsChangedSinceLastUpdate.Load(),
+		DocsProcessed:           previousStats.DocsProcessed + r.docsProcessedSinceLastUpdate.Load(),
 		CollectionsProcessing:   r.ResyncedCollections,
+	}
+
+	// Fallback to internal serialized state if no previous status was provided.
+	if len(previousStatus) == 0 {
+		response.DocsChanged = r.DocsChanged()
+		response.DocsProcessed = r.DocsProcessed()
 	}
 
 	meta := ResyncManagerMeta{
@@ -475,6 +524,18 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]b
 		return nil, nil, err
 	}
 	return statusJSON, metaJSON, err
+}
+
+// DocsChanged returns the total number of documents changed for the entire resync process. This includes docs
+// changed by other nodes.
+func (r *ResyncManagerDCP) DocsChanged() int64 {
+	return r.docsChangedSerialized.Load() + r.docsChangedSinceLastUpdate.Load()
+}
+
+// DocsProcessed returns the total number of documents changed on the entire resync process. This includes docs
+// processed by other nodes.
+func (r *ResyncManagerDCP) DocsProcessed() int64 {
+	return r.docsProcessedSerialized.Load() + r.docsProcessedSinceLastUpdate.Load()
 }
 
 type ResyncManagerMeta struct {

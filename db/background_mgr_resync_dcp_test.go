@@ -27,7 +27,6 @@ import (
 )
 
 func TestResyncDCPInit(t *testing.T) {
-
 	testCases := []struct {
 		title               string
 		initialClusterState ResyncManagerStatusDocDCP
@@ -610,7 +609,7 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP
 func getResyncStats(t testing.TB, db *Database) ResyncManagerResponseDCP {
 	var resp ResyncManagerResponseDCP
-	rawStatus, _, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{})
+	rawStatus, _, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{}, nil)
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(rawStatus, &resp))
 	return resp

@@ -258,7 +258,11 @@ func (a *AttachmentMigrationManager) ResetStatus() {
 	a.MigrationID = ""
 }
 
-func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
+func (a *AttachmentMigrationManager) SetProcessStatus(context.Context, []byte, []byte) {
+	return
+}
+
+func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 

@@ -67,7 +67,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 
 func getAttachmentMigrationStats(t *testing.T, migrationManager BackgroundManagerProcessI) AttachmentMigrationManagerResponse {
 	var resp AttachmentMigrationManagerResponse
-	rawStatus, _, err := migrationManager.GetProcessStatus(BackgroundManagerStatus{})
+	rawStatus, _, err := migrationManager.GetProcessStatus(BackgroundManagerStatus{}, nil)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
 	return resp
