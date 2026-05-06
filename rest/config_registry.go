@@ -50,13 +50,13 @@ var ErrNoEligibleAckers = errors.New("no alive nodes in config group to acknowle
 //		}
 type GatewayRegistry struct {
 	cas                     uint64
-	Version                 string                          `json:"version"`                              // Registry version
-	ConfigGroups            map[string]*RegistryConfigGroup `json:"config_groups"`                        // Map of config groups, keyed by config group ID
-	SGVersion               base.ComparableBuildVersion     `json:"sg_version"`                           // Latest patch version of Sync Gateway that touched the registry. Diagnostic-only — not used for cluster compat / downgrade decisions.
-	ClusterCompatVersionHWM base.ClusterCompatVersion       `json:"cluster_compat_version_hwm,omitempty"` // High-water mark of cluster compat version (major.minor) seen on this bucket. Ratchets up only — never decreases.
-	UpdatedAt               time.Time                       `json:"updated_at"`                           // Time the registry was last updated
-	CreatedAt               time.Time                       `json:"created_at"`                           // Time the registry was created
-	Nodes                   map[string]*base.RegistryNode   `json:"nodes,omitempty"`                      // Map of node UID to node version registration
+	Version                 string                          `json:"version"`                                 // Registry version
+	ConfigGroups            map[string]*RegistryConfigGroup `json:"config_groups"`                           // Map of config groups, keyed by config group ID
+	SGVersion               base.ComparableBuildVersion     `json:"sg_version"`                              // Latest patch version of Sync Gateway that touched the registry. Diagnostic-only — not used for cluster compat / downgrade decisions.
+	ClusterCompatVersionHWM base.ClusterCompatVersion       `json:"cluster_compat_version_hwm,omitempty"`    // High-water mark of cluster compat version (major.minor) seen on this bucket. Ratchets up only — never decreases.
+	UpdatedAt               time.Time                       `json:"updated_at"`                              // Time the registry was last updated
+	CreatedAt               time.Time                       `json:"created_at"`                              // Time the registry was created
+	Nodes                   map[string]*base.RegistryNode   `json:"nodes,omitempty"`                         // Map of node UID to node version registration
 	Frozen                  *base.RegistryFreeze            `json:"frozen_cluster_compat_version,omitempty"` // Admin-issued cluster compat version freeze
 }
 
