@@ -692,6 +692,10 @@ def make_os_tasks(processes):
             "CPU throttling info",
             "echo /sys/devices/system/cpu/cpu*/thermal_throttle/* | xargs -n1 -- sh -c 'echo $1; cat $1' --",
         ),
+        LinuxTask(
+            "Kernel Messages",
+            "journalctl -ko short-monotonic --no-hostname",
+        ),
         make_event_log_task(),
         make_event_log_task_sg_info(),
     ]
