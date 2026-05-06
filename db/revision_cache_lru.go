@@ -70,13 +70,11 @@ func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, 
 }
 
 func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
-	sc.getShard(docRev.DocID).Put(ctx, docRev, collectionID)
-	return nil
+	return sc.getShard(docRev.DocID).Put(ctx, docRev, collectionID)
 }
 
 func (sc *ShardedLRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
-	sc.getShard(docRev.DocID).Upsert(ctx, docRev, collectionID)
-	return nil
+	return sc.getShard(docRev.DocID).Upsert(ctx, docRev, collectionID)
 }
 
 func (sc *ShardedLRURevisionCache) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {

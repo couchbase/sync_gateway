@@ -3495,7 +3495,7 @@ func TestMemoryStatLongTermConsistency(t *testing.T) {
 		"after workload settles, memory stat must be at or below maxBytes — eviction failed to keep up")
 }
 
-// TestRevisionCacheInvalidRevisionError tests Put or Upsert on revision cache
+// TestRevisionCacheInvalidRevisionError tests Put or Upsert at revision cache document revision validation
 func TestRevisionCacheInvalidRevisionError(t *testing.T) {
 	ctx := base.TestCtx(t)
 
