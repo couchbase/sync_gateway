@@ -25,6 +25,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseOnlineProcessError:          "Error attempting to start online process",
 	DatabaseAllowConflictsError:         "Allow conflicts is set to true",
 	DatabaseEnableStarChannelFalseError: "Enable star channel is set to false",
+	DatabaseClusterCompatVersionError:   "Bucket has metadata from a newer Sync Gateway cluster compat version",
 }
 
 type databaseErrorCode uint8
@@ -41,6 +42,7 @@ const (
 	DatabaseOnlineProcessError          databaseErrorCode = 8
 	DatabaseAllowConflictsError         databaseErrorCode = 9
 	DatabaseEnableStarChannelFalseError databaseErrorCode = 10
+	DatabaseClusterCompatVersionError   databaseErrorCode = 11
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {

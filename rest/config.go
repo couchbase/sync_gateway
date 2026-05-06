@@ -2107,6 +2107,9 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// stamps our heartbeat. Registration is lazy — we never touch buckets SG is not serving.
 	if sc.ClusterCompat != nil {
 		if err := sc.ClusterCompat.RegisterBucket(ctx, *cnf.Bucket); err != nil {
+			// Surface the rejection via _all_dbs?verbose=true so admins can see why the db
+			// failed to load instead of it silently disappearing from the listing.
+			sc._handleInvalidDatabaseConfig(ctx, *cnf.Bucket, cnf, db.NewDatabaseError(db.DatabaseClusterCompatVersionError))
 			return false, err
 		}
 	}
