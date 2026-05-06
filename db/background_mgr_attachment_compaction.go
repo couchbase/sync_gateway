@@ -190,6 +190,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
+// purgeCheckpoints removes the checkpoints for a specific checkpointPrefix and feed name.
 func (*AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, database *Database, checkpointPrefix string, feedID string) error {
 	return base.PurgeDCPCheckpoints(
 		ctx,
@@ -206,7 +207,7 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.CompactID)
-		err = a.purgeCheckpoints(ctx, database, keyPrefix, a.CompactID)
+		err = a.purgeCheckpoints(ctx, database, keyPrefix, getAttachmentCompactionFeedID(a.CompactID, phase))
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err

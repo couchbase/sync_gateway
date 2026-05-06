@@ -565,6 +565,10 @@ func getCompactionIDSubDocPath(compactionID string) string {
 	return base.AttachmentCompactionXattrName + "." + CompactionIDKey + "." + compactionID
 }
 
+func getAttachmentCompactionFeedID(compactionID string, phase attachmentCompactionPhase) string {
+	return fmt.Sprintf("att_compaction:%v_%v", compactionID, phase)
+}
+
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
 func getCompactionDCPClientOptions(db *Database, compactionID string, collectionNames base.CollectionNameSet, phase attachmentCompactionPhase, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
 	return base.DCPClientOptions{
@@ -573,7 +577,7 @@ func getCompactionDCPClientOptions(db *Database, compactionID string, collection
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		CollectionNames:   collectionNames,
 		Callback:          callback,
-		FeedID:            fmt.Sprintf("att_compaction:%v_%v", compactionID, phase),
+		FeedID:            getAttachmentCompactionFeedID(compactionID, phase),
 		CheckpointPrefix:  GetAttachmentCompactionDCPCheckpointPrefix(db.DatabaseContext, compactionID, phase),
 	}
 }

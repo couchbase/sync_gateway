@@ -2569,6 +2569,7 @@ func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, target
 	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
 }
 
+// dcpFeedMode describes the dcpFeedMode for the given backing store if the DCP feed is always single node.
 func (db *DatabaseContext) dcpFeedMode() base.DCPFeedMode {
 	if db.usingRosmar() {
 		return base.DCPFeedRosmar
@@ -2576,6 +2577,7 @@ func (db *DatabaseContext) dcpFeedMode() base.DCPFeedMode {
 	return base.DCPFeedGocb
 }
 
+// dcpFeedMode describes the dcpFeedMode for the given backing store if sharded DCP feeds are supported.
 func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 	if db.usingRosmar() {
 		return base.DCPFeedRosmar

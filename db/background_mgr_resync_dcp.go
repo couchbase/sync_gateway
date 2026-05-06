@@ -119,6 +119,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	return nil
 }
 
+// purgeCheckpoints removes checkpoints for a given resync run.
 func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, resyncID string) error {
 	return base.PurgeDCPCheckpoints(
 		ctx,
@@ -299,7 +300,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		defer resyncCbgtContext.Stop(ctx)
 	} else {
 
-		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
+		clientOptions := r.getDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
 		var err error
 		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
 		if err != nil {
@@ -521,12 +522,17 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
+// DCPFeedID returns the feed ID used by the resync DCP feed.
+func (r *ResyncManagerDCP) DCPFeedID(resyncID string) string {
+	return fmt.Sprintf("resync:%v", resyncID)
+}
+
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
-func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, distributed bool) base.DCPClientOptions {
+func (r *ResyncManagerDCP) getDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, distributed bool) base.DCPClientOptions {
 	return base.DCPClientOptions{
-		FeedID:            fmt.Sprintf("resync:%v", resyncID),
+		FeedID:            r.DCPFeedID(resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,

@@ -311,7 +311,7 @@ func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPre
 	case DCPFeedGocb:
 		collection, err := AsCollection(datastore)
 		if err != nil {
-			return RedactErrorf("dataStore %q is not a gocb collection: type %t", MD(datastore.GetName()), datastore)
+			return RedactErrorf("dataStore %q is not a gocb collection: type %T", MD(datastore.GetName()), datastore)
 		}
 		numVbuckets, err := collection.GetMaxVbno()
 		if err != nil {
@@ -324,7 +324,7 @@ func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPre
 	case DCPFeedSharded:
 		collection, err := AsCollection(datastore)
 		if err != nil {
-			return RedactErrorf("dataStore %q is not a gocb collection: type %t", MD(datastore.GetName()), datastore)
+			return RedactErrorf("dataStore %q is not a gocb collection: type %T", MD(datastore.GetName()), datastore)
 		}
 		numVbuckets, err := collection.GetMaxVbno()
 		if err != nil {
@@ -332,7 +332,7 @@ func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPre
 		}
 		var errs []error
 		for vbNo := range numVbuckets {
-			checkpointID := fmt.Sprintf("%s_%d", checkpointPrefix, vbNo)
+			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
 			err := datastore.Delete(checkpointID)
 			if err != nil && !IsDocNotFoundError(err) {
 				errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
