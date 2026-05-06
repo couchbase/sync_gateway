@@ -36,6 +36,11 @@ func (v ClusterCompatVersion) AtLeast(major, minor uint8) bool {
 	return v.Minor >= minor
 }
 
+// GreaterThan returns true if v is strictly greater than other.
+func (v ClusterCompatVersion) GreaterThan(other ClusterCompatVersion) bool {
+	return clusterCompatVersionLess(other, v)
+}
+
 // MinClusterCompatVersion returns the minimum version from the given versions.
 // Returns the zero value if no versions are provided.
 func MinClusterCompatVersion(versions ...ClusterCompatVersion) ClusterCompatVersion {

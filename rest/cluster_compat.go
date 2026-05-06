@@ -119,42 +119,69 @@ func (m *clusterCompatManager) trackedBucketList() []string {
 // This is deliberately a single-bucket write (not a sweep of every tracked bucket) so that
 // loading N databases across M buckets at startup costs O(M) writes rather than O(N*M),
 // and so the I/O performed under sc._databasesLock is bounded.
-func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string) {
-	m.mu.Lock()
-	if _, alreadyTracked := m.trackedBuckets[bucket]; alreadyTracked {
-		m.mu.Unlock()
-		return
+//
+// Returns an error if RegisterNodeVersion's cluster compat downgrade gate refuses this node,
+// or any other registry write error. On any error the bucket is left untracked — Refresh
+// only refreshes already-tracked buckets, so the natural retry path is the next _applyConfig
+// (e.g. the next config poll cycle) rather than periodic Refresh.
+func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string) error {
+	if !m.claimBucket(bucket) {
+		return nil
 	}
-	m.trackedBuckets[bucket] = struct{}{}
-	m.mu.Unlock()
-
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, base.NodeClusterCompatVersion, m.heartbeatExpiry())
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.BootstrapContext.clusterCompatVersion, m.heartbeatExpiry())
 	if err != nil {
-		// Bucket stays tracked — the next Refresh will retry the registry write.
-		base.WarnfCtx(ctx, "Failed to register node version for bucket %s: %v", base.MD(bucket), err)
-		return
+		m.releaseBucket(bucket)
+		return err
 	}
-
 	// Merge this bucket's registry into the cached view and recompute the min. A node
 	// removed from this bucket but still present in another tracked bucket would not
 	// be evicted here — that's reconciled by the periodic Refresh, which rebuilds the
 	// cache from scratch.
-	m.mu.Lock()
-	if m.cachedNodes == nil {
-		m.cachedNodes = make(map[string]base.ClusterCompatVersion, len(registry.Nodes))
-	}
-	for nodeUID, node := range registry.Nodes {
-		m.cachedNodes[nodeUID] = node.Version
-	}
-	newVersion := minClusterCompatVersion(m.cachedNodes)
-	oldVersion := m.cachedVersion
-	m.cachedVersion = &newVersion
-	m.mu.Unlock()
-
+	oldVersion, newVersion := m.mergeRegistryNodesIntoCache(registry.Nodes)
 	base.InfofCtx(ctx, base.KeyConfig, "Registered node %s in bucket %s; cluster compatibility version is %v", m.sc.NodeUID, base.MD(bucket), &newVersion)
 	if oldVersion != nil && *oldVersion != newVersion {
 		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, &newVersion)
 	}
+	return nil
+}
+
+// claimBucket atomically marks the bucket as tracked and reports whether this call was the
+// one that acquired tracking. Returns false if the bucket was already tracked, in which case
+// the caller should skip the per-first-time registration work.
+func (m *clusterCompatManager) claimBucket(bucket string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, alreadyTracked := m.trackedBuckets[bucket]; alreadyTracked {
+		return false
+	}
+	m.trackedBuckets[bucket] = struct{}{}
+	return true
+}
+
+// releaseBucket removes the bucket from the tracked set. Used to back out a claim after a
+// failed registry write so the bucket isn't pinned to periodic Refresh retries.
+func (m *clusterCompatManager) releaseBucket(bucket string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.trackedBuckets, bucket)
+}
+
+// mergeRegistryNodesIntoCache folds the given bucket's node entries into the cached cluster
+// view, recomputes the cluster compat version, and returns the previous and new cached
+// versions for caller-side change logging.
+func (m *clusterCompatManager) mergeRegistryNodesIntoCache(nodes map[string]*base.RegistryNode) (oldVersion *base.ClusterCompatVersion, newVersion base.ClusterCompatVersion) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cachedNodes == nil {
+		m.cachedNodes = make(map[string]base.ClusterCompatVersion, len(nodes))
+	}
+	for nodeUID, node := range nodes {
+		m.cachedNodes[nodeUID] = node.Version
+	}
+	newVersion = minClusterCompatVersion(m.cachedNodes)
+	oldVersion = m.cachedVersion
+	m.cachedVersion = &newVersion
+	return oldVersion, newVersion
 }
 
 // ClusterCompatVersion returns a copy of the cached cluster compat version, or nil if not yet
@@ -234,7 +261,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 		return nil, nil, nil
 	}
 
-	nodeVersion := base.NodeClusterCompatVersion
+	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
 	expiry := m.heartbeatExpiry()
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.

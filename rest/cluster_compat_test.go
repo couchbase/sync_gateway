@@ -110,7 +110,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	bucketName := rt.Bucket().GetName()
 
 	const n = 10
-	version := base.NewClusterCompatVersion(4, 0)
+	version := base.NodeClusterCompatVersion
 	var eg errgroup.Group
 	for i := 0; i < n; i++ {
 		eg.Go(func() error {
@@ -139,7 +139,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	bucketName := rt.Bucket().GetName()
 
 	const n = 10
-	version := base.NewClusterCompatVersion(4, 0)
+	version := base.NodeClusterCompatVersion
 	for i := 0; i < n; i++ {
 		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), version, time.Hour)
 		require.NoError(t, err)
@@ -170,15 +170,12 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 	defer rt.Close()
 
 	ctx := base.TestCtx(t)
-	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
 
 	older := base.NewClusterCompatVersion(3, 5)
 	newer := base.NewClusterCompatVersion(4, 0)
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, "synthetic-old", older, time.Hour)
-	require.NoError(t, err)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "synthetic-new", newer, time.Hour)
-	require.NoError(t, err)
+	seedRegistryNode(t, rt, bucketName, "synthetic-old", older)
+	seedRegistryNode(t, rt, bucketName, "synthetic-new", newer)
 
 	ccm := rt.ServerContext().ClusterCompat
 	require.NotNil(t, ccm)
@@ -223,8 +220,7 @@ func TestClusterCompatPruneStaleOnRefresh(t *testing.T) {
 
 	// Seed a peer with a fresh heartbeat, then mutate it to be older than the expiry window.
 	stalePeer := "stale-peer"
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5), time.Hour)
-	require.NoError(t, err)
+	seedRegistryNode(t, rt, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5))
 	setNodeHeartbeatAt(t, rt, bucketName, stalePeer, time.Now().Add(-2*ccm.heartbeatExpiry()))
 
 	// Force-refresh past the rate limit.
@@ -252,15 +248,14 @@ func TestClusterCompatPruneStaleOnRegisterBucket(t *testing.T) {
 	require.NotNil(t, ccm)
 
 	stalePeer := "stale-peer"
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5), time.Hour)
-	require.NoError(t, err)
+	seedRegistryNode(t, rt, bucketName, stalePeer, base.NewClusterCompatVersion(3, 5))
 	setNodeHeartbeatAt(t, rt, bucketName, stalePeer, time.Now().Add(-2*ccm.heartbeatExpiry()))
 
 	// Drop bucket tracking so RegisterBucket re-runs the startup path.
 	ccm.mu.Lock()
 	delete(ccm.trackedBuckets, bucketName)
 	ccm.mu.Unlock()
-	ccm.RegisterBucket(ctx, bucketName)
+	require.NoError(t, ccm.RegisterBucket(ctx, bucketName))
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
@@ -310,8 +305,7 @@ func TestClusterCompatPruneFreshPeerNotPruned(t *testing.T) {
 	require.NotNil(t, ccm)
 
 	freshPeer := "fresh-peer"
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, freshPeer, base.NewClusterCompatVersion(3, 5), time.Hour)
-	require.NoError(t, err)
+	seedRegistryNode(t, rt, bucketName, freshPeer, base.NewClusterCompatVersion(3, 5))
 
 	ccm.lastRefreshAt = time.Time{}
 	ccm.Refresh(ctx)
@@ -339,6 +333,167 @@ func TestClusterCompatHeartbeatExpiryConfigurable(t *testing.T) {
 	want := 17 * ccm.refreshInterval()
 	rt.ServerContext().Config.Bootstrap.NodeHeartbeatExpiry = base.NewConfigDuration(want)
 	assert.Equal(t, want, ccm.heartbeatExpiry())
+}
+
+// seedRegistryNode writes a synthetic node entry into the bucket registry, bypassing the
+// cluster-compat downgrade gate in RegisterNodeVersion so tests can seed peers at arbitrary
+// versions (including versions below HWM, which RegisterNodeVersion would refuse). HWM is
+// ratcheted up to track the min cluster compat across all registered nodes — same invariant
+// as RegisterNodeVersion — so tests that depend on HWM bumping (e.g. via this seed call)
+// continue to observe it.
+func seedRegistryNode(t *testing.T, rt *RestTester, bucketName, nodeUID string, version base.ClusterCompatVersion) {
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	if registry.Nodes == nil {
+		registry.Nodes = make(map[string]*base.RegistryNode)
+	}
+	registry.Nodes[nodeUID] = &base.RegistryNode{
+		Version:     version,
+		HeartbeatAt: time.Now().UTC(),
+	}
+	ccv := minRegistryNodeClusterCompatVersion(registry.Nodes)
+	if ccv.GreaterThan(registry.ClusterCompatVersionHWM) {
+		registry.ClusterCompatVersionHWM = ccv
+	}
+	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+}
+
+// TestClusterCompatDowngradeBlockedByLiveNewerPeer verifies that a node refuses to load a
+// database when a peer in the bucket registry has a higher major.minor compat version with
+// a fresh heartbeat.
+func TestClusterCompatDowngradeBlockedByLiveNewerPeer(t *testing.T) {
+	nodeVersion := base.NewClusterCompatVersion(4, 0)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig:         true,
+		nodeClusterCompatVersion: &nodeVersion,
+	})
+	defer rt.Close()
+
+	bucketName := rt.Bucket().GetName()
+	seedRegistryNode(t, rt, bucketName, "newer-peer", base.NewClusterCompatVersion(99, 9))
+
+	cfg := rt.NewDbConfig()
+	cfg.StartOffline = base.Ptr(true)
+	resp := rt.CreateDatabase("db1", cfg)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), bucketName)
+	assert.Contains(t, resp.Body.String(), "newer Sync Gateway cluster compat version")
+}
+
+// TestClusterCompatDowngradeAllowedSameOrOlderPeers verifies that a node loads cleanly when
+// the registry only contains peers at the same or older major.minor compat versions.
+func TestClusterCompatDowngradeAllowedSameOrOlderPeers(t *testing.T) {
+	nodeVersion := base.NewClusterCompatVersion(4, 0)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig:         true,
+		nodeClusterCompatVersion: &nodeVersion,
+	})
+	defer rt.Close()
+
+	bucketName := rt.Bucket().GetName()
+	seedRegistryNode(t, rt, bucketName, "older-peer", base.NewClusterCompatVersion(0, 1))
+
+	cfg := rt.NewDbConfig()
+	cfg.StartOffline = base.Ptr(true)
+	resp := rt.CreateDatabase("db1", cfg)
+	RequireStatus(t, resp, http.StatusCreated)
+}
+
+// TestClusterCompatDowngradeEmptyRegistry verifies that creating a database against a fresh
+// (empty) bucket succeeds and ratchets ClusterCompatVersionHWM up to the node's compat version.
+func TestClusterCompatDowngradeEmptyRegistry(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	bucketName := rt.Bucket().GetName()
+	bc := rt.ServerContext().BootstrapContext
+
+	registry, err := bc.getGatewayRegistry(base.TestCtx(t), bucketName)
+	require.NoError(t, err)
+	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first apply")
+}
+
+// TestClusterCompatDowngradeBlockedByPersistentHWM verifies the persistent floor: a bucket
+// whose ClusterCompatVersionHWM has been ratcheted past this node's compat version blocks
+// startup even when no live peer is present.
+func TestClusterCompatDowngradeBlockedByPersistentHWM(t *testing.T) {
+	nodeVersion := base.NewClusterCompatVersion(4, 0)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig:         true,
+		nodeClusterCompatVersion: &nodeVersion,
+	})
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	registry.ClusterCompatVersionHWM = base.NewClusterCompatVersion(99, 9)
+	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+
+	cfg := rt.NewDbConfig()
+	cfg.StartOffline = base.Ptr(true)
+	resp := rt.CreateDatabase("db1", cfg)
+	RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "newer Sync Gateway cluster compat version")
+}
+
+// TestClusterCompatDowngradeHWMRatchets verifies that the cluster compat downgrade gate in
+// RegisterNodeVersion rejects a lower-version registration when the bucket's HWM is higher,
+// and that the rejected attempt does not lower the HWM.
+func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
+
+	preserved := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
+	registry.ClusterCompatVersionHWM = preserved
+	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "lower-peer", base.NewClusterCompatVersion(0, 1), time.Hour)
+	require.Error(t, err, "lower-version registration must be rejected when HWM is higher")
+	require.Contains(t, err.Error(), "newer Sync Gateway cluster compat version")
+
+	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Equal(t, preserved, registry.ClusterCompatVersionHWM, "HWM must not be lowered by a rejected registration")
+}
+
+// TestClusterCompatDowngradeHWMTracksMinAcrossNodes verifies that ClusterCompatVersionHWM is
+// the minimum cluster compat version (across registered nodes) ever observed — i.e. the HWM
+// of the cluster compat version, not of individual node versions. A higher node coexisting
+// with a lower one must not drag the HWM up past the cluster's actual compat version.
+func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	// After auto-create db, HWM == self version (only node).
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
+
+	// Add a higher-version peer. Cluster compat is still min(self, higher) == self, so HWM
+	// must not budge.
+	higher := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "higher-peer", higher, time.Hour)
+	require.NoError(t, err)
+	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM must follow min cluster compat, not max node version")
 }
 
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
