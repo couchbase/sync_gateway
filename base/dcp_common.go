@@ -340,5 +340,4 @@ func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPre
 	default:
 		return fmt.Errorf("Unrecognized dcp feed mode: %s", feedMode)
 	}
-	return nil
 }
