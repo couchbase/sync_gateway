@@ -1,0 +1,31 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+post:
+  summary: Freeze the cluster compatibility version at its current value
+  description: |-
+    Captures the current cluster compatibility version and pins the cluster to this version.
+
+    While frozen, subsequent node upgrades will not advance the reported `cluster_compat_version`, preserving the option to roll a node back to the prior major/minor.
+
+    To clear the pinned version, call `POST /_cluster_compat_version/unfreeze`.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Dev Ops
+  responses:
+    '200':
+      description: Cluster compatibility version has been frozen
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized
+  tags:
+    - Server
+  operationId: post__cluster_compat_version_freeze

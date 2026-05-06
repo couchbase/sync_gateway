@@ -79,6 +79,12 @@ paths:
     $ref: ./paths/admin/_config.yaml
   /_cluster_info:
     $ref: ./paths/admin/_cluster_info.yaml
+  /_cluster_compat_version:
+    $ref: ./paths/admin/_cluster_compat_version.yaml
+  /_cluster_compat_version/freeze:
+    $ref: ./paths/admin/_cluster_compat_version-freeze.yaml
+  /_cluster_compat_version/unfreeze:
+    $ref: ./paths/admin/_cluster_compat_version-unfreeze.yaml
   /_status:
     $ref: ./paths/admin/_status.yaml
   /_sgcollect_info:
