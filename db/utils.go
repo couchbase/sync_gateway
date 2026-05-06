@@ -36,7 +36,7 @@ func NewBackgroundTask(ctx context.Context, taskName string, task BackgroundTask
 	base.InfofCtx(ctx, base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
 		defer close(bgt.doneChan)
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {

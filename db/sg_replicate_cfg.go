@@ -889,7 +889,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 	}
 	m.closeWg.Add(1)
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		defer m.closeWg.Done()
 		for {
 			select {
@@ -899,7 +899,7 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 				}
 				err := m.RefreshReplicationCfg(ctx)
 				if err != nil {
-					base.WarnfCtx(m.loggingCtx, "Error while updating replications based on latest cfg: %v", err)
+					base.WarnfCtx(ctx, "Error while updating replications based on latest cfg: %v", err)
 				}
 			case <-m.clusterSubscribeTerminator:
 				return
@@ -1643,24 +1643,25 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 
+	ctx := l.mgr.loggingCtx
 	err := l.mgr.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
 	if err != nil {
-		base.DebugfCtx(l.mgr.loggingCtx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
+		base.DebugfCtx(ctx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		for {
 			select {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
-					base.WarnfCtx(l.mgr.loggingCtx, "Error while reloading heartbeat node definitions: %v", err)
+					base.WarnfCtx(ctx, "Error while reloading heartbeat node definitions: %v", err)
 				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.RegisterNode(l.mgr.localNodeUUID)
 					if registerErr != nil {
-						base.WarnfCtx(l.mgr.loggingCtx, "Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
+						base.WarnfCtx(ctx, "Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
 					}
 				}
 			case <-l.terminator:
