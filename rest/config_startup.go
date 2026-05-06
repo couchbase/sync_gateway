@@ -33,6 +33,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:               PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency:       base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
+			NodeHeartbeatExpiry:         base.NewConfigDuration(defaultNodeHeartbeatExpiry),
 			ServerTLSSkipVerify:         base.Ptr(false),
 			UseTLSServer:                base.Ptr(DefaultUseTLSServer),
 			UseSystemMetadataCollection: base.Ptr(DefaultUseSystemMetadataCollection),

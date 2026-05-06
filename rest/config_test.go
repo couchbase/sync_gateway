@@ -2591,6 +2591,19 @@ func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
 			}
 		})
 	}
+
+	// Regression test for the production startup flow: a user who sets a long
+	// config_update_frequency without setting node_heartbeat_expiry must hit the floor
+	// check, because DefaultStartupConfig materializes node_heartbeat_expiry to its
+	// default. Without the materialized default the user's config would silently use
+	// a 60s expiry against a 1m poll interval, leaving no slack to ride out a missed refresh.
+	t.Run("DefaultStartupConfig materializes heartbeat_expiry, exposing floor violation when only config_update_frequency is overridden", func(t *testing.T) {
+		sc := DefaultStartupConfig("")
+		sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute)
+		err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), errContains)
+	})
 }
 
 func Test_validateJavascriptFunction(t *testing.T) {
