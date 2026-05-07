@@ -296,7 +296,7 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 	return feedName, nil
 }
 
-// PurgeDCPCheckpoints will purge all DCP metadata from previous run a bucket. If the checkpoints are not present, this
+// PurgeDCPCheckpoints will purge all DCP metadata from a previous run in a bucket. If the checkpoints are not present, this
 // is not an error.
 func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedMode DCPFeedMode) error {
 	numVbuckets, err := datastore.GetMaxVbno()
