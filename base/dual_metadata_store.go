@@ -169,6 +169,39 @@ func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error)
 	return ms.primary.Remove(k, cas)
 }
 
+// errRetryUpdateLoop is a sentinel returned by step functions inside runFallbackUpdateLoop to
+// drive another loop iteration (CAS race, callback-requested retry). Never escapes this file.
+var errRetryUpdateLoop = errors.New("metadata store: retry dual-store update loop")
+
+// runFallbackUpdateLoop is the shared scaffolding for Update and WriteUpdateWithXattrs. Each
+// iteration probes primary and either delegates to primaryDelegate (primary holds the doc, or
+// migration is sealed) or hands off to step. step owns the per-method specifics — reading
+// fallback, invoking the caller's callback, and applying the chosen write/delete. step
+// returns errRetryUpdateLoop to drive a new iteration; any other non-nil error is terminal.
+//
+// Retries are bounded by DefaultRetrySleeper (matching the established CAS-retry convention
+// for bucket ops elsewhere in this package); the helper returns NewRetryTimeoutError if the
+// loop exceeds that bound.
+func (ms *MetadataStore) runFallbackUpdateLoop(ctx context.Context, description, k string, primaryDelegate func() (uint64, error), step func() (uint64, error)) (uint64, error) {
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		primaryExists, existsErr := ms.primary.Exists(k)
+		if existsErr != nil {
+			return false, existsErr, 0
+		}
+		if primaryExists || ms.migrationComplete.Load() {
+			casOut, err := primaryDelegate()
+			return false, err, casOut
+		}
+		casOut, stepErr := step()
+		if errors.Is(stepErr, errRetryUpdateLoop) {
+			return true, nil, 0
+		}
+		return false, stepErr, casOut
+	}
+	err, casOut := RetryLoopCas(ctx, description, worker, DefaultRetrySleeper())
+	return casOut, err
+}
+
 // Update implements a CAS-safe read-modify-write that always lands in primary, even when the
 // document only exists in the fallback store. When the doc is in primary (or fallback is no
 // longer consulted) the call delegates to the primary's own Update — its CAS retry loop is
@@ -180,22 +213,17 @@ func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error)
 // directly to the fallback store (the only store that ever held the doc). Without this,
 // subsequent reads would still surface the doc via the read-fallback path until the migration
 // sweep ran.
-func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
-	for {
-		primaryExists, existsErr := ms.primary.Exists(k)
-		if existsErr != nil {
-			return 0, existsErr
+func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (uint64, error) {
+	primaryUpdateFn := func() (uint64, error) {
+		return ms.primary.Update(k, exp, callback)
+	}
+	step := func() (uint64, error) {
+		fallbackValue, fallbackCas, err := ms.fallback.GetRaw(k)
+		if IsDocNotFoundError(err) {
+			return primaryUpdateFn()
 		}
-		if primaryExists || ms.migrationComplete.Load() {
-			return ms.primary.Update(k, exp, callback)
-		}
-
-		fallbackValue, fallbackCas, fallbackErr := ms.fallback.GetRaw(k)
-		if IsDocNotFoundError(fallbackErr) {
-			return ms.primary.Update(k, exp, callback)
-		}
-		if fallbackErr != nil {
-			return 0, fallbackErr
+		if err != nil {
+			return 0, err
 		}
 
 		newValue, cbExpiry, isDelete, cbErr := callback(fallbackValue)
@@ -206,28 +234,30 @@ func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFu
 		if cbExpiry != nil {
 			writeExp = *cbExpiry
 		}
+
 		if isDelete {
 			// Delete the fallback copy — primary never held it, so a primary tombstone is
 			// pointless and would shadow the fallback for nothing. Remove with the CAS we
 			// just observed; on a concurrent fallback mutation we retry the loop.
 			_, removeErr := ms.fallback.Remove(k, fallbackCas)
-			if removeErr == nil || IsDocNotFoundError(removeErr) {
+			switch {
+			case removeErr == nil, IsDocNotFoundError(removeErr):
 				return 0, nil
-			}
-			if IsCasMismatch(removeErr) {
-				continue
+			case IsCasMismatch(removeErr):
+				return 0, errRetryUpdateLoop
 			}
 			return 0, removeErr
 		}
-		casOut, err = ms.primary.WriteCas(k, writeExp, 0, newValue, 0)
-		if err == nil {
+		casOut, writeErr := ms.primary.WriteCas(k, writeExp, 0, newValue, 0)
+		if writeErr == nil {
 			return casOut, nil
 		}
-		if IsCasMismatch(err) {
-			continue
+		if IsCasMismatch(writeErr) {
+			return 0, errRetryUpdateLoop
 		}
-		return 0, err
+		return 0, writeErr
 	}
+	return ms.runFallbackUpdateLoop(context.TODO(), "MetadataStore.Update", k, primaryUpdateFn, step)
 }
 
 func (ms *MetadataStore) Incr(k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
@@ -300,33 +330,27 @@ func (ms *MetadataStore) DeleteWithXattrs(ctx context.Context, k string, xattrKe
 // tombstone directly to fallback (the only store that ever held the doc); primary is left
 // untouched. Without this, callers reading after the tombstone would still see the live doc
 // via the read-fallback path until the migration sweep ran.
-func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
+func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (uint64, error) {
 	if (previous != nil && previous.Cas != 0) || ms.migrationComplete.Load() {
 		return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
 	}
-
-	for {
-		primaryExists, existsErr := ms.primary.Exists(k)
-		if existsErr != nil {
-			return 0, existsErr
-		}
-		if primaryExists {
-			return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
-		}
-
-		fallbackBody, fallbackXattrs, fallbackCas, fallbackErr := ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
-		if IsDocNotFoundError(fallbackErr) {
-			return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
+	primaryDelegate := func() (uint64, error) {
+		return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
+	}
+	step := func() (uint64, error) {
+		fallbackBody, fallbackXattrs, fallbackCas, err := ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
+		if IsDocNotFoundError(err) {
+			return primaryDelegate()
 		}
 		// A doc with no/partial xattrs is still a fallback hit — surface what we have to the
 		// callback rather than treat it as not-found.
-		if fallbackErr != nil && !IsXattrNotFoundError(fallbackErr) && !errors.Is(fallbackErr, ErrXattrPartialFound) {
-			return 0, fallbackErr
+		if err != nil && !IsXattrNotFoundError(err) && !errors.Is(err, ErrXattrPartialFound) {
+			return 0, err
 		}
 
 		updatedDoc, cbErr := callback(fallbackBody, fallbackXattrs, 0)
 		if cbErr == ErrCasFailureShouldRetry {
-			continue
+			return 0, errRetryUpdateLoop
 		}
 		if cbErr != nil {
 			return 0, cbErr
@@ -335,31 +359,33 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 		if updatedDoc.Expiry != nil {
 			writeExp = *updatedDoc.Expiry
 		}
+
 		if updatedDoc.IsTombstone {
 			// Tombstone the fallback copy directly. deleteBody=true clears the body while
 			// preserving the requested xattrs (if any) on the fallback record.
 			_, tombstoneErr := ms.fallback.WriteTombstoneWithXattrs(ctx, k, writeExp, fallbackCas, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, true, opts)
-			if tombstoneErr == nil || IsDocNotFoundError(tombstoneErr) {
+			switch {
+			case tombstoneErr == nil, IsDocNotFoundError(tombstoneErr):
 				return 0, nil
-			}
-			if IsCasMismatch(tombstoneErr) {
-				continue
+			case IsCasMismatch(tombstoneErr):
+				return 0, errRetryUpdateLoop
 			}
 			return 0, tombstoneErr
 		}
-		// xattrsToDelete is intentionally nil on this branch: this is an insert (cas=0) and the
-		// underlying primary store rejects xattrsToDelete on insert (sgbucket.ErrDeleteXattrOnDocumentInsert).
-		// Anything the callback wanted dropped from the migrated doc is already absent from
-		// updatedDoc.Xattrs, so it never lands in primary.
-		casOut, err = ms.primary.WriteWithXattrs(ctx, k, writeExp, 0, updatedDoc.Doc, updatedDoc.Xattrs, nil, opts)
-		if err == nil {
+		// xattrsToDelete is intentionally nil on this branch: this is an insert (cas=0) and
+		// the underlying primary store rejects xattrsToDelete on insert
+		// (sgbucket.ErrDeleteXattrOnDocumentInsert). Anything the callback wanted dropped is
+		// already absent from updatedDoc.Xattrs, so it never lands in primary.
+		casOut, writeErr := ms.primary.WriteWithXattrs(ctx, k, writeExp, 0, updatedDoc.Doc, updatedDoc.Xattrs, nil, opts)
+		if writeErr == nil {
 			return casOut, nil
 		}
-		if IsCasMismatch(err) || IsDocNotFoundError(err) {
-			continue
+		if IsCasMismatch(writeErr) || IsDocNotFoundError(writeErr) {
+			return 0, errRetryUpdateLoop
 		}
-		return 0, err
+		return 0, writeErr
 	}
+	return ms.runFallbackUpdateLoop(ctx, "MetadataStore.WriteUpdateWithXattrs", k, primaryDelegate, step)
 }
 
 func (ms *MetadataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
