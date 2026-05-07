@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -938,5 +939,127 @@ func TestDCPClientAgentConfig(t *testing.T) {
 
 			require.Equal(t, tc.networkType, config.IoConfig.NetworkType)
 		})
+	}
+}
+
+func TestDCPCheckpointCleanup(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	allDataStoreNames, err := bucket.ListDataStores()
+	require.NoError(t, err)
+
+	var dataStores []sgbucket.DataStore
+	for _, dsName := range allDataStoreNames {
+		ds, err := bucket.NamedDataStore(dsName)
+		require.NoError(t, err)
+		dataStores = append(dataStores, ds)
+	}
+
+	// create callback
+	var mutationCount uint64
+	foundDocs := make(chan string, len(dataStores))
+	callback := func(event sgbucket.FeedEvent) bool {
+		if strings.HasSuffix(string(event.Key), "_doc") {
+			atomic.AddUint64(&mutationCount, 1)
+			select {
+			case foundDocs <- string(event.Key):
+			default:
+			}
+		}
+		return true // request checkpoint persistence
+	}
+
+	checkpointPrefix := DefaultMetadataKeys.DCPCheckpointPrefix(t.Name())
+	dcpOptions := DCPClientOptions{
+		FeedID:            "testfeed",
+		CollectionNames:   NewCollectionNameSet(allDataStoreNames...),
+		OneShot:           false,
+		CheckpointPrefix:  checkpointPrefix,
+		Callback:          callback,
+		MetadataStoreType: DCPMetadataStoreCS,
+	}
+
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
+	require.NoError(t, err)
+
+	// If it's a GoCBDCPClient, we want to speed up checkpointing for the test
+	if dc, ok := dcpClient.(*GoCBDCPClient); ok {
+		dc.checkpointPersistFrequency = Ptr(0 * time.Second)
+	}
+
+	doneChan, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+
+	defer func() {
+		_ = dcpClient.Close()
+		RequireChanClosed(t, doneChan)
+	}()
+
+	// write document to each collection
+	for _, ds := range dataStores {
+		docID := fmt.Sprintf("%s_%s_%s_doc", t.Name(), ds.ScopeName(), ds.CollectionName())
+		body := map[string]any{"foo": "bar"}
+		err = ds.Set(docID, 0, nil, body)
+		require.NoError(t, err)
+	}
+
+	// wait for docs to be seen
+	for i := 0; i < len(dataStores); i++ {
+		select {
+		case <-foundDocs:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for docs")
+		}
+	}
+
+	// Verify the name of the checkpoint prefix matches
+	actualPrefix := dcpClient.GetMetadataKeyPrefix()
+	require.Equal(t, checkpointPrefix, actualPrefix)
+
+	// Close feed
+	err = dcpClient.Close()
+	require.NoError(t, err)
+	RequireChanClosed(t, doneChan)
+
+	// Verify that checkpoint documents were created in the bucket
+	// For GoCB, it's prefix + workerID (0..7) in the default collection
+	// For Rosmar, it's prefix + ":" + feedID in EACH collection
+	type cpInfo struct {
+		ds sgbucket.DataStore
+		id string
+	}
+	var foundCheckpoints []cpInfo
+
+	if !UnitTestUrlIsWalrus() {
+		metadataStore := bucket.Bucket.DefaultDataStore()
+		// Try to find at least one worker's checkpoint
+		for i := 0; i < DefaultNumWorkers; i++ {
+			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, i)
+			_, _, err := metadataStore.GetRaw(checkpointID)
+			if err == nil {
+				foundCheckpoints = append(foundCheckpoints, cpInfo{ds: metadataStore, id: checkpointID})
+				t.Logf("Found checkpoint document: %s", checkpointID)
+			}
+		}
+		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
+	} else {
+		for _, ds := range dataStores {
+			checkpointID := checkpointPrefix + ":testfeed"
+			_, _, err := ds.GetRaw(checkpointID)
+			require.NoError(t, err, "Checkpoint document not found in collection: %s.%s", ds.ScopeName(), ds.CollectionName())
+			foundCheckpoints = append(foundCheckpoints, cpInfo{ds: ds, id: checkpointID})
+		}
+	}
+
+	// Purge checkpoints and verify they are deleted
+	err = dcpClient.PurgeCheckpoints()
+	require.NoError(t, err)
+
+	for _, cp := range foundCheckpoints {
+		_, _, err := cp.ds.GetRaw(cp.id)
+		require.Error(t, err, "Expected checkpoint document %s to be deleted from %s.%s", cp.id, cp.ds.ScopeName(), cp.ds.CollectionName())
+		RequireDocNotFoundError(t, err)
 	}
 }

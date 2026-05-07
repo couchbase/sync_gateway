@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"errors"
+	"expvar"
 	"fmt"
 	"os"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1562,3 +1564,212 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 	})
 
 }
+
+type mockHeartbeater struct{}
+
+func (m *mockHeartbeater) RegisterListener(listener HeartbeatListener) error { return nil }
+func (m *mockHeartbeater) UnregisterListener(name string)                  {}
+func (m *mockHeartbeater) Start(context.Context) error                      { return nil }
+func (m *mockHeartbeater) StartSendingHeartbeats(context.Context) error       { return nil }
+func (m *mockHeartbeater) StartCheckingHeartbeats(context.Context) error      { return nil }
+func (m *mockHeartbeater) Stop(context.Context)                              {}
+
+type mockPIndexImpl struct {
+	dest cbgt.Dest
+}
+
+func (m *mockPIndexImpl) Close() error { return nil }
+
+func TestShardedDCPCheckpointCleanup(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	// In test environments, the bucket pool might not always pre-create collections.
+	// But ListDataStores will return whatever is available.
+	allDataStoreNames, err := bucket.ListDataStores()
+	require.NoError(t, err)
+
+	var dataStores []sgbucket.DataStore
+	for _, dsName := range allDataStoreNames {
+		ds, err := bucket.NamedDataStore(dsName)
+		require.NoError(t, err)
+		dataStores = append(dataStores, ds)
+	}
+
+	// Setup a callback and a way to wait for docs
+	var mutationCount uint64
+	doneDocs := make(chan struct{})
+	expectedDocs := len(dataStores)
+
+	var foundDocsLock sync.Mutex
+	type foundDoc struct {
+		dsID  string
+		docID string
+	}
+	var foundDocs []foundDoc
+
+	callback := func(event sgbucket.FeedEvent) bool {
+		if event.Opcode == sgbucket.FeedOpMutation {
+			foundDocsLock.Lock()
+			foundDocs = append(foundDocs, foundDoc{
+				dsID:  fmt.Sprintf("%d", event.CollectionID), // Not exact since we don't have ds mapping, but enough to know we found it.
+				docID: string(event.Key),
+			})
+			foundDocsLock.Unlock()
+
+			newCount := atomic.AddUint64(&mutationCount, 1)
+			if newCount == uint64(expectedDocs) {
+				select {
+				case <-doneDocs:
+				default:
+					close(doneDocs)
+				}
+			}
+		}
+		return true // Request checkpoint persistence
+	}
+
+	// Convert allDataStoreNames to CollectionNames
+	collections := make(CollectionNames)
+	for _, ds := range allDataStoreNames {
+		collections.Add(ds)
+	}
+
+	// Register DestFactory
+	scopeName, collectionList := ShardedDCPOptions{Collections: collections}.scopeAndCollections()
+	destKey := DestKey(t.Name(), scopeName, collectionList, ShardedDCPFeedTypeImport)
+	checkpointPrefix := "test_sharded_cleanup_cp"
+
+	maxVbno, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+
+	StoreDestFactory(ctx, destKey, func(rollback func()) (cbgt.Dest, error) {
+		return NewDCPDest(
+			ctx,
+			callback,
+			bucket.GetMetadataStore(),
+			maxVbno,
+			true, // persistCheckpoints
+			expvar.NewMap(t.Name()+"_stats"),
+			nil, // partitionStat
+			checkpointPrefix,
+		)
+	})
+	defer RemoveDestFactory(destKey)
+
+	// Register PIndexImplType
+	indexType := "sharded_cleanup_index_" + t.Name()
+	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{
+		New: func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+			var outerParams struct {
+				Params string `json:"params"`
+			}
+			err := JSONUnmarshal([]byte(indexParams), &outerParams)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			var sgParams SGFeedIndexParams
+			err = JSONUnmarshal([]byte(outerParams.Params), &sgParams)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			destFactory, err := FetchDestFactory(sgParams.DestKey)
+			if err != nil {
+				return nil, nil, err
+			}
+			dest, err := destFactory(restart)
+			return &mockPIndexImpl{dest: dest}, dest, err
+		},
+	})
+
+	// Start Sharded DCP Feed
+	cfg, _ := NewCbgtCfgMem()
+	heartbeater := &mockHeartbeater{}
+
+	indexName, err := GenerateCBGTIndexName(t.Name(), ShardedDCPFeedTypeImport)
+	require.NoError(t, err)
+
+	opts := ShardedDCPOptions{
+		Bucket:        bucket,
+		Cfg:           cfg,
+		DBName:        t.Name(),
+		UUID:          "testUUID",
+		IndexName:     indexName,
+		IndexType:     indexType,
+		DestKey:       destKey,
+		Heartbeater:   heartbeater,
+		NumPartitions: 1,
+		FeedType:      ShardedDCPFeedTypeImport,
+		Collections:   collections,
+		Datastore:     bucket.GetMetadataStore(),
+	}
+
+	cbgtContext, err := StartShardedDCPFeed(ctx, opts)
+	require.NoError(t, err)
+	defer cbgtContext.Stop(ctx)
+
+	// Write one doc per collection
+	for i, ds := range dataStores {
+		docID := fmt.Sprintf("doc_%d", i)
+		err := ds.Set(docID, 0, nil, map[string]any{"foo": "bar"})
+		require.NoError(t, err)
+	}
+
+	// Wait for docs
+	select {
+	case <-doneDocs:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("Timed out waiting for docs")
+	}
+
+	// Stop feed
+	cbgtContext.Stop(ctx)
+
+	// Verify checkpoints exist
+	foundAny := false
+	for vb := uint16(0); vb < maxVbno; vb++ {
+		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
+		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
+		if err == nil {
+			foundAny = true
+			break
+		}
+	}
+	require.True(t, foundAny, "Should have found at least one checkpoint")
+
+	// Purge
+	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, "", DCPFeedSharded)
+	require.NoError(t, err)
+
+	// Verify gone
+	for vb := uint16(0); vb < maxVbno; vb++ {
+		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
+		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
+		require.True(t, IsDocNotFoundError(err), "Checkpoint %s should have been purged, but got error: %v", cpID, err)
+	}
+
+	// Delete all written docs by name and ensure they are deleted
+	foundDocsLock.Lock()
+	defer foundDocsLock.Unlock()
+	for _, doc := range foundDocs {
+		// Because we don't have a reliable mapping from collectionID back to the specific DataStore in this simple loop,
+		// we can attempt deletion across all dataStores for simplicity, or we can just iterate dataStores and delete by the known names (doc_0, doc_1, etc.)
+		// But since we want to delete the *found* documents by name:
+		deleted := false
+		for _, ds := range dataStores {
+			err := ds.Delete(doc.docID)
+			if err == nil {
+				deleted = true
+			}
+		}
+		require.True(t, deleted, "Failed to delete found document: %s", doc.docID)
+	}
+}
+
