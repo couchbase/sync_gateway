@@ -102,7 +102,7 @@ func (dbMgr *DatabaseStateMgr) AddResyncFunc(resyncFunc ResyncHandler) {
 func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	ticker := time.NewTicker(dbMgr.pollingInterval)
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		for {
 			select {
 			case <-dbMgr.terminator.Done():
