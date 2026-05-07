@@ -252,3 +252,8 @@ func (ms *MetadataStore) SubdocInsert(ctx context.Context, k string, subdocKey s
 func (ms *MetadataStore) WriteSubDoc(ctx context.Context, k string, subdocKey string, cas uint64, value []byte) (casOut uint64, err error) {
 	return ms.primary.WriteSubDoc(ctx, k, subdocKey, cas, value)
 }
+
+// GetMaxVbno returns the number of vBuckets on this data store.
+func (ms *MetadataStore) GetMaxVbno() (uint16, error) {
+	return ms.primary.GetMaxVbno()
+}
