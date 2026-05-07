@@ -2604,3 +2604,33 @@ func TestProposedRev(t *testing.T) {
 		})
 	}
 }
+
+func TestXattrRevokedChannelVersionPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelName string
+		expected    string
+	}{
+		{
+			name:        "simple channel name",
+			channelName: "mychannel",
+			expected:    "_sync.channels.mychannel.rev.ver",
+		},
+		{
+			name:        "channel name with dots",
+			channelName: "location.com.subscriber.default_location",
+			expected:    "_sync.channels.`location.com.subscriber.default_location`.rev.ver",
+		},
+		{
+			name:        "channel name with dots and backticks",
+			channelName: "channel.with`backtick",
+			expected:    "_sync.channels.`channel.with``backtick`.rev.ver",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := xattrRevokedChannelVersionPath("_sync", tc.channelName)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}

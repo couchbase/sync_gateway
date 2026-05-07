@@ -3835,3 +3835,63 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 
 	})
 }
+
+func TestChannelRemovalWithChannelDotInName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		rtConfig := RestTesterConfig{
+			SyncFn: `function (doc, oldDoc) {
+  var testChannel = "test." + doc._id;
+  access("alice", testChannel);
+
+  if (doc.chan && doc.chan.length > 0) {
+    var testChannel2 = "chan." + doc.chan;
+    channel(testChannel2);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		version := btcRunner.AddRevTreeRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", "1-abc", EmptyDocVersion(), []byte(`{"chan": "channel.test1"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		version = btcRunner.AddRevTreeRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", "2-abc", &version, []byte(`{"chan": "channel.test2"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, "38839af8-7874-4e28-b369-51b265d7e6ce", []string{base.SyncXattrName, base.VvXattrName})
+		require.NoError(t, err)
+
+		var syncData db.SyncData
+		syncXattr, ok := xattrs[base.SyncXattrName]
+		require.True(t, ok, "missing _sync xattr")
+		require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
+
+		var hlv db.HybridLogicalVector
+		vvXattr, ok := xattrs[base.VvXattrName]
+		require.True(t, ok, "missing _vv xattr")
+		require.NoError(t, base.JSONUnmarshal(vvXattr, &hlv))
+
+		removalData, ok := syncData.Channels["chan.channel.test1"]
+		require.True(t, ok)
+
+		assert.Equal(t, hlv.Version, base.HexCasToUint64(removalData.Rev.CurrentVersion))
+		assert.Equal(t, hlv.SourceID, removalData.Rev.CurrentSource)
+		assert.Equal(t, syncData.RevAndVersion.RevTreeID, removalData.Rev.RevTreeID)
+	})
+}

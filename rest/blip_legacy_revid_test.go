@@ -12,6 +12,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -1008,6 +1009,154 @@ func TestLegacyRevNotInConflict(t *testing.T) {
 	assert.Equal(t, "100@CBL1", bucketDoc.HLV.GetCurrentVersionString())
 	assert.NotNil(t, bucketDoc.History[rev1ID])
 	assert.Equal(t, docVersion.CV.Value, bucketDoc.HLV.PreviousVersions[docVersion.CV.SourceID])
+
+}
+
+func TestLol4(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeyChanges, base.KeyCache, base.KeyGoCB, base.KeyWebSocket, base.KeyWebSocketFrame)
+	//rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+	btcRunner.Run(func(t *testing.T) {
+		rtConfig := RestTesterConfig{
+			//SyncFn: `function(doc, oldDoc) { access("alice", "job.38839af8-7874-4e28-b369-51b265d7e6ce"); channel("location.com.subscriber.default_location"); }`,
+			SyncFn: `function (doc, oldDoc) {
+  // 1. Basic Validation: Don't process deleted documents
+  if (doc._deleted) {
+    return;
+  }
+
+  // 2. Access Assignment: Grant user "Alice" access to the job channel
+  // We use the document's unique ID to create a specific channel
+  var jobChannel = "job." + doc._id;
+  access("alice", jobChannel);
+
+  // 3. Channel Assignment: Assign the document to a location-based channel
+  // This uses the 'location' field from the root of the document
+  if (doc.location && doc.location.length > 0) {
+    var locationChannel = "location." + doc.location;
+    channel(locationChannel);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		version := btcRunner.AddRevTreeRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", "1-abc", EmptyDocVersion(), []byte(`{"location": "com.subscriber.default_location"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		version = btcRunner.AddRevTreeRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", "2-abc", &version, []byte(`{"location": "com.subscriber.synctest"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		fmt.Println("stop")
+	})
+
+}
+
+func TestLol2(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeyChanges, base.KeyCache, base.KeyGoCB, base.KeyWebSocket, base.KeyWebSocketFrame)
+	//rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true
+	btcRunner.Run(func(t *testing.T) {
+		rtConfig := RestTesterConfig{
+			//SyncFn: `function(doc, oldDoc) { access("alice", "job.38839af8-7874-4e28-b369-51b265d7e6ce"); channel("location.com.subscriber.default_location"); }`,
+			SyncFn: `function (doc, oldDoc) {
+  // 1. Basic Validation: Don't process deleted documents
+  if (doc._deleted) {
+    return;
+  }
+
+  // 2. Access Assignment: Grant user "Alice" access to the job channel
+  // We use the document's unique ID to create a specific channel
+  var jobChannel = "job" + doc._id;
+  access("alice", jobChannel);
+
+  // 3. Channel Assignment: Assign the document to a location-based channel
+  // This uses the 'location' field from the root of the document
+  if (doc.location && doc.location.length > 0) {
+    var locationChannel = "location" + doc.location;
+    channel(locationChannel);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		version := btcRunner.AddRevTreeRev(client.id, "doc", "1-abc", EmptyDocVersion(), []byte(`{"location": "default_location"}`))
+		rt.WaitForVersion("doc", version)
+
+		version = btcRunner.AddRevTreeRev(client.id, "doc", "2-abc", &version, []byte(`{"location": "synctest"}`))
+		rt.WaitForVersion("doc", version)
+	})
+
+}
+
+func TestLol3(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.LevelTrace, base.KeyCRUD, base.KeySync, base.KeyChanges, base.KeyCache, base.KeyGoCB, base.KeyWebSocket, base.KeyWebSocketFrame)
+	//rtConfig := RestTesterConfig{GuestEnabled: true}
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+	btcRunner.Run(func(t *testing.T) {
+		rtConfig := RestTesterConfig{
+			//SyncFn: `function(doc, oldDoc) { access("alice", "job.38839af8-7874-4e28-b369-51b265d7e6ce"); channel("location.com.subscriber.default_location"); }`,
+			SyncFn: `function (doc, oldDoc) {
+  // 1. Basic Validation: Don't process deleted documents
+  if (doc._deleted) {
+    return;
+  }
+
+  // 2. Access Assignment: Grant user "Alice" access to the job channel
+  // We use the document's unique ID to create a specific channel
+  var jobChannel = "job." + doc._id;
+  access("alice", jobChannel);
+
+  // 3. Channel Assignment: Assign the document to a location-based channel
+  // This uses the 'location' field from the root of the document
+  if (doc.location && doc.location.length > 0) {
+    var locationChannel = "location." + doc.location;
+    channel(locationChannel);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		version := btcRunner.AddRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", EmptyDocVersion(), []byte(`{"location": "com.subscriber.default_location"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		version = btcRunner.AddRev(client.id, "38839af8-7874-4e28-b369-51b265d7e6ce", &version, []byte(`{"location": "com.subscriber.synctest"}`))
+		rt.WaitForVersion("38839af8-7874-4e28-b369-51b265d7e6ce", version)
+
+		fmt.Println("stop")
+	})
 
 }
 
