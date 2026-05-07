@@ -165,7 +165,7 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
-	DBStateMgr                   *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	DBStateManager               *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -611,8 +611,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
 
-	// Initialize DatabaseStateManager
-	dbContext.DBStateMgr = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
 
 	return dbContext, nil
 }
@@ -673,8 +672,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
 
-	// Stopping the polling in DBStateMgr
-	context.DBStateMgr.StopPolling()
+	context.DBStateManager.StopPolling()
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
@@ -2624,6 +2622,6 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 // document and invokes registered handlers when changes are detected.
 func (db *DatabaseContext) InitializeOfflineMode() {
 	// TODO: Add the appropriate handler function to handle this
-	db.DBStateMgr.AddResyncFunc(TempResyncHandler)
-	db.DBStateMgr.StartPolling(db.CancelContext)
+	db.DBStateManager.AddResyncFunc(TempResyncHandler)
+	db.DBStateManager.StartPolling(db.CancelContext)
 }

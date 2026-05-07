@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -27,7 +28,7 @@ func TempResyncHandler(resume bool) {
 }
 
 type DatabaseStateMgr struct {
-	CAS             uint64
+	CAS             atomic.Uint64
 	dbStateID       string
 	terminator      *base.SafeTerminator
 	metadataStore   base.DataStore
@@ -40,7 +41,7 @@ type DatabaseStateMgr struct {
 func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
-		CAS:             0,
+		CAS:             atomic.Uint64{},
 		terminator:      base.NewSafeTerminator(),
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
@@ -62,7 +63,7 @@ func (dbMgr *DatabaseStateMgr) UpdateState(state DatabaseState) (err error) {
 	if err != nil {
 		return err
 	}
-	dbMgr.CAS = cas
+	dbMgr.CAS.Store(cas)
 	return
 }
 
@@ -81,13 +82,11 @@ func (dbMgr *DatabaseStateMgr) GetState() (state *DatabaseState, cas uint64, err
 func (dbMgr *DatabaseStateMgr) DeleteState() (err error) {
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
-	_, err = dbMgr.metadataStore.Update(dbMgr.dbStateID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
-		return nil, nil, true, nil
-	})
+	err = dbMgr.metadataStore.Delete(dbMgr.dbStateID)
 	if err != nil {
 		return err
 	}
-	dbMgr.CAS = 0
+	dbMgr.CAS.Store(0)
 	return
 }
 
@@ -123,24 +122,20 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	state, cas, err := dbMgr.GetState()
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
-			if cas != dbMgr.CAS {
+			if cas != dbMgr.CAS.Load() {
 				dbMgr.resyncHandler(false)
-				dbMgr.lock.Lock()
-				defer dbMgr.lock.Unlock()
-				dbMgr.CAS = cas
+				dbMgr.CAS.Store(cas)
 			}
 			return
 		}
 		base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
 		return
 	}
-	if cas == dbMgr.CAS {
+	if cas == dbMgr.CAS.Load() {
 		return
 	}
 	dbMgr.resyncHandler(state.ResyncRunning)
-	dbMgr.lock.Lock()
-	defer dbMgr.lock.Unlock()
-	dbMgr.CAS = cas
+	dbMgr.CAS.Store(cas)
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.

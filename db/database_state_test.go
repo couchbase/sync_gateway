@@ -29,19 +29,19 @@ func TestDatabaseStateUpdate(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
-		require.NotZero(t, mgr.CAS)
+		require.NotZero(t, mgr.CAS.Load())
 
 		var storedState DatabaseState
 		storeCAS, err := metadataStore.Get(docID, &storedState)
 		require.NoError(t, err)
-		require.Equal(t, mgr.CAS, storeCAS)
+		require.Equal(t, mgr.CAS.Load(), storeCAS)
 	})
 
 	t.Run("returns no error on stale CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
-		mgr.CAS = 0 // force stale CAS
+		mgr.CAS.Store(0) // force stale CAS
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 	})
 }
@@ -99,7 +99,7 @@ func TestDeleteState(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		require.NoError(t, mgr.DeleteState())
-		require.Zero(t, mgr.CAS)
+		require.Zero(t, mgr.CAS.Load())
 	})
 
 	t.Run("returns no error when doc already deleted", func(t *testing.T) {
@@ -107,7 +107,19 @@ func TestDeleteState(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
 		require.NoError(t, mgr.DeleteState())
+
+		// Verify the document is actually deleted (doc-not-found on subsequent Get)
+		_, _, err := mgr.GetState()
+		require.True(t, base.IsDocNotFoundError(err), err)
+		require.Zero(t, mgr.CAS.Load())
+
+		// Verify delete is idempotent: second delete should also succeed without error
 		require.NoError(t, mgr.DeleteState())
+
+		// Verify document is still absent after idempotent delete
+		_, _, err = mgr.GetState()
+		require.True(t, base.IsDocNotFoundError(err), err)
+		require.Zero(t, mgr.CAS.Load())
 	})
 }
 
@@ -150,7 +162,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		mgr.pollingInterval = 10 * time.Millisecond
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: true}))
-		mgr.CAS = 0 // simulate stale CAS so the poller sees a change
+		mgr.CAS.Store(0) // simulate stale CAS so the poller sees a change
 
 		var called atomic.Bool
 		var resumeVal atomic.Bool
