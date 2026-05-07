@@ -608,3 +608,8 @@ func (c *Collection) setCollectionID() error {
 	}
 	return nil
 }
+
+// GetMaxVbno returns the number of vBuckets on this datastore.
+func (c *Collection) GetMaxVbno() (uint16, error) {
+	return c.Bucket.GetMaxVbno()
+}
