@@ -2434,8 +2434,6 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 			err = dataStore.Set(ctx, key, DurationToCbsExpiry(time.Hour*24), nil, val)
 			assert.NoError(t, err, "Error calling Set()")
 
-			ctx := TestCtx(t)
-			ctx = TestCtx(t)
 			beforeExp, err := dataStore.GetExpiry(ctx, key)
 			require.NoError(t, err)
 			require.NotEqual(t, 0, beforeExp)

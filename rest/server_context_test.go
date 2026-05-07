@@ -610,9 +610,9 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 }
 
 func TestLogFlush(t *testing.T) {
-	ctx := base.TestCtx(t)
 	// FIXME: CBG-1869 flaky test
 	t.Skip("CBG-1869: Flaky test")
+	ctx := base.TestCtx(t)
 	ClearServerContextLoggingGlobals(t)
 
 	testCases := []struct {

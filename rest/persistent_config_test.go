@@ -170,8 +170,8 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 }
 
 func TestUnmarshalBrokenConfig(t *testing.T) {
-	ctx := base.TestCtx(t)
 	t.Skip("Disabled, CBG-2420")
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
