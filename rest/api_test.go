@@ -4050,6 +4050,8 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		err = json.Unmarshal(resp.BodyBytes(), &body)
 		require.NoError(t, err)
 
+		docSeq := rt.GetDocumentSequence("doc4")
+
 		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4?rev="+body["rev"].(string), `{"channels": ["b"]}`)
 		RequireStatus(t, resp, http.StatusCreated)
 		err = json.Unmarshal(resp.BodyBytes(), &body)
@@ -4066,7 +4068,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		channelLenBefore := len(syncDataBefore.Channels)
 
 		// Compact at seq 3
-		err = collection.CompactDocChannelHistory(ctx, "doc4", 2)
+		err = collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
 		require.NoError(t, err)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
@@ -4113,6 +4115,8 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		err = json.Unmarshal(resp.BodyBytes(), &body)
 		require.NoError(t, err)
 
+		docSeq := rt.GetDocumentSequence("doc7")
+
 		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc7?rev="+body["rev"].(string), `{"channels": ["a", "c"]}`)
 		RequireStatus(t, resp, http.StatusCreated)
 		err = json.Unmarshal(resp.BodyBytes(), &body)
@@ -4120,7 +4124,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
-		err = collection.CompactDocChannelHistory(ctx, "doc7", 2)
+		err = collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
 		require.NoError(t, err)
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc7")
