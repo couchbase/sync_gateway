@@ -448,6 +448,6 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 	err = json.Unmarshal(statusB, &respB)
 	require.NoError(t, err)
 
-	require.Equal(t, uint64(15), respB.DocsProcessed)
+	require.Equal(t, int64(15), respB.DocsProcessed)
 
 }

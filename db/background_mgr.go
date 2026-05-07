@@ -190,10 +190,6 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
-		err := b.updateMultiNodeClusterAwareStatus(ctx)
-		if err != nil {
-			return fmt.Errorf("Failed to update cluster aware status at start of process: %w", err)
-		}
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
 			b.startPollingMultiNodeStatus(ctx, b.terminator)
 		})
