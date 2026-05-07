@@ -125,7 +125,6 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, r
 		ctx,
 		db.MetadataStore,
 		GetResyncDCPCheckpointPrefix(db.DatabaseContext, resyncID, r.Distributed),
-		resyncID,
 		db.distributedDCPFeedMode(),
 	)
 }
@@ -522,17 +521,12 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 	return InitializeIndexes(ctx, n1qlStore, options)
 }
 
-// DCPFeedID returns the feed ID used by the resync DCP feed.
-func (r *ResyncManagerDCP) DCPFeedID(resyncID string) string {
-	return fmt.Sprintf("resync:%v", resyncID)
-}
-
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
 func (r *ResyncManagerDCP) getDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, distributed bool) base.DCPClientOptions {
 	return base.DCPClientOptions{
-		FeedID:            r.DCPFeedID(resyncID),
+		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,

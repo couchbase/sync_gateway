@@ -298,38 +298,23 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 
 // PurgeDCPCheckpoints will purge all DCP metadata from previous run a bucket. If the checkpoints are not present, this
 // is not an error.
-func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedPrefix string, feedMode DCPFeedMode) error {
-
+func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedMode DCPFeedMode) error {
+	numVbuckets, err := datastore.GetMaxVbno()
+	if err != nil {
+		return err
+	}
 	switch feedMode {
 	case DCPFeedRosmar:
-		checkpoint := checkpointPrefix + ":" + feedPrefix
-		err := datastore.Delete(checkpoint)
+		err := datastore.Delete(checkpointPrefix)
 		if err != nil && !IsDocNotFoundError(err) {
 			return err
 		}
 		return nil
 	case DCPFeedGocb:
-		collection, err := AsCollection(datastore)
-		if err != nil {
-			return RedactErrorf("dataStore %q is not a gocb collection: type %T", MD(datastore.GetName()), datastore)
-		}
-		numVbuckets, err := collection.GetMaxVbno()
-		if err != nil {
-			return err
-		}
-
 		metadata := NewDCPMetadataCS(ctx, datastore, numVbuckets, DefaultNumWorkers, checkpointPrefix)
 		metadata.Purge(ctx, DefaultNumWorkers)
 		return nil
 	case DCPFeedSharded:
-		collection, err := AsCollection(datastore)
-		if err != nil {
-			return RedactErrorf("dataStore %q is not a gocb collection: type %T", MD(datastore.GetName()), datastore)
-		}
-		numVbuckets, err := collection.GetMaxVbno()
-		if err != nil {
-			return err
-		}
 		var errs []error
 		for vbNo := range numVbuckets {
 			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)

@@ -1024,33 +1024,24 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	RequireChanClosed(t, doneChan)
 
 	// Verify that checkpoint documents were created in the bucket
-	// For GoCB, it's prefix + workerID (0..7) in the default collection
-	// For Rosmar, it's prefix + ":" + feedID in EACH collection
-	type cpInfo struct {
-		ds sgbucket.DataStore
-		id string
-	}
-	var foundCheckpoints []cpInfo
+	var foundCheckpoints []string
 
+	metadataStore := bucket.Bucket.DefaultDataStore()
 	if !UnitTestUrlIsWalrus() {
-		metadataStore := bucket.Bucket.DefaultDataStore()
 		// Try to find at least one worker's checkpoint
 		for i := 0; i < DefaultNumWorkers; i++ {
 			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, i)
 			_, _, err := metadataStore.GetRaw(checkpointID)
 			if err == nil {
-				foundCheckpoints = append(foundCheckpoints, cpInfo{ds: metadataStore, id: checkpointID})
+				foundCheckpoints = append(foundCheckpoints, checkpointID)
 				t.Logf("Found checkpoint document: %s", checkpointID)
 			}
 		}
 		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
 	} else {
-		for _, ds := range dataStores {
-			checkpointID := checkpointPrefix + ":testfeed"
-			_, _, err := ds.GetRaw(checkpointID)
-			require.NoError(t, err, "Checkpoint document not found in collection: %s.%s", ds.ScopeName(), ds.CollectionName())
-			foundCheckpoints = append(foundCheckpoints, cpInfo{ds: ds, id: checkpointID})
-		}
+		_, _, err := metadataStore.GetRaw(checkpointPrefix)
+		require.NoError(t, err, "Checkpoint document not found  %q", checkpointPrefix)
+		foundCheckpoints = append(foundCheckpoints, checkpointPrefix)
 	}
 
 	// Purge checkpoints and verify they are deleted
@@ -1058,8 +1049,8 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, cp := range foundCheckpoints {
-		_, _, err := cp.ds.GetRaw(cp.id)
-		require.Error(t, err, "Expected checkpoint document %s to be deleted from %s.%s", cp.id, cp.ds.ScopeName(), cp.ds.CollectionName())
+		_, _, err := metadataStore.GetRaw(cp)
+		require.Error(t, err, "Expected checkpoint document %s to be deleted", cp)
 		RequireDocNotFoundError(t, err)
 	}
 }

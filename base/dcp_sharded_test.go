@@ -1568,10 +1568,10 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 type mockHeartbeater struct{}
 
 func (m *mockHeartbeater) RegisterListener(listener HeartbeatListener) error { return nil }
-func (m *mockHeartbeater) UnregisterListener(name string)                  {}
-func (m *mockHeartbeater) Start(context.Context) error                      { return nil }
-func (m *mockHeartbeater) StartSendingHeartbeats(context.Context) error       { return nil }
-func (m *mockHeartbeater) StartCheckingHeartbeats(context.Context) error      { return nil }
+func (m *mockHeartbeater) UnregisterListener(name string)                    {}
+func (m *mockHeartbeater) Start(context.Context) error                       { return nil }
+func (m *mockHeartbeater) StartSendingHeartbeats(context.Context) error      { return nil }
+func (m *mockHeartbeater) StartCheckingHeartbeats(context.Context) error     { return nil }
 func (m *mockHeartbeater) Stop(context.Context)                              {}
 
 type mockPIndexImpl struct {
@@ -1745,7 +1745,7 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	require.True(t, foundAny, "Should have found at least one checkpoint")
 
 	// Purge
-	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, "", DCPFeedSharded)
+	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, DCPFeedSharded)
 	require.NoError(t, err)
 
 	// Verify gone
@@ -1772,4 +1772,3 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 		require.True(t, deleted, "Failed to delete found document: %s", doc.docID)
 	}
 }
-

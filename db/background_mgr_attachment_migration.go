@@ -295,16 +295,11 @@ func (a *AttachmentMigrationManager) getCheckpointPrefix(migrationID string) str
 	)
 }
 
-// getDCPFeedID returns the ID specifically for logging
-func (a *AttachmentMigrationManager) DCPFeedID(migrationID string) string {
-	return fmt.Sprintf("att_migration:%v", migrationID)
-}
-
 // getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
 // CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
 func (a *AttachmentMigrationManager) getDCPClientOptions(migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
 	return base.DCPClientOptions{
-		FeedID:            a.DCPFeedID(migrationID),
+		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
@@ -337,7 +332,6 @@ func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *D
 		ctx,
 		db.MetadataStore,
 		a.getCheckpointPrefix(migrationID),
-		migrationID,
 		db.dcpFeedMode(),
 	)
 }
