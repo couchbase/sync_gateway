@@ -119,7 +119,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 // executed concurrently for multiple events from different vbuckets.  Filters out
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported.
 // Returns true if the checkpoints should be persisted.
-func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
+func (il *importListener) ProcessFeedEvent(_ context.Context, event sgbucket.FeedEvent) bool {
 	ctx := il.loggingCtx
 	docID := string(event.Key)
 	defer func() {

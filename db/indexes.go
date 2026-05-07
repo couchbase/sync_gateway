@@ -559,7 +559,7 @@ func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, u
 func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes CollectionIndexes, preview bool) (removedIndexes []string, err error) {
 	var errs *base.MultiError
 	for dsName, inUseIndexes := range inUseIndexes {
-		dsName, err := bucket.NamedDataStore(dsName)
+		dsName, err := bucket.NamedDataStore(ctx, dsName)
 		if err != nil {
 			errs = errs.Append(fmt.Errorf("failed to get datastore %s: %w", base.MD(dsName), err))
 			continue

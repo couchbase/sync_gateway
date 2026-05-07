@@ -55,14 +55,14 @@ var _ Bucket = &TestBucket{}
 
 // DefaultDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetSingleDataStore
-func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
-	return b.Bucket.DefaultDataStore()
+func (b *TestBucket) DefaultDataStore(ctx context.Context) sgbucket.DataStore {
+	return b.Bucket.DefaultDataStore(TestCtx(b.t))
 }
 
 // NamedDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetNamedDataStore
-func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	return b.Bucket.NamedDataStore(name)
+func (b *TestBucket) NamedDataStore(ctx context.Context, name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+	return b.Bucket.NamedDataStore(ctx, name)
 }
 
 func (tb TestBucket) Close(ctx context.Context) {
@@ -125,7 +125,7 @@ func (tb *TestBucket) GetNamedDataStore(count int) (DataStore, error) {
 	if count > len(dataStoreNames) {
 		tb.t.Fatalf("You are requesting more datastores %d than are available on this test instance %d", count, len(dataStoreNames))
 	}
-	return tb.Bucket.NamedDataStore(dataStoreNames[count])
+	return tb.Bucket.NamedDataStore(TestCtx(tb.t), dataStoreNames[count])
 }
 
 // Return a sorted list of data store names
@@ -141,11 +141,11 @@ func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 		require.NoError(b.t, err)
 		return ds
 	}
-	return b.Bucket.DefaultDataStore()
+	return b.Bucket.DefaultDataStore(TestCtx(b.t))
 }
 
 func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
-	return b.Bucket.DefaultDataStore()
+	return b.Bucket.DefaultDataStore(TestCtx(b.t))
 }
 
 // GetMobileSystemDataStore returns the _system._mobile DataStore from the bucket.
@@ -155,7 +155,7 @@ func (b *TestBucket) GetMobileSystemDataStore() DataStore {
 	if !b.Bucket.IsSupported(sgbucket.BucketStoreFeatureSystemCollections) {
 		b.t.Skipf("Skipping test - backing store does not support system collections (%s.%s)", SystemScope, SystemCollectionMobile)
 	}
-	ds, err := b.Bucket.NamedDataStore(ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
+	ds, err := b.Bucket.NamedDataStore(TestCtx(b.t), ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile})
 	require.NoErrorf(b.t, err, "Failed to get %s.%s DataStore", SystemScope, SystemCollectionMobile)
 	return ds
 }
@@ -168,12 +168,12 @@ func (b *TestBucket) CreateDataStore(ctx context.Context, name sgbucket.DataStor
 	return dynamicDataStore.CreateDataStore(ctx, name)
 }
 
-func (b *TestBucket) DropDataStore(name sgbucket.DataStoreName) error {
+func (b *TestBucket) DropDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
 	if !ok {
 		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
 	}
-	return dynamicDataStore.DropDataStore(name)
+	return dynamicDataStore.DropDataStore(ctx, name)
 }
 
 // GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
@@ -874,14 +874,14 @@ func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...any) b
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
 
-func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
+func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (vbNo uint32, err error) {
 
 	cbBucket, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
 		return 0, fmt.Errorf("GetVbucketForKey not supported for non-Couchbase bucket")
 	}
 
-	maxVbNo, err := cbBucket.GetMaxVbno()
+	maxVbNo, err := cbBucket.GetMaxVbno(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -892,16 +892,17 @@ func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
 // MoveDocument moves the document from src to dst
 // Note: does not handle xattr contents
 func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
+	ctx := TestCtx(t)
 	var data any
 
-	srcCAS, err := src.Get(docID, &data)
+	srcCAS, err := src.Get(ctx, docID, &data)
 	require.NoError(t, err)
 
-	ok, err := dst.Add(docID, 0, data)
+	ok, err := dst.Add(ctx, docID, 0, data)
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	_, err = src.Remove(docID, srcCAS)
+	_, err = src.Remove(ctx, docID, srcCAS)
 	require.NoError(t, err)
 }
 
@@ -946,7 +947,7 @@ func CreateTestBucketName(suffix string) string {
 
 // GetNonDefaultDatastoreNames returns a list of non-default datastore names from the given bucket.
 func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataStoreName {
-	allDataStoreNames, err := bucket.ListDataStores()
+	allDataStoreNames, err := bucket.ListDataStores(TestCtx(t))
 	require.NoError(t, err)
 	var keyspaces []string
 	for _, name := range allDataStoreNames {

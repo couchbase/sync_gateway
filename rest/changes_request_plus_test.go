@@ -22,6 +22,7 @@ import (
 // TestRequirePlusSkippedSequence makes sure that a final skipped sequence in a request_plus request will not hang the request
 func TestRequestPlusSkippedSequence(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	defer db.SuspendSequenceBatching()()
 	restTesterConfig := RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
 
@@ -43,7 +44,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	// add an unused sequence
-	unusedSeq, err := db.AllocateTestSequence(rt.GetDatabase())
+	unusedSeq, err := db.AllocateTestSequence(ctx, rt.GetDatabase())
 	require.NoError(t, err)
 
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()

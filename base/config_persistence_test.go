@@ -151,7 +151,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	// modify the document body directly in the bucket
 	updatedBody := make(map[string]any)
 	updatedBody["unexpected"] = "value"
-	err := dataStore.Set(configKey, 0, nil, updatedBody)
+	err := dataStore.Set(ctx, configKey, 0, nil, updatedBody)
 	require.NoError(t, err)
 
 	// attempt to re-insert, must return ErrAlreadyExists
@@ -165,7 +165,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// set the document to an empty body, shouldn't be treated as delete
-	err = dataStore.Set(configKey, 0, nil, nil)
+	err = dataStore.Set(ctx, configKey, 0, nil, nil)
 	require.NoError(t, err)
 
 	// Retrieve the config
@@ -175,12 +175,12 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
 	var docBody map[string]any
-	_, err = dataStore.Get(configKey, &docBody)
+	_, err = dataStore.Get(ctx, configKey, &docBody)
 	assert.NoError(t, err)
 	assert.True(t, docBody == nil)
 
 	// delete the document directly in the bucket (system xattr will be preserved)
-	deleteErr := dataStore.Delete(configKey)
+	deleteErr := dataStore.Delete(ctx, configKey)
 	assert.NoError(t, deleteErr)
 
 	// Retrieve the config
@@ -189,7 +189,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling DID occur
-	_, err = dataStore.Get(configKey, &docBody)
+	_, err = dataStore.Get(ctx, configKey, &docBody)
 	assert.NoError(t, err)
 	assert.True(t, docBody != nil)
 

@@ -152,7 +152,7 @@ func (listener *changeListener) DocumentType(key []byte) DocumentType {
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed (TAP or DCP).  Uses document
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
-func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
+func (listener *changeListener) ProcessFeedEvent(_ context.Context, event sgbucket.FeedEvent) bool {
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		if !bytes.HasPrefix(event.Key, []byte(base.SyncDocPrefix)) {
 			listener.OnDocChanged(event, DocTypeDocument)

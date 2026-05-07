@@ -75,7 +75,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			continue
 		}
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
-		value, err := collection.GetSpecial(DocTypeLocal, key)
+		value, err := collection.GetSpecial(bh.loggingCtx, DocTypeLocal, key)
 		if err != nil {
 			status, _ := base.ErrorAsHTTPStatus(err)
 			if status == http.StatusNotFound {

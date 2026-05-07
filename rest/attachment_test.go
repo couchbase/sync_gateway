@@ -530,7 +530,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Get the couchbase doc
 	couchbaseDoc := db.Body{}
-	_, err := rt.GetSingleDataStore().Get(doc1ID, &couchbaseDoc)
+	_, err := rt.GetSingleDataStore().Get(rt.Context(), doc1ID, &couchbaseDoc)
 	assert.NoError(t, err, "Error getting couchbaseDoc")
 
 	// Doc at this point
@@ -580,7 +580,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Put the doc back into couchbase
-	err = rt.GetSingleDataStore().Set(doc1ID, 0, nil, couchbaseDoc)
+	err = rt.GetSingleDataStore().Set(rt.Context(), doc1ID, 0, nil, couchbaseDoc)
 	assert.NoError(t, err, "Error putting couchbaseDoc")
 
 	// Flush rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
@@ -754,7 +754,7 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	ok, err := rt.GetSingleDataStore().Add("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
+	ok, err := rt.GetSingleDataStore().Add(rt.Context(), "doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -1106,7 +1106,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 	requireAttachmentFound := func(attKey string, attBodyExpected []byte) {
 		var attBodyActual []byte
-		_, err := dataStore.Get(attKey, &attBodyActual)
+		_, err := dataStore.Get(rt.Context(), attKey, &attBodyActual)
 		require.NoError(t, err)
 		assert.Equal(t, attBodyExpected, attBodyActual)
 	}
@@ -1717,7 +1717,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document via SDK.
-		err := dataStore.Delete(docID)
+		err := dataStore.Delete(rt.Context(), docID)
 		require.NoError(t, err, "Unable to delete doc %q", docID)
 
 		// force import via GET
@@ -1763,7 +1763,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Update the document via SDK.
-		err := dataStore.Set(docID, 0, nil, []byte(`{"prop": false}`))
+		err := dataStore.Set(rt.Context(), docID, 0, nil, []byte(`{"prop": false}`))
 		require.NoError(t, err, "Error updating the document")
 
 		// Wait until the "update" mutation is present by doing on demand import
@@ -2114,7 +2114,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 			// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
 			rt.DeleteDoc(docID, losingVersion3)
 
-			_, _, err = rt.GetSingleDataStore().GetRaw(attachmentKey)
+			_, _, err = rt.GetSingleDataStore().GetRaw(rt.Context(), attachmentKey)
 			if rt.GetDatabase().CachedCCVEnabled.Load() {
 				require.NoError(t, err, "Attachment should not be deleted as eccv is enabled")
 			} else {
@@ -2194,7 +2194,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 	assert.True(t, ok)
 
 	// Ensure we can get the attachment doc
-	_, _, err = rt.GetSingleDataStore().GetRaw(key)
+	_, _, err = rt.GetSingleDataStore().GetRaw(rt.Context(), key)
 	assert.NoError(t, err)
 
 	// Purge the document
@@ -2202,7 +2202,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Ensure that the attachment has now been deleted
-	_, _, err = rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(key)
+	_, _, err = rt.GetDatabase().Bucket.DefaultDataStore(rt.Context()).GetRaw(rt.Context(), key)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
 }
@@ -2238,7 +2238,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 			// Wait for document to be expired - this bucket get should also trigger the expiry purge interval
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				_, _, err := dataStore.GetRaw(docID)
+				_, _, err := dataStore.GetRaw(rt.Context(), docID)
 				assert.True(c, base.IsDocNotFoundError(err), "expected err %v to be doc not found", err)
 			}, time.Second*10, time.Millisecond*10)
 
@@ -2250,7 +2250,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 			// With xattrs doc will be imported and will be captured as tombstone and therefore purge attachments
 			// Otherwise attachment will not be purged
-			_, _, err := dataStore.GetRaw(att2Key)
+			_, _, err := dataStore.GetRaw(rt.Context(), att2Key)
 			if rt.GetDatabase().CachedCCVEnabled.Load() {
 				assert.NoError(t, err)
 			} else {
@@ -2291,7 +2291,7 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 		btc.rt.WaitForPendingChanges()
 		btcRunner.WaitForVersion(btc.id, doc1ID, initialVersion)
 
-		value, _, err := ds.GetRaw(doc1ID)
+		value, _, err := ds.GetRaw(rt.Context(), doc1ID)
 		require.NoError(t, err)
 
 		// move attachment metadata from global xattr to sync xattr
@@ -2664,7 +2664,7 @@ func TestCBLRevposHandling(t *testing.T) {
 func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) DocVersion {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
-	_, err := dataStore.AddRaw(attKey, 0, attBody)
+	_, err := dataStore.AddRaw(rt.Context(), attKey, 0, attBody)
 	require.NoError(t, err)
 
 	body := db.Body{}
@@ -2672,7 +2672,7 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	require.NoError(t, err, "Error unmarshalling body")
 
 	// Write raw document to the datastore.
-	_, err = dataStore.Add(docID, 0, rawDoc)
+	_, err = dataStore.Add(rt.Context(), docID, 0, rawDoc)
 	require.NoError(t, err)
 
 	// Migrate document metadata from document body to system xattr.
@@ -2688,7 +2688,7 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 func CreateDocWithLegacyAttachmentNoMigration(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
 	// Write attachment directly to the datastore.
 	dataStore := rt.GetSingleDataStore()
-	_, err := dataStore.Add(attKey, 0, attBody)
+	_, err := dataStore.Add(rt.Context(), attKey, 0, attBody)
 	require.NoError(t, err)
 
 	body := db.Body{}
@@ -2696,7 +2696,7 @@ func CreateDocWithLegacyAttachmentNoMigration(t *testing.T, rt *RestTester, docI
 	require.NoError(t, err, "Error unmarshalling body")
 
 	// Write raw document to the datastore.
-	_, err = dataStore.Add(docID, 0, rawDoc)
+	_, err = dataStore.Add(rt.Context(), docID, 0, rawDoc)
 	require.NoError(t, err)
 }
 

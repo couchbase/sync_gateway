@@ -436,6 +436,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 // CBG-1518 - Test GetbucketSpec() ServerTLSSkipVerify and empty CA Cert behaviour.
 // Does not test validation of having CA Cert provided and TLS Skip verify on. See TestTLSSkipVerifyCombinations for that.
 func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
+	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name                string
 		serverTLSSkipVerify *bool
@@ -465,7 +466,6 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
 			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
 			dbConfig := &DatabaseConfig{DbConfig: DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}}
 			spec, err := GetBucketSpec(ctx, dbConfig, startupConfig)
@@ -561,11 +561,11 @@ func TestUseTLSServer(t *testing.T) {
 // Test that we correctly error out when trying to use collections against a CBS that doesn't support them. NB: this
 // test only runs against Couchbase Server <7.0.
 func TestServerContextSetupCollectionsSupport(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires Couchbase Server")
 	}
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 	if tb.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -610,6 +610,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 }
 
 func TestLogFlush(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// FIXME: CBG-1869 flaky test
 	t.Skip("CBG-1869: Flaky test")
 	ClearServerContextLoggingGlobals(t)
@@ -672,7 +673,6 @@ func TestLogFlush(t *testing.T) {
 			testDirName := filepath.Base(tempPath)
 
 			// Log some stuff (which will go into the memory loggers)
-			ctx := base.TestCtx(t)
 			base.ErrorfCtx(ctx, "%s", "error: "+testDirName)
 			base.WarnfCtx(ctx, "%s", "warn: "+testDirName)
 			base.InfofCtx(ctx, base.KeyAll, "%s", "info: "+testDirName)
@@ -747,7 +747,7 @@ func TestValidateMetadataStore(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-	require.NoError(t, validateMetadataStore(ctx, bucket.DefaultDataStore()))
+	require.NoError(t, validateMetadataStore(ctx, bucket.DefaultDataStore(ctx)))
 }
 
 func TestDisableScopesInLegacyConfig(t *testing.T) {
@@ -759,7 +759,6 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 		for _, scopes := range []bool{false, true} {
 			t.Run(fmt.Sprintf("persistent_config=%t", persistentConfig), func(t *testing.T) {
 
-				ctx := base.TestCtx(t)
 				startupConfig := &StartupConfig{
 					Bootstrap: BootstrapConfig{
 						UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
@@ -808,6 +807,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 
 // TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
 func TestOfflineDatabaseStartup(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
 	}
@@ -824,7 +824,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	defer rt.Close()
 
 	ds := rt.GetSingleDataStore()
-	_, err := ds.AddRaw("doc1", 0, []byte(`{"type":"doc1"}`))
+	_, err := ds.AddRaw(ctx, "doc1", 0, []byte(`{"type":"doc1"}`))
 	require.NoError(t, err)
 
 	// make sure we actually started offline (try to put a doc through the REST API)
@@ -853,6 +853,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 }
 
 func TestCompactIntervalFromConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name                        string
 		compactIntervalDays         *float32
@@ -881,8 +882,6 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-
-			ctx := base.TestCtx(t)
 			startupConfig := &StartupConfig{}
 			sc := NewServerContext(ctx, startupConfig, false)
 			defer sc.Close(ctx)
@@ -898,6 +897,7 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 }
 
 func TestHeapProfileValuesPopulated(t *testing.T) {
+	ctx := base.TestCtx(t)
 	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
 	testCases := []struct {
 		name                           string
@@ -930,7 +930,6 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
 			sc := NewServerContext(ctx, test.startupConfig, false)
 			defer sc.Close(ctx)
 			require.Equal(t, test.heapProfileCollectionThreshold, sc.statsContext.heapProfileCollectionThreshold)
@@ -974,12 +973,12 @@ func TestDatabaseStartupFailure(t *testing.T) {
 }
 
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
 	rt := NewRestTesterMultipleCollections(t, nil, 3)
 	defer rt.Close()
-	ctx := base.TestCtx(t)
 
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
 	scopesConfig := GetCollectionsConfig(t, rt.TestBucket, 3)
@@ -989,9 +988,9 @@ func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	// remove datastore
 	b, err := base.AsGocbV2Bucket(rt.GetDatabase().Bucket)
 	require.NoError(t, err)
-	dsList, err := b.ListDataStores()
+	dsList, err := b.ListDataStores(ctx)
 	require.NoError(t, err)
-	require.NoError(t, b.DropDataStore(dsList[0]))
+	require.NoError(t, b.DropDataStore(base.TestCtx(t), dsList[0]))
 
 	// reload db
 	err = rt.ServerContext().reloadDatabaseWithConfigLoadFromBucket(base.NewNonCancelCtx(), dbConfig.DatabaseConfig)

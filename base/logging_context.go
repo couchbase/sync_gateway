@@ -175,12 +175,13 @@ func NewTaskID(contextID string, taskName string) string {
 	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
 }
 
-// TestCtx creates a context for the given test which is also cancelled once the test has completed.
+// TestCtx creates a context for the given test which is also canceled once the test has completed.
 func TestCtx(t testing.TB) context.Context {
 	ctx, cancelCtx := context.WithCancelCause(context.Background())
 	t.Cleanup(func() {
 		cancelCtx(errors.New("TestCtx t.Cleanup canceled"))
 	})
+	// FIXME: CBG-5364 - Use `t.Context()` directly here once fixed - remove all of above
 	return LogContextWith(ctx, &LogContext{TestName: t.Name()})
 }
 

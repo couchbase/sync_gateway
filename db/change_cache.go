@@ -406,7 +406,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV); isSGWriteAmbiguous {
 		// CRC is the only remaining check, but we need to fetch the doc body now
 		c.db.DbStats.Cache().IsSGWriteKVFetchCount.Add(1)
-		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(docID)
+		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(ctx, docID)
 		if err != nil {
 			// Can't fetch body - drop this event. A subsequent mutation
 			// will arrive on the feed if the doc is updated again.
@@ -724,7 +724,7 @@ func (c *changeCache) processUnusedSequenceRange(ctx context.Context, docID stri
 // This works around the xattr-only caching feed not including document bodies,
 // which are required for metadata doc types (e.g. user/role principal docs).
 func (c *changeCache) fetchMetadataDocBody(ctx context.Context, docID string, expectedCas uint64) ([]byte, error) {
-	docBody, cas, err := c.db.MetadataStore.GetRaw(docID)
+	docBody, cas, err := c.db.MetadataStore.GetRaw(ctx, docID)
 	if err != nil {
 		return nil, err
 	}

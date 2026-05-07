@@ -41,10 +41,10 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	// Assert there are no indexes on the datastores, to test server startup
-	dsNames, err := bucket.ListDataStores()
+	dsNames, err := bucket.ListDataStores(ctx)
 	require.NoError(t, err)
 	for _, dsName := range dsNames {
-		dataStore, err := bucket.NamedDataStore(dsName)
+		dataStore, err := bucket.NamedDataStore(ctx, dsName)
 		require.NoError(t, err)
 		if !base.TestsDisableGSI() {
 			requireNoIndexes(t, dataStore)
@@ -75,7 +75,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 			indexRoles += "_1"
 			indexUsers += "_1"
 		}
-		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
+		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore(ctx))
 		require.NoError(t, err)
 		indexNames, err := metadataCollection.GetIndexes()
 		require.NoError(t, err)

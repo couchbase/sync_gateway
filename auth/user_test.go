@@ -414,9 +414,9 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 }
 
 func TestUserKeysHash(t *testing.T) {
+	ctx := base.TestCtx(t)
 	for _, metadataDefault := range []bool{false, true} {
 		t.Run(fmt.Sprintf("metadataDefault=%t", metadataDefault), func(t *testing.T) {
-			ctx := base.TestCtx(t)
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close(ctx)
 			dataStore := testBucket.GetSingleDataStore()
@@ -476,6 +476,6 @@ func TestUserKeysHash(t *testing.T) {
 }
 
 func docExists(t *testing.T, dataStore base.DataStore, key string) {
-	_, _, err := dataStore.GetRaw(key)
+	_, _, err := dataStore.GetRaw(base.TestCtx(t), key)
 	require.Nil(t, err, "doc %s should exist in datastore", key)
 }

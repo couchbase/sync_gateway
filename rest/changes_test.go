@@ -623,10 +623,11 @@ func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
 }
 
 func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	seq, err := db.AllocateTestSequence(rt.GetDatabase())
+	seq, err := db.AllocateTestSequence(ctx, rt.GetDatabase())
 	require.NoError(t, err)
 	oldDoc := "oldDoc"
 	oldDocBody := `{"body_field":"1234"}`

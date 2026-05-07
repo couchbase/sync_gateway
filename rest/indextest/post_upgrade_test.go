@@ -29,7 +29,7 @@ func TestPostUpgrade(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	defaultDataStore, ok := bucket.DefaultDataStore().(base.N1QLStore)
+	defaultDataStore, ok := bucket.DefaultDataStore(ctx).(base.N1QLStore)
 	require.True(t, ok, "Default data store should be N1QLDataStore")
 	// create legacy syncDocs index + all non metadata indexes
 	require.NoError(t, db.InitializeIndexes(ctx, defaultDataStore, db.InitializeIndexOptions{

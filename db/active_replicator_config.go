@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"crypto/sha1"
 	"fmt"
 	"net/url"
@@ -130,7 +131,7 @@ type OnCompleteFunc func(replicationID string)
 
 // CheckpointHash returns a deterministic hash of the given config to be used as part of a checkpoint's validity.
 // TODO: Might be a way of caching this value? But need to be sure no config values will change without clearing the cached hash.
-func (arc ActiveReplicatorConfig) CheckpointHash(collectionIdx *int) (string, error) {
+func (arc ActiveReplicatorConfig) CheckpointHash(ctx context.Context, collectionIdx *int) (string, error) {
 	hash := sha1.New()
 
 	// For each field in the config that affects replication result, append its value to the hasher.
@@ -168,7 +169,7 @@ func (arc ActiveReplicatorConfig) CheckpointHash(collectionIdx *int) (string, er
 	if arc.ActiveDB == nil || arc.ActiveDB.Bucket == nil {
 		return "", fmt.Errorf("error calculating checkpoint hash, cannot fetch bucket UUID")
 	}
-	bucketUUID, err := arc.ActiveDB.Bucket.UUID()
+	bucketUUID, err := arc.ActiveDB.Bucket.UUID(ctx)
 	if err != nil {
 		return "", err
 	}

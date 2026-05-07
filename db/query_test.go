@@ -62,7 +62,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 
 	assert.Equal(t, 3, countQueryResults(ctx, results))
 
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	assert.NoError(t, closeErr, "Close error")
 
 	channelQueryCountAfter := db.DbStats.Query(queryExpvar).QueryCount.Value()
@@ -112,7 +112,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 	assert.Equal(t, 3, countQueryResults(ctx, results))
 
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	assert.NoError(t, closeErr, "Close error")
 
 	channelQueryCountAfter := db.DbStats.Query(QueryTypeChannels).QueryCount.Value()
@@ -204,7 +204,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 	// Attempt to invalidate standard query
 	startKey = "a' AND 1=0\x00"
@@ -217,7 +217,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 	// Attempt to invalidate statement to add row to resultset
 	startKey = `a' UNION ALL SELECT TOSTRING(BASE64_DECODE("SW52YWxpZERhdGE=")) as id;` + "\x00"
@@ -231,7 +231,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 	// Attempt to create syntax error
 	startKey = `a'1`
@@ -244,7 +244,7 @@ func TestAllDocsQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 }
 
@@ -279,7 +279,7 @@ func TestAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
@@ -293,7 +293,7 @@ func TestAccessQuery(t *testing.T) {
 			rowCount++
 		}
 		assert.Equal(t, 0, rowCount)
-		assert.NoError(t, results.Close())
+		assert.NoError(t, results.Close(ctx))
 	}
 }
 
@@ -322,7 +322,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 5, rowCount)
-	assert.NoError(t, results.Close())
+	assert.NoError(t, results.Close(ctx))
 
 	// Attempt to introduce syntax errors. Each of these should return zero rows and no error.
 	// Validates select clause protection
@@ -336,7 +336,7 @@ func TestRoleAccessQuery(t *testing.T) {
 			rowCount++
 		}
 		assert.Equal(t, 0, rowCount)
-		assert.NoError(t, results.Close())
+		assert.NoError(t, results.Close(ctx))
 	}
 }
 

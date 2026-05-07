@@ -174,7 +174,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
-	callback := func(event sgbucket.FeedEvent) bool {
+	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
 
@@ -349,7 +349,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		if r.DocsChanged.Value() > 0 {
-			endSeq, err := db.sequences.getSequence()
+			endSeq, err := db.sequences.getSequence(ctx)
 			if err != nil {
 				return err
 			}
@@ -373,7 +373,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 				if !ok {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
 				}
-				if err := base.SetSyncInfoMetadataID(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
+				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
 				}
 				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}

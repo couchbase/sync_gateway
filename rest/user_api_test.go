@@ -256,9 +256,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 
 }
 
-func TestUserAPI(t *testing.T) {
-
-	// PUT a user
+func TestUserAPI(t *testing.T) { // PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -1072,6 +1070,7 @@ func TestFunkyUsernames(t *testing.T) {
 	}
 }
 func TestRemovingUserXattr(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -1140,9 +1139,9 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			dataStore := rt.GetSingleDataStore()
 
-			cas, err := dataStore.Get(docKey, nil)
+			cas, err := dataStore.Get(ctx, docKey, nil)
 			require.NoError(t, err)
-			ctx := rt.Context()
+			ctx = rt.Context()
 			// Add xattr
 			_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 			assert.NoError(t, err)
@@ -1188,10 +1187,10 @@ func TestRemovingUserXattr(t *testing.T) {
 }
 
 func TestGetUserCollectionAccess(t *testing.T) {
+	ctx := base.TestCtx(t)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 
-	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close(ctx)
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
@@ -1572,6 +1571,7 @@ func TestUserMultipleDBs(t *testing.T) {
 }
 
 func TestDeletedRoleChanHistory(t *testing.T) {
+	ctx := base.TestCtx(t)
 	tests := []struct {
 		defaultCollection bool
 	}{
@@ -1581,7 +1581,6 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("defaultCollection:%v", test.defaultCollection), func(t *testing.T) {
-			ctx := base.TestCtx(t)
 
 			var rt *RestTester
 			if test.defaultCollection {

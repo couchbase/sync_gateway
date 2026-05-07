@@ -104,7 +104,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 	defer persistClusterStatus()
 
-	callback := func(event sgbucket.FeedEvent) bool {
+	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		collection := db.CollectionByID[event.CollectionID]
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", migrationLoggingID, event.Opcode, base.UD(docID))
@@ -197,7 +197,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
 			dbc := db.CollectionByID[collectionID]
-			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, MetaVersionValue); err != nil {
+			if err := base.SetSyncInfoMetaVersion(ctx, dbc.dataStore, MetaVersionValue); err != nil {
 				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
 				return err
 			}

@@ -801,11 +801,11 @@ func (doc *Document) setFlag(flag uint8, state bool) {
 }
 
 // RevLoaderFunc and RevWriterFunc manage persistence of non-winning revision bodies that are stored outside the document.
-type RevLoaderFunc func(key string) ([]byte, error)
+type RevLoaderFunc func(ctx context.Context, key string) ([]byte, error)
 
 // RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
-func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
-	body, _, err := c.dataStore.GetRaw(key)
+func (c *DatabaseCollection) RevisionBodyLoader(ctx context.Context, key string) ([]byte, error) {
+	body, _, err := c.dataStore.GetRaw(ctx, key)
 	return body, err
 }
 
@@ -813,7 +813,7 @@ func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
 // or was previously requested), loader function is used to retrieve from the bucket.
 func (doc *Document) getNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
 	var body Body
-	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
+	bodyBytes, found := doc.History.getRevisionBody(ctx, revid, loader)
 	if !found || len(bodyBytes) == 0 {
 		return nil
 	}
@@ -835,7 +835,7 @@ func (doc *Document) getRevisionBodyJSON(ctx context.Context, revid string, load
 			base.WarnfCtx(ctx, "Marshal error when retrieving active current revision body: %v", marshalErr)
 		}
 	} else {
-		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
+		bodyJSON, _ = doc.History.getRevisionBody(ctx, revid, loader)
 	}
 	return bodyJSON
 }
@@ -892,7 +892,7 @@ func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, storeI
 
 // persistModifiedRevisionBodies writes new non-inline revisions to the bucket.
 // Should be invoked BEFORE the document is successfully committed.
-func (doc *Document) persistModifiedRevisionBodies(datastore sgbucket.DataStore) error {
+func (doc *Document) persistModifiedRevisionBodies(ctx context.Context, datastore sgbucket.DataStore) error {
 
 	for _, revID := range doc.addedRevisionBodies {
 		// if this rev is also in the delete set, skip add/delete
@@ -911,7 +911,7 @@ func (doc *Document) persistModifiedRevisionBodies(datastore sgbucket.DataStore)
 		}
 
 		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.
-		addErr := doc.persistRevisionBody(datastore, revInfo.BodyKey, revInfo.Body)
+		addErr := doc.persistRevisionBody(ctx, datastore, revInfo.BodyKey, revInfo.Body)
 		if addErr != nil {
 			return err
 		}
@@ -926,7 +926,7 @@ func (doc *Document) persistModifiedRevisionBodies(datastore sgbucket.DataStore)
 func (doc *Document) deleteRemovedRevisionBodies(ctx context.Context, dataStore base.DataStore) {
 
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
-		deleteErr := dataStore.Delete(revBodyKey)
+		deleteErr := dataStore.Delete(ctx, revBodyKey)
 		if deleteErr != nil {
 			base.WarnfCtx(ctx, "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
@@ -934,8 +934,8 @@ func (doc *Document) deleteRemovedRevisionBodies(ctx context.Context, dataStore 
 	doc.removedRevisionBodyKeys = map[string]string{}
 }
 
-func (doc *Document) persistRevisionBody(datastore sgbucket.DataStore, key string, body []byte) error {
-	_, err := datastore.AddRaw(key, 0, body)
+func (doc *Document) persistRevisionBody(ctx context.Context, datastore sgbucket.DataStore, key string, body []byte) error {
+	_, err := datastore.AddRaw(ctx, key, 0, body)
 	return err
 }
 
@@ -949,7 +949,7 @@ func (doc *Document) migrateRevisionBodies(ctx context.Context, dataStore base.D
 		}
 		if len(revInfo.Body) > MaximumInlineBodySize {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
-			persistErr := doc.persistRevisionBody(dataStore, bodyKey, revInfo.Body)
+			persistErr := doc.persistRevisionBody(ctx, dataStore, bodyKey, revInfo.Body)
 			if persistErr != nil {
 				base.WarnfCtx(ctx, "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue

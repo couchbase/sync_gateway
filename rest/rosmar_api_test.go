@@ -89,7 +89,7 @@ func TestRosmarManagementAPI(t *testing.T) {
 		RequireStatus(t, resp, http.StatusOK)
 
 		// Verify it's gone from ListDataStores
-		dsNames, err := rt.Bucket().ListDataStores()
+		dsNames, err := rt.Bucket().ListDataStores(rt.Context())
 		require.NoError(t, err)
 		for _, ds := range dsNames {
 			if ds.ScopeName() == scopeName && ds.CollectionName() == collectionName {

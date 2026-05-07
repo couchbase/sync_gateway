@@ -18,6 +18,7 @@ import (
 
 // TestImportFeedEventRecover will make sure panics are recoverable importListener.ProcessFeedEvent
 func TestImportFeedEventRecover(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// test the ability for ProcessFeedEvent
 	listener := importListener{
 		collections: map[uint32]DatabaseCollectionWithUser{
@@ -28,13 +29,13 @@ func TestImportFeedEventRecover(t *testing.T) {
 	// assert false to indicate that this checkpoint will not be incremented
 	if base.IsDevMode() {
 		require.Panics(t, func() {
-			listener.ProcessFeedEvent(sgbucket.FeedEvent{
+			listener.ProcessFeedEvent(ctx, sgbucket.FeedEvent{
 				Key:    []byte("example-doc"),
 				Opcode: sgbucket.FeedOpMutation,
 			})
 		})
 	} else {
-		require.False(t, listener.ProcessFeedEvent(sgbucket.FeedEvent{
+		require.False(t, listener.ProcessFeedEvent(ctx, sgbucket.FeedEvent{
 			Key:    []byte("example-doc"),
 			Opcode: sgbucket.FeedOpMutation,
 		}))

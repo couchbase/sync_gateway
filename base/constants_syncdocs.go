@@ -422,16 +422,16 @@ type SyncInfo struct {
 func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
 
 	var syncInfo SyncInfo
-	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
+	_, fetchErr := ds.Get(ctx, SGSyncInfo, &syncInfo)
 	if IsDocNotFoundError(fetchErr) {
 		if metadataID == "" {
 			return false, true, nil
 		}
 		newSyncInfo := &SyncInfo{MetadataID: Ptr(metadataID)}
-		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
+		_, addErr := ds.Add(ctx, SGSyncInfo, 0, newSyncInfo)
 		if IsCasMismatch(addErr) {
 			// attempt new fetch
-			_, fetchErr = ds.Get(SGSyncInfo, &syncInfo)
+			_, fetchErr = ds.Get(ctx, SGSyncInfo, &syncInfo)
 			if fetchErr != nil {
 				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
 			}
@@ -468,13 +468,13 @@ func (s *SyncInfo) requiresResync(metadataID string) bool {
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
-func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
+func SetSyncInfoMetadataID(ctx context.Context, ds DataStore, metadataID string) error {
 
 	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
 	if metadataID == "" {
 		return nil
 	}
-	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := ds.Update(ctx, SGSyncInfo, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var syncInfo SyncInfo
 		if current != nil {
 			parseErr := JSONUnmarshal(current, &syncInfo)
@@ -491,11 +491,11 @@ func SetSyncInfoMetadataID(ds DataStore, metadataID string) error {
 }
 
 // SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
-func SetSyncInfoMetaVersion(ds DataStore, metaVersion string) error {
+func SetSyncInfoMetaVersion(ctx context.Context, ds DataStore, metaVersion string) error {
 	if metaVersion == "" {
 		return nil
 	}
-	_, err := ds.Update(SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := ds.Update(ctx, SGSyncInfo, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var syncInfo SyncInfo
 		if current != nil {
 			parseErr := JSONUnmarshal(current, &syncInfo)

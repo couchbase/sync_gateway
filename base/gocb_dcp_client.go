@@ -113,7 +113,7 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 	numVbuckets := options.NumVBuckets
 	if numVbuckets == 0 {
 		var err error
-		numVbuckets, err = bucket.GetMaxVbno()
+		numVbuckets, err = bucket.GetMaxVbno(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 		}
@@ -153,7 +153,7 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		collectionIDs:       options.CollectionIDs,
 		feedContent:         options.FeedContent,
 		// TODO:: Change to metadataStore passed in for dual metadataStore
-		metadataStore: bucket.DefaultDataStore(),
+		metadataStore: bucket.DefaultDataStore(ctx),
 	}
 
 	// Initialize active vbuckets
@@ -702,8 +702,8 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 
 // PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
 // will not alter the feed nor remove the checkpoint for the future.
-func (dc *GoCBDCPClient) PurgeCheckpoints() error {
-	return PurgeDCPCheckpoints(dc.ctx, dc.metadataStore, dc.GetMetadataKeyPrefix(), DCPFeedGocb)
+func (dc *GoCBDCPClient) PurgeCheckpoints(ctx context.Context) error {
+	return PurgeDCPCheckpoints(ctx, dc.metadataStore, dc.GetMetadataKeyPrefix(), DCPFeedGocb)
 }
 
 var _ gocbcore.StreamObserver = &GoCBDCPClient{}

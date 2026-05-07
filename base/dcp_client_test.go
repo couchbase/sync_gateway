@@ -10,6 +10,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -40,13 +41,13 @@ func TestOneShotDCP(t *testing.T) {
 	body := map[string]any{"foo": "bar"}
 	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, body)
+		err := dataStore.Set(ctx, key, 0, nil, body)
 		require.NoError(t, err)
 	}
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -77,7 +78,7 @@ func TestOneShotDCP(t *testing.T) {
 		updatedBody := map[string]any{"foo": "bar"}
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
-			err := dataStore.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 			require.NoError(t, err)
 		}
 	}()
@@ -107,7 +108,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -134,7 +135,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := dataStore.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 	}()
@@ -196,7 +197,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// create callback
 			mutationCount := uint64(0)
 			vbucketZeroCount := uint64(0)
-			counterCallback := func(event sgbucket.FeedEvent) bool {
+			counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 				if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 					atomic.AddUint64(&mutationCount, 1)
 					if event.VbNo == 0 {
@@ -210,7 +211,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			updatedBody := map[string]any{"foo": "bar"}
 			for i := range 10000 {
 				key := fmt.Sprintf("%s_%d", t.Name(), i)
-				err := dataStore.Set(key, 0, nil, updatedBody)
+				err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
 			collection, ok := dataStore.(*Collection)
@@ -322,7 +323,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			if atomic.LoadUint64(&mutationCount) == uint64(10000) {
@@ -365,7 +366,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	updatedBody := map[string]any{"foo": "bar"}
 	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -435,7 +436,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
@@ -450,7 +451,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	updatedBody := map[string]any{"foo": "bar"}
 	for i := range 10000 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -479,7 +480,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	}
 
 	var secondFeedCount uint64
-	secondCallback := func(event sgbucket.FeedEvent) bool {
+	secondCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			atomic.AddUint64(&secondFeedCount, 1)
@@ -527,7 +528,7 @@ func TestBadAgentPriority(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	panicCallback := func(event sgbucket.FeedEvent) bool {
+	panicCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		t.Error(t, "Should not hit this callback")
 		return false
 	}
@@ -554,7 +555,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	// create callback
-	callback := func(event sgbucket.FeedEvent) bool {
+	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		t.Fatalf("Unexpected callback: %+v", event)
 		return false
 	}
@@ -636,7 +637,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	var dcpDeletionCas uint64
 	var dcpDeletionRevNo uint64
 	// create callback
-	callback := func(event sgbucket.FeedEvent) bool {
+	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 		// other doc events can happen from previous tests
 		if docID != string(event.Key) {
 			return true
@@ -688,7 +689,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		t.Fatalf("timeout waiting for doc mutation")
 	}
 
-	deleteMutationCas, err := collection.Remove(docID, writeMutationCas)
+	deleteMutationCas, err := collection.Remove(ctx, docID, writeMutationCas)
 	require.NoError(t, err)
 
 	select {
@@ -722,8 +723,6 @@ func TestDCPFeedEventTypes(t *testing.T) {
 // Both backfill (docs written before feed starts) and live streaming (continuous,
 // docs written after feed starts) scenarios are tested.
 func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
-	ctx := TestCtx(t)
-
 	feedContentModes := []struct {
 		name        string
 		feedContent sgbucket.FeedContent
@@ -740,6 +739,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					name = "live"
 				}
 				t.Run(name, func(t *testing.T) {
+					ctx := TestCtx(t)
 					bucket := GetTestBucket(t)
 					defer bucket.Close(ctx)
 
@@ -753,7 +753,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					writeTestDocs := func() {
 						// Body-only JSON doc via WriteCas (Insert, cas=0) - same path as auth.Save() for _sync:user:*
 						body := map[string]any{"type": "user", "name": "testuser", "channels": []string{"a", "b"}}
-						_, err := dataStore.WriteCas(bodyOnlyKey, 0, 0, body, 0)
+						_, err := dataStore.WriteCas(ctx, bodyOnlyKey, 0, 0, body, 0)
 						require.NoError(t, err)
 
 						// Xattr+body doc - same as application documents
@@ -761,7 +761,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 						require.NoError(t, err)
 
 						// Counter doc via Incr - same path as _sync:seq
-						_, err = dataStore.Incr(counterKey, 1, 0, 0)
+						_, err = dataStore.Incr(ctx, counterKey, 1, 0, 0)
 						require.NoError(t, err)
 					}
 
@@ -776,7 +776,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					var eventMu sync.Mutex
 					allFound := make(chan struct{}, 1)
 
-					callback := func(event sgbucket.FeedEvent) bool {
+					callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
 						eventMu.Lock()
 						defer eventMu.Unlock()
 						switch string(event.Key) {
@@ -907,12 +907,13 @@ func TestDCPClientAgentConfig(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			require.NotContains(t, gocbv2Bucket.Spec.Server, "?", "expected no query parameters for connection string to start")
 			oldBucketSpecServer := gocbv2Bucket.Spec.Server
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
 			gocbv2Bucket.Spec.Server += tc.serverSuffix
 			dcpClient, err := NewGocbDCPClient(ctx,
-				func(sgbucket.FeedEvent) bool { return true },
+				func(context.Context, sgbucket.FeedEvent) bool { return true },
 				GoCBDCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
 				gocbv2Bucket)
 			require.NoError(t, err)
@@ -933,12 +934,12 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	allDataStoreNames, err := bucket.ListDataStores()
+	allDataStoreNames, err := bucket.ListDataStores(ctx)
 	require.NoError(t, err)
 
 	var dataStores []sgbucket.DataStore
 	for _, dsName := range allDataStoreNames {
-		ds, err := bucket.NamedDataStore(dsName)
+		ds, err := bucket.NamedDataStore(ctx, dsName)
 		require.NoError(t, err)
 		dataStores = append(dataStores, ds)
 	}
@@ -979,7 +980,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	for _, ds := range dataStores {
 		docID := fmt.Sprintf("%s_%s_%s_doc", t.Name(), ds.ScopeName(), ds.CollectionName())
 		body := map[string]any{"foo": "bar"}
-		err = ds.Set(docID, 0, nil, body)
+		err = ds.Set(ctx, docID, 0, nil, body)
 		require.NoError(t, err)
 	}
 
@@ -997,29 +998,29 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	// Verify that checkpoint documents were created in the bucket
 	var foundCheckpoints []string
 
-	metadataStore := bucket.Bucket.DefaultDataStore()
+	metadataStore := bucket.Bucket.DefaultDataStore(ctx)
 	if !UnitTestUrlIsWalrus() {
 		// Try to find at least one worker's checkpoint
 		for i := 0; i < DefaultNumWorkers; i++ {
 			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, i)
-			_, _, err := metadataStore.GetRaw(checkpointID)
+			_, _, err := metadataStore.GetRaw(ctx, checkpointID)
 			if err == nil {
 				foundCheckpoints = append(foundCheckpoints, checkpointID)
 			}
 		}
 		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
 	} else {
-		_, _, err := metadataStore.GetRaw(checkpointPrefix)
+		_, _, err := metadataStore.GetRaw(ctx, checkpointPrefix)
 		require.NoError(t, err, "Checkpoint document not found  %q", checkpointPrefix)
 		foundCheckpoints = append(foundCheckpoints, checkpointPrefix)
 	}
 
 	// Purge checkpoints and verify they are deleted
-	err = dcpClient.PurgeCheckpoints()
+	err = dcpClient.PurgeCheckpoints(ctx)
 	require.NoError(t, err)
 
 	for _, cp := range foundCheckpoints {
-		_, _, err := metadataStore.GetRaw(cp)
+		_, _, err := metadataStore.GetRaw(ctx, cp)
 		require.Error(t, err, "Expected checkpoint document %s to be deleted", cp)
 		RequireDocNotFoundError(t, err)
 	}

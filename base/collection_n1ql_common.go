@@ -90,8 +90,8 @@ func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params
 		return nil, explainErr
 	}
 
-	firstRow := explainResults.NextBytes()
-	err = explainResults.Close()
+	firstRow := explainResults.NextBytes(ctx)
+	err = explainResults.Close(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +351,7 @@ func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (
 		return nil, err
 	}
 	defer func() {
-		err := results.Close()
+		err := results.Close(ctx)
 		if err != nil {
 			WarnfCtx(ctx, "Error closing results from GetIndexesMeta: %v", err)
 		}
@@ -514,7 +514,7 @@ type gocbRawIterator struct {
 // Unmarshal a single result row into valuePtr, and then close the iterator
 func (i *gocbRawIterator) One(ctx context.Context, valuePtr any) error {
 	if !i.Next(ctx, valuePtr) {
-		err := i.Close()
+		err := i.Close(ctx)
 		if err != nil {
 			return nil
 		}
@@ -523,7 +523,7 @@ func (i *gocbRawIterator) One(ctx context.Context, valuePtr any) error {
 
 	// Ignore any errors occurring after we already have our result
 	//  - follows approach used by gocb v1 One() implementation
-	_ = i.Close()
+	_ = i.Close(ctx)
 	return nil
 }
 
@@ -544,12 +544,12 @@ func (i *gocbRawIterator) Next(ctx context.Context, valuePtr any) bool {
 }
 
 // Retrieve raw bytes for the next result row
-func (i *gocbRawIterator) NextBytes() []byte {
+func (i *gocbRawIterator) NextBytes(_ context.Context) []byte {
 	return i.rawResult.NextBytes()
 }
 
 // Closes the iterator.  Returns any row-level errors seen during iteration.
-func (i *gocbRawIterator) Close() error {
+func (i *gocbRawIterator) Close(_ context.Context) error {
 	// Have to iterate over any remaining results to clear the reader
 	// Otherwise we get "the result must be closed before accessing the meta-data" on close details on CBG-1666
 	for i.rawResult.NextBytes() != nil {
@@ -663,7 +663,7 @@ func GetSystemCollectionIndexesMeta(ctx context.Context, store N1QLStore, scopeN
 		return nil, err
 	}
 	defer func() {
-		if closeErr := results.Close(); closeErr != nil {
+		if closeErr := results.Close(ctx); closeErr != nil {
 			WarnfCtx(ctx, "Error closing results from GetSystemCollectionIndexesMeta: %v", closeErr)
 		}
 	}()

@@ -41,6 +41,7 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 // Test feed-based import
 func TestImportFeed(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -59,7 +60,7 @@ func TestImportFeed(t *testing.T) {
 	mobileKey := t.Name()
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
@@ -82,6 +83,7 @@ func TestImportFeed(t *testing.T) {
 }
 
 func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
@@ -95,7 +97,7 @@ func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 	// Create doc via the SDK
 	mobileKey := t.Name()
 	mobileBody := map[string]any{"channels": "ABC"}
-	added, err := rt.GetSingleDataStore().Add(mobileKey, 0, mobileBody)
+	added, err := rt.GetSingleDataStore().Add(ctx, mobileKey, 0, mobileBody)
 	require.NoError(t, err, "Error writing SDK doc")
 	require.True(t, added)
 
@@ -129,6 +131,7 @@ func getRawDocWithOnDemandImport(rt *rest.RestTester, docID string) rest.RawDocR
 
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
@@ -156,7 +159,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	docBody["test"] = "TestImportDelete"
 	docBody["channels"] = "ABC"
 
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
@@ -168,7 +171,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
-	err = rt.GetSingleDataStore().Set(key, 0, nil, updatedBody)
+	err = rt.GetSingleDataStore().Set(ctx, key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
@@ -179,7 +182,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	}
 
 	// 3. Test oldDoc behaviour during SDK delete
-	err = dataStore.Delete(key)
+	err = dataStore.Delete(ctx, key)
 	assert.NoError(t, err, "Unable to delete doc TestImportDelete")
 
 	rawDeleteResponse := getRawDocWithOnDemandImport(rt, key)
@@ -222,7 +225,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 2. Modify doc via SDK
 	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestAncestorImport"
-	err := dataStore.Set(docID, 0, nil, updatedBody)
+	err := dataStore.Set(ctx, docID, 0, nil, updatedBody)
 	assert.NoError(t, err)
 
 	rawResponse := getRawDocWithOnDemandImport(rt, docID)
@@ -231,6 +234,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -264,7 +268,7 @@ func TestXattrSGTombstone(t *testing.T) {
 
 	// 3. Attempt to retrieve the doc through the SDK
 	deletedValue := make(map[string]any)
-	_, err := dataStore.Get(key, deletedValue)
+	_, err := dataStore.Get(ctx, key, deletedValue)
 	assert.True(t, err != nil, "Expected key not found error trying to retrieve document")
 
 }
@@ -272,6 +276,7 @@ func TestXattrSGTombstone(t *testing.T) {
 // Test cas failure during WriteUpdate, triggering import of SDK write.
 func TestXattrImportOnCasFailure(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	// TODO: Disabled, as test depends on artificial latency in PutDoc to
 	// reliably hit the CAS failure on the SG write.
 	// Scenario fully covered by functional test.
@@ -313,7 +318,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 		sdkBody := make(map[string]any)
 		sdkBody["test"] = "TestCasFailureImport"
 		sdkBody["SDK_write_count"] = i
-		err := dataStore.Set(key, 0, nil, sdkBody)
+		err := dataStore.Set(ctx, key, 0, nil, sdkBody)
 		assert.NoError(t, err, "Unexpected error doing SDK write")
 	}
 
@@ -377,6 +382,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 // Attempt to delete then recreate a document through the SDK
 func TestXattrResurrectViaSDK(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -396,13 +402,13 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
 
 	rt.TriggerOnDemandImport(key)
 
 	// 2. Delete the doc through the SDK
-	err = dataStore.Delete(key)
+	err = dataStore.Delete(ctx, key)
 	assert.NoError(t, err, "Unable to delete doc TestResurrectViaSDK")
 
 	rt.TriggerOnDemandImport(key)
@@ -412,7 +418,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
-	err = dataStore.Set(key, 0, nil, updatedBody)
+	err = dataStore.Set(ctx, key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
 	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
@@ -421,6 +427,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 // Attempt to delete a document that's already been deleted via the SDK
 func TestXattrDoubleDelete(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -448,7 +455,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	// 2. Delete the doc through the SDK
 	log.Printf("...............Delete through SDK.....................................")
-	deleteErr := rt.GetSingleDataStore().Delete(key)
+	deleteErr := rt.GetSingleDataStore().Delete(ctx, key)
 	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	log.Printf("...............Delete through SG.......................................")
@@ -465,6 +472,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 }
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	if !base.TestsDisableGSI() {
@@ -511,7 +519,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// 2. Delete SDK_delete through the SDK
 	log.Printf("...............Delete through SDK.....................................")
-	deleteErr := dataStore.Delete(sdk_key)
+	deleteErr := dataStore.Delete(ctx, sdk_key)
 	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	// Trigger import via SG retrieval
@@ -543,6 +551,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 }
 
 func TestXattrImportFilterOptIn(t *testing.T) {
+	ctx := base.TestCtx(t)
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -562,14 +571,14 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	nonMobileKey := "TestImportFilterInvalid"
 	nonMobileBody := make(map[string]any)
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
+	_, err = dataStore.Add(ctx, nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
@@ -593,6 +602,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -609,7 +619,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	mobileKey := "TestImportMultiActorUpdate"
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -628,7 +638,6 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
 
-	ctx := base.TestCtx(t)
 	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -645,6 +654,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during write-triggered import
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -661,7 +671,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	mobileKey := "TestImportMultiActorUpdate"
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -674,10 +684,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := dataStore.GetRaw(mobileKey)
+	_, cas, getErr := dataStore.GetRaw(ctx, mobileKey)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
-	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
@@ -699,6 +708,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during feed-based import
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -720,7 +730,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	mobileKey := "TestImportMultiActorFeed"
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Guarantees initial import is complete
@@ -733,13 +743,12 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := dataStore.GetRaw(mobileKey)
+	_, cas, getErr := dataStore.GetRaw(ctx, mobileKey)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update
 	crcMatchesBefore := rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 
-	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
@@ -774,6 +783,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportLargeNumbers(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -792,7 +802,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
 	mobileBody["largeNumber"] = uint64(9223372036854775807)
-	_, err := rt.GetSingleDataStore().Add(mobileKey, 0, mobileBody)
+	_, err := rt.GetSingleDataStore().Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// 2. Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -823,6 +833,7 @@ type treeHistory struct {
 
 // Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
 func TestMigrateLargeInlineRevisions(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -873,7 +884,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty, largeProperty)
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(largeBodyString))
+	_, err := rt.GetSingleDataStore().Add(ctx, key, 0, []byte(largeBodyString))
 	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -893,6 +904,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 // Test migration of a 1.4 doc that's been tombstoned
 func TestMigrateTombstone(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -941,7 +953,7 @@ func TestMigrateTombstone(t *testing.T) {
 }`
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(bodyString))
+	_, err := rt.GetSingleDataStore().Add(ctx, key, 0, []byte(bodyString))
 	assert.NoError(t, err, "Error writing tombstoned doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -961,6 +973,7 @@ func TestMigrateTombstone(t *testing.T) {
 // Test migration of a 1.5 doc that already includes some external revision storage from docmeta to xattr.
 func TestMigrateWithExternalRevisions(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1011,7 +1024,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty)
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(largeBodyString))
+	_, err := rt.GetSingleDataStore().Add(ctx, key, 0, []byte(largeBodyString))
 	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -1030,6 +1043,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
 func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1053,7 +1067,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	// Write directly to bucket with an expiry
 	expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
-	_, err := dataStore.Add(mobileKey, uint32(expiryUnixEpoch), mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, uint32(expiryUnixEpoch), mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Verify the expiry is as expected
@@ -1062,7 +1076,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assertExpiry(t, uint32(expiryUnixEpoch), beforeExpiry)
 
 	// Negative test case -- no expiry
-	_, err = dataStore.Add(mobileKeyNoExpiry, 0, mobileBody)
+	_, err = dataStore.Add(ctx, mobileKeyNoExpiry, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
@@ -1090,6 +1104,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 // Test migration of a 1.5 doc that has an expiry value.
 func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1111,7 +1126,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	expirySeconds := time.Second * 30
 	testExpiry := uint32(time.Now().Add(expirySeconds).Unix())
 	bodyString := db.RawDocWithInlineSyncData(t)
-	_, err := dataStore.Add(key, testExpiry, []byte(bodyString))
+	_, err := dataStore.Add(ctx, key, testExpiry, []byte(bodyString))
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Wait for doc to appear on changes feed
@@ -1137,6 +1152,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 // Verify that an on-demand import of a null document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1155,7 +1171,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	// Write json doc directly to bucket with a null body
 	nullBody := []byte("null")
-	_, err := dataStore.AddRaw(key, 0, nullBody)
+	_, err := dataStore.AddRaw(ctx, key, 0, nullBody)
 	require.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
@@ -1176,6 +1192,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 // Verify that an on-demand import of a nil document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1194,7 +1211,7 @@ func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
 
 	// Write binary doc directly to bucket with a nil body
 	var nilBody []byte
-	_, err := dataStore.AddRaw(key, 0, nilBody)
+	_, err := dataStore.AddRaw(ctx, key, 0, nilBody)
 	require.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the doc via Sync Gateway, triggering a cancelled on-demand import of the null document
@@ -1252,6 +1269,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 
 			rtConfig := rest.RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1269,7 +1287,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Write directly to bucket with an expiry
 			expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
-			_, err := dataStore.Add(key, uint32(expiryUnixEpoch), mobileBody)
+			_, err := dataStore.Add(ctx, key, uint32(expiryUnixEpoch), mobileBody)
 			require.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry is as expected
@@ -1332,6 +1350,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
 
@@ -1351,7 +1370,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			expirySeconds := time.Second * 30
 			syncMetaExpiry := time.Now().Add(expirySeconds)
 			bodyString := db.RawDocWithInlineSyncData(t)
-			_, err := dataStore.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
+			_, err := dataStore.Add(ctx, key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			testCase.onDemandCallback(rt, key)
@@ -1374,6 +1393,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 // Write through SG, non-imported SDK write, subsequent SG write
 func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
@@ -1405,7 +1425,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	nonMobileBody := make(map[string]any)
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
-	err := dataStore.Set(sgWriteKey, 0, nil, nonMobileBody)
+	err := dataStore.Set(ctx, sgWriteKey, 0, nil, nonMobileBody)
 	assert.NoError(t, err, "Error updating SG doc from SDK ")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
@@ -1426,6 +1446,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 // Test to write a binary document to the bucket, ensure it's not imported.
 func TestImportBinaryDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1443,7 +1464,7 @@ func TestImportBinaryDoc(t *testing.T) {
 
 	// 1. Write a binary doc through the SDK
 	rawBytes := []byte("some bytes")
-	err := dataStore.SetRaw("binaryDoc", 0, nil, rawBytes)
+	err := dataStore.SetRaw(ctx, "binaryDoc", 0, nil, rawBytes)
 	assert.NoError(t, err, "Error writing binary doc through the SDK")
 
 	// 2. Ensure we can't retrieve the document via SG
@@ -1454,6 +1475,7 @@ func TestImportBinaryDoc(t *testing.T) {
 // TestImportZeroValueDecimalPlaces tests that docs containing numbers of the form 0.0000 are imported correctly.
 func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
@@ -1481,7 +1503,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
 		docBody := fmt.Appendf(nil, `{"key":%s}`, docNumber)
 
-		ok, err := dataStore.AddRaw(docID, 0, docBody)
+		ok, err := dataStore.AddRaw(ctx, docID, 0, docBody)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -1489,7 +1511,6 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 	}
 
 	rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
-	ctx := base.TestCtx(t)
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
@@ -1517,6 +1538,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 // TestImportZeroValueDecimalPlacesScientificNotation tests that docs containing numbers of the form 0e10 are imported correctly.
 func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
@@ -1545,7 +1567,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
 		docBody := fmt.Appendf(nil, `{"key":%s}`, docNumber)
 
-		ok, err := dataStore.AddRaw(docID, 0, docBody)
+		ok, err := dataStore.AddRaw(ctx, docID, 0, docBody)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -1554,7 +1576,6 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
 	rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/{{.keyspace}}/_changes", "", true)
 
-	ctx := base.TestCtx(t)
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
 		var syncData db.SyncData
@@ -1581,6 +1602,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 // Test creation of backup revision on import
 func TestImportRevisionCopy(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 	if base.TestDisableRevCache() {
 		t.Skip("Backup import revs requires previous rev to be in revision cache")
@@ -1605,7 +1627,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// 1. Create via SDK
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval, this will not populate the rev cache.
@@ -1622,7 +1644,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = dataStore.Set(key, 0, nil, updatedBody)
+	err = dataStore.Set(ctx, key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
@@ -1640,6 +1662,7 @@ func TestImportRevisionCopy(t *testing.T) {
 // Test creation of backup revision on import, when rev is no longer available in rev cache.
 func TestImportRevisionCopyUnavailable(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -1670,7 +1693,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// 1. Create via SDK
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
@@ -1685,7 +1708,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = dataStore.Set(key, 0, nil, updatedBody)
+	err = dataStore.Set(ctx, key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 5. Trigger import of update via SG retrieval
@@ -1707,6 +1730,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 // Verify config flag for import creation of backup revision on import
 func TestImportRevisionCopyDisabled(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// ImportBackupOldRev not set in config, defaults to false
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1730,7 +1754,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	// 1. Create via SDK
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
@@ -1741,7 +1765,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	updatedBody := make(map[string]any)
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
-	err = dataStore.Set(key, 0, nil, updatedBody)
+	err = dataStore.Set(ctx, key, 0, nil, updatedBody)
 	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
@@ -1759,6 +1783,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1775,7 +1800,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	mobileKey := "TestTombstoneUpdate"
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -1789,14 +1814,13 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
 	// Delete the document via the SDK
 	getBody := make(map[string]any)
-	cas, err := dataStore.Get(mobileKey, &getBody)
+	cas, err := dataStore.Get(ctx, mobileKey, &getBody)
 	require.NoError(t, err)
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import, tombstone creation
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 
-	ctx := base.TestCtx(t)
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]any)
 	xattrVal["actor"] = "not mobile"
@@ -1834,6 +1858,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 }
 
 func TestDeletedEmptyDocumentImport(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -1848,7 +1873,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
 
 	// Delete the document through SDK
-	err := rt.GetSingleDataStore().Delete(docId)
+	err := rt.GetSingleDataStore().Delete(ctx, docId)
 	assert.NoError(t, err, "Unable to delete doc %s", docId)
 
 	// Get the doc and check deleted revision is getting imported
@@ -1859,6 +1884,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
 func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1881,7 +1907,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	key := "doc1"
 	docBody := db.Body{"key": key, "channels": "ABC"}
 	expiry := time.Now().Add(time.Second * 30)
-	_, err := dataStore.Add(key, uint32(expiry.Unix()), docBody)
+	_, err := dataStore.Add(ctx, key, uint32(expiry.Unix()), docBody)
 	assert.NoErrorf(t, err, "Unable to insert doc %s", key)
 
 	// Trigger import and check whether created document is getting imported
@@ -1889,7 +1915,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.NotEmpty(t, respBody.Xattrs.Sync.RevAndVersion.RevTreeID)
 
 	// Delete the document via SDK
-	err = dataStore.Delete(key)
+	err = dataStore.Delete(ctx, key)
 	assert.NoErrorf(t, err, "Unable to delete doc %s", key)
 
 	// Trigger import and check whether deleted document is getting imported
@@ -1998,8 +2024,9 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			docID := fmt.Sprintf("test%d", i)
-			added, err := rt.GetSingleDataStore().Add(docID, 0, test.importBody)
+			added, err := rt.GetSingleDataStore().Add(ctx, docID, 0, test.importBody)
 			require.True(t, added)
 			require.NoError(t, err)
 
@@ -2030,6 +2057,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 
 // Test import of an SDK expiry change
 func TestImportTouch(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
@@ -2054,7 +2082,7 @@ func TestImportTouch(t *testing.T) {
 	docBody["test"] = "TestImportTouch"
 	docBody["channels"] = "ABC"
 
-	_, err := dataStore.Add(key, 0, docBody)
+	_, err := dataStore.Add(ctx, key, 0, docBody)
 	require.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
@@ -2062,7 +2090,7 @@ func TestImportTouch(t *testing.T) {
 	initialRev := rawInsertResponse.Xattrs.Sync.RevAndVersion.RevTreeID
 
 	// 2. Test import behaviour after SDK touch
-	_, err = dataStore.Touch(key, 1000000)
+	_, err = dataStore.Touch(ctx, key, 1000000)
 	require.NoError(t, err, "Unable to touch doc TestImportTouch")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
@@ -2070,6 +2098,7 @@ func TestImportTouch(t *testing.T) {
 	require.Equal(t, initialRev, rawUpdateResponse.Xattrs.Sync.RevAndVersion.RevTreeID)
 }
 func TestImportingPurgedDocument(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -2078,7 +2107,7 @@ func TestImportingPurgedDocument(t *testing.T) {
 	defer rt.Close()
 
 	body := `{"_purged": true, "foo": "bar"}`
-	ok, err := rt.GetSingleDataStore().Add("key", 0, []byte(body))
+	ok, err := rt.GetSingleDataStore().Add(ctx, "key", 0, []byte(body))
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
@@ -2095,11 +2124,12 @@ func TestImportingPurgedDocument(t *testing.T) {
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	body := `{"foo":"bar"}`
-	ok, err := rt.GetSingleDataStore().Add("key", 0, []byte(body))
+	ok, err := rt.GetSingleDataStore().Add(ctx, "key", 0, []byte(body))
 
 	assert.True(t, ok)
 	assert.Nil(t, err)
@@ -2108,6 +2138,7 @@ func TestNonImportedDuplicateID(t *testing.T) {
 }
 
 func TestImportOnWriteMigration(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2118,7 +2149,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 	// Put doc with sync data / non-xattr
 	key := "doc1"
 	body := []byte(`{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 1, "recent_sequences": [ 1 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`)
-	ok, err := rt.GetSingleDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleDataStore().Add(ctx, key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
@@ -2132,6 +2163,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 }
 
 func TestImportFilterTimeout(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	importFilter := `function(doc) { while(true) { } }`
@@ -2140,7 +2172,7 @@ func TestImportFilterTimeout(t *testing.T) {
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
-	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, fmt.Appendf(nil, `{"foo": "bar"}`))
+	added, err := rt.GetSingleDataStore().AddRaw(ctx, "doc", 0, fmt.Appendf(nil, `{"foo": "bar"}`))
 	require.True(t, added)
 	require.NoError(t, err)
 
@@ -2183,7 +2215,7 @@ func TestImportRollback(t *testing.T) {
 			key := "importRollbackTest"
 			var checkpointPrefix string
 			// Create a document
-			added, err := rt.GetSingleDataStore().AddRaw(key, 0, fmt.Appendf(nil, `{"star": "6"}`))
+			added, err := rt.GetSingleDataStore().AddRaw(ctx, key, 0, fmt.Appendf(nil, `{"star": "6"}`))
 			require.True(t, added)
 			require.NoError(t, err)
 
@@ -2199,15 +2231,15 @@ func TestImportRollback(t *testing.T) {
 
 			metaStore := bucket.GetMetadataStore()
 			for _, docName := range []string{base.CBGTCfgIndexDefs, base.CBGTCfgNodeDefsKnown, base.CBGTCfgNodeDefsWanted, base.CBGTCfgPlanPIndexes} {
-				require.NoError(t, metaStore.Delete(docName), "Couldn't delete %s", docName)
+				require.NoError(t, metaStore.Delete(ctx, docName), "Couldn't delete %s", docName)
 			}
 
 			// fetch the checkpoint for the document's vbucket, modify the checkpoint values to a higher sequence
-			vbNo, err := base.GetVbucketForKey(bucket, key)
+			vbNo, err := base.GetVbucketForKey(ctx, bucket, key)
 			require.NoError(t, err)
 			checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
 			var checkpointData base.ShardedImportDCPMetadata
-			checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
+			checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 			require.NoError(t, err)
 			require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
 
@@ -2222,7 +2254,7 @@ func TestImportRollback(t *testing.T) {
 			updatedBytes, err := base.JSONMarshal(checkpointData)
 			require.NoError(t, err)
 
-			err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+			err = metaStore.SetRaw(ctx, checkpointKey, 0, nil, updatedBytes)
 			require.NoError(t, err)
 			// Reopen the db, expect DCP rollback
 			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -2231,7 +2263,7 @@ func TestImportRollback(t *testing.T) {
 			})
 			defer rt2.Close()
 
-			err = rt2.GetSingleDataStore().SetRaw(key, 0, nil, fmt.Appendf(nil, `{"star": "7 8 9"}`))
+			err = rt2.GetSingleDataStore().SetRaw(ctx, key, 0, nil, fmt.Appendf(nil, `{"star": "7 8 9"}`))
 			require.NoError(t, err)
 
 			// wait for doc update to be imported
@@ -2245,6 +2277,7 @@ func TestImportRollback(t *testing.T) {
 // - Test case rollbackWithoutFailover will only rollback one partition
 func TestImportRollbackMultiplePartitions(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}
@@ -2254,11 +2287,10 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster, base.KeyCRUD)
-	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	numVBuckets, err := bucket.GetMaxVbno()
+	numVBuckets, err := bucket.GetMaxVbno(ctx)
 	require.NoError(t, err)
 	if numVBuckets != 1024 {
 		t.Skipf("Test requires 1024 vBuckets, but only had %d, will fix in CBG-4544", numVBuckets)
@@ -2279,12 +2311,12 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	vb800DocIDs := []string{"abrook", "accept", "accompaniment", "acoemeti", "adiposeness", "alkyd", "alnage", "ambulance", "anasazi", "anhydroxime"}
 
 	for _, v := range vb0DocIDs {
-		added, err := rt.GetSingleDataStore().AddRaw(v, 0, fmt.Appendf(nil, `{"star": "6"}`))
+		added, err := rt.GetSingleDataStore().AddRaw(ctx, v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		added, err := rt.GetSingleDataStore().AddRaw(v, 0, fmt.Appendf(nil, `{"star": "6"}`))
+		added, err := rt.GetSingleDataStore().AddRaw(ctx, v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
 	}
@@ -2303,7 +2335,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	// trigger rollback upon stream open request
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, 0)
 	var checkpointData base.ShardedImportDCPMetadata
-	checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
+	checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
 	checkpointData.SnapStart = 3000 + checkpointData.SnapStart
@@ -2315,13 +2347,13 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	updatedBytes, err := base.JSONMarshal(checkpointData)
 	require.NoError(t, err)
-	err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+	err = metaStore.SetRaw(ctx, checkpointKey, 0, nil, updatedBytes)
 	require.NoError(t, err)
 
 	// vBucket 800
 	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, 800)
 	checkpointData = base.ShardedImportDCPMetadata{}
-	checkpointBytes, _, err = metaStore.GetRaw(checkpointKey)
+	checkpointBytes, _, err = metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
 	checkpointData.SnapStart = 3000 + checkpointData.SnapStart
@@ -2333,7 +2365,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	updatedBytes, err = base.JSONMarshal(checkpointData)
 	require.NoError(t, err)
-	err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+	err = metaStore.SetRaw(ctx, checkpointKey, 0, nil, updatedBytes)
 	require.NoError(t, err)
 
 	// Reopen the db, expect DCP rollback
@@ -2349,16 +2381,16 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	defer rt2.Close()
 
 	for _, v := range vb0DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
+		err := rt2.GetSingleDataStore().SetRaw(ctx, v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
 	for _, v := range vb800DocIDs {
-		err := rt2.GetSingleDataStore().SetRaw(v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
+		err := rt2.GetSingleDataStore().SetRaw(ctx, v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
 
 	// Add doc to non rolled back vBucket (392) and assert its imported
-	added, err := rt2.GetSingleDataStore().AddRaw("someKey", 0, fmt.Appendf(nil, `{"star": "6"}`))
+	added, err := rt2.GetSingleDataStore().AddRaw(ctx, "someKey", 0, fmt.Appendf(nil, `{"star": "6"}`))
 	require.NoError(t, err)
 	require.True(t, added)
 
@@ -2401,6 +2433,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: test.syncFn,
 				DatabaseConfig: &rest.DatabaseConfig{
@@ -2412,10 +2445,9 @@ func TestImportUpdateExpiry(t *testing.T) {
 			defer rt.Close()
 
 			const docID = "doc1"
-			err := rt.GetSingleDataStore().SetRaw(docID, test.startExpiry, nil, []byte(`{"foo": "bar"}`))
+			err := rt.GetSingleDataStore().SetRaw(ctx, docID, test.startExpiry, nil, []byte(`{"foo": "bar"}`))
 			require.NoError(t, err)
 
-			ctx := base.TestCtx(t)
 			preImportExp, err := rt.GetSingleDataStore().GetExpiry(ctx, docID)
 			require.NoError(t, err)
 			// Attempt to get the document via Sync Gateway, to trigger import. Success is successfully importing the body and not throwing an assertion error.
@@ -2432,6 +2464,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 }
 
 func TestDoNotWriteBodyBackOnImport(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
 
@@ -2449,7 +2482,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	preImportDocXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
 
 	body := []byte(`{"test":"doc"}`)
-	_, err := ds.WriteCas(docID, 0, 0, body, 0)
+	_, err := ds.WriteCas(ctx, docID, 0, 0, body, 0)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -2463,7 +2496,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	newXattrBytes := rt.GetDatabase().DbStats.Database().DocWritesXattrBytes.Value()
 	assert.Greater(t, newXattrBytes, preImportDocXattrBytes)
 
-	err = collection.GetCollectionDatastore().Delete(docID)
+	err = collection.GetCollectionDatastore().Delete(ctx, docID)
 	require.NoError(t, err)
 	base.RequireWaitForStat(t, func() int64 {
 		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
@@ -2491,6 +2524,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 // - wait to see rev 2
 // - assert number of partitions, as measured by number of cbgt.Dest instances, is correct
 func TestImportRollbackAllPartitions(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
 	}
@@ -2501,7 +2535,6 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 
 	clog.SetLevel(clog.LevelDebug)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)
-	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
@@ -2519,12 +2552,12 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		},
 	})
 
-	vbCount, err := bucket.GetMaxVbno()
+	vbCount, err := bucket.GetMaxVbno(ctx)
 	require.NoError(t, err)
 	docPerVBucket := getDocPerVbucket(t, bucket)
 	// create one document per vBucket to ensure we have a checkpoint for each vBucket
 	for _, docID := range docPerVBucket {
-		added, err := rt.GetSingleDataStore().Add(docID, 0, []byte(`{"mutation": 1}`))
+		added, err := rt.GetSingleDataStore().Add(ctx, docID, 0, []byte(`{"mutation": 1}`))
 		require.NoError(t, err)
 		require.True(t, added)
 	}
@@ -2546,7 +2579,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	for vbNo := range docPerVBucket {
 		checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
 		var checkpointData base.ShardedImportDCPMetadata
-		checkpointBytes, _, err := metaStore.GetRaw(checkpointKey)
+		checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 		require.NoError(t, err)
 		require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
 		// run sequence data ahead
@@ -2560,7 +2593,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 
 		updatedBytes, err := base.JSONMarshal(checkpointData)
 		require.NoError(t, err)
-		err = metaStore.SetRaw(checkpointKey, 0, nil, updatedBytes)
+		err = metaStore.SetRaw(ctx, checkpointKey, 0, nil, updatedBytes)
 		require.NoError(t, err)
 	}
 
@@ -2577,7 +2610,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	defer rt2.Close()
 
 	for _, docID := range docPerVBucket {
-		require.NoError(t, rt2.GetSingleDataStore().Set(docID, 0, nil, []byte(`{"mutation": 2}`)))
+		require.NoError(t, rt2.GetSingleDataStore().Set(ctx, docID, 0, nil, []byte(`{"mutation": 2}`)))
 	}
 
 	// wait for doc update to be imported, these documents won't be imported until the rollback is complete for all vBuckets
@@ -2588,6 +2621,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 }
 
 func TestPrevRevNoPopulationImportFeed(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
@@ -2599,7 +2633,6 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
-	ctx := base.TestCtx(t)
 
 	if !rt.Bucket().IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
@@ -2609,7 +2642,7 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	mobileKey := t.Name()
 	mobileBody := make(map[string]any)
 	mobileBody["channels"] = "ABC"
-	_, err := dataStore.Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
@@ -2625,7 +2658,7 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	mou := getMou(t, xattrs[base.MouXattrName])
 	require.Greater(t, revNo, mou.PreviousRevSeqNo)
 
-	err = dataStore.Set(mobileKey, 0, nil, []byte(`{"test":"update"}`))
+	err = dataStore.Set(ctx, mobileKey, 0, nil, []byte(`{"test":"update"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -2652,6 +2685,7 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 //   - Wait for the doc to arrive over the import feed and assert that once doc was imported the attachment metadata
 //     was migrated from sync data xattr to global xattr
 func TestMigrationOfAttachmentsOnImport(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SkipImportTestsIfNotEnabled(t)
@@ -2664,7 +2698,6 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
-	ctx := base.TestCtx(t)
 
 	// add new doc to test a doc arriving import feed that doesn't need importing still has attachment migration take place
 	key := "doc1"

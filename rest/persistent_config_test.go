@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -116,6 +117,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 }
 
 func TestAutomaticConfigUpgradeError(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
@@ -152,7 +154,6 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		t.Run(testCase.Name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -169,11 +170,11 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 }
 
 func TestUnmarshalBrokenConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	t.Skip("Disabled, CBG-2420")
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -209,11 +210,11 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 }
 
 func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -338,6 +339,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 }
 
 func TestImportFilterEndpoint(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
@@ -350,7 +352,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	require.NoError(t, rt.GetSingleDataStore().Set("importDoc1", 0, nil, []byte("{}")))
+	require.NoError(t, rt.GetSingleDataStore().Set(ctx, "importDoc1", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc1", "")
@@ -361,7 +363,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	require.NoError(t, rt.GetSingleDataStore().Set("importDoc2", 0, nil, []byte("{}")))
+	require.NoError(t, rt.GetSingleDataStore().Set(ctx, "importDoc2", 0, nil, []byte("{}")))
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc2", "")
@@ -372,7 +374,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a document
-	require.NoError(t, rt.GetSingleDataStore().Set("importDoc3", 0, nil, []byte("{}")))
+	require.NoError(t, rt.GetSingleDataStore().Set(ctx, "importDoc3", 0, nil, []byte("{}")))
 
 	// Ensure document is imported based on default import filter
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/importDoc3", "")
@@ -464,6 +466,7 @@ func TestPersistentConfigWithCollectionConflicts(t *testing.T) {
 // TestPersistentConfigRegistryRollbackAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
 // leaving the registry version ahead of the config.
 func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyConfig)
 
@@ -472,7 +475,6 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -545,6 +547,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 // TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback simulates a vbucket rollback for the dbconfig,
 // leaving the registry version ahead of the config - but also with a collection conflict occurring in the subsequent rollback.
 func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.TestRequiresCollections(t)
@@ -579,7 +582,6 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.useXattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -698,6 +700,7 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 //  5. UpdateConfig to a different db, with collection conflict with the failed create (should fail with conflict, but succeed after GetDatabaseConfigs runs)
 //  6. DeleteConfig for the same db name (triggers rollback, then returns ErrNotFound for the delete operation)
 func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -706,7 +709,6 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -826,6 +828,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 //  5. DeleteConfig for the same db name (triggers rollback, then successfully deletes)
 
 func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -834,7 +837,6 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -961,6 +963,7 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 //  4. Attempt recreation of database with earlier version generation, after delete fails.  Should resolve delete and succeed
 //  5. Attempt update of database after delete fails.  Should return "database does not exist" error
 func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -969,7 +972,6 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1059,6 +1061,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 // triggers rollback before the config document is updated. Verifies that the original create operation
 // fails and returns an appropriate error
 func TestPersistentConfigSlowCreateFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1067,7 +1070,6 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, false)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1118,6 +1120,7 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 }
 
 func TestMigratev30PersistentConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1126,7 +1129,6 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1182,6 +1184,7 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 }
 
 func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1193,7 +1196,6 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	// does not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	config.Bootstrap.NodeHeartbeatExpiry = nil
-	ctx := base.TestCtx(t)
 	sc, closeFn := StartServerWithConfig(t, &config)
 	defer closeFn()
 	tb := base.GetTestBucket(t)
@@ -1252,6 +1254,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 // TestMigratev30PersistentConfigCollision sets up a 3.1 database targeting the default collection, then attempts
 // migration of another database in the 3.0 format (which also targets the default collection)
 func TestMigratev30PersistentConfigCollision(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1260,7 +1263,6 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1305,6 +1307,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 
 // TestLegacyDuplicate tests the behaviour of GetDatabaseConfigs when the same database exists in legacy and non-legacy format
 func TestLegacyDuplicate(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -1313,7 +1316,6 @@ func TestLegacyDuplicate(t *testing.T) {
 			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
 			defer closeFn()
 
-			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1376,6 +1378,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 }
 
 func TestPersistentConfigNoBucketField(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyConfig)
@@ -1407,19 +1410,20 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	var databaseConfig DatabaseConfig
 	groupID := rt.ServerContext().Config.Bootstrap.ConfigGroupID
 	configDocID := PersistentConfigKey(base.TestCtx(t), groupID, b1Name)
-	_, err := rt.GetDatabase().MetadataStore.Get(configDocID, &databaseConfig)
+	_, err := rt.GetDatabase().MetadataStore.Get(ctx, configDocID, &databaseConfig)
 	require.NoError(t, err)
 	require.NotNil(t, databaseConfig.Bucket)
 	assert.Equal(t, b1Name, *databaseConfig.Bucket, "bucket field should be stamped into config")
 
 	// manually strip out bucket to test backwards compatibility (older configs don't always have this field set)
-	_, err = rt.GetDatabase().MetadataStore.Update(configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = rt.GetDatabase().MetadataStore.Update(ctx, configDocID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var d DatabaseConfig
 		require.NoError(t, base.JSONUnmarshal(current, &d))
 		d.Bucket = nil
 		newConfig, err := base.JSONMarshal(d)
 		return newConfig, nil, false, err
 	})
+
 	require.NoError(t, err)
 
 	count, err := rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)
@@ -1442,13 +1446,14 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	base.MoveDocument(t, configDocID, b2.GetMetadataStore(), b1.GetMetadataStore())
 
 	// put the bucket for the config back to b1 so we can use the admin API to repair the config (like a real user would have to do)
-	_, err = b2.GetMetadataStore().Update(configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = b2.GetMetadataStore().Update(ctx, configDocID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var d DatabaseConfig
 		require.NoError(t, base.JSONUnmarshal(current, &d))
 		d.Bucket = &b1Name
 		newConfig, err := base.JSONMarshal(d)
 		return newConfig, nil, false, err
 	})
+
 	require.NoError(t, err)
 
 	count, err = rt.ServerContext().fetchAndLoadConfigs(base.TestCtx(t), false)

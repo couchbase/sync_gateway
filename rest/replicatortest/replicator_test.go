@@ -2162,6 +2162,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
@@ -2228,7 +2229,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		rt2.PutDoc(docID2, `{"source":"rt2","channels":["`+username+`"]}`)
 
 		// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
-		_, err = rt2.MetadataStore().Incr(rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
+		_, err = rt2.MetadataStore().Incr(ctx, rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
 		require.NoError(t, err)
 
 		docID3 := docIDPrefix + "3"
@@ -2671,6 +2672,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 //   - Starts the replicator to trigger conflict resolution to merge both attachments in the conflict.
 func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Test uses EE-only features for custom conflict resolution")
 	}
@@ -2813,7 +2815,6 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				ctx := base.TestCtx(t)
 				revGen, _ := db.ParseRevID(ctx, doc.SyncData.GetRevTreeID())
 
 				assert.Equal(t, 3, revGen)
@@ -4826,6 +4827,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
@@ -4893,7 +4895,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
 		var firstCheckpoint any
-		_, err = passiveRT.GetSingleDataStore().Get(checkpointDocID, &firstCheckpoint)
+		_, err = passiveRT.GetSingleDataStore().Get(ctx, checkpointDocID, &firstCheckpoint)
 		require.NoError(t, err)
 
 		// Create doc2 on activeRT
@@ -4920,7 +4922,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		require.NoError(t, ar.Stop())
 
 		// roll back checkpoint value to first one and remove the associated doc
-		err = passiveRT.GetSingleDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
+		err = passiveRT.GetSingleDataStore().Set(ctx, checkpointDocID, 0, nil, firstCheckpoint)
 		assert.NoError(t, err)
 
 		passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
@@ -4976,6 +4978,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	const username = "alice"
 	sgrRunner.Run(func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
@@ -5014,13 +5017,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 		pushCheckpointID := ar.Push.CheckpointID
 		pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
-		err = rt2.GetSingleDataStore().Set(pushCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
+		err = rt2.GetSingleDataStore().Set(ctx, pushCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
 		require.NoError(t, err)
 
 		pullCheckpointID := ar.Pull.CheckpointID
 		require.NoError(t, err)
 		pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
-		err = rt1.GetSingleDataStore().Set(pullCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
+		err = rt1.GetSingleDataStore().Set(ctx, pullCheckpointDocID, 0, nil, map[string]any{"last_sequence": "0", "_rev": "abc"})
 		require.NoError(t, err)
 
 		// Create doc1 on rt1
@@ -5748,6 +5751,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range conflictResolutionTests {
 			t.Run(test.name, func(t *testing.T) {
+				ctx := base.TestCtx(t)
 				base.RequireNumTestBuckets(t, 2)
 				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
 				passiveDBURL, err := url.Parse(remoteURLString)
@@ -5819,7 +5823,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 					Value:    doc.Cas,
 				}
 				sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
-				ctx := base.TestCtx(t)
 				t.Logf("doc.Body(): %v", doc.Body(ctx))
 				assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
 				t.Logf("Doc %s is %+v", docID, doc)
@@ -5911,8 +5914,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, dataStore base.DataStore, docID string) {
+		ctx := base.TestCtx(t)
 		var rawBody db.Body
-		_, err := dataStore.Get(docID, &rawBody)
+		_, err := dataStore.Get(ctx, docID, &rawBody)
 		if base.TestUseXattrs() {
 			require.True(t, base.IsDocNotFoundError(err))
 			require.Len(t, rawBody, 0)
@@ -5932,6 +5936,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	sgrRunner.RunSubprotocolV3(func(t *testing.T) {
 		for _, test := range tombstoneTests {
 			t.Run(test.name, func(t *testing.T) {
+				ctx := base.TestCtx(t)
 				if test.sdkResurrect && !base.TestUseXattrs() {
 					t.Skip("SDK resurrect test cases require xattrs to be enabled")
 				}
@@ -6014,7 +6019,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				if test.resurrectLocal {
 					if test.sdkResurrect {
 						// resurrect doc via SDK on local
-						err := localActiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+						err := localActiveRT.GetSingleDataStore().Set(ctx, doc2ID, 0, nil, updatedBody)
 						assert.NoError(t, err, "Unable to resurrect doc docid2")
 						collection, ctx := localActiveRT.GetSingleTestDatabaseCollection()
 						// force on-demand import
@@ -6026,7 +6031,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				} else {
 					if test.sdkResurrect {
 						// resurrect doc via SDK on remote
-						err := remotePassiveRT.GetSingleDataStore().Set(doc2ID, 0, nil, updatedBody)
+						err := remotePassiveRT.GetSingleDataStore().Set(ctx, doc2ID, 0, nil, updatedBody)
 						assert.NoError(t, err, "Unable to resurrect doc docid2")
 						// force on-demand import
 						collection, ctx := remotePassiveRT.GetSingleTestDatabaseCollection()
@@ -6863,6 +6868,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 // Should log "422 Unable to unmarshal mutable body for doc test deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
 // then fall back to full body replication
 func TestUnprocessableDeltas(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some delta sync")
 	}
@@ -6939,8 +6945,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 		// Which should give a HTTP 422
 		rev.BodyBytes = []byte("{invalid}")
 		cache := passiveRTCollection.GetRevisionCacheForTest()
-		require.NoError(t, cache.Upsert(base.TestCtx(t), rev)) // CV key  → found by v4 GetWithCV
-		cache.PutRevEntry(t, base.TestCtx(t), rev)             // revID key → found by v3 GetWithRev
+		require.NoError(t, cache.Upsert(ctx, rev)) // CV key  → found by v4 GetWithCV
+		cache.PutRevEntry(t, ctx, rev)             // revID key → found by v3 GetWithRev
 
 		base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
 			require.NoError(t, ar.Start(activeCtx))
@@ -7310,6 +7316,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs")
 	}
@@ -7318,7 +7325,6 @@ func TestGroupIDReplications(t *testing.T) {
 	}
 	base.RequireNumTestBuckets(t, 2)
 
-	ctx := base.TestCtx(t)
 	// Create test buckets to replicate between
 	activeBucket := base.GetTestBucket(t)
 	defer activeBucket.Close(ctx)
@@ -7383,7 +7389,7 @@ func TestGroupIDReplications(t *testing.T) {
 		resp.RequireStatus(http.StatusCreated)
 	}
 
-	dataStore := activeBucket.DefaultDataStore()
+	dataStore := activeBucket.DefaultDataStore(ctx)
 	keyspace := "/db/"
 	if !rt.GetDatabase().OnlyDefaultCollection() {
 		var err error
@@ -7395,7 +7401,7 @@ func TestGroupIDReplications(t *testing.T) {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		added, err := dataStore.Add(key, 0, []byte(body))
+		added, err := dataStore.Add(ctx, key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 
@@ -7412,7 +7418,7 @@ func TestGroupIDReplications(t *testing.T) {
 				expectedPushed = 1
 			}
 
-			ctx := sc.SetContextLogID(base.TestCtx(t), sc.Config.Bootstrap.ConfigGroupID)
+			ctx = sc.SetContextLogID(base.TestCtx(t), sc.Config.Bootstrap.ConfigGroupID)
 			dbContext, err := sc.GetDatabase(ctx, "db")
 			require.NoError(t, err)
 			dbstats, err := dbContext.DbStats.DBReplicatorStats("repl")
@@ -7856,6 +7862,7 @@ func TestExistingConfigEmptyReplicationID(t *testing.T) {
 //   - Remove database context off os rt1
 //   - Call start on active replicator, this would normally hit panic in ticket CBG-4070, should now error instead
 func TestNoDBInCheckpointHash(t *testing.T) {
+	ctx := base.TestCtx(t)
 
 	// Create two rest testers
 	rt1 := rest.NewRestTester(t, nil)
@@ -7867,7 +7874,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 	username := "alice"
 	rt2.CreateUser(username, []string{username})
 
-	ar, err := db.NewActiveReplicator(base.TestCtx(t), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePush,
 		ActiveDB:            &db.Database{DatabaseContext: rt1.GetDatabase()},
@@ -7879,7 +7886,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	// remove the db context for rt1 off the server context
-	ok := rt1.ServerContext().RemoveDatabase(base.TestCtx(t), "db", "Removing database context for test")
+	ok := rt1.ServerContext().RemoveDatabase(ctx, "db", "Removing database context for test")
 	require.True(t, ok)
 
 	// assert that the db context has been removed
@@ -7889,7 +7896,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 
 	// attempt to start active replicator, this will hit panic in CBG-4070 pre this work due to the bucket being nil
 	// on the active db context
-	replicatorErr := ar.Start(base.TestCtx(t))
+	replicatorErr := ar.Start(ctx)
 	assert.Error(t, replicatorErr)
 	assert.ErrorContains(t, replicatorErr, "cannot fetch bucket UUID")
 

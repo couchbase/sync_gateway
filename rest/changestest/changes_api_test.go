@@ -2328,6 +2328,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 // Tests query backfill with limit
 func TestChangesQueryBackfillWithLimit(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
@@ -2336,7 +2337,6 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	testDb := rt.GetDatabase()
-	ctx := rt.Context()
 
 	changesLimitTests := []struct {
 		name                string // test name
@@ -3595,7 +3595,7 @@ func TestOneShotGrantTiming(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-	slowSequence, seqErr := db.AllocateTestSequence(database)
+	slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 	require.NoError(t, seqErr)
 	log.Printf("Allocated slowSequence: %v", slowSequence)
 
@@ -3657,7 +3657,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-	slowSequence, seqErr := db.AllocateTestSequence(database)
+	slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 	require.NoError(t, seqErr)
 
 	// Write a document granting user access to PBS
@@ -3738,7 +3738,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-	slowSequence, seqErr := db.AllocateTestSequence(database)
+	slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 	require.NoError(t, seqErr)
 	log.Printf("Allocated slowSequence: %v", slowSequence)
 

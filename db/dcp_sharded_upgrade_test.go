@@ -177,6 +177,7 @@ const planPIndexes = `{
 
 // Check that, on a rolling upgrade, the existing index definitions are preserved and the DCP feed does not start from zero.
 func TestShardedDCPUpgrade(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if testing.Short() {
 		t.Skip("skipping in short mode")
 	}
@@ -191,11 +192,11 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(base.TestCtx(t))
 
-	dataStore := tb.Bucket.DefaultDataStore()
-	bucketUUID, err := tb.UUID()
+	dataStore := tb.Bucket.DefaultDataStore(ctx)
+	bucketUUID, err := tb.UUID(ctx)
 	require.NoError(t, err, "get bucket UUID")
 
-	numVBuckets, err := tb.GetMaxVbno()
+	numVBuckets, err := tb.GetMaxVbno(ctx)
 	require.NoError(t, err)
 
 	const (
@@ -203,20 +204,19 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		indexName     = "db0x2d9928b7_index"
 	)
 
-	require.NoError(t, dataStore.SetRaw(base.CBGTCfgIndexDefs, 0, nil, fmt.Appendf(nil, indexDefs, tb.GetName(), bucketUUID)))
-	require.NoError(t, dataStore.SetRaw(base.CBGTCfgNodeDefsKnown, 0, nil, []byte(nodeDefs)))
-	require.NoError(t, dataStore.SetRaw(base.CBGTCfgNodeDefsWanted, 0, nil, []byte(nodeDefs)))
+	require.NoError(t, dataStore.SetRaw(ctx, base.CBGTCfgIndexDefs, 0, nil, fmt.Appendf(nil, indexDefs, tb.GetName(), bucketUUID)))
+	require.NoError(t, dataStore.SetRaw(ctx, base.CBGTCfgNodeDefsKnown, 0, nil, []byte(nodeDefs)))
+	require.NoError(t, dataStore.SetRaw(ctx, base.CBGTCfgNodeDefsWanted, 0, nil, []byte(nodeDefs)))
 	planPIndexesJSON := preparePlanPIndexesJSON(t, tb, numVBuckets, numPartitions)
-	require.NoError(t, dataStore.SetRaw(base.CBGTCfgPlanPIndexes, 0, nil, []byte(planPIndexesJSON)))
+	require.NoError(t, dataStore.SetRaw(ctx, base.CBGTCfgPlanPIndexes, 0, nil, []byte(planPIndexesJSON)))
 
 	// Write a doc before starting the dbContext to check that import works
 	const (
 		testDoc1 = "testDoc1"
 		testDoc2 = "testDoc2"
 	)
-	require.NoError(t, dataStore.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
+	require.NoError(t, dataStore.SetRaw(ctx, testDoc1, 0, nil, []byte(`{}`)))
 
-	ctx := base.TestCtx(t)
 	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
 		GroupID:     "",
 		EnableXattr: true,
@@ -274,7 +274,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NotNil(t, doc, "GetDocument 1")
 
 	// Write a doc to the test bucket to check that import still works
-	require.NoError(t, dataStore.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
+	require.NoError(t, dataStore.SetRaw(ctx, testDoc2, 0, nil, []byte(`{}`)))
 	db.WaitForPendingChanges(t)
 	doc, err = collection.GetDocument(collectionCtx, testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
@@ -286,7 +286,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 func preparePlanPIndexesJSON(t *testing.T, tb *base.TestBucket, numVBuckets uint16, numPartitions int) string {
 	t.Helper()
 
-	uuid, err := tb.UUID()
+	uuid, err := tb.UUID(base.TestCtx(t))
 	require.NoError(t, err, "get bucket UUID")
 	planPIndexesJSON := fmt.Sprintf(planPIndexes, tb.GetName(), uuid)
 	numVBsPerPartition := int(numVBuckets) / numPartitions

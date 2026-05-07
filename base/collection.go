@@ -209,7 +209,7 @@ func (b *GocbV2Bucket) GetName() string {
 	return b.bucket.Name()
 }
 
-func (b *GocbV2Bucket) UUID() (string, error) {
+func (b *GocbV2Bucket) UUID(_ context.Context) (string, error) {
 	config, configErr := b.getConfigSnapshot()
 	if configErr != nil {
 		return "", fmt.Errorf("Unable to determine bucket UUID for collection %v: %w", b.GetName(), configErr)
@@ -314,7 +314,7 @@ func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uu
 	return GetStatsVbSeqno(genericStats, maxVbno, useAbsHighSeqNo)
 }
 
-func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
+func (b *GocbV2Bucket) GetMaxVbno(ctx context.Context) (uint16, error) {
 
 	config, configErr := b.getConfigSnapshot()
 	if configErr != nil {
@@ -358,7 +358,7 @@ func (b *GocbV2Bucket) GetCCVSettings(ctx context.Context) (ccvEnabled bool, max
 		return false, nil, nil
 	}
 
-	numVBuckets, err := b.GetMaxVbno()
+	numVBuckets, err := b.GetMaxVbno(ctx)
 	if err != nil {
 		return false, nil, fmt.Errorf("error getting vbucket count: %v", err)
 	}
@@ -455,13 +455,13 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (b *GocbV2Bucket) BucketItemCount(ctx context.Context) (itemCount int, err error) {
-	dataStoreNames, err := b.ListDataStores()
+	dataStoreNames, err := b.ListDataStores(ctx)
 	if err != nil {
 		return 0, err
 	}
 
 	for _, dsn := range dataStoreNames {
-		ds, err := b.NamedDataStore(dsn)
+		ds, err := b.NamedDataStore(ctx, dsn)
 		if err != nil {
 			return 0, err
 		}
@@ -655,7 +655,7 @@ func (b *GocbV2Bucket) releaseQueryOp() {
 	<-b.queryOps
 }
 
-func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
+func (b *GocbV2Bucket) ListDataStores(_ context.Context) ([]sgbucket.DataStoreName, error) {
 	if !b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		return []sgbucket.DataStoreName{ScopeAndCollectionName{Scope: DefaultScope, Collection: DefaultCollection}}, nil
 	}
@@ -678,7 +678,7 @@ func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 }
 
 // DropDataStore removes a collection from the bucket. This function will return immediately but the collection may take some time to delete.
-func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
+func (b *GocbV2Bucket) DropDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	if b.cluster == nil {
 		return fmt.Errorf("bucket %s has been closed", MD(b.GetName()))
 	}
@@ -710,7 +710,7 @@ func (b *GocbV2Bucket) CreateDataStore(ctx context.Context, name sgbucket.DataSt
 }
 
 // DefaultDataStore returns the default collection for the bucket.
-func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
+func (b *GocbV2Bucket) DefaultDataStore(_ context.Context) sgbucket.DataStore {
 	return &Collection{
 		Bucket:     b,
 		Collection: b.bucket.DefaultCollection(),
@@ -718,7 +718,7 @@ func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 }
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
-func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+func (b *GocbV2Bucket) NamedDataStore(_ context.Context, name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
 	c, err := NewCollection(
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))

@@ -90,24 +90,28 @@ func (ms *MetadataStore) GetCollectionID() uint32 {
 	return ms.primary.GetCollectionID()
 }
 
+func (ms *MetadataStore) GetMaxVbno(ctx context.Context) (uint16, error) {
+	return ms.primary.GetMaxVbno(ctx)
+}
+
 func (ms *MetadataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return ms.primary.IsSupported(feature)
 }
 
 // ---- KVStore – read operations (primary with fallback) ----
 
-func (ms *MetadataStore) Get(k string, rv any) (cas uint64, err error) {
-	cas, err = ms.primary.Get(k, rv)
-	if ms.readFromFallback(context.TODO(), err) {
-		_, err = ms.fallback.Get(k, rv)
+func (ms *MetadataStore) Get(ctx context.Context, k string, rv any) (cas uint64, err error) {
+	cas, err = ms.primary.Get(ctx, k, rv)
+	if ms.readFromFallback(ctx, err) {
+		_, err = ms.fallback.Get(ctx, k, rv)
 	}
 	return cas, err
 }
 
-func (ms *MetadataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
-	v, cas, err = ms.primary.GetRaw(k)
-	if ms.readFromFallback(context.TODO(), err) {
-		v, _, err = ms.fallback.GetRaw(k)
+func (ms *MetadataStore) GetRaw(ctx context.Context, k string) (v []byte, cas uint64, err error) {
+	v, cas, err = ms.primary.GetRaw(ctx, k)
+	if ms.readFromFallback(ctx, err) {
+		v, _, err = ms.fallback.GetRaw(ctx, k)
 	}
 	return v, cas, err
 }
@@ -120,53 +124,53 @@ func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32
 	return expiry, err
 }
 
-func (ms *MetadataStore) Exists(k string) (exists bool, err error) {
-	exists, err = ms.primary.Exists(k)
-	if err != nil && !ms.readFromFallback(context.TODO(), err) {
+func (ms *MetadataStore) Exists(ctx context.Context, k string) (exists bool, err error) {
+	exists, err = ms.primary.Exists(ctx, k)
+	if err != nil && !ms.readFromFallback(ctx, err) {
 		return false, err
 	}
 	if exists || ms.migrationComplete.Load() {
 		return exists, err
 	}
-	return ms.fallback.Exists(k)
+	return ms.fallback.Exists(ctx, k)
 }
 
 // ---- KVStore – write operations (primary only) ----
 
-func (ms *MetadataStore) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
-	return ms.primary.GetAndTouchRaw(k, exp)
+func (ms *MetadataStore) GetAndTouchRaw(ctx context.Context, k string, exp uint32) (v []byte, cas uint64, err error) {
+	return ms.primary.GetAndTouchRaw(ctx, k, exp)
 }
 
-func (ms *MetadataStore) Touch(k string, exp uint32) (cas uint64, err error) {
-	return ms.primary.Touch(k, exp)
+func (ms *MetadataStore) Touch(ctx context.Context, k string, exp uint32) (cas uint64, err error) {
+	return ms.primary.Touch(ctx, k, exp)
 }
 
-func (ms *MetadataStore) Add(k string, exp uint32, v any) (added bool, err error) {
-	return ms.primary.Add(k, exp, v)
+func (ms *MetadataStore) Add(ctx context.Context, k string, exp uint32, v any) (added bool, err error) {
+	return ms.primary.Add(ctx, k, exp, v)
 }
 
-func (ms *MetadataStore) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
-	return ms.primary.AddRaw(k, exp, v)
+func (ms *MetadataStore) AddRaw(ctx context.Context, k string, exp uint32, v []byte) (added bool, err error) {
+	return ms.primary.AddRaw(ctx, k, exp, v)
 }
 
-func (ms *MetadataStore) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
-	return ms.primary.Set(k, exp, opts, v)
+func (ms *MetadataStore) Set(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
+	return ms.primary.Set(ctx, k, exp, opts, v)
 }
 
-func (ms *MetadataStore) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
-	return ms.primary.SetRaw(k, exp, opts, v)
+func (ms *MetadataStore) SetRaw(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
+	return ms.primary.SetRaw(ctx, k, exp, opts, v)
 }
 
-func (ms *MetadataStore) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
-	return ms.primary.WriteCas(k, exp, cas, v, opt)
+func (ms *MetadataStore) WriteCas(ctx context.Context, k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	return ms.primary.WriteCas(ctx, k, exp, cas, v, opt)
 }
 
-func (ms *MetadataStore) Delete(k string) error {
-	return ms.primary.Delete(k)
+func (ms *MetadataStore) Delete(ctx context.Context, k string) error {
+	return ms.primary.Delete(ctx, k)
 }
 
-func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error) {
-	return ms.primary.Remove(k, cas)
+func (ms *MetadataStore) Remove(ctx context.Context, k string, cas uint64) (casOut uint64, err error) {
+	return ms.primary.Remove(ctx, k, cas)
 }
 
 // Update implements a CAS-safe read-modify-write that always lands in primary, even when the document only exists in the fallback DataStore.
@@ -178,24 +182,24 @@ func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error)
 //
 // When the callback requests a delete on a fallback-only doc, the wrapper applies the delete
 // directly to the fallback store and ignores the primary (since the only DataStore has the doc to delete was the fallback).
-func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (uint64, error) {
+func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (uint64, error) {
 	worker := func() (shouldRetry bool, err error, casOut uint64) {
-		primaryExists, existsErr := ms.primary.Exists(k)
+		primaryExists, existsErr := ms.primary.Exists(ctx, k)
 		if existsErr != nil {
 			return false, existsErr, 0
 		}
 
 		// If we know something exists in Primary, do a direct Update there
 		if primaryExists || ms.migrationComplete.Load() {
-			casOut, updateErr := ms.primary.Update(k, exp, callback)
+			casOut, updateErr := ms.primary.Update(ctx, k, exp, callback)
 			return false, updateErr, casOut
 		}
 
 		// Begin fallback DataStore Get to perform Update
-		fallbackValue, fallbackCasForDelete, err := ms.fallback.GetRaw(k)
+		fallbackValue, fallbackCasForDelete, err := ms.fallback.GetRaw(ctx, k)
 		if IsDocNotFoundError(err) {
 			// Neither store has the doc — let primary's own Update insert it.
-			casOut, updateErr := ms.primary.Update(k, exp, callback)
+			casOut, updateErr := ms.primary.Update(ctx, k, exp, callback)
 			return false, updateErr, casOut
 		}
 		if err != nil {
@@ -215,7 +219,7 @@ func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFu
 			// Delete the fallback copy — primary never held it, so a primary tombstone is
 			// pointless and would shadow the fallback for nothing.
 			// Remove with the CAS we just observed; on a concurrent fallback mutation we retry the loop.
-			_, removeErr := ms.fallback.Remove(k, fallbackCasForDelete)
+			_, removeErr := ms.fallback.Remove(ctx, k, fallbackCasForDelete)
 			switch {
 			case removeErr == nil, IsDocNotFoundError(removeErr):
 				return false, nil, 0
@@ -229,7 +233,7 @@ func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFu
 		}
 
 		// Write to primary with CAS=0 to force safe insertion
-		casOut, writeErr := ms.primary.WriteCas(k, writeExp, 0, newValue, 0)
+		casOut, writeErr := ms.primary.WriteCas(ctx, k, writeExp, 0, newValue, 0)
 		if IsCasMismatch(writeErr) {
 			// retry: concurrent writer beat us to primary
 			//        retry loop will run again and be routed directly to the primary DataStore Update
@@ -243,12 +247,12 @@ func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFu
 		return false, nil, casOut
 	}
 
-	err, casOut := RetryLoopCas(context.TODO(), "MetadataStore.Update", worker, DefaultRetrySleeper())
+	err, casOut := RetryLoopCas(ctx, "MetadataStore.Update", worker, DefaultRetrySleeper())
 	return casOut, err
 }
 
-func (ms *MetadataStore) Incr(k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
-	return ms.primary.Incr(k, amt, def, exp)
+func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
+	return ms.primary.Incr(ctx, k, amt, def, exp)
 }
 
 // ---- XattrStore – read operations (primary with fallback) ----
@@ -319,7 +323,7 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 
 	// Retry loop for Primary/Fallback
 	worker := func() (shouldRetry bool, err error, casOut uint64) {
-		primaryExists, existsErr := ms.primary.Exists(k)
+		primaryExists, existsErr := ms.primary.Exists(ctx, k)
 		if existsErr != nil {
 			return false, existsErr, 0
 		}
@@ -419,7 +423,3 @@ func (ms *MetadataStore) WriteSubDoc(ctx context.Context, k string, subdocKey st
 	return ms.primary.WriteSubDoc(ctx, k, subdocKey, cas, value)
 }
 
-// GetMaxVbno returns the number of vBuckets on this data store.
-func (ms *MetadataStore) GetMaxVbno() (uint16, error) {
-	return ms.primary.GetMaxVbno()
-}

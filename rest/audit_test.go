@@ -29,6 +29,7 @@ import (
 )
 
 func TestAuditLoggingFields(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
@@ -64,7 +65,7 @@ func TestAuditLoggingFields(t *testing.T) {
 			}
 			config.Logging = getAuditLoggingTestConfig(tempdir)
 			config.Logging.Audit.EnabledEvents = base.AllGlobalAuditeventIDs
-			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+			require.NoError(t, config.SetupAndValidateLogging(ctx))
 		},
 	})
 	defer rt.Close()
@@ -112,7 +113,7 @@ func TestAuditLoggingFields(t *testing.T) {
 		// if we have another bucket available, use it to test cross-bucket role filtering (to ensure it doesn't)
 		if base.GTestBucketPool.NumUsableBuckets() >= 2 {
 			differentBucket := base.GetTestBucket(t)
-			defer differentBucket.Close(base.TestCtx(t))
+			defer differentBucket.Close(ctx)
 			differentBucketName := differentBucket.GetName()
 
 			MakeUser(t, httpClient, eps[0], unfilteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
@@ -706,6 +707,7 @@ func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
 }
 
 func TestRedactConfigAsStr(t *testing.T) {
+	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name     string
 		input    string
@@ -767,7 +769,6 @@ func TestRedactConfigAsStr(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
 			output, err := redactConfigAsStr(ctx, testCase.input)
 			if testCase.hasError {
 				require.Error(t, err)
@@ -1207,6 +1208,7 @@ func TestAuditAttachmentEvents(t *testing.T) {
 }
 
 func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := createAuditLoggingRestTester(t)
 	defer rt.Close()
 
@@ -1258,7 +1260,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 				name: "import doc",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
 					importCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
-					_, err := rt.GetSingleDataStore().Add(docID, 0, db.Body{"foo": "bar"})
+					_, err := rt.GetSingleDataStore().Add(ctx, docID, 0, db.Body{"foo": "bar"})
 					require.NoError(t, err)
 					base.RequireWaitForStat(t, func() int64 {
 						return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
@@ -1268,7 +1270,7 @@ func TestAuditDocumentCreateUpdateEvents(t *testing.T) {
 			{
 				name: "import doc with inline sync meta",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					_, err := rt.GetSingleDataStore().Add(docID, 0, []byte(db.RawDocWithInlineSyncData(t)))
+					_, err := rt.GetSingleDataStore().Add(ctx, docID, 0, []byte(db.RawDocWithInlineSyncData(t)))
 					require.NoError(t, err)
 					// this may get picked up by auto import or on demand import
 					_, _ = rt.GetDoc(docID)
@@ -1725,6 +1727,7 @@ func TestAuditBlipAttachmentCRUD(t *testing.T) {
 
 // TestAuditLoggingGlobals modifies all the global loggers
 func TestAuditLoggingGlobals(t *testing.T) {
+	ctx := base.TestCtx(t)
 	globalFields := map[string]any{
 		"global":  "field",
 		"global2": "field2",
@@ -1759,7 +1762,6 @@ func TestAuditLoggingGlobals(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			base.ResetGlobalTestLogging(t)
 			base.InitializeMemoryLoggers()
-			ctx := base.TestCtx(t)
 			if testCase.globalAuditEvents != nil {
 				require.NoError(t, os.Setenv(globalEnvVarName, *testCase.globalAuditEvents))
 				defer func() {

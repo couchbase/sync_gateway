@@ -229,7 +229,7 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 	for _, vbID := range vbIDs {
 		meta.DCPMeta[vbID] = m.metadata[vbID]
 	}
-	err := m.dataStore.Set(m.getMetadataKey(workerID), 0, nil, meta)
+	err := m.dataStore.Set(ctx, m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
 		InfofCtx(ctx, KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {
@@ -240,7 +240,7 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 
 func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 	var meta WorkerMetadata
-	_, err := m.dataStore.Get(m.getMetadataKey(workerID), &meta)
+	_, err := m.dataStore.Get(ctx, m.getMetadataKey(workerID), &meta)
 	if err != nil {
 		if IsDocNotFoundError(err) {
 			return
@@ -256,7 +256,7 @@ func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 
 func (m *DCPMetadataCS) Purge(ctx context.Context, numWorkers int) {
 	for i := range numWorkers {
-		err := m.dataStore.Delete(m.getMetadataKey(i))
+		err := m.dataStore.Delete(ctx, m.getMetadataKey(i))
 		if err != nil && !IsDocNotFoundError(err) {
 			InfofCtx(ctx, KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}

@@ -40,7 +40,7 @@ type Heartbeater interface {
 // sending heartbeats.
 type HeartbeatListener interface {
 	Name() string
-	GetNodes() (nodeUUIDs []string, err error)
+	GetNodes(ctx context.Context) (nodeUUIDs []string, err error)
 	StaleHeartbeatDetected(ctx context.Context, nodeUUID string)
 	Stop()
 }
@@ -143,7 +143,7 @@ func (h *couchbaseHeartBeater) Stop(ctx context.Context) {
 
 // Send initial heartbeat, and start goroutine to schedule sendHeartbeat invocation
 func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error {
-	if err := h.sendHeartbeat(); err != nil {
+	if err := h.sendHeartbeat(ctx); err != nil {
 		return err
 	}
 
@@ -159,7 +159,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				if err := h.sendHeartbeat(); err != nil {
+				if err := h.sendHeartbeat(ctx); err != nil {
 					WarnfCtx(ctx, "Unexpected error sending heartbeat - will be retried: %v", err)
 				}
 			}
@@ -249,7 +249,7 @@ func (h *couchbaseHeartBeater) getNodeListenerMap(ctx context.Context) ListenerM
 	nodeToListenerMap := make(ListenerMap)
 	h.heartbeatListenersMutex.RLock()
 	for _, listener := range h.heartbeatListeners {
-		listenerNodes, err := listener.GetNodes()
+		listenerNodes, err := listener.GetNodes(ctx)
 		if err != nil {
 			WarnfCtx(ctx, "Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
 		}
@@ -281,7 +281,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 		}
 
 		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
-		_, _, err := h.datastore.GetRaw(timeoutDocID)
+		_, _, err := h.datastore.GetRaw(ctx, timeoutDocID)
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		if err != nil {
 			if !IsDocNotFoundError(err) {
@@ -304,11 +304,11 @@ func heartbeatTimeoutDocID(nodeUuid, keyPrefix string) string {
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
-func (h *couchbaseHeartBeater) sendHeartbeat() error {
+func (h *couchbaseHeartBeater) sendHeartbeat(ctx context.Context) error {
 
 	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
 
-	_, touchErr := h.datastore.Touch(docID, h.heartbeatExpirySeconds)
+	_, touchErr := h.datastore.Touch(ctx, docID, h.heartbeatExpirySeconds)
 	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	if touchErr == nil {
 		h.sendCount++
@@ -318,7 +318,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsDocNotFoundError(touchErr) {
 		heartbeatDocBody := []byte(h.nodeUUID)
-		setErr := h.datastore.SetRaw(docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
+		setErr := h.datastore.SetRaw(ctx, docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		if setErr != nil {
 			return setErr
@@ -381,9 +381,9 @@ func (dh *documentBackedListener) Name() string {
 	return dh.nodeListKey
 }
 
-func (dh *documentBackedListener) GetNodes() ([]string, error) {
+func (dh *documentBackedListener) GetNodes(ctx context.Context) ([]string, error) {
 	dh.lock.Lock()
-	err := dh.loadNodeIDs()
+	err := dh.loadNodeIDs(ctx)
 	dh.lock.Unlock()
 	return dh.nodeIDs, err
 }
@@ -421,7 +421,7 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 	for {
 		// Reload the node set if it hasn't been initialized (or has been marked out of date by previous CAS write failure)
 		if dh.cas == 0 {
-			if err := dh.loadNodeIDs(); err != nil {
+			if err := dh.loadNodeIDs(ctx); err != nil {
 				return err
 			}
 		}
@@ -449,7 +449,7 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 
 		InfofCtx(ctx, KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
-		casOut, err := dh.datastore.WriteCas(dh.nodeListKey, 0, dh.cas, dh.nodeIDs, 0)
+		casOut, err := dh.datastore.WriteCas(ctx, dh.nodeListKey, 0, dh.cas, dh.nodeIDs, 0)
 
 		if err == nil { // Successful update
 			dh.cas = casOut
@@ -466,9 +466,9 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 
 }
 
-func (dh *documentBackedListener) loadNodeIDs() error {
+func (dh *documentBackedListener) loadNodeIDs(ctx context.Context) error {
 
-	docBytes, cas, err := dh.datastore.GetRaw(dh.nodeListKey)
+	docBytes, cas, err := dh.datastore.GetRaw(ctx, dh.nodeListKey)
 	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	if err != nil {
 		dh.cas = 0

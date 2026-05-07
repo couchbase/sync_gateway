@@ -1122,7 +1122,7 @@ func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
 func removeHLV(rt *RestTester, docID string) {
 	ds := rt.GetSingleDataStore()
 	ctx := base.TestCtx(rt.TB())
-	cas, err := ds.Get(docID, nil)
+	cas, err := ds.Get(ctx, docID, nil)
 	require.NoError(rt.TB(), err)
 	require.NoError(rt.TB(), ds.RemoveXattrs(ctx, docID, []string{base.VvXattrName}, cas))
 	xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})

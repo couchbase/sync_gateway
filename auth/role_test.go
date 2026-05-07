@@ -65,7 +65,7 @@ func TestRoleKeysHash(t *testing.T) {
 			ctx := base.TestCtx(t)
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close(ctx)
-			dataStore := testBucket.DefaultDataStore()
+			dataStore := testBucket.DefaultDataStore(ctx)
 
 			auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 			if !metadataDefault {

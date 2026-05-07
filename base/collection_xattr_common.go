@@ -224,7 +224,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		}
 
 		// Invoke callback to get updated value
-		updatedDoc, err := callback(value, xattrs, cas)
+		updatedDoc, err := callback(ctx, value, xattrs, cas)
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
 			previousLoopCas = nil
@@ -399,7 +399,7 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 			callback(k, xattrKeys)
 		}
 		// ErrXattrNotFound indicates there is no XATTR.  Try to delete only the body.
-		return store.Delete(k)
+		return store.Delete(ctx, k)
 	} else {
 		// return error
 		return mutateErr

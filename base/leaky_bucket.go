@@ -42,8 +42,8 @@ func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
 }
 
-func (b *LeakyBucket) UUID() (string, error) {
-	return b.bucket.UUID()
+func (b *LeakyBucket) UUID(ctx context.Context) (string, error) {
+	return b.bucket.UUID(ctx)
 }
 
 func (b *LeakyBucket) Close(ctx context.Context) {
@@ -68,20 +68,20 @@ func (b *LeakyBucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 
-func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
-	return b.bucket.GetMaxVbno()
+func (b *LeakyBucket) GetMaxVbno(ctx context.Context) (uint16, error) {
+	return b.bucket.GetMaxVbno(ctx)
 }
 
-func (b *LeakyBucket) DefaultDataStore() sgbucket.DataStore {
-	return NewLeakyDataStore(b, b.bucket.DefaultDataStore(), b.config)
+func (b *LeakyBucket) DefaultDataStore(ctx context.Context) sgbucket.DataStore {
+	return NewLeakyDataStore(b, b.bucket.DefaultDataStore(ctx), b.config)
 }
 
-func (b *LeakyBucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
-	return b.bucket.ListDataStores()
+func (b *LeakyBucket) ListDataStores(ctx context.Context) ([]sgbucket.DataStoreName, error) {
+	return b.bucket.ListDataStores(ctx)
 }
 
-func (b *LeakyBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	dataStore, err := b.bucket.NamedDataStore(name)
+func (b *LeakyBucket) NamedDataStore(ctx context.Context, name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+	dataStore, err := b.bucket.NamedDataStore(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +100,12 @@ func (b *LeakyBucket) CreateDataStore(ctx context.Context, name sgbucket.DataSto
 	return dynamicDataStore.CreateDataStore(ctx, name)
 }
 
-func (b *LeakyBucket) DropDataStore(name sgbucket.DataStoreName) error {
+func (b *LeakyBucket) DropDataStore(ctx context.Context, name sgbucket.DataStoreName) error {
 	dynamicDataStore, ok := b.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
 	if !ok {
 		return fmt.Errorf("Bucket %T doesn't support dynamic collection creation", b.GetUnderlyingBucket())
 	}
-	return dynamicDataStore.DropDataStore(name)
+	return dynamicDataStore.DropDataStore(ctx, name)
 }
 
 // The config object that controls the LeakyBucket behavior
@@ -168,11 +168,11 @@ type LeakyBucketConfig struct {
 
 func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	if len(b.config.DCPFeedMissingDocs) > 0 {
-		wrappedCallback := func(event sgbucket.FeedEvent) bool {
+		wrappedCallback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
 			if slices.Contains(b.config.DCPFeedMissingDocs, string(event.Key)) {
 				return false
 			}
-			return callback(event)
+			return callback(ctx, event)
 		}
 		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
 	}

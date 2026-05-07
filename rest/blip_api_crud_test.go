@@ -1711,6 +1711,7 @@ func TestPutRevV4(t *testing.T) {
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	const (
@@ -1767,7 +1768,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	err = rt.GetSingleDataStore().Delete(ctx, tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
@@ -2448,6 +2449,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -2591,7 +2593,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 				var bucketDoc map[string]any
-				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
+				_, err = rt.GetSingleDataStore().Get(ctx, docID, &bucketDoc)
 				assert.NoError(t, err)
 				body := rt.GetDocBody(docID)
 				// Confirm input body is in the bucket doc
@@ -2748,7 +2750,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				)
 				defer rt.Close()
 
-				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
+				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
 				require.True(t, ok)
 
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
@@ -2850,6 +2852,7 @@ func TestUnsubChanges(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the replication.
 func TestRequestPlusPull(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
@@ -2881,7 +2884,7 @@ func TestRequestPlusPull(t *testing.T) {
 		RequireStatus(t, response, 201)
 
 		// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-		slowSequence, seqErr := db.AllocateTestSequence(database)
+		slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 		require.NoError(t, seqErr)
 
 		// Write a document granting user 'bernard' access to PBS
@@ -2908,6 +2911,7 @@ func TestRequestPlusPull(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the db config.
 func TestRequestPlusPullDbConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
@@ -2945,7 +2949,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		RequireStatus(t, response, 201)
 
 		// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-		slowSequence, seqErr := db.AllocateTestSequence(database)
+		slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 		require.NoError(t, seqErr)
 
 		// Write a document granting user 'bernard' access to PBS
@@ -3068,12 +3072,12 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		rt.GetDatabase().FlushRevisionCacheForTest()
 
 		// alter sync data to be invalid
-		cas, err := collection.GetCollectionDatastore().Get(docID, nil)
+		cas, err := collection.GetCollectionDatastore().Get(ctx, docID, nil)
 		require.NoError(t, err)
 		_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
 		require.NoError(t, err)
 		// add a doc with invalid inline sync data
-		err = collection.GetCollectionDatastore().SetRaw(docID2, 0, nil, []byte(`{"some":"data", "_sync": {}}`))
+		err = collection.GetCollectionDatastore().SetRaw(ctx, docID2, 0, nil, []byte(`{"some":"data", "_sync": {}}`))
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
@@ -3094,6 +3098,7 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 //     then SGW will detect the document needs to be imported when the rev is requested.  Should triggers norev handling
 //     in the case where the import was unsuccessful
 func TestOnDemandImportBlipFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	if !base.TestUseXattrs() {
@@ -3186,7 +3191,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, "{}")
 				require.Len(t, changes.Results, 1)
 
-				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
+				err := rt.GetSingleDataStore().SetRaw(ctx, docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
 
 				rt.WaitForPendingChanges()
@@ -3613,6 +3618,7 @@ func TestTombstoneCount(t *testing.T) {
 }
 
 func TestBlipNoRevOnCorruptHistory(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
@@ -3626,7 +3632,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		})
 		defer btc.Close()
 
-		ctx := rt.Context()
+		ctx = rt.Context()
 		seq, err := rt.GetDatabase().NextSequence(ctx)
 		require.NoError(t, err)
 		// document contains an invalid revtree
@@ -3818,7 +3824,7 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 		btcRunner.StartPull(client.ID())
 		btcRunner.StartPush(client.ID())
 
-		err := col.Set(docID, 0, &sgbucket.UpsertOptions{}, docBody)
+		err := col.Set(ctx, docID, 0, &sgbucket.UpsertOptions{}, docBody)
 		require.NoError(t, err)
 
 		rt.WaitForDoc(docID)

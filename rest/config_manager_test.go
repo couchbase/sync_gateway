@@ -88,9 +88,9 @@ func TestComputeMetadataID(t *testing.T) {
 	assert.Equal(t, defaultMetadataID, metadataID)
 
 	// Set _sync:seq in default collection, verify computeMetadataID still returns default ID
-	defaultStore := tb.Bucket.DefaultDataStore()
+	defaultStore := tb.Bucket.DefaultDataStore(ctx)
 	syncSeqKey := base.DefaultMetadataKeys.SyncSeqKey()
-	_, err = defaultStore.Incr(syncSeqKey, 1, 0, 0)
+	_, err = defaultStore.Incr(ctx, syncSeqKey, 1, 0, 0)
 	require.NoError(t, err)
 
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
@@ -141,7 +141,7 @@ func TestComputeMetadataID(t *testing.T) {
 
 	// Write syncInfo to default collection, indicating that default collection is already associated with a different database
 	docBody := []byte(`{"metadataID":"foo"}`)
-	err = defaultStore.Set(base.SGSyncInfo, 0, nil, docBody)
+	err = defaultStore.Set(ctx, base.SGSyncInfo, 0, nil, docBody)
 	require.NoError(t, err)
 	defaultDbConfig.Scopes = nil
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)

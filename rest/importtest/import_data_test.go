@@ -1346,7 +1346,7 @@ var docPerVbucket128 = []string{
 }
 
 func getDocPerVbucket(t *testing.T, bucket base.Bucket) []string {
-	vbCount, err := bucket.GetMaxVbno()
+	vbCount, err := bucket.GetMaxVbno(base.TestCtx(t))
 	require.NoError(t, err)
 	switch vbCount {
 	case 64:

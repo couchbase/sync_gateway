@@ -143,7 +143,7 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 		}
 
 		// Close query results
-		closeErr := queryResults.Close()
+		closeErr := queryResults.Close(ctx)
 		if closeErr != nil {
 			return nil, closeErr
 		}

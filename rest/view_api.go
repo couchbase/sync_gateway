@@ -41,7 +41,7 @@ func (h *handler) handleGetDesignDoc() error {
 		result = db.Body{"filters": db.Body{"bychannel": filter}}
 	} else {
 		var getErr error
-		result, getErr = h.db.GetDesignDoc(ddocID)
+		result, getErr = h.db.GetDesignDoc(h.ctx(), ddocID)
 		if getErr != nil {
 			return getErr
 		}
@@ -68,7 +68,7 @@ func (h *handler) handlePutDesignDoc() error {
 // HTTP handler for DELETE _design/$ddoc
 func (h *handler) handleDeleteDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
-	return h.db.DeleteDesignDoc(ddocID)
+	return h.db.DeleteDesignDoc(h.ctx(), ddocID)
 }
 
 // HTTP handler for GET _design/$ddoc/_view/$view

@@ -279,7 +279,7 @@ func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocV
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
-		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
+		val, _, err := rt.GetSingleDataStore().GetRaw(rt.Context(), expectedName)
 		if err != nil {
 			rt.TB().Logf("Error getting checkpoint: %v - will retry", err)
 			return false

@@ -181,7 +181,7 @@ func (arc *activeReplicatorCommon) _initCheckpointer(remoteCheckpoints []replica
 	arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancelCause(arc.ctx)
 
 	err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
-		checkpointHash, hashErr := arc.config.CheckpointHash(c.collectionIdx)
+		checkpointHash, hashErr := arc.config.CheckpointHash(arc.ctx, c.collectionIdx)
 		if hashErr != nil {
 			return hashErr
 		}
@@ -231,7 +231,7 @@ func (arc *activeReplicatorCommon) reset() error {
 	defer arc.lock.Unlock()
 
 	if err := arc.forEachCollection(func(c *activeReplicatorCollection) error {
-		if err := resetLocalCheckpoint(c.collectionDataStore, arc.CheckpointID); err != nil {
+		if err := resetLocalCheckpoint(arc.ctx, c.collectionDataStore, arc.CheckpointID); err != nil {
 			return err
 		}
 		c.Checkpointer = nil
@@ -528,7 +528,7 @@ func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) {
 
 // getLocalStatusDoc retrieves replication status document for a given client ID from the given metadataStore
 func getLocalStatusDoc(ctx context.Context, metadataStore base.DataStore, statusKey string) (*ReplicationStatusDoc, error) {
-	statusDocBytes, err := getWithTouch(metadataStore, statusKey, 0)
+	statusDocBytes, err := getWithTouch(ctx, metadataStore, statusKey, 0)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			return nil, err
@@ -573,7 +573,7 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 		Status: status,
 	}
 
-	_, _, err = putDocWithRevision(metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
+	_, _, err = putDocWithRevision(ctx, metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
 	return err
 }
 
@@ -592,7 +592,7 @@ func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, status
 		return nil
 	}
 
-	_, _, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
+	_, _, err = putDocWithRevision(ctx, metadataStore, statusKey, currentStatus.Rev, nil, 0)
 	return err
 }
 

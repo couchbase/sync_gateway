@@ -65,8 +65,8 @@ func (lds *LeakyDataStore) GetExpiry(ctx context.Context, k string) (expiry uint
 	return lds.dataStore.GetExpiry(ctx, k)
 }
 
-func (lds *LeakyDataStore) Exists(k string) (exists bool, err error) {
-	return lds.dataStore.Exists(k)
+func (lds *LeakyDataStore) Exists(ctx context.Context, k string) (exists bool, err error) {
+	return lds.dataStore.Exists(ctx, k)
 }
 
 func (lds *LeakyDataStore) GetName() string {
@@ -85,8 +85,8 @@ func (lds *LeakyDataStore) GetCollectionID() uint32 {
 	return lds.dataStore.GetCollectionID()
 }
 
-func (lds *LeakyDataStore) Get(k string, rv any) (cas uint64, err error) {
-	return lds.dataStore.Get(k, rv)
+func (lds *LeakyDataStore) Get(ctx context.Context, k string, rv any) (cas uint64, err error) {
+	return lds.dataStore.Get(ctx, k, rv)
 }
 
 func (lds *LeakyDataStore) SetGetRawCallback(callback func(string) error) {
@@ -97,14 +97,14 @@ func (lds *LeakyDataStore) SetGetWithXattrCallback(callback func(string) error) 
 	lds.config.GetWithXattrCallback = callback
 }
 
-func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
+func (lds *LeakyDataStore) GetRaw(ctx context.Context, k string) (v []byte, cas uint64, err error) {
 	if lds.config.GetRawCallback != nil {
 		err = lds.config.GetRawCallback(k)
 		if err != nil {
 			return nil, 0, err
 		}
 	}
-	return lds.dataStore.GetRaw(k)
+	return lds.dataStore.GetRaw(ctx, k)
 }
 
 func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) (body []byte, xattrs map[string][]byte, cas uint64, err error) {
@@ -116,63 +116,63 @@ func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKey
 	return lds.dataStore.GetWithXattrs(ctx, k, xattrKeys)
 }
 
-func (lds *LeakyDataStore) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
-	return lds.dataStore.GetAndTouchRaw(k, exp)
+func (lds *LeakyDataStore) GetAndTouchRaw(ctx context.Context, k string, exp uint32) (v []byte, cas uint64, err error) {
+	return lds.dataStore.GetAndTouchRaw(ctx, k, exp)
 }
-func (lds *LeakyDataStore) Touch(k string, exp uint32) (cas uint64, err error) {
+func (lds *LeakyDataStore) Touch(ctx context.Context, k string, exp uint32) (cas uint64, err error) {
 	if lds.config.TouchCallback != nil {
 		err := lds.config.TouchCallback(k)
 		if err != nil {
 			return 0, err
 		}
 	}
-	return lds.dataStore.Touch(k, exp)
+	return lds.dataStore.Touch(ctx, k, exp)
 }
-func (lds *LeakyDataStore) Add(k string, exp uint32, v any) (added bool, err error) {
+func (lds *LeakyDataStore) Add(ctx context.Context, k string, exp uint32, v any) (added bool, err error) {
 	if lds.config.AddCallback != nil {
 		added, err := lds.config.AddCallback(k)
 		if err != nil {
 			return added, err
 		}
 	}
-	return lds.dataStore.Add(k, exp, v)
+	return lds.dataStore.Add(ctx, k, exp, v)
 }
-func (lds *LeakyDataStore) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
-	return lds.dataStore.AddRaw(k, exp, v)
+func (lds *LeakyDataStore) AddRaw(ctx context.Context, k string, exp uint32, v []byte) (added bool, err error) {
+	return lds.dataStore.AddRaw(ctx, k, exp, v)
 }
-func (lds *LeakyDataStore) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
-	return lds.dataStore.Set(k, exp, opts, v)
+func (lds *LeakyDataStore) Set(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
+	return lds.dataStore.Set(ctx, k, exp, opts, v)
 }
-func (lds *LeakyDataStore) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
+func (lds *LeakyDataStore) SetRaw(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	if slices.Contains(lds.config.ForceErrorSetRawKeys, k) {
 		return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
 	}
-	return lds.dataStore.SetRaw(k, exp, opts, v)
+	return lds.dataStore.SetRaw(ctx, k, exp, opts, v)
 }
-func (lds *LeakyDataStore) Delete(k string) error {
-	return lds.dataStore.Delete(k)
+func (lds *LeakyDataStore) Delete(ctx context.Context, k string) error {
+	return lds.dataStore.Delete(ctx, k)
 }
-func (lds *LeakyDataStore) Remove(k string, cas uint64) (casOut uint64, err error) {
-	return lds.dataStore.Remove(k, cas)
+func (lds *LeakyDataStore) Remove(ctx context.Context, k string, cas uint64) (casOut uint64, err error) {
+	return lds.dataStore.Remove(ctx, k, cas)
 }
-func (lds *LeakyDataStore) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (uint64, error) {
-	return lds.dataStore.WriteCas(k, exp, cas, v, opt)
+func (lds *LeakyDataStore) WriteCas(ctx context.Context, k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (uint64, error) {
+	return lds.dataStore.WriteCas(ctx, k, exp, cas, v, opt)
 }
-func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	if lds.config.UpdateCallback != nil {
-		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
-			updated, expiry, isDelete, err = callback(current)
+		wrapperCallback := func(ctx context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			updated, expiry, isDelete, err = callback(ctx, current)
 			lds.config.UpdateCallback(k)
 			return updated, expiry, isDelete, err
 		}
-		casOut, err = lds.dataStore.Update(k, exp, wrapperCallback)
+		casOut, err = lds.dataStore.Update(ctx, k, exp, wrapperCallback)
 		if slices.Contains(lds.config.ForceTimeoutErrorOnUpdateKeys, k) {
 			return 0, ErrTimeout
 		}
 		return casOut, err
 	}
 
-	casOut, err = lds.dataStore.Update(k, exp, callback)
+	casOut, err = lds.dataStore.Update(ctx, k, exp, callback)
 
 	if lds.config.PostUpdateCallback != nil {
 		lds.config.PostUpdateCallback(k)
@@ -181,7 +181,7 @@ func (lds *LeakyDataStore) Update(k string, exp uint32, callback sgbucket.Update
 	return casOut, err
 }
 
-func (lds *LeakyDataStore) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+func (lds *LeakyDataStore) Incr(ctx context.Context, k string, amt, def uint64, exp uint32) (uint64, error) {
 
 	if lds.config.IncrTemporaryFailCount > 0 {
 		if lds.incrCount < lds.config.IncrTemporaryFailCount {
@@ -191,7 +191,7 @@ func (lds *LeakyDataStore) Incr(k string, amt, def uint64, exp uint32) (uint64, 
 		lds.incrCount = 0
 
 	}
-	val, err := lds.dataStore.Incr(k, amt, def, exp)
+	val, err := lds.dataStore.Incr(ctx, k, amt, def, exp)
 
 	if lds.config.IncrCallback != nil {
 		lds.config.IncrCallback()
@@ -199,15 +199,15 @@ func (lds *LeakyDataStore) Incr(k string, amt, def uint64, exp uint32) (uint64, 
 	return val, err
 }
 
-func (lds *LeakyDataStore) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
+func (lds *LeakyDataStore) GetDDocs(ctx context.Context) (map[string]sgbucket.DesignDoc, error) {
 	vs, ok := AsViewStore(lds.dataStore)
 	if !ok {
 		return nil, errors.New("bucket does not support views")
 	}
-	return vs.GetDDocs()
+	return vs.GetDDocs(ctx)
 }
 
-func (lds *LeakyDataStore) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
+func (lds *LeakyDataStore) GetDDoc(ctx context.Context, docname string) (ddoc sgbucket.DesignDoc, err error) {
 	vs, ok := AsViewStore(lds.dataStore)
 	if !ok {
 		return sgbucket.DesignDoc{}, errors.New("bucket does not support views")
@@ -216,7 +216,7 @@ func (lds *LeakyDataStore) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err
 		lds.config.DDocGetErrorCount--
 		return ddoc, errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", lds.config.DDocGetErrorCount))
 	}
-	return vs.GetDDoc(docname)
+	return vs.GetDDoc(ctx, docname)
 }
 
 func (lds *LeakyDataStore) PutDDoc(ctx context.Context, docname string, value *sgbucket.DesignDoc) error {
@@ -227,7 +227,7 @@ func (lds *LeakyDataStore) PutDDoc(ctx context.Context, docname string, value *s
 	return vs.PutDDoc(ctx, docname, value)
 }
 
-func (lds *LeakyDataStore) DeleteDDoc(docname string) error {
+func (lds *LeakyDataStore) DeleteDDoc(ctx context.Context, docname string) error {
 	vs, ok := AsViewStore(lds.dataStore)
 	if !ok {
 		return errors.New("bucket does not support views")
@@ -236,7 +236,7 @@ func (lds *LeakyDataStore) DeleteDDoc(docname string) error {
 		lds.config.DDocDeleteErrorCount--
 		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", lds.config.DDocDeleteErrorCount))
 	}
-	return vs.DeleteDDoc(docname)
+	return vs.DeleteDDoc(ctx, docname)
 }
 
 func (lds *LeakyDataStore) View(ctx context.Context, ddoc, name string, params map[string]any) (sgbucket.ViewResult, error) {
@@ -271,8 +271,8 @@ func (lds *LeakyDataStore) ViewQuery(ctx context.Context, ddoc, name string, par
 	return iterator, err
 }
 
-func (lds *LeakyDataStore) GetMaxVbno() (uint16, error) {
-	return lds.bucket.GetMaxVbno()
+func (lds *LeakyDataStore) GetMaxVbno(ctx context.Context) (uint16, error) {
+	return lds.bucket.GetMaxVbno(ctx)
 }
 
 func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, value []byte, xattrs map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
@@ -284,8 +284,8 @@ func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp ui
 
 func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
 	if lds.config.UpdateCallback != nil {
-		wrapperCallback := func(current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-			updatedDoc, err := callback(current, xattrs, cas)
+		wrapperCallback := func(ctx context.Context, current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+			updatedDoc, err := callback(ctx, current, xattrs, cas)
 			lds.config.UpdateCallback(k)
 			return updatedDoc, err
 		}

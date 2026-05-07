@@ -258,7 +258,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	// Move some subset of the documents attachment metadata from global sync to sync data
 	for j := range numDocs / 2 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
-		value, _, err := collection.GetCollectionDatastore().GetRaw(key)
+		value, _, err := collection.GetCollectionDatastore().GetRaw(ctx, key)
 		require.NoError(t, err)
 
 		db.MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), key, value, true)

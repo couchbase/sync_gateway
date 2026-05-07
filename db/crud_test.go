@@ -54,7 +54,7 @@ func getRevTreeList(ctx context.Context, dataStore sgbucket.DataStore, key strin
 		return treeMeta.RevTree, nil
 
 	default:
-		rawDoc, _, err := dataStore.GetRaw(key)
+		rawDoc, _, err := dataStore.GetRaw(ctx, key)
 		if err != nil {
 			return revTreeList{}, err
 		}
@@ -248,7 +248,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := collection.dataStore.GetRaw(base.SyncDocPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := collection.dataStore.GetRaw(ctx, base.SyncDocPrefix+"rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
@@ -288,7 +288,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.Equal(t, rev2a_body, gotbody)
 
 	// Ensure previous revision body backup has been removed
-	_, _, err = db.MetadataStore.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	_, _, err = db.MetadataStore.GetRaw(ctx, base.RevBodyPrefix+"4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	base.RequireDocNotFoundError(t, err)
 
 	// Validate the tombstone is stored inline (due to small size)
@@ -432,7 +432,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := collection.dataStore.GetRaw(base.SyncDocPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := collection.dataStore.GetRaw(ctx, base.SyncDocPrefix+"rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	assert.Equal(t, rev2a_body["version"], revisionBody["version"])
@@ -522,7 +522,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Ensure previous tombstone body backup has been removed
 	log.Printf("Verify revision body doc has been removed from bucket")
-	_, _, err = collection.dataStore.GetRaw(base.SyncDocPrefix + "rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
+	_, _, err = collection.dataStore.GetRaw(ctx, base.SyncDocPrefix+"rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
 	base.RequireDocNotFoundError(t, err)
 
 }
@@ -883,12 +883,12 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	//  |
 	// 6-a
 	log.Printf("Add doc1 w/ malformed body for rev 2-b included in revision tree")
-	ok, addErr := collection.dataStore.Add("doc1", 0, []byte(rawDocMalformedRevisionStorage))
+	ok, addErr := collection.dataStore.Add(ctx, "doc1", 0, []byte(rawDocMalformedRevisionStorage))
 	assert.True(t, ok)
 	assert.NoError(t, addErr, "Error writing raw document")
 
 	// Increment _sync:seq to match sequences allocated by raw doc
-	_, incrErr := collection.dataStore.Incr(db.MetadataKeys.SyncSeqKey(), 5, 0, 0)
+	_, incrErr := collection.dataStore.Incr(ctx, db.MetadataKeys.SyncSeqKey(), 5, 0, 0)
 	assert.NoError(t, incrErr, "Error incrementing sync:seq")
 
 	// Add child to non-winning revision w/ malformed inline body.
@@ -1599,9 +1599,8 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 //   - Write new doc with conflict error
 //   - Assert we release a sequence for this
 func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	defer SuspendSequenceBatching()()
-
-	var ctx context.Context
 	var db *Database
 	var forceDocConflict bool
 
@@ -2124,7 +2123,6 @@ func TestGetRevWithCVActivePathway(t *testing.T) {
 
 func TestIsSGWrite(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
-	ctx := base.TestCtx(t)
 
 	const sgCas uint64 = 100
 	const otherCas uint64 = 999
@@ -2252,6 +2250,7 @@ func TestIsSGWrite(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			isSGWrite, crc32Match, bodyChanged := tc.syncData.IsSGWrite(ctx, tc.cas, tc.body, tc.rawUserXattr, tc.cv)
 			require.Equal(t, tc.expectedIsSGWrite, isSGWrite, "isSGWrite")
 			require.Equal(t, tc.expectedCrc32Match, crc32Match, "crc32Match")
@@ -2261,8 +2260,6 @@ func TestIsSGWrite(t *testing.T) {
 }
 
 func TestIsSGWriteXattrOnly(t *testing.T) {
-	ctx := base.TestCtx(t)
-
 	const sgCas uint64 = 100
 	const otherCas uint64 = 999
 	sgCasHex := base.CasToString(sgCas)
@@ -2371,6 +2368,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			isSGWrite, ambiguous := tc.syncData.IsSGWriteXattrOnly(ctx, tc.cas, tc.isDelete, tc.rawUserXattr, tc.cv)
 			require.Equal(t, tc.expectedSGWrite, isSGWrite, "isSGWrite")
 			require.Equal(t, tc.expectedAmbig, ambiguous, "ambiguous")
