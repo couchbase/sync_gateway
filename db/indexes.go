@@ -559,14 +559,14 @@ func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, u
 func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes CollectionIndexes, preview bool) (removedIndexes []string, err error) {
 	var errs *base.MultiError
 	for dsName, inUseIndexes := range inUseIndexes {
-		dsName, err := bucket.NamedDataStore(ctx, dsName)
+		dataStore, err := bucket.NamedDataStore(ctx, dsName)
 		if err != nil {
 			errs = errs.Append(fmt.Errorf("failed to get datastore %s: %w", base.MD(dsName), err))
 			continue
 		}
-		n1qlStore, ok := dsName.(base.N1QLStore)
+		n1qlStore, ok := dataStore.(base.N1QLStore)
 		if !ok {
-			errs = errs.Append(fmt.Errorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dsName))
+			errs = errs.Append(fmt.Errorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dataStore))
 			continue
 		}
 		allIndexes, err := n1qlStore.GetIndexes()
@@ -583,7 +583,7 @@ func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes C
 				continue
 			}
 			removedIndexes = append(removedIndexes,
-				fmt.Sprintf("`%s`.`%s`.%s", dsName.ScopeName(), dsName.CollectionName(), indexName))
+				fmt.Sprintf("`%s`.`%s`.%s", dataStore.ScopeName(), dataStore.CollectionName(), indexName))
 			if preview {
 				continue
 			}

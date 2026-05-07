@@ -175,5 +175,5 @@ func TestView(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 3, rowCount)
-	assert.NoError(t, iterator.Close(ctx))
+	assert.NoError(t, bytesIterator.Close(ctx))
 }

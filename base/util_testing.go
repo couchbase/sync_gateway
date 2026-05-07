@@ -56,7 +56,7 @@ var _ Bucket = &TestBucket{}
 // DefaultDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetSingleDataStore
 func (b *TestBucket) DefaultDataStore(ctx context.Context) sgbucket.DataStore {
-	return b.Bucket.DefaultDataStore(TestCtx(b.t))
+	return b.Bucket.DefaultDataStore(ctx)
 }
 
 // NamedDataStore is intentionally not implemented for TestBucket
