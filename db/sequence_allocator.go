@@ -84,7 +84,7 @@ func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStats
 		return nil, err
 	}
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		s.releaseSequenceMonitor(ctx)
 	}()
 	return s, err

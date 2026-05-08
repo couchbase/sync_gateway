@@ -2504,6 +2504,108 @@ func TestStartupConfigReplicationThrottleValidation(t *testing.T) {
 	}
 }
 
+func TestStartupConfigUpdateFrequencyValidation(t *testing.T) {
+	const errContains = "config_update_frequency"
+
+	testCases := []struct {
+		name            string
+		updateFrequency *time.Duration
+		expectError     bool
+	}{
+		{name: "unset is valid", updateFrequency: nil, expectError: false},
+		{name: "positive is valid", updateFrequency: base.Ptr(10 * time.Second), expectError: false},
+		{name: "zero is invalid", updateFrequency: base.Ptr(time.Duration(0)), expectError: true},
+		{name: "negative is invalid", updateFrequency: base.Ptr(-time.Second), expectError: true},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			sc := StartupConfig{}
+			if test.updateFrequency != nil {
+				sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(*test.updateFrequency)
+			}
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+			if test.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), errContains)
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), errContains)
+			}
+		})
+	}
+}
+
+func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
+	const errContains = "node_heartbeat_expiry"
+
+	testCases := []struct {
+		name            string
+		updateFrequency *time.Duration
+		heartbeatExpiry *time.Duration
+		expectError     bool
+	}{
+		{
+			name:            "unset is valid",
+			heartbeatExpiry: nil,
+			expectError:     false,
+		},
+		{
+			name:            "exactly 2x default refresh frequency is valid",
+			heartbeatExpiry: base.Ptr(2 * persistentConfigDefaultUpdateFrequency),
+			expectError:     false,
+		},
+		{
+			name:            "below 2x default refresh frequency is invalid",
+			heartbeatExpiry: base.Ptr(2*persistentConfigDefaultUpdateFrequency - time.Nanosecond),
+			expectError:     true,
+		},
+		{
+			name:            "respects overridden config_update_frequency (above floor)",
+			updateFrequency: base.Ptr(30 * time.Second),
+			heartbeatExpiry: base.Ptr(60 * time.Second),
+			expectError:     false,
+		},
+		{
+			name:            "respects overridden config_update_frequency (below floor)",
+			updateFrequency: base.Ptr(30 * time.Second),
+			heartbeatExpiry: base.Ptr(59 * time.Second),
+			expectError:     true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			sc := StartupConfig{}
+			if test.updateFrequency != nil {
+				sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(*test.updateFrequency)
+			}
+			if test.heartbeatExpiry != nil {
+				sc.Bootstrap.NodeHeartbeatExpiry = base.NewConfigDuration(*test.heartbeatExpiry)
+			}
+			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+			if test.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), errContains)
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), errContains)
+			}
+		})
+	}
+
+	// Regression test for the production startup flow: a user who sets a long
+	// config_update_frequency without setting node_heartbeat_expiry must hit the floor
+	// check, because DefaultStartupConfig materializes node_heartbeat_expiry to its
+	// default. Without the materialized default the user's config would silently use
+	// a 60s expiry against a 1m poll interval, leaving no slack to ride out a missed refresh.
+	t.Run("DefaultStartupConfig materializes heartbeat_expiry, exposing floor violation when only config_update_frequency is overridden", func(t *testing.T) {
+		sc := DefaultStartupConfig("")
+		sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute)
+		err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), errContains)
+	})
+}
+
 func Test_validateJavascriptFunction(t *testing.T) {
 	tests := []struct {
 		name        string

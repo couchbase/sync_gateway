@@ -679,7 +679,7 @@ func (p *cfgNodePoller) poll(ctx context.Context) {
 func (p *cfgNodePoller) startPolling(ctx context.Context) {
 	ticker := time.NewTicker(p.pollInterval)
 	go func() {
-		defer FatalPanicHandler()
+		defer FatalPanicHandler(ctx)
 		for {
 			select {
 			case <-ctx.Done():
@@ -760,7 +760,7 @@ func (l *shardedDCPHeartbeatListener) subscribeNodeChanges(ctx context.Context) 
 		return err
 	}
 	go func() {
-		defer FatalPanicHandler()
+		defer FatalPanicHandler(ctx)
 		for {
 			select {
 			case <-cfgEvents:

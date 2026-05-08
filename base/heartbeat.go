@@ -149,7 +149,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(ctx context.Context) error
 
 	ticker := time.NewTicker(h.heartbeatSendInterval)
 	go func() {
-		defer FatalPanicHandler()
+		defer FatalPanicHandler(ctx)
 		defer func() {
 			h.sendActive.Set(false)
 		}()
@@ -178,7 +178,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(ctx context.Context) erro
 
 	ticker := time.NewTicker(h.heartbeatPollInterval)
 	go func() {
-		defer FatalPanicHandler()
+		defer FatalPanicHandler(ctx)
 		defer func() { h.checkActive.Set(false) }()
 		for {
 			select {

@@ -254,7 +254,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	}
 
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		defer close(feed)
 		var itemsSent int
 		var lastSeq uint64
@@ -456,7 +456,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 	paginationOptions.Since.LowSeq = 0
 
 	go func() {
-		defer base.FatalPanicHandler()
+		defer base.FatalPanicHandler(ctx)
 		defer close(feed)
 		var itemsSent int
 		var lastSeq uint64

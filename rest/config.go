@@ -1534,6 +1534,22 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 		multiError = multiError.Append(fmt.Errorf("group_id must be at most %d characters in length", persistentConfigGroupIDMaxLength))
 	}
 
+	refreshFreq := persistentConfigDefaultUpdateFrequency
+	if sc.Bootstrap.ConfigUpdateFrequency != nil {
+		if v := sc.Bootstrap.ConfigUpdateFrequency.Value(); v <= 0 {
+			multiError = multiError.Append(fmt.Errorf("config_update_frequency (%s) must be greater than 0", v))
+		} else {
+			refreshFreq = v
+		}
+	}
+
+	if sc.Bootstrap.NodeHeartbeatExpiry != nil {
+		expiry := sc.Bootstrap.NodeHeartbeatExpiry.Value()
+		if minExpiry := 2 * refreshFreq; expiry < minExpiry {
+			multiError = multiError.Append(fmt.Errorf("node_heartbeat_expiry (%s) must be at least 2x config_update_frequency: %s", expiry, minExpiry))
+		}
+	}
+
 	if sc.DatabaseCredentials != nil {
 		for dbName, creds := range sc.DatabaseCredentials {
 			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {

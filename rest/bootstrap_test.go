@@ -284,8 +284,11 @@ func TestBootstrapRosmarServer(t *testing.T) {
 			}()
 			config := BootstrapStartupConfigForTest(t)
 			config.Bootstrap.Server = tc.rosmarURL
-			// set ConfigUpdateFrequency so high to avoid it running, trigger this manually below
+			// set ConfigUpdateFrequency so high to avoid it running, trigger this manually below.
+			// Clear NodeHeartbeatExpiry so validation does not enforce the 2x ConfigUpdateFrequency floor —
+			// this test does not exercise cluster-compat heartbeats and the long poll interval never fires.
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
+			config.Bootstrap.NodeHeartbeatExpiry = nil
 			sc, closeFn := StartServerWithConfig(t, &config)
 			defer closeFn()
 
