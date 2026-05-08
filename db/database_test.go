@@ -3951,8 +3951,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
-
 	for i := range 5 {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		require.NoError(t, err)
@@ -3968,7 +3966,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 		require.NoError(t, err)
 		userSequences[i] = user.Sequence()
 	}
-	err := collection.updateAllPrincipalsSequences(ctx)
+	err := db.updateAllPrincipalsSequences(ctx)
 	require.NoError(t, err)
 
 	for i := range 5 {
