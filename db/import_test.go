@@ -17,6 +17,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1486,4 +1487,76 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 
 	base.RequireWaitForStat(t, db.DbStats.Database().Crc32MatchCount.Value, 1)
 
+}
+
+// TestGetDocSyncDataOnImportCancelled reproduces a race condition where importDoc
+// returns (nil, nil) via ErrImportCancelled when fetching sync data through GetDocSyncData
+//
+// Race setup:
+//  1. An SDK Delete tombstones a doc triggering on demand import for get pathway so OnDemandImportForGet is called with isDelete=true.
+//  2. The first import callback succeeds and produces an updatedDoc for the
+//     import tombstone write.
+//  3. LeakyDataStore.UpdateCallback fires SetRaw resurrects the tombstone as a live document with
+//     no _sync xattr, advancing the CAS.
+//  4. CAS mismatch detected and retries. On retry it reads the now-live doc
+//     (body != nil, no _sync). The CAS mismatch block in the import callback re-fetches
+//     the body. Execution falls through to isDelete && doc.GetRevTreeID() == "", which fires and returns ErrImportCancelled.
+//  5. importDoc's switch has no return statement in the ErrImportCancelled case, so it
+//     falls through to return docOut, nil with docOut==nil.
+func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
+
+	docID := t.Name()
+
+	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	docDatastore := collection.GetCollectionDatastore()
+
+	leakyDataStore, ok := base.AsLeakyDataStore(docDatastore)
+	require.True(t, ok)
+
+	// resurrectOnce ensures the Set resurrection only fires on the first
+	// WriteUpdateWithXattrs attempt for the import, not on the CAS-mismatch retry,
+	// preventing an infinite CAS loop.
+	var resurrectOnce atomic.Bool
+	// importTriggered gates the callback so the SetRaw resurrection only fires
+	// during the import's WriteUpdateWithXattrs call, not during the initial Put.
+	var importTriggered bool
+	leakyDataStore.SetUpdateCallback(func(key string) {
+		// UpdateCallback fires AFTER the import callback returns but BEFORE import
+		// commits the tombstone write. Calling SetRaw here resurrects the tombstone as a
+		// live document with no _sync xattr, advancing the CAS. SGW detects the mismatch and retries. On retry the import
+		// callback sees body != nil and _sync RevTreeID == "", satisfying the
+		// isDelete && GetRevTreeID() == "" condition that returns ErrImportCancelled.
+		if key != docID || !importTriggered {
+			return
+		}
+		if !resurrectOnce.Load() {
+			err := docDatastore.Set(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+			require.NoError(t, err)
+			resurrectOnce.Store(true)
+		}
+	})
+
+	// Create doc via SG to establish a _sync xattr with a RevTreeID and a recorded CAS.
+	_, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
+	require.NoError(t, err)
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
+
+	// SDK-style Delete triggering isSgWrite=false inside GetDocSyncData
+	// which will trigger on-demand import with isDelete=true (rawDoc==nil).
+	err = docDatastore.Delete(docID)
+	require.NoError(t, err)
+
+	// UpdateCallback now acts only during the import write, not Put.
+	importTriggered = true
+
+	// Ensure GetDocSyncData will handle a nil doc returned from an on-demand import event when ErrImportCancelled is returned.
+	_, err = collection.GetDocSyncData(ctx, docID)
+	require.Error(t, err, "expected an error when import is cancelled mid-flight, not a panic")
+	base.RequireDocNotFoundError(t, err)
+	require.True(t, resurrectOnce.Load())
 }
