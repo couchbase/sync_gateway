@@ -3971,7 +3971,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		require.NoError(t, err)
 		syncData, err = collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
-		assert.Nil(t, syncData.ChannelSetHistory)
+		assert.Zero(t, len(syncData.ChannelSetHistory))
 	})
 
 	t.Run("seq zero keeps all history", func(t *testing.T) {
@@ -4032,7 +4032,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc3")
 		require.NoError(t, err)
-		assert.Nil(t, syncData.ChannelSetHistory)
+		assert.Zero(t, len(syncData.ChannelSetHistory))
 		assert.Equal(t, len(syncDataBefore.Channels), len(syncData.Channels))
 		assert.Equal(t, len(syncDataBefore.ChannelSet), len(syncData.ChannelSet))
 	})

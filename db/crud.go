@@ -15,6 +15,7 @@ import (
 	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -223,46 +224,48 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
 // This is used to truncate stale channel assignment history to reduce storage overhead.
-func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) (err error) {
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) error {
 	key := realDocID(docid)
 	if key == "" {
 		return base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	_, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+	xattrKeys := []string{base.SyncXattrName, base.VirtualXattrRevSeqNo, base.MouXattrName}
+	_, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if err != nil {
-		return
+		return err
 	}
 
-	doc, err := c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+	doc, err := c.unmarshalDocumentWithXattrs(ctx, key, nil, xattrs, cas, DocUnmarshalSync)
 	if err != nil {
-		return
+		return err
 	}
 
-	var compactedChannelSetHistory []ChannelSetEntry
-	for _, channel := range doc.SyncData.ChannelSetHistory {
-		// Keep entries that are still active or that ended after the compaction point.
-		if channel.End > seq {
-			compactedChannelSetHistory = append(compactedChannelSetHistory, channel)
-		}
-	}
-	doc.SyncData.ChannelSetHistory = compactedChannelSetHistory
+	// Store lengths before compaction to detect if any changes occur
+	historyLenBefore := len(doc.SyncData.ChannelSetHistory)
+	channelSetLenBefore := len(doc.SyncData.ChannelSet)
+	channelsLenBefore := len(doc.SyncData.Channels)
 
-	var compactedChannelSet []ChannelSetEntry
-	for _, channel := range doc.SyncData.ChannelSet {
-		if channel.End == 0 || channel.End > seq {
-			compactedChannelSet = append(compactedChannelSet, channel)
-		}
-	}
-	doc.SyncData.ChannelSet = compactedChannelSet
+	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
+		return channel.End <= seq
+	})
 
-	compactedChannels := make(channels.ChannelMap)
+	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
+		return channel.End != 0 && channel.End <= seq
+	})
+
 	for chanName, chanEntry := range doc.SyncData.Channels {
-		if chanEntry == nil || chanEntry.Seq > seq {
-			compactedChannels[chanName] = chanEntry
+		if chanEntry != nil && chanEntry.Seq <= seq {
+			delete(doc.SyncData.Channels, chanName)
 		}
 	}
-	doc.SyncData.Channels = compactedChannels
+
+	// Exit early if no compaction occurred
+	if len(doc.SyncData.ChannelSetHistory) == historyLenBefore &&
+		len(doc.SyncData.ChannelSet) == channelSetLenBefore &&
+		len(doc.SyncData.Channels) == channelsLenBefore {
+		return nil
+	}
 
 	rawSyncXattr, err := base.JSONMarshal(doc.SyncData)
 	if err != nil {
@@ -274,11 +277,8 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		base.InfofCtx(ctx, base.KeyCRUD, `Could not determine the revSeqNo when attempting to compact channel history for doc: %s. Error: %v`, base.UD(docid), err)
 	}
 
-	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		HexCAS:           expandMacroCASValueString,
-		PreviousHexCAS:   doc.SyncData.Cas,
-		PreviousRevSeqNo: revSeqNo,
-	}
+	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, revSeqNo, doc.MetadataOnlyUpdate)
+
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
 		return base.RedactErrorf("failed to marshal _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
@@ -286,7 +286,10 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
-	spec := append(macroExpandSpec(base.SyncXattrName), sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
+	spec := []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+	}
 	opts.MacroExpansion = spec
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
