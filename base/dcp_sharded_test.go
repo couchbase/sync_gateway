@@ -1565,20 +1565,14 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 
 }
 
-type mockHeartbeater struct{}
+type noopHeartbeater struct{}
 
-func (m *mockHeartbeater) RegisterListener(listener HeartbeatListener) error { return nil }
-func (m *mockHeartbeater) UnregisterListener(name string)                    {}
-func (m *mockHeartbeater) Start(context.Context) error                       { return nil }
-func (m *mockHeartbeater) StartSendingHeartbeats(context.Context) error      { return nil }
-func (m *mockHeartbeater) StartCheckingHeartbeats(context.Context) error     { return nil }
-func (m *mockHeartbeater) Stop(context.Context)                              {}
-
-type mockPIndexImpl struct {
-	dest cbgt.Dest
-}
-
-func (m *mockPIndexImpl) Close() error { return nil }
+func (m *noopHeartbeater) RegisterListener(listener HeartbeatListener) error { return nil }
+func (m *noopHeartbeater) UnregisterListener(name string)                    {}
+func (m *noopHeartbeater) Start(context.Context) error                       { return nil }
+func (m *noopHeartbeater) StartSendingHeartbeats(context.Context) error      { return nil }
+func (m *noopHeartbeater) StartCheckingHeartbeats(context.Context) error     { return nil }
+func (m *noopHeartbeater) Stop(context.Context)                              {}
 
 func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
@@ -1589,61 +1583,100 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	// In test environments, the bucket pool might not always pre-create collections.
-	// But ListDataStores will return whatever is available.
 	allDataStoreNames, err := bucket.ListDataStores()
 	require.NoError(t, err)
 
 	var dataStores []sgbucket.DataStore
 	for _, dsName := range allDataStoreNames {
+		if IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
+			continue
+		}
 		ds, err := bucket.NamedDataStore(dsName)
 		require.NoError(t, err)
 		dataStores = append(dataStores, ds)
 	}
 
-	// Setup a callback and a way to wait for docs
-	var mutationCount uint64
+	var mutationCount atomic.Uint64
 	doneDocs := make(chan struct{})
 	expectedDocs := len(dataStores)
 
-	var foundDocsLock sync.Mutex
 	type foundDoc struct {
 		dsID  string
 		docID string
 	}
-	var foundDocs []foundDoc
+	var foundDocs sync.Map
 
 	callback := func(event sgbucket.FeedEvent) bool {
 		if event.Opcode == sgbucket.FeedOpMutation {
-			foundDocsLock.Lock()
-			foundDocs = append(foundDocs, foundDoc{
+			fmt.Printf("found mutation for collection %d, docID: %s\n", event.CollectionID, string(event.Key))
+			foundDocs.Store(foundDoc{
 				dsID:  fmt.Sprintf("%d", event.CollectionID), // Not exact since we don't have ds mapping, but enough to know we found it.
 				docID: string(event.Key),
-			})
-			foundDocsLock.Unlock()
+			}, struct{}{})
 
-			newCount := atomic.AddUint64(&mutationCount, 1)
-			if newCount == uint64(expectedDocs) {
-				select {
-				case <-doneDocs:
-				default:
-					close(doneDocs)
-				}
+			if mutationCount.Add(1) == uint64(expectedDocs) {
+				close(doneDocs)
 			}
 		}
 		return true // Request checkpoint persistence
 	}
 
-	// Convert allDataStoreNames to CollectionNames
-	collections := make(CollectionNames)
-	for _, ds := range allDataStoreNames {
+	collections := NewCollectionNames()
+	// Write one doc per collection
+	for i, ds := range dataStores {
 		collections.Add(ds)
+		docID := fmt.Sprintf("doc_%d", i)
+		err := ds.Set(docID, 0, nil, map[string]any{"foo": "bar"})
+		require.NoError(t, err)
 	}
 
+	checkpointPrefix := "test_checkpoint_cleanup_"
+	cbgtContext := startDCPShardedFeed(
+		t,
+		bucket,
+		collections,
+		checkpointPrefix,
+		callback,
+	)
+	defer cbgtContext.Stop(ctx)
+
+	RequireChanClosed(t, doneDocs)
+
+	// Stop feed
+	cbgtContext.Stop(ctx)
+
+	vbCount, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+
+	var checkpoints []string
+	for vb := range vbCount {
+		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
+		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
+		if err == nil {
+			checkpoints = append(checkpoints, cpID)
+		}
+	}
+	require.NotEmpty(t, checkpoints, "Should have found checkpoint documents")
+
+	// Purge
+	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, DCPFeedSharded)
+	require.NoError(t, err)
+
+	for _, checkpoint := range checkpoints {
+		_, _, err := bucket.GetMetadataStore().GetRaw(checkpoint)
+		RequireDocNotFoundError(t, err)
+	}
+}
+
+// startDCPShardedFeed is a helper to start a sharded DCP feed with the provided callback and return the context for
+// cleanup.
+//
+// This is intended as a quick way to test sharded DCP feeds.
+func startDCPShardedFeed(t testing.TB, bucket *TestBucket, collections CollectionNames, checkpointPrefix string, callback sgbucket.FeedEventCallbackFunc) *CbgtContext {
+	ctx := TestCtx(t)
 	// Register DestFactory
 	scopeName, collectionList := ShardedDCPOptions{Collections: collections}.scopeAndCollections()
 	destKey := DestKey(t.Name(), scopeName, collectionList, ShardedDCPFeedTypeImport)
-	checkpointPrefix := "test_sharded_cleanup_cp"
 
 	maxVbno, err := bucket.GetMaxVbno()
 	require.NoError(t, err)
@@ -1685,13 +1718,13 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 				return nil, nil, err
 			}
 			dest, err := destFactory(restart)
-			return &mockPIndexImpl{dest: dest}, dest, err
+			return nil, dest, err
 		},
 	})
 
 	// Start Sharded DCP Feed
 	cfg, _ := NewCbgtCfgMem()
-	heartbeater := &mockHeartbeater{}
+	heartbeater := &noopHeartbeater{}
 
 	indexName, err := GenerateCBGTIndexName(t.Name(), ShardedDCPFeedTypeImport)
 	require.NoError(t, err)
@@ -1713,62 +1746,5 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 
 	cbgtContext, err := StartShardedDCPFeed(ctx, opts)
 	require.NoError(t, err)
-	defer cbgtContext.Stop(ctx)
-
-	// Write one doc per collection
-	for i, ds := range dataStores {
-		docID := fmt.Sprintf("doc_%d", i)
-		err := ds.Set(docID, 0, nil, map[string]any{"foo": "bar"})
-		require.NoError(t, err)
-	}
-
-	// Wait for docs
-	select {
-	case <-doneDocs:
-	case <-time.After(30 * time.Second):
-		t.Fatalf("Timed out waiting for docs")
-	}
-
-	// Stop feed
-	cbgtContext.Stop(ctx)
-
-	// Verify checkpoints exist
-	foundAny := false
-	for vb := uint16(0); vb < maxVbno; vb++ {
-		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
-		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
-		if err == nil {
-			foundAny = true
-			break
-		}
-	}
-	require.True(t, foundAny, "Should have found at least one checkpoint")
-
-	// Purge
-	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, DCPFeedSharded)
-	require.NoError(t, err)
-
-	// Verify gone
-	for vb := uint16(0); vb < maxVbno; vb++ {
-		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
-		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
-		require.True(t, IsDocNotFoundError(err), "Checkpoint %s should have been purged, but got error: %v", cpID, err)
-	}
-
-	// Delete all written docs by name and ensure they are deleted
-	foundDocsLock.Lock()
-	defer foundDocsLock.Unlock()
-	for _, doc := range foundDocs {
-		// Because we don't have a reliable mapping from collectionID back to the specific DataStore in this simple loop,
-		// we can attempt deletion across all dataStores for simplicity, or we can just iterate dataStores and delete by the known names (doc_0, doc_1, etc.)
-		// But since we want to delete the *found* documents by name:
-		deleted := false
-		for _, ds := range dataStores {
-			err := ds.Delete(doc.docID)
-			if err == nil {
-				deleted = true
-			}
-		}
-		require.True(t, deleted, "Failed to delete found document: %s", doc.docID)
-	}
+	return cbgtContext
 }

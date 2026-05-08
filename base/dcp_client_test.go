@@ -462,14 +462,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
-	require.NoError(t, err)
-
-	if !UnitTestUrlIsWalrus() {
-		dc, ok := dcpClient.(*GoCBDCPClient)
-		require.True(t, ok)
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
-	}
+	dcpClient = newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
 	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
@@ -503,14 +496,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
-	require.NoError(t, err)
-
-	if !UnitTestUrlIsWalrus() {
-		dc, ok := dcpClient2.(*GoCBDCPClient)
-		require.True(t, ok)
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
-	}
+	dcpClient2 := newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
 	doneChan2, startErr2 := dcpClient2.Start()
 	require.NoError(t, startErr2)
@@ -957,15 +943,13 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		dataStores = append(dataStores, ds)
 	}
 
-	// create callback
-	var mutationCount uint64
+	var mutationCount atomic.Uint64
 	foundDocs := make(chan string, len(dataStores))
 	callback := func(event sgbucket.FeedEvent) bool {
 		if strings.HasSuffix(string(event.Key), "_doc") {
-			atomic.AddUint64(&mutationCount, 1)
-			select {
-			case foundDocs <- string(event.Key):
-			default:
+			mutationCount.Add(1)
+			if mutationCount.Load() == uint64(len(dataStores)) {
+				close(foundDocs)
 			}
 		}
 		return true // request checkpoint persistence
@@ -981,13 +965,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		MetadataStoreType: DCPMetadataStoreCS,
 	}
 
-	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
-	require.NoError(t, err)
-
-	// If it's a GoCBDCPClient, we want to speed up checkpointing for the test
-	if dc, ok := dcpClient.(*GoCBDCPClient); ok {
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second)
-	}
+	dcpClient := newDCPClientWithFastCheckpointing(t, bucket, dcpOptions)
 
 	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
@@ -1005,14 +983,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// wait for docs to be seen
-	for i := 0; i < len(dataStores); i++ {
-		select {
-		case <-foundDocs:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("timeout waiting for docs")
-		}
-	}
+	RequireChanClosed(t, foundDocs)
 
 	// Verify the name of the checkpoint prefix matches
 	actualPrefix := dcpClient.GetMetadataKeyPrefix()
@@ -1034,7 +1005,6 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 			_, _, err := metadataStore.GetRaw(checkpointID)
 			if err == nil {
 				foundCheckpoints = append(foundCheckpoints, checkpointID)
-				t.Logf("Found checkpoint document: %s", checkpointID)
 			}
 		}
 		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
@@ -1053,4 +1023,17 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		require.Error(t, err, "Expected checkpoint document %s to be deleted", cp)
 		RequireDocNotFoundError(t, err)
 	}
+}
+
+// newDCPClientWithFastCheckpointing is a helper function to create a DCP client which will serialize checkpoints on
+// every mutation.
+func newDCPClientWithFastCheckpointing(t *testing.T, bucket *TestBucket, dcpOptions DCPClientOptions) DCPClient {
+	ctx := TestCtx(t)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
+	require.NoError(t, err)
+
+	if dc, ok := dcpClient.(*GoCBDCPClient); ok {
+		dc.checkpointPersistFrequency = Ptr(0 * time.Second)
+	}
+	return dcpClient
 }

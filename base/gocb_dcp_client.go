@@ -66,6 +66,7 @@ type GoCBDCPClient struct {
 	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 	feedContent                sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
+	metadataStore              DataStore
 }
 
 // GoCBDCPClientOptions contains options specific for starting a DCP client backed by gocb.
@@ -151,6 +152,8 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
 		feedContent:         options.FeedContent,
+		// TODO:: Change to metadataStore passed in for dual metadataStore
+		metadataStore: bucket.DefaultDataStore(),
 	}
 
 	// Initialize active vbuckets
@@ -161,9 +164,7 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
-		// TODO: Change GetSingleDataStore to a metadata Store?
-		metadataStore := bucket.DefaultDataStore()
-		client.metadata = NewDCPMetadataCS(ctx, metadataStore, numVbuckets, numWorkers, options.CheckpointPrefix)
+		client.metadata = NewDCPMetadataCS(ctx, client.metadataStore, numVbuckets, numWorkers, options.CheckpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
 	default:
@@ -702,8 +703,7 @@ func (dc *GoCBDCPClient) StartWorkersForTest(t *testing.T) {
 // PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
 // will not alter the feed nor remove the checkpoint for the future.
 func (dc *GoCBDCPClient) PurgeCheckpoints() error {
-	dc.metadata.Purge(dc.ctx, len(dc.workers))
-	return nil
+	return PurgeDCPCheckpoints(dc.ctx, dc.metadataStore, dc.GetMetadataKeyPrefix(), DCPFeedGocb)
 }
 
 var _ gocbcore.StreamObserver = &GoCBDCPClient{}
