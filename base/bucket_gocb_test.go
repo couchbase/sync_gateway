@@ -3356,6 +3356,180 @@ func TestMetadataStoreWriteUpdateWithXattrsMigratesFromFallback(t *testing.T) {
 	assert.Equal(t, cas, primaryCas)
 }
 
+// TestMetadataStoreUpdateFallbackTombstoneResurrects covers the lifecycle that follows
+// TestMetadataStoreUpdateDeleteFallbackOnly: once Update has hard-deleted the fallback copy,
+// a subsequent Update on the same key must succeed by inserting into primary. (A fallback
+// tombstone is read as DocNotFound by GetRaw, so the wrapper hands the call off to
+// primary.Update, whose own loop performs a cas=0 Insert — same end-state as upstream Update
+// on a tombstone.)
+func TestMetadataStoreUpdateFallbackTombstoneResurrects(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	ok, err := metaStore.Fallback().Add(docID, 0, []byte(`{"counter":1}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Step 1: delete the fallback-only doc through the wrapper.
+	_, err = metaStore.Update(docID, 0, func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		return nil, nil, true, nil
+	})
+	require.NoError(t, err)
+
+	// Step 2: resurrect via Update. Callback must observe nil (primary empty, fallback gone).
+	resurrectBody := []byte(`{"counter":2}`)
+	var seenByCallback []byte
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		seenByCallback = append([]byte(nil), current...)
+		return resurrectBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas, "resurrection must land in primary with a real CAS")
+	assert.Nil(t, seenByCallback, "callback should observe nil — neither store holds the doc")
+
+	// Resurrection lives in primary; fallback stays absent.
+	primaryRaw, primaryCas, err := metaStore.Primary().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, resurrectBody, primaryRaw)
+	assert.Equal(t, cas, primaryCas)
+
+	_, _, err = metaStore.Fallback().GetRaw(docID)
+	require.True(t, IsDocNotFoundError(err), "fallback must remain empty after resurrection, got %v", err)
+}
+
+// TestMetadataStoreUpdateConcurrentFallbackWriterShadowed documents what happens when a
+// concurrent writer mutates the fallback store *while* the wrapper's Update is mid-flight
+// against a fallback-only doc. Writing to fallback is a misuse of the wrapper (writes are
+// supposed to land in primary), but the wrapper still has to behave sanely:
+//   - the callback sees the snapshot the wrapper read at the start of the iteration,
+//   - the wrapper inserts that snapshot's update into primary (cas=0 Insert), and
+//   - subsequent reads through the wrapper return the primary value, shadowing the
+//     concurrent fallback write.
+//
+// Net effect: primary becomes authoritative; the concurrent fallback mutation is "lost"
+// from the caller's perspective, which is the correct outcome under this PR's design.
+func TestMetadataStoreUpdateConcurrentFallbackWriterShadowed(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	originalBody := []byte(`{"src":"fallback-original"}`)
+	concurrentBody := []byte(`{"src":"fallback-concurrent"}`)
+	wrapperBody := []byte(`{"src":"wrapper-update"}`)
+
+	ok, err := metaStore.Fallback().Add(docID, 0, originalBody)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	var calls int
+	var seenByCallback []byte
+	cas, err := metaStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+		calls++
+		seenByCallback = append([]byte(nil), current...)
+		// Concurrent writer races into fallback after we've already snapshotted it.
+		setErr := metaStore.Fallback().Set(docID, 0, nil, concurrentBody)
+		require.NoError(t, setErr)
+		return wrapperBody, nil, false, nil
+	})
+	require.NoError(t, err)
+	require.NotZero(t, cas)
+	assert.Equal(t, 1, calls, "primary insert should succeed first try; no retry expected when only fallback raced")
+	assert.Equal(t, originalBody, seenByCallback, "callback must see the snapshot, not the concurrent write")
+
+	// Primary holds the wrapper's update.
+	primaryRaw, primaryCas, err := metaStore.Primary().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, wrapperBody, primaryRaw)
+	assert.Equal(t, cas, primaryCas)
+
+	// Fallback holds the racer's value — we never wrote it.
+	fallbackRaw, _, err := metaStore.Fallback().GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, concurrentBody, fallbackRaw)
+
+	// Wrapper-level read returns primary's value; the racer's fallback write is shadowed.
+	wrapperRaw, _, err := metaStore.GetRaw(docID)
+	require.NoError(t, err)
+	assert.Equal(t, wrapperBody, wrapperRaw, "wrapper read must surface primary, shadowing concurrent fallback writer")
+}
+
+// TestMetadataStoreWriteUpdateWithXattrsResurrectsAfterFallbackTombstone covers the
+// dbconfig-style lifecycle Tor flagged in review: a doc with xattrs gets tombstoned (in this
+// case the tombstone lives in fallback because the doc never made it to primary), and a
+// subsequent WriteUpdateWithXattrs must resurrect it — landing the live doc in primary.
+func TestMetadataStoreWriteUpdateWithXattrsResurrectsAfterFallbackTombstone(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore())
+
+	docID := t.Name()
+	xattrKey := SyncXattrName
+	xattrKeys := []string{xattrKey}
+	originalBody := []byte(`{"v":1}`)
+	originalXattr := []byte(`{"seq":1}`)
+
+	// Seed fallback only.
+	_, err := metaStore.Fallback().WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil,
+		func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+			return sgbucket.UpdatedDoc{
+				Doc:    originalBody,
+				Xattrs: map[string][]byte{xattrKey: originalXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+
+	// Step 1: tombstone via the wrapper. Tombstone lands on fallback (only store that
+	// ever held the doc).
+	tombstoneXattr := []byte(`{"seq":2,"deleted":true}`)
+	_, err = metaStore.WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil,
+		func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+			return sgbucket.UpdatedDoc{
+				Xattrs:      map[string][]byte{xattrKey: tombstoneXattr},
+				IsTombstone: true,
+			}, nil
+		})
+	require.NoError(t, err)
+
+	// Step 2: resurrect via the wrapper. Callback observes the tombstone (body=nil,
+	// xattr retained); resurrection writes to primary as a fresh insert (cas=0).
+	resurrectBody := []byte(`{"v":3}`)
+	resurrectXattr := []byte(`{"seq":3}`)
+	var seenBody []byte
+	var seenXattrs map[string][]byte
+	cas, err := metaStore.WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil,
+		func(doc []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+			seenBody = append([]byte(nil), doc...)
+			seenXattrs = xattrs
+			return sgbucket.UpdatedDoc{
+				Doc:    resurrectBody,
+				Xattrs: map[string][]byte{xattrKey: resurrectXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+	require.NotZero(t, cas, "resurrection must land in primary with a real CAS")
+	assert.Nil(t, seenBody, "callback observes nil body on a fallback tombstone")
+	require.Contains(t, seenXattrs, xattrKey, "callback observes the retained tombstone xattr")
+	assert.JSONEq(t, string(tombstoneXattr), string(seenXattrs[xattrKey]))
+
+	// Resurrected doc lives in primary.
+	primaryBody, primaryXattrs, primaryCas, err := metaStore.Primary().GetWithXattrs(ctx, docID, xattrKeys)
+	require.NoError(t, err)
+	assert.Equal(t, resurrectBody, primaryBody)
+	require.Contains(t, primaryXattrs, xattrKey)
+	assert.Equal(t, resurrectXattr, primaryXattrs[xattrKey])
+	assert.Equal(t, cas, primaryCas)
+}
+
 func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
