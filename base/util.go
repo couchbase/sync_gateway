@@ -10,6 +10,7 @@ package base
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
@@ -45,7 +46,6 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
-	"golang.org/x/exp/constraints"
 )
 
 const (
@@ -1473,14 +1473,14 @@ func FatalPanicHandler(ctx context.Context) {
 	}
 }
 
-func Min[T constraints.Ordered](a, b T) T {
+func Min[T cmp.Ordered](a, b T) T {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func Max[T constraints.Ordered](a, b T) T {
+func Max[T cmp.Ordered](a, b T) T {
 	if a > b {
 		return a
 	}

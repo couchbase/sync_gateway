@@ -193,7 +193,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) error {
 
 			pointer := true // Distinguish if to use rval.Set or *val.config
 			// Convert to pointer if not already
-			if rval.Kind() != reflect.Ptr && rval.CanAddr() {
+			if rval.Kind() != reflect.Pointer && rval.CanAddr() {
 				rval = rval.Addr()
 				pointer = false
 			}
