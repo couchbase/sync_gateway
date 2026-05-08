@@ -296,8 +296,9 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			)
 			require.NoError(t, err)
 			defer db.Close(ctx)
-			clientOptions := getMigrationDCPClientOptions(
-				db,
+
+			mgr := NewAttachmentMigrationManager(db)
+			clientOptions := mgr.Process.(*AttachmentMigrationManager).getDCPClientOptions(
 				migrationID,
 				db.collectionNameSet(),
 				func(sgbucket.FeedEvent) bool {

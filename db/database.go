@@ -2510,29 +2510,6 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 	return maps.Keys(db.CollectionByID)
 }
 
-// PurgeDCPCheckpoints will purge all DCP metadata from previous run in the bucket, used to reset dcp client to 0
-func PurgeDCPCheckpoints(ctx context.Context, database *DatabaseContext, checkpointPrefix string, feedPrefix string) error {
-
-	bucket, err := base.AsGocbV2Bucket(database.Bucket)
-	if err != nil {
-		checkpoint := checkpointPrefix + ":" + feedPrefix
-		err := database.MetadataStore.Delete(checkpoint)
-		if err != nil && !base.IsDocNotFoundError(err) {
-			return err
-		}
-		return nil
-	}
-	numVbuckets, err := bucket.GetMaxVbno()
-	if err != nil {
-		return err
-	}
-
-	datastore := database.MetadataStore
-	metadata := base.NewDCPMetadataCS(ctx, datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
-	metadata.Purge(ctx, base.DefaultNumWorkers)
-	return nil
-}
-
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
 	db.Options.AllowConflicts = base.Ptr(true)
 }
@@ -2590,4 +2567,23 @@ func (db *DatabaseContext) usingRosmar() bool {
 // if the sequence remains in skipped list.
 func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
 	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
+}
+
+// dcpFeedMode describes the dcpFeedMode for the given backing store if the DCP feed is always single node.
+func (db *DatabaseContext) dcpFeedMode() base.DCPFeedMode {
+	if db.usingRosmar() {
+		return base.DCPFeedRosmar
+	}
+	return base.DCPFeedGocb
+}
+
+// dcpFeedMode describes the dcpFeedMode for the given backing store if sharded DCP feeds are supported.
+func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
+	if db.usingRosmar() {
+		return base.DCPFeedRosmar
+	}
+	if db.useShardedDCP() {
+		return base.DCPFeedSharded
+	}
+	return base.DCPFeedGocb
 }

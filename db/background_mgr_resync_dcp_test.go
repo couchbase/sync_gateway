@@ -738,7 +738,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			)
 			require.NoError(t, err)
 			defer db.Close(ctx)
-			clientOptions := getResyncDCPClientOptions(
+			clientOptions := db.ResyncManager.Process.(*ResyncManagerDCP).getDCPClientOptions(
 				db,
 				resyncID,
 				test.collectionNames,

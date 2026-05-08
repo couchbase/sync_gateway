@@ -1562,3 +1562,48 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 	})
 
 }
+
+func TestShardedDCPCheckpointCleanup(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	vBuckets, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+
+	metadataStore := bucket.GetSingleDataStore()
+	checkpointPrefix := "test_shared_dcp_checkpoint"
+	dest, err := NewDCPDest(
+		ctx,
+		nil,
+		metadataStore,
+		vBuckets,
+		true,
+		nil,
+		nil,
+		checkpointPrefix,
+	)
+	require.NoError(t, err)
+	dcpDest, ok := dest.(*DCPDest)
+	require.True(t, ok)
+
+	var checkpoints []string
+	for vb := range vBuckets {
+		checkpointName := fmt.Sprintf("%s%d", checkpointPrefix, vb)
+		exists, err := metadataStore.Exists(checkpointName)
+		require.NoError(t, err)
+		require.False(t, exists, "Checkpoint should not exist before persistence", checkpointName)
+		require.NoError(t, dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`)))
+		exists, err = metadataStore.Exists(checkpointName)
+		require.NoError(t, err)
+		require.True(t, exists, "Checkpoint should exist after persistence", checkpointName)
+		checkpoints = append(checkpoints, checkpointName)
+	}
+	require.NoError(t, PurgeDCPCheckpoints(ctx, metadataStore, checkpointPrefix, DCPFeedSharded))
+
+	for _, checkpoint := range checkpoints {
+		exists, err := metadataStore.Exists(checkpoint)
+		require.NoError(t, err)
+		require.False(t, exists, "Checkpoint should not exist after purge", checkpoint)
+	}
+}
