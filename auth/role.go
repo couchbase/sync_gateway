@@ -53,8 +53,8 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 	return prunedChannelHistory
 }
 
-func (timedSet TimedSetHistory) CompactChannelHistory(channel string) bool{
-	for chanName, _ := range timedSet {
+func (timedSet TimedSetHistory) CompactChannelHistory(channel string) bool {
+	for chanName := range timedSet {
 		if chanName == channel {
 			delete(timedSet, chanName)
 			return true
