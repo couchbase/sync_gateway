@@ -436,7 +436,6 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 // CBG-1518 - Test GetbucketSpec() ServerTLSSkipVerify and empty CA Cert behaviour.
 // Does not test validation of having CA Cert provided and TLS Skip verify on. See TestTLSSkipVerifyCombinations for that.
 func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
-	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name                string
 		serverTLSSkipVerify *bool
@@ -466,6 +465,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
 			dbConfig := &DatabaseConfig{DbConfig: DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}}
 			spec, err := GetBucketSpec(ctx, dbConfig, startupConfig)
@@ -612,7 +612,6 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 func TestLogFlush(t *testing.T) {
 	// FIXME: CBG-1869 flaky test
 	t.Skip("CBG-1869: Flaky test")
-	ctx := base.TestCtx(t)
 	ClearServerContextLoggingGlobals(t)
 
 	testCases := []struct {
@@ -664,6 +663,7 @@ func TestLogFlush(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 
 			// Setup memory logging
 			base.InitializeMemoryLoggers()
@@ -853,7 +853,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 }
 
 func TestCompactIntervalFromConfig(t *testing.T) {
-	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name                        string
 		compactIntervalDays         *float32
@@ -882,6 +881,7 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			startupConfig := &StartupConfig{}
 			sc := NewServerContext(ctx, startupConfig, false)
 			defer sc.Close(ctx)
@@ -897,7 +897,6 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 }
 
 func TestHeapProfileValuesPopulated(t *testing.T) {
-	ctx := base.TestCtx(t)
 	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
 	testCases := []struct {
 		name                           string
@@ -930,6 +929,7 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			sc := NewServerContext(ctx, test.startupConfig, false)
 			defer sc.Close(ctx)
 			require.Equal(t, test.heapProfileCollectionThreshold, sc.statsContext.heapProfileCollectionThreshold)

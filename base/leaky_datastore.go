@@ -160,8 +160,8 @@ func (lds *LeakyDataStore) WriteCas(ctx context.Context, k string, exp uint32, c
 }
 func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	if lds.config.UpdateCallback != nil {
-		wrapperCallback := func(ctx context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
-			updated, expiry, isDelete, err = callback(ctx, current)
+		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			updated, expiry, isDelete, err = callback(current)
 			lds.config.UpdateCallback(k)
 			return updated, expiry, isDelete, err
 		}

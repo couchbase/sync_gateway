@@ -582,7 +582,7 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
 func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
 	docID := b.clusterAwareOptions.StatusDocID()
-	_, err := b.clusterAwareOptions.metadataStore.Update(ctx, docID, 0, func(_ context.Context, current []byte) ([]byte, *uint32, bool, error) {
+	_, err := b.clusterAwareOptions.metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		status, metadata, err := b.getStatusLocal()
 		if err != nil {
 			return nil, nil, false, err

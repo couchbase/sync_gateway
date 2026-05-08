@@ -474,7 +474,7 @@ func SetSyncInfoMetadataID(ctx context.Context, ds DataStore, metadataID string)
 	if metadataID == "" {
 		return nil
 	}
-	_, err := ds.Update(ctx, SGSyncInfo, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := ds.Update(ctx, SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		var syncInfo SyncInfo
 		if current != nil {
 			parseErr := JSONUnmarshal(current, &syncInfo)
@@ -495,7 +495,7 @@ func SetSyncInfoMetaVersion(ctx context.Context, ds DataStore, metaVersion strin
 	if metaVersion == "" {
 		return nil
 	}
-	_, err := ds.Update(ctx, SGSyncInfo, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := ds.Update(ctx, SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		var syncInfo SyncInfo
 		if current != nil {
 			parseErr := JSONUnmarshal(current, &syncInfo)

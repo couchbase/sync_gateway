@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -117,7 +116,6 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 }
 
 func TestAutomaticConfigUpgradeError(t *testing.T) {
-	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
@@ -154,6 +152,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		t.Run(testCase.Name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
 
@@ -1416,7 +1415,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	assert.Equal(t, b1Name, *databaseConfig.Bucket, "bucket field should be stamped into config")
 
 	// manually strip out bucket to test backwards compatibility (older configs don't always have this field set)
-	_, err = rt.GetDatabase().MetadataStore.Update(ctx, configDocID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = rt.GetDatabase().MetadataStore.Update(ctx, configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		var d DatabaseConfig
 		require.NoError(t, base.JSONUnmarshal(current, &d))
 		d.Bucket = nil
@@ -1446,7 +1445,7 @@ func TestPersistentConfigNoBucketField(t *testing.T) {
 	base.MoveDocument(t, configDocID, b2.GetMetadataStore(), b1.GetMetadataStore())
 
 	// put the bucket for the config back to b1 so we can use the admin API to repair the config (like a real user would have to do)
-	_, err = b2.GetMetadataStore().Update(ctx, configDocID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = b2.GetMetadataStore().Update(ctx, configDocID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		var d DatabaseConfig
 		require.NoError(t, base.JSONUnmarshal(current, &d))
 		d.Bucket = &b1Name

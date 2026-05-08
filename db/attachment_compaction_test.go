@@ -922,7 +922,7 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 	_, err = db.dataStore.AddRaw(ctx, attDocID, 0, attBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.Update(ctx, docID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = db.dataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		attachmentSyncData := map[string]any{
 			attID: map[string]any{
 				"content_type": "application/json",

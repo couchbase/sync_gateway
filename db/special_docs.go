@@ -78,7 +78,7 @@ func putDocWithRevision(ctx context.Context, dataStore base.DataStore, docID str
 	// isNewDoc is set to false if the update is being applied on top of an existing document.
 	isNewDoc = true
 
-	_, err = dataStore.Update(ctx, docID, expiry, func(_ context.Context, value []byte) ([]byte, *uint32, bool, error) {
+	_, err = dataStore.Update(ctx, docID, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, false, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")

@@ -3837,7 +3837,6 @@ func setServerPurgeInterval(t *testing.T, rt *rest.RestTester, newPurgeInterval 
 }
 
 func TestTombstoneCompactionPurgeInterval(t *testing.T) {
-	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Server compaction metadata purge interval can only be changed on Couchbase Server")
 	}
@@ -3863,7 +3862,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	dbc := rt.GetDatabase()
-	ctx = rt.Context()
+	ctx := rt.Context()
 
 	cbStore, _ := base.AsCouchbaseBucketStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)

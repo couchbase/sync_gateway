@@ -159,7 +159,7 @@ func TestUpdate(t *testing.T) {
 	valInitial := []byte(`{"state":"initial"}`)
 	valUpdated := []byte(`{"state":"updated"}`)
 
-	updateFunc := func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		if len(current) == 0 {
 			return valInitial, nil, false, nil
 		} else {
@@ -212,7 +212,7 @@ func TestUpdateCASFailure(t *testing.T) {
 	assert.NoError(t, setErr)
 
 	triggerCasFail := true
-	updateFunc := func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	updateFunc := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		if triggerCasFail == true {
 			// mutate the document to trigger cas failure
 			setErr := dataStore.Set(ctx, key, 0, nil, valCasMismatch)
@@ -255,7 +255,7 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 
 	// Attempt to create the doc via update
 	triggerCasFail := true
-	updateFunc := func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	updateFunc := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		if triggerCasFail == true {
 			// mutate the document to trigger cas failure
 			setErr := dataStore.Set(ctx, key, 0, nil, valCasMismatch)
@@ -2486,7 +2486,7 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	assert.Equal(t, body, val)
 
 	newField := KVPair{"field2", "val"}
-	casUpdate, err := ds.Update(ctx, docID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	casUpdate, err := ds.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		newBody, err := InjectJSONProperties(current, newField)
 		return newBody, nil, false, err
 	})
@@ -2838,7 +2838,7 @@ func TestMetadataStoreKVStoreWriteOperations(t *testing.T) {
 	// Test Update
 	updateDocID := t.Name() + "_update"
 	updateBody := []byte(`{"val": "update"}`)
-	cas, err = metaStore.Update(ctx, updateDocID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	cas, err = metaStore.Update(ctx, updateDocID, 0, func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		return updateBody, nil, false, nil
 	})
 

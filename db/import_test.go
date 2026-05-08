@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -341,7 +340,7 @@ func TestMigrateMetadata(t *testing.T) {
 	// Update doc in the bucket with new expiry
 	laterExpirySeconds := time.Second * 60
 	laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
-	updateCallbackFn := func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	updateCallbackFn := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// This update function will not be "competing" with other updates, so it doesn't need
 		// to handle being called back multiple times or performing any merging with existing values.
 		exp := uint32(laterSyncMetaExpiry.Unix())
@@ -487,7 +486,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Perform an SDK update to turn existingBucketDoc into a stale doc
 			laterExpiryDuration := time.Minute * 60
 			laterSyncMetaExpiry := time.Now().Add(laterExpiryDuration)
-			updateCallbackFn := func(_ context.Context, current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			updateCallbackFn := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 				// This update function will not be "competing" with other updates, so it doesn't need
 				// to handle being called back multiple times or performing any merging with existing values.
 				exp := uint32(laterSyncMetaExpiry.Unix())

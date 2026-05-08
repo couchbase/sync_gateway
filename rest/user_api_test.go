@@ -1070,7 +1070,6 @@ func TestFunkyUsernames(t *testing.T) {
 	}
 }
 func TestRemovingUserXattr(t *testing.T) {
-	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -1139,9 +1138,9 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			dataStore := rt.GetSingleDataStore()
 
+			ctx := rt.Context()
 			cas, err := dataStore.Get(ctx, docKey, nil)
 			require.NoError(t, err)
-			ctx = rt.Context()
 			// Add xattr
 			_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 			assert.NoError(t, err)

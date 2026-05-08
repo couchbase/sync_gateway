@@ -165,7 +165,7 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	cas, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(_ context.Context, currentValue []byte) ([]byte, *uint32, bool, error) {
+	cas, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
@@ -484,7 +484,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 		}
 	}
 
-	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -533,7 +533,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 		return nil
 	}
 
-	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -569,7 +569,7 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 	docID := auth.DocIDForUser(username)
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate computed role and channel access of %q for collections %v", base.UD(username), collections)
 
-	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(_ context.Context, current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel

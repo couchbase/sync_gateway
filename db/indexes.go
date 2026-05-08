@@ -561,17 +561,17 @@ func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes C
 	for dsName, inUseIndexes := range inUseIndexes {
 		dataStore, err := bucket.NamedDataStore(ctx, dsName)
 		if err != nil {
-			errs = errs.Append(fmt.Errorf("failed to get datastore %s: %w", base.MD(dsName), err))
+			errs = errs.Append(base.RedactErrorf("failed to get datastore %s: %w", base.MD(dsName), err))
 			continue
 		}
 		n1qlStore, ok := dataStore.(base.N1QLStore)
 		if !ok {
-			errs = errs.Append(fmt.Errorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dataStore))
+			errs = errs.Append(base.RedactErrorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dataStore))
 			continue
 		}
 		allIndexes, err := n1qlStore.GetIndexes()
 		if err != nil {
-			errs = errs.Append(fmt.Errorf("failed to get indexes for datastore %s: %w", base.MD(dsName), err))
+			errs = errs.Append(base.RedactErrorf("failed to get indexes for datastore %s: %w", base.MD(dsName), err))
 			continue
 		}
 		// Iterate over all indexes and remove those that are not in use
@@ -589,7 +589,7 @@ func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes C
 			}
 			err = n1qlStore.DropIndex(ctx, indexName)
 			if err != nil {
-				errs = errs.Append(fmt.Errorf("failed to drop index %s %s: %w", base.MD(dsName), indexName, err))
+				errs = errs.Append(base.RedactErrorf("failed to drop index %s %s: %w", base.MD(dsName), indexName, err))
 				continue
 			}
 		}

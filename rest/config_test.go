@@ -1441,8 +1441,8 @@ func TestDefaultLogging(t *testing.T) {
 }
 
 func TestSetupServerContext(t *testing.T) {
-	ctx := base.TestCtx(t)
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
 		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))

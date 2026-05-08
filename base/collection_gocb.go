@@ -299,7 +299,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 
 		// Invoke callback to get updated value
 		var isDelete bool
-		value, callbackExpiry, isDelete, err = callback(ctx, value)
+		value, callbackExpiry, isDelete, err = callback(value)
 		if err != nil {
 			return cas, err
 		}
