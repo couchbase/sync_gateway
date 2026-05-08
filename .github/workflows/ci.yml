@@ -112,6 +112,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
 
   test-race:
     runs-on: ubuntu-latest
@@ -136,6 +144,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
 
   test-default-collection:
     runs-on: ubuntu-latest
@@ -161,6 +177,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
   test-benchmark-compile:
     runs-on: ubuntu-latest
     env:
@@ -184,6 +208,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
 
 
   test-disable-rev-cache:
@@ -210,6 +242,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
 
   python-format:
     runs-on: ubuntu-latest
@@ -266,6 +306,14 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.json
+          retention-days: 14
+          if-no-files-found: warn
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool
