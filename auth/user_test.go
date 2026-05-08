@@ -483,39 +483,37 @@ func TestCompactCollectionChannelHistory(t *testing.T) {
 	defer testBucket.Close(ctx)
 	dataStore := testBucket.GetSingleDataStore()
 
-	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
-
-	user, err := auth.NewUser("user", "password", base.Set{})
-	require.NoError(t, err)
-	require.NotNil(t, user)
-
-	u := user.(*userImpl)
-
 	const (
 		scope      = "scope1"
 		collection = "collection1"
 	)
 
-	// Populate channel history directly for the named collection — mirrors the
-	// pattern in rest/revocation_test.go where history is constructed and set
-	// via SetCollectionChannelHistory / SetChannelHistory before asserting on it.
-	history := TimedSetHistory{
-		"ch1": GrantHistory{
-			UpdatedAt: 1000,
-			Entries:   []GrantHistorySequencePair{{StartSeq: 1, EndSeq: 10}},
-		},
-		"ch2": GrantHistory{
-			UpdatedAt: 2000,
-			Entries:   []GrantHistorySequencePair{{StartSeq: 11, EndSeq: 20}},
-		},
-		"ch3": GrantHistory{
-			UpdatedAt: 3000,
-			Entries:   []GrantHistorySequencePair{{StartSeq: 21, EndSeq: 30}},
-		},
+	// Helper to create fresh history state for each subtest
+	newHistory := func() TimedSetHistory {
+		return TimedSetHistory{
+			"ch1": GrantHistory{
+				UpdatedAt: 1000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 1, EndSeq: 10}},
+			},
+			"ch2": GrantHistory{
+				UpdatedAt: 2000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 11, EndSeq: 20}},
+			},
+			"ch3": GrantHistory{
+				UpdatedAt: 3000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 21, EndSeq: 30}},
+			},
+		}
 	}
-	u.SetCollectionChannelHistory(scope, collection, history)
 
 	t.Run("CompactsExistingChannels", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
 		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch2"})
 
 		require.ElementsMatch(t, []string{"ch1", "ch2"}, compacted)
@@ -533,14 +531,25 @@ func TestCompactCollectionChannelHistory(t *testing.T) {
 		assert.Equal(t, GrantHistorySequencePair{StartSeq: 21, EndSeq: 30}, ch3Entry.Entries[0])
 	})
 
-	// Sub-test 2 inherits state from sub-test 1: only ch3 remains in history.
 	t.Run("NonExistentChannelReturnsEmpty", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
 		compacted := u.CompactChannelHistory(scope, collection, []string{"doesNotExist"})
 		assert.Empty(t, compacted)
 
 		afterHistory := u.CollectionChannelHistory(scope, collection)
+		require.Len(t, afterHistory, 3, "all three channels should remain in history")
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
 		_, ch3Present := afterHistory["ch3"]
-		assert.True(t, ch3Present, "ch3 should be unchanged after no-op compact")
+		assert.True(t, ch1Present)
+		assert.True(t, ch2Present)
+		assert.True(t, ch3Present)
 	})
 }
 

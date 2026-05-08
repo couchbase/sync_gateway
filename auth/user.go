@@ -758,7 +758,9 @@ func (user *userImpl) CompactChannelHistory(scope, collection string, channels [
 			compactedChannels = append(compactedChannels, channel)
 		}
 	}
-	user.SetCollectionChannelHistory(scope, collection, chanHistory)
+	if len(compactedChannels) > 0 {
+		user.SetCollectionChannelHistory(scope, collection, chanHistory)
+	}
 	return compactedChannels
 }
 
