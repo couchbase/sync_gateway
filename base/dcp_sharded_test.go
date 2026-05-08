@@ -1563,15 +1563,6 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 
 }
 
-type noopHeartbeater struct{}
-
-func (m *noopHeartbeater) RegisterListener(listener HeartbeatListener) error { return nil }
-func (m *noopHeartbeater) UnregisterListener(name string)                    {}
-func (m *noopHeartbeater) Start(context.Context) error                       { return nil }
-func (m *noopHeartbeater) StartSendingHeartbeats(context.Context) error      { return nil }
-func (m *noopHeartbeater) StartCheckingHeartbeats(context.Context) error     { return nil }
-func (m *noopHeartbeater) Stop(context.Context)                              {}
-
 func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -1602,11 +1593,17 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 		exists, err := metadataStore.Exists(checkpointName)
 		require.NoError(t, err)
 		require.False(t, exists, "Checkpoint should not exist before persistence", checkpointName)
-		dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`))
+		require.NoError(t, dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`)))
 		exists, err = metadataStore.Exists(checkpointName)
 		require.NoError(t, err)
 		require.True(t, exists, "Checkpoint should exist after persistence", checkpointName)
 		checkpoints = append(checkpoints, checkpointName)
 	}
 	require.NoError(t, PurgeDCPCheckpoints(ctx, metadataStore, checkpointPrefix, DCPFeedSharded))
+
+	for _, checkpoint := range checkpoints {
+		exists, err := metadataStore.Exists(checkpoint)
+		require.NoError(t, err)
+		require.False(t, exists, "Checkpoint should not exist after purge", checkpoint)
+	}
 }
