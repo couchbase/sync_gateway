@@ -979,7 +979,6 @@ func TestDCPDataType(t *testing.T) {
 	}
 
 	expectedEvents := make(map[string][]byte)
-	var expectedEventsMu sync.Mutex
 	testName := t.Name()
 
 	// Write all documents
@@ -988,10 +987,7 @@ func TestDCPDataType(t *testing.T) {
 			key := fmt.Sprintf("%s_%s_%s", testName, wm.name, pl.name)
 			err := wm.fn(key, pl.payload)
 			require.NoError(t, err)
-
-			expectedEventsMu.Lock()
 			expectedEvents[key] = pl.payload
-			expectedEventsMu.Unlock()
 		}
 	}
 
