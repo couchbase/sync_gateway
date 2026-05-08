@@ -236,6 +236,7 @@ func TestReplicateVV(t *testing.T) {
 			},
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
+				ctx := base.TestCtx(t)
 				return hlvAgent.InsertWithHLV(ctx, docID, nil)
 			},
 		},

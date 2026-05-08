@@ -414,9 +414,9 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 }
 
 func TestUserKeysHash(t *testing.T) {
-	ctx := base.TestCtx(t)
 	for _, metadataDefault := range []bool{false, true} {
 		t.Run(fmt.Sprintf("metadataDefault=%t", metadataDefault), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close(ctx)
 			dataStore := testBucket.GetSingleDataStore()

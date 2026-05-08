@@ -707,7 +707,6 @@ func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
 }
 
 func TestRedactConfigAsStr(t *testing.T) {
-	ctx := base.TestCtx(t)
 	testCases := []struct {
 		name     string
 		input    string
@@ -769,6 +768,7 @@ func TestRedactConfigAsStr(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			output, err := redactConfigAsStr(ctx, testCase.input)
 			if testCase.hasError {
 				require.Error(t, err)
@@ -1727,7 +1727,6 @@ func TestAuditBlipAttachmentCRUD(t *testing.T) {
 
 // TestAuditLoggingGlobals modifies all the global loggers
 func TestAuditLoggingGlobals(t *testing.T) {
-	ctx := base.TestCtx(t)
 	globalFields := map[string]any{
 		"global":  "field",
 		"global2": "field2",
@@ -1760,6 +1759,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			base.ResetGlobalTestLogging(t)
 			base.InitializeMemoryLoggers()
 			if testCase.globalAuditEvents != nil {

@@ -1535,7 +1535,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 			return
 		}
 		if !resurrectOnce.Load() {
-			err := docDatastore.Set(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+			err := docDatastore.Set(ctx, key, 0, nil, []byte(`{"foo":"resurrected"}`))
 			require.NoError(t, err)
 			resurrectOnce.Store(true)
 		}
@@ -1548,7 +1548,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 
 	// SDK-style Delete triggering isSgWrite=false inside GetDocSyncData
 	// which will trigger on-demand import with isDelete=true (rawDoc==nil).
-	err = docDatastore.Delete(docID)
+	err = docDatastore.Delete(ctx, docID)
 	require.NoError(t, err)
 
 	// UpdateCallback now acts only during the import write, not Put.

@@ -114,7 +114,6 @@ func TestReadServerConfig(t *testing.T) {
 }
 
 func TestConfigValidation(t *testing.T) {
-	ctx := base.TestCtx(t)
 	tests := []struct {
 		name   string
 		config string
@@ -138,6 +137,7 @@ func TestConfigValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			buf := bytes.NewBufferString(test.config)
 			config, err := readLegacyServerConfig(ctx, buf)
 			assert.NoError(t, err)
@@ -246,7 +246,6 @@ func TestConfigValidationImport(t *testing.T) {
 
 func TestConfigValidationImportPartitions(t *testing.T) {
 
-	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Import partitions config validation is enterprise edition only")
 	}
@@ -293,6 +292,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			buf := bytes.NewBufferString(test.config)
 			config, err := readLegacyServerConfig(ctx, buf)
 			assert.NoError(t, err)
@@ -3483,7 +3483,6 @@ func TestConfigUserXattrKeyValidation(t *testing.T) {
 }
 
 func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
-	ctx := base.TestCtx(t)
 	tests := []struct {
 		name                string
 		unsupportedSettings *db.UnsupportedOptions
@@ -3523,6 +3522,7 @@ func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			dbConfig := DbConfig{
 				Name:        "db",
 				Unsupported: test.unsupportedSettings,

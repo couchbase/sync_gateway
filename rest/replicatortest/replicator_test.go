@@ -2672,7 +2672,6 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 //   - Starts the replicator to trigger conflict resolution to merge both attachments in the conflict.
 func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
-	ctx := base.TestCtx(t)
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Test uses EE-only features for custom conflict resolution")
 	}
@@ -2743,6 +2742,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
+				ctx := base.TestCtx(t)
 				// Increase checkpoint persistence frequency for cross-node status verification
 				reduceCheckpoint := reduceTestCheckpointInterval(50 * time.Millisecond)
 				t.Cleanup(reduceCheckpoint)

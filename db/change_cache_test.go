@@ -3056,6 +3056,7 @@ func TestAddPendingLogs(t *testing.T) {
 
 	for index, testCase := range testCases {
 		t.Run(fmt.Sprintf("case_%d", index), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			testChannelID := channels.NewID(testCase.channelName, GetSingleDatabaseCollection(t, dbContext).GetCollectionID())
 			testChangeCache := &changeCache{}
 			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{

@@ -612,4 +612,3 @@ func (c *Collection) setCollectionID() error {
 	}
 	return nil
 }
-

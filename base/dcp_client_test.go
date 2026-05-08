@@ -1063,14 +1063,14 @@ func TestDCPDataType(t *testing.T) {
 		fn   func(key string, payload []byte) error
 	}{
 		{"WriteCas", func(key string, payload []byte) error {
-			_, err := dataStore.WriteCas(key, 0, 0, payload, sgbucket.Raw)
+			_, err := dataStore.WriteCas(ctx, key, 0, 0, payload, sgbucket.Raw)
 			return err
 		}},
 		{"SetRaw", func(key string, payload []byte) error {
-			return dataStore.SetRaw(key, 0, nil, payload)
+			return dataStore.SetRaw(ctx, key, 0, nil, payload)
 		}},
 		{"AddRaw", func(key string, payload []byte) error {
-			_, err := dataStore.AddRaw(key, 0, payload)
+			_, err := dataStore.AddRaw(ctx, key, 0, payload)
 			return err
 		}},
 	}
