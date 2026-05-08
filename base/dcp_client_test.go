@@ -1037,3 +1037,119 @@ func newDCPClientWithFastCheckpointing(t *testing.T, bucket *TestBucket, dcpOpti
 	}
 	return dcpClient
 }
+
+func TestDCPDataType(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+
+	payloads := []struct {
+		name    string
+		payload []byte
+	}{
+		{"Binary", []byte("random_binary_string_\x00\x01\x02")},
+		{"QuotedString", []byte(`"hello"`)},
+		{"Integer", []byte("123")},
+		{"EmptyObject", []byte(`{}`)},
+		{"Array", []byte(`[1, 2, 3]`)},
+		{"Boolean", []byte("true")},
+		{"Null", []byte("null")},
+	}
+
+	writeMethods := []struct {
+		name string
+		fn   func(key string, payload []byte) error
+	}{
+		{"WriteCas", func(key string, payload []byte) error {
+			_, err := dataStore.WriteCas(key, 0, 0, payload, sgbucket.Raw)
+			return err
+		}},
+		{"SetRaw", func(key string, payload []byte) error {
+			return dataStore.SetRaw(key, 0, nil, payload)
+		}},
+		{"AddRaw", func(key string, payload []byte) error {
+			_, err := dataStore.AddRaw(key, 0, payload)
+			return err
+		}},
+	}
+
+	expectedEvents := make(map[string][]byte)
+	testName := t.Name()
+
+	// Write all documents
+	for _, wm := range writeMethods {
+		for _, pl := range payloads {
+			key := fmt.Sprintf("%s_%s_%s", testName, wm.name, pl.name)
+			err := wm.fn(key, pl.payload)
+			require.NoError(t, err)
+			expectedEvents[key] = pl.payload
+		}
+	}
+
+	// Setup DCP feed to pick up these mutations
+	receivedEvents := make(map[string]sgbucket.FeedEvent)
+	var receivedEventsMu sync.Mutex
+	done := make(chan struct{})
+	var doneOnce sync.Once
+
+	callback := func(e sgbucket.FeedEvent) bool {
+		if _, isExpected := expectedEvents[string(e.Key)]; isExpected {
+			receivedEventsMu.Lock()
+			defer receivedEventsMu.Unlock()
+			receivedEvents[string(e.Key)] = e
+			if len(receivedEvents) == len(expectedEvents) {
+				doneOnce.Do(func() { close(done) })
+				return true
+			}
+		}
+
+		return false
+	}
+
+	dcpOptions := DCPClientOptions{
+		CollectionNames:  NewCollectionNameSet(dataStore),
+		OneShot:          true,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		Callback:         callback,
+	}
+
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
+	require.NoError(t, err)
+
+	_, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+	defer func() { assert.NoError(t, dcpClient.Close()) }()
+
+	select {
+	case <-done:
+		// Verify all received events
+		for _, wm := range writeMethods {
+			for _, pl := range payloads {
+				t.Run(fmt.Sprintf("%s_%s", wm.name, pl.name), func(t *testing.T) {
+					key := fmt.Sprintf("%s_%s_%s", testName, wm.name, pl.name)
+
+					receivedEventsMu.Lock()
+					event, ok := receivedEvents[key]
+					receivedEventsMu.Unlock()
+
+					require.True(t, ok, "Did not receive DCP event for key %s", key)
+
+					expectedDataType := MemcachedDataTypeRaw
+					if pl.name != "Binary" {
+						expectedDataType = MemcachedDataTypeJSON
+					}
+
+					assert.Equal(t, expectedDataType, int(event.DataType), "Expected datatype did not match")
+					assert.Equal(t, pl.payload, event.Value)
+				})
+			}
+		}
+	case <-time.After(30 * time.Second):
+		receivedEventsMu.Lock()
+		gotCount := len(receivedEvents)
+		receivedEventsMu.Unlock()
+		t.Fatalf("Timeout waiting for DCP events. Got %d out of %d", gotCount, len(expectedEvents))
+	}
+}
