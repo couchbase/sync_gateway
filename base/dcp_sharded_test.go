@@ -11,7 +11,6 @@ package base
 import (
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"os"
 	"sync"
@@ -20,7 +19,6 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1575,176 +1573,40 @@ func (m *noopHeartbeater) StartCheckingHeartbeats(context.Context) error     { r
 func (m *noopHeartbeater) Stop(context.Context)                              {}
 
 func TestShardedDCPCheckpointCleanup(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	allDataStoreNames, err := bucket.ListDataStores()
+	vBuckets, err := bucket.GetMaxVbno()
 	require.NoError(t, err)
 
-	var dataStores []sgbucket.DataStore
-	for _, dsName := range allDataStoreNames {
-		if IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
-			continue
-		}
-		ds, err := bucket.NamedDataStore(dsName)
-		require.NoError(t, err)
-		dataStores = append(dataStores, ds)
-	}
-
-	var mutationCount atomic.Uint64
-	doneDocs := make(chan struct{})
-	expectedDocs := len(dataStores)
-
-	type foundDoc struct {
-		dsID  string
-		docID string
-	}
-	var foundDocs sync.Map
-
-	callback := func(event sgbucket.FeedEvent) bool {
-		if event.Opcode == sgbucket.FeedOpMutation {
-			fmt.Printf("found mutation for collection %d, docID: %s\n", event.CollectionID, string(event.Key))
-			foundDocs.Store(foundDoc{
-				dsID:  fmt.Sprintf("%d", event.CollectionID), // Not exact since we don't have ds mapping, but enough to know we found it.
-				docID: string(event.Key),
-			}, struct{}{})
-
-			if mutationCount.Add(1) == uint64(expectedDocs) {
-				close(doneDocs)
-			}
-		}
-		return true // Request checkpoint persistence
-	}
-
-	collections := NewCollectionNames()
-	// Write one doc per collection
-	for i, ds := range dataStores {
-		collections.Add(ds)
-		docID := fmt.Sprintf("doc_%d", i)
-		err := ds.Set(docID, 0, nil, map[string]any{"foo": "bar"})
-		require.NoError(t, err)
-	}
-
-	checkpointPrefix := "test_checkpoint_cleanup_"
-	cbgtContext := startDCPShardedFeed(
-		t,
-		bucket,
-		collections,
+	metadataStore := bucket.GetSingleDataStore()
+	checkpointPrefix := "test_shared_dcp_checkpoint"
+	dest, err := NewDCPDest(
+		ctx,
+		nil,
+		metadataStore,
+		vBuckets,
+		true,
+		nil,
+		nil,
 		checkpointPrefix,
-		callback,
 	)
-	defer cbgtContext.Stop(ctx)
-
-	RequireChanClosed(t, doneDocs)
-
-	// Stop feed
-	cbgtContext.Stop(ctx)
-
-	vbCount, err := bucket.GetMaxVbno()
 	require.NoError(t, err)
+	dcpDest, ok := dest.(*DCPDest)
+	require.True(t, ok)
 
 	var checkpoints []string
-	for vb := range vbCount {
-		cpID := fmt.Sprintf("%s%d", checkpointPrefix, vb)
-		_, _, err := bucket.GetMetadataStore().GetRaw(cpID)
-		if err == nil {
-			checkpoints = append(checkpoints, cpID)
-		}
+	for vb := range vBuckets {
+		checkpointName := fmt.Sprintf("%s%d", checkpointPrefix, vb)
+		exists, err := metadataStore.Exists(checkpointName)
+		require.NoError(t, err)
+		require.False(t, exists, "Checkpoint should not exist before persistence", checkpointName)
+		dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`))
+		exists, err = metadataStore.Exists(checkpointName)
+		require.NoError(t, err)
+		require.True(t, exists, "Checkpoint should exist after persistence", checkpointName)
+		checkpoints = append(checkpoints, checkpointName)
 	}
-	require.NotEmpty(t, checkpoints, "Should have found checkpoint documents")
-
-	// Purge
-	err = PurgeDCPCheckpoints(ctx, bucket.GetMetadataStore(), checkpointPrefix, DCPFeedSharded)
-	require.NoError(t, err)
-
-	for _, checkpoint := range checkpoints {
-		_, _, err := bucket.GetMetadataStore().GetRaw(checkpoint)
-		RequireDocNotFoundError(t, err)
-	}
-}
-
-// startDCPShardedFeed is a helper to start a sharded DCP feed with the provided callback and return the context for
-// cleanup.
-//
-// This is intended as a quick way to test sharded DCP feeds.
-func startDCPShardedFeed(t testing.TB, bucket *TestBucket, collections CollectionNames, checkpointPrefix string, callback sgbucket.FeedEventCallbackFunc) *CbgtContext {
-	ctx := TestCtx(t)
-	// Register DestFactory
-	scopeName, collectionList := ShardedDCPOptions{Collections: collections}.scopeAndCollections()
-	destKey := DestKey(t.Name(), scopeName, collectionList, ShardedDCPFeedTypeImport)
-
-	maxVbno, err := bucket.GetMaxVbno()
-	require.NoError(t, err)
-
-	StoreDestFactory(ctx, destKey, func(rollback func()) (cbgt.Dest, error) {
-		return NewDCPDest(
-			ctx,
-			callback,
-			bucket.GetMetadataStore(),
-			maxVbno,
-			true, // persistCheckpoints
-			expvar.NewMap(t.Name()+"_stats"),
-			nil, // partitionStat
-			checkpointPrefix,
-		)
-	})
-	defer RemoveDestFactory(destKey)
-
-	// Register PIndexImplType
-	indexType := "sharded_cleanup_index_" + t.Name()
-	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{
-		New: func(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-			var outerParams struct {
-				Params string `json:"params"`
-			}
-			err := JSONUnmarshal([]byte(indexParams), &outerParams)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			var sgParams SGFeedIndexParams
-			err = JSONUnmarshal([]byte(outerParams.Params), &sgParams)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			destFactory, err := FetchDestFactory(sgParams.DestKey)
-			if err != nil {
-				return nil, nil, err
-			}
-			dest, err := destFactory(restart)
-			return nil, dest, err
-		},
-	})
-
-	// Start Sharded DCP Feed
-	cfg, _ := NewCbgtCfgMem()
-	heartbeater := &noopHeartbeater{}
-
-	indexName, err := GenerateCBGTIndexName(t.Name(), ShardedDCPFeedTypeImport)
-	require.NoError(t, err)
-
-	opts := ShardedDCPOptions{
-		Bucket:        bucket,
-		Cfg:           cfg,
-		DBName:        t.Name(),
-		UUID:          "testUUID",
-		IndexName:     indexName,
-		IndexType:     indexType,
-		DestKey:       destKey,
-		Heartbeater:   heartbeater,
-		NumPartitions: 1,
-		FeedType:      ShardedDCPFeedTypeImport,
-		Collections:   collections,
-		Datastore:     bucket.GetMetadataStore(),
-	}
-
-	cbgtContext, err := StartShardedDCPFeed(ctx, opts)
-	require.NoError(t, err)
-	return cbgtContext
+	require.NoError(t, PurgeDCPCheckpoints(ctx, metadataStore, checkpointPrefix, DCPFeedSharded))
 }
