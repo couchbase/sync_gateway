@@ -112,12 +112,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
 
@@ -144,12 +148,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
 
@@ -177,12 +185,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
   test-benchmark-compile:
@@ -208,12 +220,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
 
@@ -242,12 +258,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
 
@@ -306,12 +326,16 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
-          path: test.json
+          path: test.log
           retention-days: 14
           if-no-files-found: warn
   cache_perf_tool_build:
