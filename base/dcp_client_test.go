@@ -1002,23 +1002,17 @@ func TestDCPDataType(t *testing.T) {
 	var doneOnce sync.Once
 
 	callback := func(e sgbucket.FeedEvent) bool {
-		expectedEventsMu.Lock()
-		_, isExpected := expectedEvents[string(e.Key)]
-		expectedEventsMu.Unlock()
-
-		if isExpected {
+		if _, isExpected := expectedEvents[string(e.Key)]; isExpected {
 			receivedEventsMu.Lock()
+			defer receivedEventsMu.Unlock()
 			receivedEvents[string(e.Key)] = e
 			if len(receivedEvents) == len(expectedEvents) {
 				doneOnce.Do(func() { close(done) })
+				return true
 			}
-			receivedEventsMu.Unlock()
 		}
 
-		receivedEventsMu.Lock()
-		shouldStop := len(receivedEvents) == len(expectedEvents)
-		receivedEventsMu.Unlock()
-		return shouldStop
+		return false
 	}
 
 	dcpOptions := DCPClientOptions{
