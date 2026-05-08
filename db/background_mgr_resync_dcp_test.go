@@ -743,7 +743,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 				db,
 				resyncID,
 				test.collectionNames,
-				func(context.Context, sgbucket.FeedEvent) bool {
+				func(sgbucket.FeedEvent) bool {
 					// no-op for test, just need to provide a callback to satisfy function signature
 					require.Fail(t, "unexpected feed event callback")
 					return false

@@ -806,7 +806,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	xattrVal["rev"] = "1-1234"
 
 	// Dummy write update function that increments 'counter' in the doc and 'seq' in the xattr
-	writeUpdateFunc := func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(doc []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		var docMap map[string]any
 		var xattrMap map[string]any
 		// Marshal the doc
@@ -899,7 +899,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	xattrKey := SyncXattrName
 	userXattrKey := "UserXattr"
 
-	writeUpdateFunc := func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(doc []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 
 		xattr := xattrs[xattrKey]
 		var docMap map[string]any
@@ -976,7 +976,7 @@ func TestWriteUpdateDeleteXattr(t *testing.T) {
 	require.NoError(t, err)
 
 	body := []byte(`{"new": "body"}`)
-	writeUpdateFunc := func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		return sgbucket.UpdatedDoc{
 			Doc:            body,
 			XattrsToDelete: []string{xattrKey},
@@ -1012,7 +1012,7 @@ func TestWriteUpdateDeleteXattrTombstone(t *testing.T) {
 	_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, 0, map[string][]byte{xattrKey: xattrBody}, nil, false, nil)
 	require.NoError(t, err)
 
-	writeUpdateFunc := func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		return sgbucket.UpdatedDoc{
 			IsTombstone:    true,
 			XattrsToDelete: []string{xattrKey},
@@ -2606,7 +2606,7 @@ func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	firstCas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"a": "body"}`), map[string][]byte{xattr1Key: xattrBody, xattr2Key: xattrBody}, nil, nil)
 	require.NoError(t, err)
 
-	writeUpdateFunc := func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(_ []byte, _ map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 		// the first time through the loop we want to remove the document
 		if cas == firstCas {
 			_, err := dataStore.Remove(ctx, key, firstCas)

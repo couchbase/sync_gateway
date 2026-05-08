@@ -144,7 +144,7 @@ func (p *CouchbaseServerPeer) CreateDocument(dsName sgbucket.DataStoreName, docI
 func (p *CouchbaseServerPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
-	callback := func(_ context.Context, existingBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+	callback := func(existingBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		doc := sgbucket.UpdatedDoc{Doc: body}
 		// only set lastXattrs if existing document is not a tombstone, they will not be preserved if this is a resurrection
 		if len(existingBody) > 0 {
@@ -173,7 +173,7 @@ func (p *CouchbaseServerPeer) DeleteDocument(dsName sgbucket.DataStoreName, docI
 	// delete the document, ignoring any in progress writes. We are allowed to delete a document that does not exist.
 	var lastXattrs map[string][]byte
 	// write the document LWW, ignoring any in progress writes
-	callback := func(_ context.Context, _ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+	callback := func(_ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		lastXattrs = xattrs
 		return sgbucket.UpdatedDoc{Doc: nil, IsTombstone: true, Xattrs: xattrs}, nil
 	}

@@ -224,7 +224,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		}
 
 		// Invoke callback to get updated value
-		updatedDoc, err := callback(ctx, value, xattrs, cas)
+		updatedDoc, err := callback(value, xattrs, cas)
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
 			previousLoopCas = nil

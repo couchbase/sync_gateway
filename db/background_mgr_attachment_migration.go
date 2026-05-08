@@ -104,7 +104,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	}
 	defer persistClusterStatus()
 
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		collection := db.CollectionByID[event.CollectionID]
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", migrationLoggingID, event.Opcode, base.UD(docID))

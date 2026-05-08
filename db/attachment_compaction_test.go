@@ -287,7 +287,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 		t.Name(),
 		base.NewCollectionNameSet(dataStore),
 		CleanupPhase,
-		func(_ context.Context, event sgbucket.FeedEvent) bool {
+		func(_ sgbucket.FeedEvent) bool {
 			require.FailNow(t, "DCP callback function should not be called for this test")
 			return false
 		},
@@ -756,7 +756,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(_ context.Context, doc []byte, xattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, _ uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 		attachmentSyncData := map[string]any{
 			attID: map[string]any{
 				"content_type": "application/json",

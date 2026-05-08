@@ -199,7 +199,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	}
 
-	purgeCallback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+	purgeCallback := func(event sgbucket.FeedEvent) bool {
 		processedDocCount.Add(1)
 		// We only need to purge mutations/deletions
 		if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {

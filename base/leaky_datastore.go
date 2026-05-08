@@ -284,8 +284,8 @@ func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp ui
 
 func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
 	if lds.config.UpdateCallback != nil {
-		wrapperCallback := func(ctx context.Context, current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
-			updatedDoc, err := callback(ctx, current, xattrs, cas)
+		wrapperCallback := func(current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+			updatedDoc, err := callback(current, xattrs, cas)
 			lds.config.UpdateCallback(k)
 			return updatedDoc, err
 		}

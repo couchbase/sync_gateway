@@ -262,7 +262,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 			break
 		}
 	}
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		return r.processEvent(ctx, event)
 	}
 

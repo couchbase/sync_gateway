@@ -174,7 +174,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
 

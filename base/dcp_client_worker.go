@@ -116,12 +116,12 @@ func (w *DCPWorker) Start(ctx context.Context, wg *sync.WaitGroup) {
 					w.pendingSnapshot[vbID] = e
 				case mutationEvent:
 					if w.mutationCallback != nil {
-						w.mutationCallback(ctx, e.asFeedEvent())
+						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case deletionEvent:
 					if w.mutationCallback != nil && !w.ignoreDeletes {
-						w.mutationCallback(ctx, e.asFeedEvent())
+						w.mutationCallback(e.asFeedEvent())
 					}
 					w.updateSeq(ctx, e.key, vbID, e.seq)
 				case seqnoAdvancedEvent:

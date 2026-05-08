@@ -9,7 +9,6 @@
 package base
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -1093,7 +1092,7 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 					require.NoError(t, err)
 				}
 			}
-			writeUpdateFunc := func(_ context.Context, _ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+			writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 				return test.updatedDoc, nil
 			}
 
@@ -1632,7 +1631,7 @@ func TestWriteUpdateWithXattrsReplacingNilDoc(t *testing.T) {
 	_, err := col.AddRaw(ctx, docID, 0, nilBody)
 	require.NoError(t, err)
 
-	writeUpdateFunc := func(_ context.Context, _ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		return sgbucket.UpdatedDoc{
 			Doc:    []byte(`{"foo": "bar"}`),
 			Xattrs: map[string][]byte{"_xattr1": []byte(`{"a": "b"}`)},
@@ -1784,7 +1783,7 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 
 	docBody := []byte(`{"val": "updated"}`)
 	xattrsToWriteUpdate := map[string][]byte{"_sync": []byte(`{"rev": "2-b"}`)}
-	cb := func(_ context.Context, current []byte, currentXattrs map[string][]byte, currentCas uint64) (sgbucket.UpdatedDoc, error) {
+	cb := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		return sgbucket.UpdatedDoc{
 			Doc:    docBody,
 			Xattrs: xattrsToWriteUpdate,

@@ -10,7 +10,6 @@ package base
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -47,7 +46,7 @@ func TestOneShotDCP(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -108,7 +107,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -197,7 +196,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// create callback
 			mutationCount := uint64(0)
 			vbucketZeroCount := uint64(0)
-			counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+			counterCallback := func(event sgbucket.FeedEvent) bool {
 				if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 					atomic.AddUint64(&mutationCount, 1)
 					if event.VbNo == 0 {
@@ -323,7 +322,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			if atomic.LoadUint64(&mutationCount) == uint64(10000) {
@@ -436,7 +435,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			count := atomic.AddUint64(&mutationCount, 1)
 			if count > 5000 {
@@ -480,7 +479,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	}
 
 	var secondFeedCount uint64
-	secondCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	secondCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
 			atomic.AddUint64(&secondFeedCount, 1)
@@ -528,7 +527,7 @@ func TestBadAgentPriority(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	panicCallback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	panicCallback := func(_ sgbucket.FeedEvent) bool {
 		t.Error(t, "Should not hit this callback")
 		return false
 	}
@@ -555,7 +554,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	// create callback
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		t.Fatalf("Unexpected callback: %+v", event)
 		return false
 	}
@@ -637,7 +636,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	var dcpDeletionCas uint64
 	var dcpDeletionRevNo uint64
 	// create callback
-	callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+	callback := func(event sgbucket.FeedEvent) bool {
 		// other doc events can happen from previous tests
 		if docID != string(event.Key) {
 			return true
@@ -776,7 +775,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					var eventMu sync.Mutex
 					allFound := make(chan struct{}, 1)
 
-					callback := func(_ context.Context, event sgbucket.FeedEvent) bool {
+					callback := func(event sgbucket.FeedEvent) bool {
 						eventMu.Lock()
 						defer eventMu.Unlock()
 						switch string(event.Key) {
@@ -913,7 +912,7 @@ func TestDCPClientAgentConfig(t *testing.T) {
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
 			gocbv2Bucket.Spec.Server += tc.serverSuffix
 			dcpClient, err := NewGocbDCPClient(ctx,
-				func(context.Context, sgbucket.FeedEvent) bool { return true },
+				func(sgbucket.FeedEvent) bool { return true },
 				GoCBDCPClientOptions{MetadataStoreType: DCPMetadataStoreInMemory},
 				gocbv2Bucket)
 			require.NoError(t, err)

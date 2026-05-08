@@ -168,11 +168,11 @@ type LeakyBucketConfig struct {
 
 func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	if len(b.config.DCPFeedMissingDocs) > 0 {
-		wrappedCallback := func(ctx context.Context, event sgbucket.FeedEvent) bool {
+		wrappedCallback := func(event sgbucket.FeedEvent) bool {
 			if slices.Contains(b.config.DCPFeedMissingDocs, string(event.Key)) {
 				return false
 			}
-			return callback(ctx, event)
+			return callback(event)
 		}
 		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
 	}

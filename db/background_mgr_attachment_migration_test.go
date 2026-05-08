@@ -9,7 +9,6 @@
 package db
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -303,7 +302,7 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			clientOptions := mgr.Process.(*AttachmentMigrationManager).getDCPClientOptions(
 				migrationID,
 				db.collectionNameSet(),
-				func(context.Context, sgbucket.FeedEvent) bool {
+				func(sgbucket.FeedEvent) bool {
 					require.FailNow(t, "DCP callback should not be called")
 					return false
 				},

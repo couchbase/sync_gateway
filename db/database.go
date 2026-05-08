@@ -1802,7 +1802,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 	var updatedDoc *Document
 	var updatedExpiry *uint32
 	var unusedSequences []uint64
-	writeUpdateFunc := func(_ context.Context, currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+	writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 		// resyncDocument is not called on tombstoned documents, so this value will only be empty if the document was
 		// deleted between DCP event and calling this function. In any case, we do not need to update it.
 		if len(currentValue) == 0 {
