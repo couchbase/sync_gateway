@@ -24,7 +24,7 @@ func traverseAndRetrieveStats(logger *log.Logger, s any) statDefinitions {
 		logger.Println("Nil value for", topLevel.String())
 		return nil
 	}
-	if topLevel.Kind() == reflect.Ptr {
+	if topLevel.Kind() == reflect.Pointer {
 		// Dereference the pointer so the value can be manipulated
 		topLevel = topLevel.Elem()
 	}
