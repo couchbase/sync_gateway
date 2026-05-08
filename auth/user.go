@@ -750,6 +750,18 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) (base.Set, error) {
 	return output, nil
 }
 
+func (user *userImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
+	compactedChannels := make([]string, 0)
+	chanHistory := user.CollectionChannelHistory(scope, collection)
+	for _, channel := range channels {
+		if ok := chanHistory.CompactChannelHistory(channel); ok {
+			compactedChannels = append(compactedChannels, channel)
+		}
+	}
+	user.SetCollectionChannelHistory(scope, collection, chanHistory)
+	return compactedChannels
+}
+
 // ////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current

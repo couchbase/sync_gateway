@@ -475,6 +475,75 @@ func TestUserKeysHash(t *testing.T) {
 	}
 }
 
+func TestCompactCollectionChannelHistory(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+
+	user, err := auth.NewUser("user", "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+
+	u := user.(*userImpl)
+
+	const (
+		scope      = "scope1"
+		collection = "collection1"
+	)
+
+	// Populate channel history directly for the named collection — mirrors the
+	// pattern in rest/revocation_test.go where history is constructed and set
+	// via SetCollectionChannelHistory / SetChannelHistory before asserting on it.
+	history := TimedSetHistory{
+		"ch1": GrantHistory{
+			UpdatedAt: 1000,
+			Entries:   []GrantHistorySequencePair{{StartSeq: 1, EndSeq: 10}},
+		},
+		"ch2": GrantHistory{
+			UpdatedAt: 2000,
+			Entries:   []GrantHistorySequencePair{{StartSeq: 11, EndSeq: 20}},
+		},
+		"ch3": GrantHistory{
+			UpdatedAt: 3000,
+			Entries:   []GrantHistorySequencePair{{StartSeq: 21, EndSeq: 30}},
+		},
+	}
+	u.SetCollectionChannelHistory(scope, collection, history)
+
+	t.Run("CompactsExistingChannels", func(t *testing.T) {
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch2"})
+
+		require.ElementsMatch(t, []string{"ch1", "ch2"}, compacted)
+
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
+		assert.False(t, ch1Present, "ch1 should have been removed from channel history")
+		assert.False(t, ch2Present, "ch2 should have been removed from channel history")
+
+		ch3Entry, ch3Present := afterHistory["ch3"]
+		require.True(t, ch3Present, "ch3 should remain in channel history")
+		assert.Equal(t, int64(3000), ch3Entry.UpdatedAt)
+		require.Len(t, ch3Entry.Entries, 1)
+		assert.Equal(t, GrantHistorySequencePair{StartSeq: 21, EndSeq: 30}, ch3Entry.Entries[0])
+	})
+
+	// Sub-test 2 inherits state from sub-test 1: only ch3 remains in history.
+	t.Run("NonExistentChannelReturnsEmpty", func(t *testing.T) {
+		compacted := u.CompactChannelHistory(scope, collection, []string{"doesNotExist"})
+		assert.Empty(t, compacted)
+
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		_, ch3Present := afterHistory["ch3"]
+		assert.True(t, ch3Present, "ch3 should be unchanged after no-op compact")
+	})
+}
+
 func docExists(t *testing.T, dataStore base.DataStore, key string) {
 	_, _, err := dataStore.GetRaw(base.TestCtx(t), key)
 	require.Nil(t, err, "doc %s should exist in datastore", key)
