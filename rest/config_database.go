@@ -198,7 +198,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		if base.IsEnterpriseEdition() {
 			dbConfig.ImportPartitions = base.Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
 		} else {
-			dbConfig.ImportPartitions = base.Ptr(uint16(0))
+			dbConfig.ImportPartitions = nil
 		}
 		dbConfig.Index.NumPartitions = base.Ptr(db.DefaultNumIndexPartitions)
 	} else {
