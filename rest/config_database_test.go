@@ -64,6 +64,9 @@ func TestDefaultDbConfigFieldCoverage(t *testing.T) {
 		"Users":                  "legacy config",
 		"Roles":                  "legacy config",
 	}
+	if !base.IsEnterpriseEdition() {
+		intentionallyUnsetFields["ImportPartitions"] = "set only in EE"
+	}
 
 	configType := reflect.TypeFor[DbConfig]()
 	configValue := reflect.ValueOf(*defaultConfig)
