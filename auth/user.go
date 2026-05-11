@@ -751,16 +751,8 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) (base.Set, error) {
 }
 
 func (user *userImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
-	compactedChannels := make([]string, 0)
 	chanHistory := user.CollectionChannelHistory(scope, collection)
-	for _, channel := range channels {
-		if ok := chanHistory.CompactChannelHistory(channel); ok {
-			compactedChannels = append(compactedChannels, channel)
-		}
-	}
-	if len(compactedChannels) > 0 {
-		user.SetCollectionChannelHistory(scope, collection, chanHistory)
-	}
+	compactedChannels := chanHistory.PruneHistoryByKey(channels)
 	return compactedChannels
 }
 

@@ -53,12 +53,15 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 	return prunedChannelHistory
 }
 
-func (timedSet TimedSetHistory) CompactChannelHistory(channel string) bool {
-	if _, ok := timedSet[channel]; !ok {
-		return false
+func (timedSet TimedSetHistory) PruneHistoryByKey(keys []string) []string {
+	removedKeys := make([]string, 0)
+	for _, key := range keys {
+		if _, ok := timedSet[key]; ok {
+			delete(timedSet, key)
+			removedKeys = append(removedKeys, key)
+		}
 	}
-	delete(timedSet, channel)
-	return true
+	return removedKeys
 }
 
 type GrantHistory struct {
