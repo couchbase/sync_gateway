@@ -3925,6 +3925,14 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			"2-abc", "literalbothchannels",
 			"chan.literal[]bracketchannel",
 		)
+		// Brackets with index at end of name — CBS would interpret this as an array
+		// index operator if not escaped; the dot prefix ensures backtick-wrapping.
+		assertChannelRemoval(
+			"bracket-suffix-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "exampleChannelName[10]",
+			"2-abc", "exampleChannelName[11]",
+			"chan.exampleChannelName[10]",
+		)
 	})
 }
 
