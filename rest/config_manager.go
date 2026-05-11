@@ -30,12 +30,6 @@ type ConfigManager interface {
 	UpdateConfig(ctx context.Context, bucket, groupID, dbName string, updateCallback func(bucketConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error)) (newCAS uint64, err error)
 	// DeleteConfig removes a database config for a given bucket, config group ID and database name.
 	DeleteConfig(ctx context.Context, bucket, dbName, groupID string) (err error)
-
-	// CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
-	CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error
-
-	// SetSGVersion updates the Sync Gateway version in the bucket registry
-	SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error
 }
 
 type dbConfigNameOnly struct {
@@ -680,11 +674,15 @@ func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName st
 	return registry, nil
 }
 
-// getGatewayRegistry returns the database registry document for the bucket
+// setGatewayRegistry writes the registry document for the bucket. It stamps
+// registry.SGVersion with this node's full Sync Gateway build version on every write so the
+// registry reflects the most recent SG build to mutate it. SGVersion is diagnostic — cluster
+// compat / downgrade decisions key off ClusterCompatVersionHWM.
 func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName string, registry *GatewayRegistry) (err error) {
 
 	cas := uint64(0)
 	if registry != nil {
+		registry.SGVersion = b.sgVersion
 		cas = registry.cas
 	}
 
@@ -707,6 +705,14 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // registry, and prunes stale node entries. All mutations are bundled into a single CAS-checked
 // write per attempt.
 //
+// The cluster compat downgrade gate is enforced here: if registry.ClusterCompatVersionHWM has
+// a higher major.minor than version, registration is refused with an error and no write
+// occurs. This is the single point of enforcement for cluster compat — every writer that
+// updates Nodes / ClusterCompatVersionHWM goes through this function, so the gate cannot be
+// bypassed by callers updating those fields. Other registry fields (e.g. ConfigGroups) are
+// written by separate code paths and are unaffected by this gate. registry.SGVersion is
+// intentionally not consulted; it is diagnostic-only.
+//
 // Self (nodeUID) is always retained: even if a stale prior entry for this node exists, it is
 // not pruned by the prune step — it is overwritten with a fresh heartbeat in the same write.
 // This guarantees the registry never ends up with an empty Nodes map after a successful call.
@@ -721,6 +727,9 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get registry for node registration: %w", err)
 		}
+		if registry.ClusterCompatVersionHWM.GreaterThan(version) {
+			return nil, base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway cluster compat version %s. This Sync Gateway is %s.", base.MD(bucketName), registry.ClusterCompatVersionHWM, version)
+		}
 		if registry.Nodes == nil {
 			registry.Nodes = make(map[string]*base.RegistryNode)
 		}
@@ -728,6 +737,14 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		registry.Nodes[nodeUID] = &base.RegistryNode{
 			Version:     version,
 			HeartbeatAt: time.Now().UTC(),
+		}
+		// Ratchet ClusterCompatVersionHWM up to the current cluster compat version (min over
+		// all registered nodes). Never decreases — if a lower-version node joins, HWM stays.
+		ccv := minRegistryNodeClusterCompatVersion(registry.Nodes)
+		hwmBumped := ccv.GreaterThan(registry.ClusterCompatVersionHWM)
+		previousHWM := registry.ClusterCompatVersionHWM
+		if hwmBumped {
+			registry.ClusterCompatVersionHWM = ccv
 		}
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
@@ -739,6 +756,9 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		}
 		if len(pruned) > 0 {
 			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(bucketName), base.MD(pruned))
+		}
+		if hwmBumped {
+			base.InfofCtx(ctx, base.KeyConfig, "Updated cluster compat version high-water mark in bucket %s from %s to %s", base.MD(bucketName), previousHWM, ccv)
 		}
 		return registry, nil
 	}
@@ -770,6 +790,18 @@ func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName
 		base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 	}
 	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+}
+
+// minRegistryNodeClusterCompatVersion returns the minimum cluster compat version across all
+// node entries in the registry — i.e. the cluster compat version. Returns the zero
+// ClusterCompatVersion when nodes is empty. Trusts whatever is in nodes; stale-entry cleanup
+// is handled by the prune-on-write in RegisterNodeVersion.
+func minRegistryNodeClusterCompatVersion(nodes map[string]*base.RegistryNode) base.ClusterCompatVersion {
+	versions := make([]base.ClusterCompatVersion, 0, len(nodes))
+	for _, node := range nodes {
+		versions = append(versions, node.Version)
+	}
+	return base.MinClusterCompatVersion(versions...)
 }
 
 // pruneStaleNodes deletes entries from nodes whose HeartbeatAt is older than expiry. The
@@ -950,39 +982,4 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
 func (b *bootstrapContext) standardMetadataID(dbName string) string {
 	return base.SerializeIfLonger(dbName, 40)
-}
-
-// CheckMinorDowngrade returns an error the sgVersion represents at least minor version downgrade from the version in the bucket.
-func (b *bootstrapContext) CheckMinorDowngrade(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error {
-	registry, err := b.getGatewayRegistry(ctx, bucketName)
-	if err != nil {
-		return err
-	}
-
-	if registry.SGVersion.AtLeastMinorDowngrade(&sgVersion) {
-		err := base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway %s. Current version of Sync Gateway is %s.", base.MD(bucketName), registry.SGVersion, sgVersion)
-		return err
-	}
-
-	return nil
-}
-
-// SetSGVersion will update the registry in a bucket with a version of Sync Gateway. This will not perform a write if the version is already up to date.
-func (b *bootstrapContext) SetSGVersion(ctx context.Context, bucketName string, sgVersion base.ComparableBuildVersion) error {
-	registry, err := b.getGatewayRegistry(ctx, bucketName)
-	if err != nil {
-		return err
-	}
-	if !registry.SGVersion.Less(&sgVersion) {
-		return nil
-	}
-	originalRegistryVersion := registry.SGVersion
-	registry.SGVersion = sgVersion
-	err = b.setGatewayRegistry(ctx, bucketName, registry)
-	if err != nil {
-		base.WarnfCtx(ctx, "Error setting gateway registry in bucket %q: %q", base.MD(bucketName), err)
-		return err
-	}
-	base.InfofCtx(ctx, base.KeyConfig, "Updated Sync Gateway version number in bucket %q from %s to %s", base.MD(bucketName), originalRegistryVersion, sgVersion)
-	return nil
 }

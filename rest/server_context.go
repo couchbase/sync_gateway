@@ -120,11 +120,12 @@ type ActiveReplicationsCounter struct {
 const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 
 type bootstrapContext struct {
-	Connection         base.BootstrapConnection
-	configRetryTimeout time.Duration               // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{}               // Used to stop the goroutine handling the bootstrap polling
-	doneChan           chan struct{}               // doneChan is closed when the bootstrap polling goroutine finishes.
-	sgVersion          base.ComparableBuildVersion // version of Sync Gateway
+	Connection           base.BootstrapConnection
+	configRetryTimeout   time.Duration               // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator           chan struct{}               // Used to stop the goroutine handling the bootstrap polling
+	doneChan             chan struct{}               // doneChan is closed when the bootstrap polling goroutine finishes.
+	sgVersion            base.ComparableBuildVersion // version of Sync Gateway
+	clusterCompatVersion base.ClusterCompatVersion   // major.minor cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion; tests may override.
 }
 
 type getOrAddDatabaseConfigOptions struct {
@@ -180,7 +181,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		DatabaseInitManager: &DatabaseInitManager{},
 		HTTPClient:          http.DefaultClient,
 		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
-		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
+		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion, clusterCompatVersion: base.NodeClusterCompatVersion},
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
 		SGCollect:           newSGCollect(ctx),
