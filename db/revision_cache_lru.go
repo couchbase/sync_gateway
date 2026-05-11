@@ -262,8 +262,8 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 
 // Put adds a revision to the cache. NOTE: this function only adds an entry keyed by CV
 func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
-	if !docRev.IsValid() {
-		return base.RedactErrorf("document revision validation failed for doc %s", base.UD(docRev.DocID))
+	if err := docRev.Validate(); err != nil {
+		return err
 	}
 
 	value := rc.getValue(ctx, docRev.DocID, docRev.CV.String(), collectionID, true)
@@ -283,8 +283,9 @@ func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision, co
 
 // Upsert a revision in the cache. This function only upserts for CV key
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
-	if !docRev.IsValid() {
-		return base.RedactErrorf("document revision validation failed for doc %s", base.UD(docRev.DocID))
+
+	if err := docRev.Validate(); err != nil {
+		return err
 	}
 
 	cvKey := CreateRevisionCacheKey(docRev.DocID, docRev.CV.String(), collectionID)
@@ -510,20 +511,31 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 	return docRev, cacheHit, err
 }
 
-// IsValid returns true if the revision is structurally complete.
+// Validate returns true if the revision is structurally complete.
 // A valid revision must have:
 //   - A non-empty DocID and BodyBytes
 //   - A non-nil CV, non-empty revID
 //   - At least one entry in the History
-func (rev *DocumentRevision) IsValid() bool {
+func (rev *DocumentRevision) Validate() error {
 	if rev == nil {
-		return false
+		return errors.New("nil DocumentRevision")
 	}
-
-	hasData := len(rev.BodyBytes) > 0 && rev.DocID != ""
-	hasMetadata := rev.CV != nil && len(rev.History) > 0 && rev.RevID != ""
-
-	return hasData && hasMetadata
+	if rev.DocID == "" {
+		return errors.New("missing DocID")
+	}
+	if rev.RevID == "" {
+		return errors.New("missing RevID")
+	}
+	if rev.CV == nil {
+		return errors.New("missing CV")
+	}
+	if len(rev.History) == 0 {
+		return errors.New("empty History")
+	}
+	if len(rev.BodyBytes) == 0 {
+		return errors.New("empty BodyBytes")
+	}
+	return nil
 }
 
 // asDocumentRevision copies the rev cache value into a DocumentRevision.  Should only be called for non-empty

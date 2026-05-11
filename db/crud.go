@@ -2936,7 +2936,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 					insertErr = db.revisionCache.Put(ctx, documentRevision)
 				}
 				if insertErr != nil {
-					base.DebugfCtx(ctx, base.KeyCRUD, "error adding document %q to revision cache: %v", base.UD(documentRevision.DocID), insertErr)
+					base.WarnfCtx(ctx, "error adding document %q to revision cache: %v", base.UD(documentRevision.DocID), insertErr)
 				}
 			}
 		}

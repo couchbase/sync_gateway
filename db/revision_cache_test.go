@@ -2885,13 +2885,13 @@ func TestMemoryBasedEvictionRevisionCacheOnly(t *testing.T) {
 // MemoryBytes = len(body) because History is minimal Revisions map
 // and there are no channels, so CalculateBytes contributes 32 history/channel overhead.
 func makeTestRevision(docID string, cv Version, body string) DocumentRevision {
-	ids := []string{"1-abc"}
+	ids := []string{"abc"}
 	return DocumentRevision{
 		DocID:     docID,
 		RevID:     "1-abc",
 		CV:        &cv,
 		BodyBytes: []byte(body),
-		History:   Revisions{RevisionsStart: "1-abc", RevisionsIds: ids},
+		History:   Revisions{RevisionsStart: "1", RevisionsIds: ids},
 	}
 }
 
@@ -3516,12 +3516,12 @@ func TestRevisionCacheInvalidRevisionError(t *testing.T) {
 	t.Run("PutInvalidRevision", func(t *testing.T) {
 		err := orchestrator.Put(ctx, invalidRev, testCollectionID)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "document revision validation failed")
+		assert.ErrorContains(t, err, "missing DocID")
 	})
 
 	t.Run("UpsertInvalidRevision", func(t *testing.T) {
 		err := orchestrator.Upsert(ctx, invalidRev, testCollectionID)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "document revision validation failed")
+		assert.ErrorContains(t, err, "missing DocID")
 	})
 }
