@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -168,9 +169,82 @@ func (ms *MetadataStore) Remove(k string, cas uint64) (casOut uint64, err error)
 	return ms.primary.Remove(k, cas)
 }
 
-func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
-	// CBG-5291: turn into insert operation for primary datastore.
-	return ms.fallback.Update(k, exp, callback)
+// Update implements a CAS-safe read-modify-write that always lands in primary, even when the document only exists in the fallback DataStore.
+//
+// Covers two cases:
+//  1. When the doc is already in primary the call simply delegates to the primary datastore's own Update. Happy-path.
+//  2. When the doc is only in fallback, the wrapper feeds the fallback value to the callback and performs a CAS-safe insert of the result into primary.
+//     If a concurrent writer wins the race inserting into Primary, the loop retries the update operation against primary version of the document.
+//
+// When the callback requests a delete on a fallback-only doc, the wrapper applies the delete
+// directly to the fallback store and ignores the primary (since the only DataStore has the doc to delete was the fallback).
+func (ms *MetadataStore) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (uint64, error) {
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		primaryExists, existsErr := ms.primary.Exists(k)
+		if existsErr != nil {
+			return false, existsErr, 0
+		}
+
+		// If we know something exists in Primary, do a direct Update there
+		if primaryExists || ms.migrationComplete.Load() {
+			casOut, updateErr := ms.primary.Update(k, exp, callback)
+			return false, updateErr, casOut
+		}
+
+		// Begin fallback DataStore Get to perform Update
+		fallbackValue, fallbackCasForDelete, err := ms.fallback.GetRaw(k)
+		if IsDocNotFoundError(err) {
+			// Neither store has the doc — let primary's own Update insert it.
+			casOut, updateErr := ms.primary.Update(k, exp, callback)
+			return false, updateErr, casOut
+		}
+		if err != nil {
+			return false, err, 0
+		}
+
+		newValue, cbExpiry, isDelete, cbErr := callback(fallbackValue)
+		if cbErr != nil {
+			return false, cbErr, 0
+		}
+		writeExp := exp
+		if cbExpiry != nil {
+			writeExp = *cbExpiry
+		}
+
+		if isDelete {
+			// Delete the fallback copy — primary never held it, so a primary tombstone is
+			// pointless and would shadow the fallback for nothing.
+			// Remove with the CAS we just observed; on a concurrent fallback mutation we retry the loop.
+			_, removeErr := ms.fallback.Remove(k, fallbackCasForDelete)
+			switch {
+			case removeErr == nil, IsDocNotFoundError(removeErr):
+				return false, nil, 0
+			case IsCasMismatch(removeErr):
+				// retry: concurrent fallback mutation underneath this Delete
+				//        This shouldn't happen with the MetadataStore wrapper only routing writes into Primary,
+				//        but it could be two concurrent Deletes that we should at least have one more attempt for
+				return true, nil, 0
+			}
+			return false, removeErr, 0
+		}
+
+		// Write to primary with CAS=0 to force safe insertion
+		casOut, writeErr := ms.primary.WriteCas(k, writeExp, 0, newValue, 0)
+		if IsCasMismatch(writeErr) {
+			// retry: concurrent writer beat us to primary
+			//        retry loop will run again and be routed directly to the primary DataStore Update
+			return true, nil, 0
+		}
+		if writeErr != nil {
+			return false, writeErr, 0
+		}
+
+		// success: Only case where we can actually return a non-zero CAS - successful Primary DataStore Insert.
+		return false, nil, casOut
+	}
+
+	err, casOut := RetryLoopCas(context.TODO(), "MetadataStore.Update", worker, DefaultRetrySleeper())
+	return casOut, err
 }
 
 func (ms *MetadataStore) Incr(k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
@@ -225,8 +299,100 @@ func (ms *MetadataStore) DeleteWithXattrs(ctx context.Context, k string, xattrKe
 	return ms.primary.DeleteWithXattrs(ctx, k, xattrKeys)
 }
 
-func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
-	return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
+// WriteUpdateWithXattrs is the xattr-aware analogue of Update — a CAS-safe read-modify-write that always lands in primary, even when the document only exists in the fallback DataStore.
+//
+// Covers two cases:
+//  1. When the doc is already in primary (or the caller passes a non-zero previous.Cas, which by contract is a primary cas) the call simply delegates to the primary datastore's own WriteUpdateWithXattrs. Happy-path.
+//  2. When the doc is only in fallback, the wrapper feeds the fallback body+xattrs to the callback with cas=0 and performs a CAS-safe insert of the result into primary via WriteWithXattrs.
+//     If a concurrent writer wins the race inserting into Primary, the loop retries the update operation against primary version of the document.
+//
+// When the callback returns IsTombstone for a fallback-only doc, the wrapper writes the tombstone
+// directly to fallback and ignores the primary (since the only DataStore that has the doc to tombstone was the fallback).
+//
+// Callers must not feed a fallback CAS back through previous.Cas — the wrapper's read methods only surface primary CAS, so any non-zero previous.Cas is treated as primary; misuse is documented but not enforced.
+func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (uint64, error) {
+	// If we're updating with a previous.Cas - we'll be updating on top of a prior fetch from the primary datastore, not the fallback data store.
+	// Or if we've tagged MetadataStore with 'migrationComplete' - avoid the fallback effort...
+	if (previous != nil && previous.Cas != 0) || ms.migrationComplete.Load() {
+		return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
+	}
+
+	// Retry loop for Primary/Fallback
+	worker := func() (shouldRetry bool, err error, casOut uint64) {
+		primaryExists, existsErr := ms.primary.Exists(k)
+		if existsErr != nil {
+			return false, existsErr, 0
+		}
+
+		// If we know something exists in Primary, do a direct WriteUpdateWithXattrs there
+		if primaryExists || ms.migrationComplete.Load() {
+			casOut, updateErr := ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
+			return false, updateErr, casOut
+		}
+
+		// Begin fallback DataStore Get to perform WriteUpdateWithXattrs
+		fallbackBody, fallbackXattrs, fallbackCasForTombstone, err := ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
+		if IsDocNotFoundError(err) {
+			// Neither store has the doc — let primary's own WriteUpdateWithXattrs insert it.
+			casOut, updateErr := ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
+			return false, updateErr, casOut
+		}
+		// A doc with no/partial xattrs is still a fallback hit — surface what we have to the
+		// callback rather than treat it as not-found.
+		if err != nil && !IsXattrNotFoundError(err) && !errors.Is(err, ErrXattrPartialFound) {
+			return false, err, 0
+		}
+
+		updatedDoc, cbErr := callback(fallbackBody, fallbackXattrs, 0)
+		if errors.Is(cbErr, ErrCasFailureShouldRetry) {
+			// retry: callback explicitly asked us to retry
+			return true, nil, 0
+		}
+		if cbErr != nil {
+			return false, cbErr, 0
+		}
+		writeExp := exp
+		if updatedDoc.Expiry != nil {
+			writeExp = *updatedDoc.Expiry
+		}
+
+		if updatedDoc.IsTombstone {
+			// Tombstone the fallback copy directly — primary never held it, so a primary tombstone is
+			// pointless and would shadow the fallback for nothing.
+			// deleteBody=true clears the body while preserving the requested xattrs (if any) on the fallback record.
+			_, tombstoneErr := ms.fallback.WriteTombstoneWithXattrs(ctx, k, writeExp, fallbackCasForTombstone, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, true, opts)
+			switch {
+			case tombstoneErr == nil, IsDocNotFoundError(tombstoneErr):
+				return false, nil, 0
+			case IsCasMismatch(tombstoneErr):
+				// retry: concurrent fallback mutation underneath this Tombstone
+				//        This shouldn't happen with the MetadataStore wrapper only routing writes into Primary,
+				//        but it could be two concurrent Tombstones that we should at least have one more attempt for
+				return true, nil, 0
+			}
+			return false, tombstoneErr, 0
+		}
+
+		// Write to primary with CAS=0 to force safe insertion.
+		// xattrsToDelete is intentionally nil here: cas=0 is an insert and the underlying primary
+		// store rejects xattrsToDelete on insert (sgbucket.ErrDeleteXattrOnDocumentInsert).
+		// Anything the callback wanted dropped is already absent from updatedDoc.Xattrs.
+		casOut, writeErr := ms.primary.WriteWithXattrs(ctx, k, writeExp, 0, updatedDoc.Doc, updatedDoc.Xattrs, nil, opts)
+		if IsCasMismatch(writeErr) || IsDocNotFoundError(writeErr) {
+			// retry: concurrent writer beat us to primary
+			//        retry loop will run again and be routed directly to the primary DataStore WriteUpdateWithXattrs.
+			return true, nil, 0
+		}
+		if writeErr != nil {
+			return false, writeErr, 0
+		}
+
+		// success: Only case where we can actually return a non-zero CAS - successful Primary DataStore Insert.
+		return false, nil, casOut
+	}
+
+	err, casOut := RetryLoopCas(ctx, "MetadataStore.WriteUpdateWithXattrs", worker, DefaultRetrySleeper())
+	return casOut, err
 }
 
 func (ms *MetadataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
