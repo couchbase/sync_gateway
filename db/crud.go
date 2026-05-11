@@ -2757,7 +2757,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			// update the mutate in options based on the above logic
 			updatedDoc.Spec = doc.HLV.computeMacroExpansions()
 
-			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
+			updatedDoc.Spec, err = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
+			if err != nil {
+				return
+			}
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 			if doc.MetadataOnlyUpdate != nil {
@@ -3841,6 +3844,9 @@ const (
 
 	expandMacroCASValueUint64 = math.MaxUint64 // static value that indicates that a CAS macro expansion should be applied to a property
 	expandMacroCASValueString = "expand"
+
+	// cbsSubdocPathMaxLength is the maximum number of bytes allowed in a Couchbase Server subdocument path.
+	cbsSubdocPathMaxLength = 1024
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -3877,6 +3883,20 @@ func xattrCurrentVersionCASPath(xattrKey string) string {
 	return xattrKey + "." + versionVectorCVCASMacro
 }
 
-func xattrRevokedChannelVersionPath(xattrKey string, channelName string) string {
-	return xattrKey + ".channels." + channelName + "." + xattrMacroCurrentRevVersion
+func xattrRevokedChannelVersionPath(xattrKey string, channelName string) (string, error) {
+	path := xattrKey + ".channels." + escapeSubdocPathComponent(channelName) + "." + xattrMacroCurrentRevVersion
+	if len(path) > cbsSubdocPathMaxLength {
+		return "", base.RedactErrorf("subdoc path for channel %s exceeds maximum length of %d bytes", base.UD(channelName), cbsSubdocPathMaxLength)
+	}
+	return path, nil
+}
+
+// escapeSubdocPathComponent wraps a Couchbase subdocument path component in backticks when it
+// contains a dot (the subdoc path separator), preventing the server from interpreting the dots
+// as nested key references. Any backticks within the component are doubled to escape them.
+func escapeSubdocPathComponent(component string) string {
+	if !strings.Contains(component, ".") {
+		return component
+	}
+	return "`" + strings.ReplaceAll(component, "`", "``") + "`"
 }
