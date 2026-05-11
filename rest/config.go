@@ -376,22 +376,23 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		}
 	}
 
-	logMessage := "Must repair invalid database config for %q for it to be usable!"
+	logMessage := "Couldn't load database %q: "
 	logArgs := []any{base.MD(dbname)}
 
 	// build log message
 	if isBucketMismatch := *cnf.Bucket != bucket; isBucketMismatch {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
-		logMessage += " Mismatched buckets (config bucket: %q, actual bucket: %q)"
+		logMessage += "Must repair invalid database config - Mismatched buckets (config bucket: %q, actual bucket: %q)"
 		logArgs = append(logArgs, base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
 	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseRollbackCollectionCollisions.Add(1)
-		logMessage += " Conflicting collections detected"
+		logMessage += "Must repair invalid database config - Conflicting collections detected"
 	} else if databaseErr != nil {
-		logMessage += " Error encountered loading database."
+		logMessage += "Error encountered loading database: %v"
+		logArgs = append(logArgs, *databaseErr)
 	} else {
 		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
-		logMessage += " Database was marked invalid. See logs for details."
+		logMessage += "Database was marked invalid without cause. See logs for details."
 	}
 
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
