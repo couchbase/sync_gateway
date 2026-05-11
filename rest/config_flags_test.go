@@ -37,7 +37,7 @@ func TestAllConfigFlags(t *testing.T) {
 		switch rFlagVal.Interface().(type) {
 		case string: // Test different types of strings
 			rConfigVal := reflect.ValueOf(flagConfig.config).Elem()
-			if rConfigVal.Kind() != reflect.Ptr && rConfigVal.CanAddr() {
+			if rConfigVal.Kind() != reflect.Pointer && rConfigVal.CanAddr() {
 				rConfigVal = rConfigVal.Addr()
 			}
 			val := "TestString"
@@ -157,7 +157,7 @@ func TestAllConfigOptionsAsFlags(t *testing.T) {
 
 func countFields(cfg any) (fields int) {
 	rField := reflect.ValueOf(cfg)
-	if rField.Kind() == reflect.Ptr {
+	if rField.Kind() == reflect.Pointer {
 		rField = rField.Elem()
 	}
 	if rField.Kind() != reflect.Struct {
