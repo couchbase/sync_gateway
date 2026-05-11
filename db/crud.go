@@ -231,7 +231,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 
 	xattrKeys := []string{base.SyncXattrName, base.VirtualXattrRevSeqNo, base.MouXattrName}
-	_, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
+	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if err != nil {
 		return err
 	}
@@ -239,6 +239,20 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	doc, err := c.unmarshalDocumentWithXattrs(ctx, key, nil, xattrs, cas, DocUnmarshalSync)
 	if err != nil {
 		return err
+	}
+
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
+	}
+
+	if !isSgWrite {
+		var importErr error
+
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
+		if importErr != nil {
+			return importErr
+		}
 	}
 
 	// Store lengths before compaction to detect if any changes occur
@@ -274,7 +288,8 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 
 	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyCRUD, `Could not determine the revSeqNo when attempting to compact channel history for doc: %s. Error: %v`, base.UD(docid), err)
+		base.WarnfCtx(ctx, `Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
+		return base.RedactErrorf(`Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
 	}
 
 	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, revSeqNo, doc.MetadataOnlyUpdate)

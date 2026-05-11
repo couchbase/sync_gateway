@@ -3927,12 +3927,8 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 
 	t.Run("basic compaction", func(t *testing.T) {
-		var body db.Body
 		// Create a document with a single channel assignment
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels": ["test"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc1", `{"channels": ["test"]}`)
 		syncData, err := collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
 
@@ -3941,10 +3937,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.Len(t, syncData.ChannelSetHistory, 0)
 
 		// Remove all channels - ends the existing channel range in ChannelSet
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
 		syncData, err = collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
 
@@ -3953,10 +3946,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.Len(t, syncData.ChannelSetHistory, 0)
 
 		// Add multiple channels - generates history for the previously removed channel
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version = rt.UpdateDoc("doc1", version, `{"channels": ["test", "test2"]}`)
 		syncData, err = collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
 
@@ -3976,21 +3966,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("seq zero keeps all history", func(t *testing.T) {
 		// Compact with seq=0 should keep all entries
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"channels": ["test"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc2", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc2", version, `{"channels": []}`)
+		version = rt.UpdateDoc("doc2", version, `{"channels": ["test", "test2"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc2")
 		require.NoError(t, err)
@@ -4007,21 +3985,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("compact all history", func(t *testing.T) {
 		// Compact with very high seq removes all history
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc3", `{"channels": ["test"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc3", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc3", version, `{"channels": []}`)
+		version = rt.UpdateDoc("doc3", version, `{"channels": ["test", "test2"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc3")
 		require.NoError(t, err)
@@ -4039,49 +4005,31 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("partial history compaction", func(t *testing.T) {
 		// Compact removes entries with End <= seq, keeps entries with End > seq
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc4", `{"channels": ["a"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc4", `{"channels": ["a"]}`)
+		version = rt.UpdateDoc("doc4", version, `{"channels": []}`)
 
 		docSeq := rt.GetDocumentSequence("doc4")
 
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4?rev="+body["rev"].(string), `{"channels": ["b"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version = rt.UpdateDoc("doc4", version, `{"channels": ["b"]}`)
+		version = rt.UpdateDoc("doc4", version, `{"channels": []}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
 		channelSetLenBefore := len(syncDataBefore.ChannelSet)
 		channelLenBefore := len(syncDataBefore.Channels)
 
-		// Compact at seq 3
 		err = collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
 		require.NoError(t, err)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
 
-		// Verify: only entries with End > 3 or End == 0 (still active) should remain
 		for _, entry := range syncDataAfter.ChannelSet {
-			assert.True(t, entry.End == 0 || entry.End > uint64(3))
+			assert.True(t, entry.End == 0 || entry.End > docSeq)
 		}
 
-		// Verify only channels with seq > 3 should remain
 		for _, entry := range syncDataAfter.Channels {
-			assert.True(t, entry.Seq > uint64(3))
+			assert.True(t, entry.Seq > docSeq)
 		}
 
 		// Should have fewer than before
@@ -4104,23 +4052,12 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("multiple channels with mixed history", func(t *testing.T) {
 		// Complex scenario with multiple channels
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc7", `{"channels": ["a", "b"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc7?rev="+body["rev"].(string), `{"channels": ["a"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc7", `{"channels": ["a", "b"]}`)
+		version = rt.UpdateDoc("doc7", version, `{"channels": ["a"]}`)
 
 		docSeq := rt.GetDocumentSequence("doc7")
 
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc7?rev="+body["rev"].(string), `{"channels": ["a", "c"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version = rt.UpdateDoc("doc7", version, `{"channels": ["a", "c"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
@@ -4136,11 +4073,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("compact empty history", func(t *testing.T) {
 		// Doc with no history should succeed
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc8", `{"channels": ["test"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		rt.PutDoc("doc8", `{"channels": ["test"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc8")
 		require.NoError(t, err)
@@ -4156,24 +4089,12 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("verify xattr updates", func(t *testing.T) {
 		// Verify CAS is updated and no reimport happens
-		var body db.Body
-		resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc10", `{"channels": ["test"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err := json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc10?rev="+body["rev"].(string), `{"channels": []}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc10?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
-		RequireStatus(t, resp, http.StatusCreated)
-		err = json.Unmarshal(resp.BodyBytes(), &body)
-		require.NoError(t, err)
+		version := rt.PutDoc("doc10", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc10", version, `{"channels": []}`)
+		version = rt.UpdateDoc("doc10", version, `{"channels": ["test", "test2"]}`)
 
 		// After compaction, document should still be accessible
-		err = collection.CompactDocChannelHistory(ctx, "doc10", 2)
+		err := collection.CompactDocChannelHistory(ctx, "doc10", 2)
 		require.NoError(t, err)
 
 		// Verify doc is still accessible with correct data
