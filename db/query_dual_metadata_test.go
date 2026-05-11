@@ -125,7 +125,7 @@ func TestMergedDedupIteratorEmpty(t *testing.T) {
 	ctx := base.TestCtx(t)
 	iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](newMockIterator(nil), newMockIterator(nil), 0)
 	var row PrincipalRow
-	assert.False(t, iter.Next(context.Background(), &row))
+	assert.False(t, iter.Next(ctx, &row))
 	require.NoError(t, iter.Close(ctx))
 }
 
