@@ -609,7 +609,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
-	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
 
@@ -2621,7 +2621,7 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 // while it is offline. The polling mechanism watches the metadata store for updates to the database state
 // document and invokes registered handlers when changes are detected.
 func (db *DatabaseContext) InitializeOfflineMode() {
-	// TODO: Add the appropriate handler function to handle this
+	// TODO: Add the appropriate handler function to handle this - CBG-5183
 	db.DBStateManager.AddResyncFunc(TempResyncHandler)
 	db.DBStateManager.StartPolling(db.CancelContext)
 }
