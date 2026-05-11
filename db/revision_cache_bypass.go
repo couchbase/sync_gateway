@@ -107,13 +107,15 @@ func (rc *BypassRevisionCache) Peek(ctx context.Context, docID string, versionSt
 }
 
 // Put is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+func (rc *BypassRevisionCache) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
 	// no-op
+	return nil
 }
 
 // Update is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
+func (rc *BypassRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
 	// no-op
+	return nil
 }
 
 func (rc *BypassRevisionCache) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {

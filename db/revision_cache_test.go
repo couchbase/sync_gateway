@@ -649,7 +649,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(ctx, doc, collection.GetCollectionID())
+	require.NoError(t, rc.Put(ctx, doc, collection.GetCollectionID()))
 
 	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(ctx, key, rev1, collection.GetCollectionID())
@@ -931,12 +931,12 @@ func TestImmediateRevCacheMemoryBasedEviction(t *testing.T) {
 				revOrCV = Version{Value: 123, SourceID: "test"}.String()
 			}
 
-			cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+			require.NoError(t, cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 			assert.Equal(t, int64(0), memoryBytesCounted.Value())
 			assert.Equal(t, int64(0), cacheNumItems.Value())
 
-			cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+			require.NoError(t, cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 			if !testCase.useCVKey {
 				// fetch each doc added to load into cache
@@ -1118,15 +1118,15 @@ func TestImmediateRevCacheItemBasedEviction(t *testing.T) {
 				revOrCV = Version{Value: 123, SourceID: "test"}.String()
 			}
 			// load up item to hit max capacity
-			cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+			require.NoError(t, cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 			// eviction starts from here in test
-			cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+			require.NoError(t, cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "newDoc", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 			assert.Equal(t, int64(15), memoryBytesCounted.Value())
 			assert.Equal(t, int64(1), cacheNumItems.Value())
 
-			cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+			require.NoError(t, cache.Upsert(ctx, DocumentRevision{BodyBytes: []byte(`{"some":"test"}`), DocID: "doc2", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 			assert.Equal(t, int64(15), memoryBytesCounted.Value())
 			assert.Equal(t, int64(1), cacheNumItems.Value())
@@ -1329,7 +1329,7 @@ func TestSingleLoad(t *testing.T) {
 	}
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, newCacheMemoryController(cacheOptions.MaxBytes, revCacheStats.cacheMemoryStat))
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	require.NoError(t, cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", CV: &Version{Value: 123, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 	_, _, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", testCollectionID, false)
 
 	assert.NoError(t, err)
@@ -1352,7 +1352,7 @@ func TestConcurrentLoad(t *testing.T) {
 	}
 	cache := NewLRURevisionCache(cacheOptions, backingStoreMap, revCacheStats, newCacheMemoryController(cacheOptions.MaxBytes, revCacheStats.cacheMemoryStat))
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 1234, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID)
+	require.NoError(t, cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", CV: &Version{Value: 1234, SourceID: "test"}, History: Revisions{"start": 1}}, testCollectionID))
 
 	// Trigger load into cache
 	var wg sync.WaitGroup
@@ -1593,7 +1593,7 @@ func TestRevCacheCapacityStat(t *testing.T) {
 			assertItems(0)
 
 			// Put adds a CV-keyed entry.
-			cache.Put(ctx, documentRevisionForCacheTest("doc1", `{"test":"1"}`), testCollectionID)
+			require.NoError(t, cache.Put(ctx, documentRevisionForCacheTest("doc1", `{"test":"1"}`), testCollectionID))
 			assertItems(1)
 
 			// A failed load does not leave a stale entry in the cache.
@@ -1626,11 +1626,11 @@ func TestRevCacheCapacityStat(t *testing.T) {
 			assertItems(3)
 
 			// Upsert on an existing doc replaces its entry without incrementing the count.
-			cache.Upsert(ctx, documentRevisionForCacheTest("doc1", `{"test":"updated"}`), testCollectionID)
+			require.NoError(t, cache.Upsert(ctx, documentRevisionForCacheTest("doc1", `{"test":"updated"}`), testCollectionID))
 			assertItems(3)
 
 			// Upsert on a new doc increments the count.
-			cache.Upsert(ctx, documentRevisionForCacheTest("doc4", `{"test":"4"}`), testCollectionID)
+			require.NoError(t, cache.Upsert(ctx, documentRevisionForCacheTest("doc4", `{"test":"4"}`), testCollectionID))
 			assertItems(4)
 
 			// Peek on a cached doc does not modify the count.
@@ -1653,11 +1653,11 @@ func TestRevCacheCapacityStat(t *testing.T) {
 			assertItems(4)
 
 			// Put a new doc reaching capacity: count increments but no eviction occurs.
-			cache.Put(ctx, documentRevisionForCacheTest("doc5", `{"test":"5"}`), testCollectionID)
+			require.NoError(t, cache.Put(ctx, documentRevisionForCacheTest("doc5", `{"test":"5"}`), testCollectionID))
 			assertItems(5)
 
 			// Upsert a new doc beyond capacity: the LRU entry (doc3) is evicted to stay within the limit.
-			cache.Upsert(ctx, documentRevisionForCacheTest("doc6", `{"test":"6"}`), testCollectionID)
+			require.NoError(t, cache.Upsert(ctx, documentRevisionForCacheTest("doc6", `{"test":"6"}`), testCollectionID))
 			assertItems(5)
 
 			// Remove all remaining entries. doc3 was evicted above so its removal is a no-op.
@@ -1770,7 +1770,7 @@ func TestRevCacheOperationsCV(t *testing.T) {
 		History:   Revisions{"start": 1},
 		CV:        &cv,
 	}
-	cache.Put(base.TestCtx(t), documentRevision, testCollectionID)
+	require.NoError(t, cache.Put(base.TestCtx(t), documentRevision, testCollectionID))
 
 	docRev, _, err := cache.Get(base.TestCtx(t), "doc1", cv.String(), testCollectionID, RevCacheDontLoadBackupRev)
 	require.NoError(t, err)
@@ -1783,7 +1783,7 @@ func TestRevCacheOperationsCV(t *testing.T) {
 
 	documentRevision.BodyBytes = []byte(`{"test":"12345"}`)
 
-	cache.Upsert(base.TestCtx(t), documentRevision, testCollectionID)
+	require.NoError(t, cache.Upsert(base.TestCtx(t), documentRevision, testCollectionID))
 
 	docRev, _, err = cache.Get(base.TestCtx(t), "doc1", cv.String(), testCollectionID, RevCacheDontLoadBackupRev)
 	require.NoError(t, err)
@@ -2126,7 +2126,7 @@ func TestConcurrentPutAndGetOnRevCache(t *testing.T) {
 	}()
 
 	go func() {
-		cache.Put(ctx, docRev, testCollectionID)
+		require.NoError(t, cache.Put(ctx, docRev, testCollectionID))
 		wg.Done()
 	}()
 
@@ -2299,7 +2299,7 @@ func TestPutRevHighRevCacheChurn(t *testing.T) {
 	go func() {
 		for i := range 100 {
 			docRev := DocumentRevision{DocID: docID, RevID: fmt.Sprintf("1-%d", i), CV: &Version{SourceID: "someSrc", Value: uint64(i)}, BodyBytes: fmt.Appendf(nil, `{"ver": "%d"}`, i), History: Revisions{"start": 1}}
-			db.revisionCache.Put(ctx, docRev, collection.GetCollectionID())
+			require.NoError(t, db.revisionCache.Put(ctx, docRev, collection.GetCollectionID()))
 		}
 		wg.Done()
 	}()
@@ -2520,7 +2520,7 @@ func TestRaceRemovingStaleCVValue(t *testing.T) {
 	wg.Add(2)
 
 	go func() {
-		cache.Put(ctx, docRev, testCollectionID)
+		require.NoError(t, cache.Put(ctx, docRev, testCollectionID))
 		wg.Done()
 	}()
 
@@ -2882,14 +2882,16 @@ func TestMemoryBasedEvictionRevisionCacheOnly(t *testing.T) {
 }
 
 // makeTestRevision creates a minimal DocumentRevision for memory-accounting tests.
-// MemoryBytes = len(body) because History is an empty (but non-nil) Revisions map
-// and there are no channels, so CalculateBytes contributes 0 history/channel overhead.
+// MemoryBytes = len(body) because History is minimal Revisions map
+// and there are no channels, so CalculateBytes contributes 32 history/channel overhead.
 func makeTestRevision(docID string, cv Version, body string) DocumentRevision {
+	ids := []string{"abc"}
 	return DocumentRevision{
 		DocID:     docID,
+		RevID:     "1-abc",
 		CV:        &cv,
 		BodyBytes: []byte(body),
-		History:   Revisions{}, // non-nil satisfies Put's nil-history guard; contributes 0 bytes
+		History:   Revisions{RevisionsStart: "1", RevisionsIds: ids},
 	}
 }
 
@@ -2971,22 +2973,22 @@ func TestUpsertReplacesItemMemoryBytes(t *testing.T) {
 
 	docCV := Version{Value: 1, SourceID: "test"}
 
-	// First Upsert: small body — MemoryBytes = len(`{"v":1}`) = 7.
-	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":1}`), testCollectionID)
+	// First Upsert: small body — MemoryBytes = len(`{"v":1}`) = 7 + 32 (history) = 39 bytes total.
+	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":1}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
-	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value(), "first upsert should count 7 bytes")
+	assert.Equal(t, int64(39), revStats.cacheMemoryStat.Value(), "first upsert should count 7 bytes")
 
-	// Second Upsert: same doc/CV, larger body — MemoryBytes = 22.
-	// Old bytes (7) must be decremented and new bytes (22) incremented; stat = 22, not 29.
-	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":2,"extra":"data"}`), testCollectionID)
+	// Second Upsert: same doc/CV, larger body + history — MemoryBytes = 54.
+	// Old bytes (39) must be decremented and new bytes (54) incremented; stat = 54, not 39.
+	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":2,"extra":"data"}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value(), "upsert replaces in-place — still 1 item")
-	assert.Equal(t, int64(22), revStats.cacheMemoryStat.Value(),
+	assert.Equal(t, int64(54), revStats.cacheMemoryStat.Value(),
 		"stat must equal new body size only — no double-counting of old bytes")
 
-	// Third Upsert: smaller body — MemoryBytes = 7.  Stat must shrink, not accumulate.
-	orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":3}`), testCollectionID)
+	// Third Upsert: smaller body — MemoryBytes = 7 + 32 (bytes for history) = 39.  Stat must shrink, not accumulate.
+	require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision("doc1", docCV, `{"v":3}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
-	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value(), "stat must shrink when the replacement body is smaller")
+	assert.Equal(t, int64(39), revStats.cacheMemoryStat.Value(), "stat must shrink when the replacement body is smaller")
 }
 
 // TestCombinedNumberAndMemoryEviction verifies that when both MaxItemCount and MaxBytes
@@ -3002,11 +3004,12 @@ func TestCombinedNumberAndMemoryEviction(t *testing.T) {
 	revStats := newTestRevCacheStats()
 	deltaStats := newTestDeltaStats()
 
-	// rev body = 15 bytes; each delta body = 10 bytes.
-	// maxBytes=20: rev(15) fits alone; delta(10) fits alone; rev+delta(25) triggers memory
-	// eviction; two deltas(20) exactly at the limit — NOT > 20 — so no memory eviction fires
+	// rev body = `{"key":"value"}` = 15 body bytes + 32 history bytes = 47 bytes total.
+	// each delta body = 10 bytes (no history in test deltas).
+	// maxBytes=50: rev(47) fits alone; delta(10) fits alone; rev+delta(57) triggers memory
+	// eviction; two deltas(20) well below the limit — so no memory eviction fires
 	// after the second delta is added via number-based eviction.
-	const maxBytes = int64(20)
+	const maxBytes = int64(50)
 
 	// MaxItemCount=1 caps both rev and delta caches at 1 item, ensuring number-based
 	// eviction fires when the second delta is added.
@@ -3022,21 +3025,21 @@ func TestCombinedNumberAndMemoryEviction(t *testing.T) {
 		return d
 	}
 
-	// Put a revision (15 bytes) — fits within maxBytes, no eviction.
-	orchestrator.Put(ctx, makeTestRevision("doc1", Version{Value: 1, SourceID: "src"}, `{"key":"value"}`), testCollectionID)
+	// Put a revision (47 bytes) — fits within maxBytes, no eviction.
+	require.NoError(t, orchestrator.Put(ctx, makeTestRevision("doc1", Version{Value: 1, SourceID: "src"}, `{"key":"value"}`), testCollectionID))
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
-	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value())
+	assert.Equal(t, int64(47), revStats.cacheMemoryStat.Value())
 
-	// UpdateDelta A: total = 15+10 = 25 > 20 → memory eviction fires and evicts the revision immediately
-	// After eviction: only delta doc1 in memory (15 bytes).
+	// UpdateDelta A: total = 47+10 = 57 > 50 → memory eviction fires and evicts the revision immediately.
+	// After eviction: only delta A in memory (10 bytes).
 	orchestrator.UpdateDelta(ctx, "doc1", "from1", "to1", testCollectionID, makeDelta())
 	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value())
 	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value())
-	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(), "only doc1 bytes should remain")
+	assert.Equal(t, int64(10), revStats.cacheMemoryStat.Value(), "only delta A bytes should remain")
 
 	// UpdateDelta B: number-based eviction (MaxItemCount=1) removes delta A and decrements
 	// its 10 bytes, then delta B is added and its 10 bytes incremented.  Net = 10 bytes.
-	// Memory (10) is NOT > maxBytes (20) so memory-based eviction does not fire.
+	// Memory (10) is NOT > maxBytes (50) so memory-based eviction does not fire.
 	orchestrator.UpdateDelta(ctx, "doc1", "from2", "to2", testCollectionID, makeDelta())
 	assert.Equal(t, int64(0), revStats.cacheNumItemsStat.Value(), "revision cache still empty")
 	assert.Equal(t, int64(1), deltaStats.DeltaCacheNumItems.Value(), "only delta B should remain")
@@ -3063,18 +3066,19 @@ func TestMemoryStatTracksUsageWithUnlimitedCapacity(t *testing.T) {
 	cv2 := Version{Value: 2, SourceID: "test"}
 
 	// Put two revisions with different bodies.
-	// rev1: len(`{"v":1}`) = 7 bytes; rev2: len(`{"v":2,"x":"y"}`) = 15 bytes.
-	orchestrator.Put(ctx, makeTestRevision("doc1", cv1, `{"v":1}`), testCollectionID)
-	assert.Equal(t, int64(7), revStats.cacheMemoryStat.Value())
+	// Each revision contributes len(body) + 32 (one history digest × 32 bytes).
+	// rev1: 7 + 32 = 39 bytes; rev2: 15 + 32 = 47 bytes.
+	require.NoError(t, orchestrator.Put(ctx, makeTestRevision("doc1", cv1, `{"v":1}`), testCollectionID))
+	assert.Equal(t, int64(39), revStats.cacheMemoryStat.Value())
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 
-	orchestrator.Put(ctx, makeTestRevision("doc2", cv2, `{"v":2,"x":"y"}`), testCollectionID)
-	assert.Equal(t, int64(22), revStats.cacheMemoryStat.Value(), "stat should be the sum of both revision bodies")
+	require.NoError(t, orchestrator.Put(ctx, makeTestRevision("doc2", cv2, `{"v":2,"x":"y"}`), testCollectionID))
+	assert.Equal(t, int64(86), revStats.cacheMemoryStat.Value(), "stat should be the sum of both revision bodies and history overhead")
 	assert.Equal(t, int64(2), revStats.cacheNumItemsStat.Value())
 
 	// Remove rev1 — stat must decrease by exactly rev1's bytes.
 	orchestrator.Remove(ctx, "doc1", cv1.String(), testCollectionID)
-	assert.Equal(t, int64(15), revStats.cacheMemoryStat.Value(), "stat should reflect only rev2 after removing rev1")
+	assert.Equal(t, int64(47), revStats.cacheMemoryStat.Value(), "stat should reflect only rev2 after removing rev1")
 	assert.Equal(t, int64(1), revStats.cacheNumItemsStat.Value())
 	assert.True(t, revStats.cacheMemoryStat.Value() >= 0, "memory stat must never go negative")
 
@@ -3115,7 +3119,7 @@ func TestConcurrentPutAndRemoveRace(t *testing.T) {
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+				require.NoError(t, orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID))
 			}()
 			go func() {
 				defer wg.Done()
@@ -3224,7 +3228,7 @@ func TestRemoveDuringNumberBasedEviction(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+			require.NoError(t, orchestrator.Put(ctx, makeTestRevision(docID, cv, body), testCollectionID))
 		}()
 		go func() {
 			defer wg.Done()
@@ -3270,7 +3274,7 @@ func TestConcurrentUpsertAndRemoveRace(t *testing.T) {
 	for i := range numDocs {
 		cv := Version{Value: 1, SourceID: "test"}
 		docID := fmt.Sprintf("doc-%d", i)
-		orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"v":1}`), testCollectionID)
+		require.NoError(t, orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"v":1}`), testCollectionID))
 	}
 
 	// Concurrently Upsert new versions and Remove entries.
@@ -3284,7 +3288,7 @@ func TestConcurrentUpsertAndRemoveRace(t *testing.T) {
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				orchestrator.Upsert(ctx, makeTestRevision(docID, cv, body), testCollectionID)
+				require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision(docID, cv, body), testCollectionID))
 			}()
 			go func() {
 				defer wg.Done()
@@ -3315,8 +3319,9 @@ func TestMemoryEvictionDuringConcurrentPuts(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	revStats := newTestRevCacheStats()
-	// Each body is 10 bytes; maxBytes=50 means at most ~5 items before eviction.
-	const maxBytes = int64(50)
+	// Each body `{"k":"val"}` = 11 bytes + 32 history bytes = 43 bytes per revision.
+	// maxBytes=200 means floor(200/43) = 4 items fit before eviction (4×43=172 ≤ 200 < 5×43=215).
+	const maxBytes = int64(200)
 	opts := &RevisionCacheOptions{MaxItemCount: 1000, MaxBytes: maxBytes}
 	orchestrator := NewRevisionCacheOrchestrator(
 		opts, CreateTestSingleBackingStoreMap(&noopBackingStore{}, testCollectionID),
@@ -3332,13 +3337,13 @@ func TestMemoryEvictionDuringConcurrentPuts(t *testing.T) {
 			defer wg.Done()
 			cv := Version{Value: uint64(i + 1), SourceID: "test"}
 			docID := fmt.Sprintf("doc-%d", i)
-			orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"k":"val"}`), testCollectionID)
+			require.NoError(t, orchestrator.Put(ctx, makeTestRevision(docID, cv, `{"k":"val"}`), testCollectionID))
 		}()
 	}
 	wg.Wait()
 
 	// After all concurrent Puts and evictions settle, the memory stat should be at or below capacity.
-	assert.Equal(t, int64(44), revStats.cacheMemoryStat.Value(), "we should have 4 items worth of memory")
+	assert.Equal(t, int64(172), revStats.cacheMemoryStat.Value(), "we should have 4 items worth of memory")
 	assert.Equal(t, int64(4), revStats.cacheNumItemsStat.Value(), "we should have 4 items in cache")
 }
 
@@ -3393,10 +3398,10 @@ func TestMemoryStatLongTermConsistency(t *testing.T) {
 	}
 
 	put := func(i int) {
-		orchestrator.Put(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID)
+		require.NoError(t, orchestrator.Put(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID))
 	}
 	upsert := func(i int) {
-		orchestrator.Upsert(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID)
+		require.NoError(t, orchestrator.Upsert(ctx, makeTestRevision(docID(i), writeCV, bodyForDoc(i)), testCollectionID))
 	}
 	get := func(i int) {
 		_, _, _ = orchestrator.Get(ctx, docID(i), loadedCV.String(), testCollectionID, false)
@@ -3488,4 +3493,35 @@ func TestMemoryStatLongTermConsistency(t *testing.T) {
 	// the controller drives back to <= maxBytes once triggerMemoryEviction completes).
 	assert.LessOrEqual(t, revStats.cacheMemoryStat.Value(), maxBytes,
 		"after workload settles, memory stat must be at or below maxBytes — eviction failed to keep up")
+}
+
+// TestRevisionCacheInvalidRevisionError tests Put or Upsert at revision cache document revision validation
+func TestRevisionCacheInvalidRevisionError(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	revStats := newTestRevCacheStats()
+	deltaStats := newTestDeltaStats()
+
+	var docCounter, revCounter base.SgwIntStat
+	bs := &testBackingStore{getDocumentCounter: &docCounter, getRevisionCounter: &revCounter}
+
+	opts := &RevisionCacheOptions{MaxItemCount: 10, MaxBytes: 0}
+	orchestrator := NewRevisionCacheOrchestrator(
+		opts, CreateTestSingleBackingStoreMap(bs, testCollectionID),
+		revStats, deltaStats, true,
+	)
+	// Create an invalid DocumentRevision
+	invalidRev := DocumentRevision{}
+
+	t.Run("PutInvalidRevision", func(t *testing.T) {
+		err := orchestrator.Put(ctx, invalidRev, testCollectionID)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "missing DocID")
+	})
+
+	t.Run("UpsertInvalidRevision", func(t *testing.T) {
+		err := orchestrator.Upsert(ctx, invalidRev, testCollectionID)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "missing DocID")
+	})
 }

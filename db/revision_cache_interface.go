@@ -41,10 +41,10 @@ type RevisionCache interface {
 	Peek(ctx context.Context, docID string, versionString string, collectionID uint32) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
-	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32)
+	Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error
 
 	// Upsert will remove existing value and re-create new one
-	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32)
+	Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error
 
 	// Remove removes the specified revID key from the cache if it exists
 	Remove(ctx context.Context, docID, versionString string, collectionID uint32)
@@ -163,13 +163,13 @@ func (c *collectionRevisionCache) Peek(ctx context.Context, docID string, versio
 }
 
 // Put is for per collection access to Put method
-func (c *collectionRevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
-	(*c.revCache).Put(ctx, docRev, c.collectionID)
+func (c *collectionRevisionCache) Put(ctx context.Context, docRev DocumentRevision) error {
+	return (*c.revCache).Put(ctx, docRev, c.collectionID)
 }
 
 // Upsert is for per collection access to Upsert method
-func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
-	(*c.revCache).Upsert(ctx, docRev, c.collectionID)
+func (c *collectionRevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) error {
+	return (*c.revCache).Upsert(ctx, docRev, c.collectionID)
 }
 
 func (c *collectionRevisionCache) Remove(ctx context.Context, docID, versionString string) {
