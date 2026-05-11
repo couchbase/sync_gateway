@@ -156,7 +156,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          name: test-logs-${{ github.job }}
           path: test.log
           retention-days: 7
           if-no-files-found: warn
@@ -193,7 +193,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          name: test-logs-${{ github.job }}
           path: test.log
           retention-days: 7
           if-no-files-found: warn
@@ -228,7 +228,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          name: test-logs-${{ github.job }}
           path: test.log
           retention-days: 7
           if-no-files-found: warn
@@ -266,7 +266,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          name: test-logs-${{ github.job }}
           path: test.log
           retention-days: 7
           if-no-files-found: warn
