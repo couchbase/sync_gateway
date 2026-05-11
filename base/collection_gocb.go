@@ -90,7 +90,7 @@ func (c *Collection) GetName() string {
 
 // KV store
 
-func (c *Collection) Get(k string, rv any) (cas uint64, err error) {
+func (c *Collection) Get(ctx context.Context, k string, rv any) (cas uint64, err error) {
 
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
@@ -106,7 +106,7 @@ func (c *Collection) Get(k string, rv any) (cas uint64, err error) {
 	return uint64(getResult.Cas()), err
 }
 
-func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
+func (c *Collection) GetRaw(ctx context.Context, k string) (rv []byte, cas uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -122,7 +122,7 @@ func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	return rv, uint64(getRawResult.Cas()), err
 }
 
-func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
+func (c *Collection) GetAndTouchRaw(ctx context.Context, k string, exp uint32) (rv []byte, cas uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -138,7 +138,7 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 	return rv, uint64(getAndTouchRawResult.Cas()), err
 }
 
-func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
+func (c *Collection) Touch(ctx context.Context, k string, exp uint32) (cas uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -149,7 +149,7 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 	return uint64(result.Cas()), nil
 }
 
-func (c *Collection) Add(k string, exp uint32, v any) (added bool, err error) {
+func (c *Collection) Add(ctx context.Context, k string, exp uint32, v any) (added bool, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -168,7 +168,7 @@ func (c *Collection) Add(k string, exp uint32, v any) (added bool, err error) {
 	return err == nil, err
 }
 
-func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+func (c *Collection) AddRaw(ctx context.Context, k string, exp uint32, v []byte) (added bool, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -187,7 +187,7 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 	return err == nil, err
 }
 
-func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
+func (c *Collection) Set(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v any) error {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -195,7 +195,7 @@ func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v a
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGJSONTranscoder(),
 	}
-	fillUpsertOptions(context.TODO(), goCBUpsertOptions, opts)
+	fillUpsertOptions(ctx, goCBUpsertOptions, opts)
 
 	if _, ok := v.([]byte); ok {
 		goCBUpsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
@@ -205,7 +205,7 @@ func (c *Collection) Set(k string, exp uint32, opts *sgbucket.UpsertOptions, v a
 	return err
 }
 
-func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
+func (c *Collection) SetRaw(ctx context.Context, k string, exp uint32, opts *sgbucket.UpsertOptions, v []byte) error {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -213,13 +213,13 @@ func (c *Collection) SetRaw(k string, exp uint32, opts *sgbucket.UpsertOptions, 
 		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
-	fillUpsertOptions(context.TODO(), goCBUpsertOptions, opts)
+	fillUpsertOptions(ctx, goCBUpsertOptions, opts)
 
 	_, err := c.Collection.Upsert(k, v, goCBUpsertOptions)
 	return err
 }
 
-func (c *Collection) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (c *Collection) WriteCas(ctx context.Context, k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -250,12 +250,12 @@ func (c *Collection) WriteCas(k string, exp uint32, cas uint64, v any, opt sgbuc
 	return uint64(result.Cas()), nil
 }
 
-func (c *Collection) Delete(k string) error {
-	_, err := c.Remove(k, 0)
+func (c *Collection) Delete(ctx context.Context, k string) error {
+	_, err := c.Remove(ctx, k, 0)
 	return err
 }
 
-func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
+func (c *Collection) Remove(ctx context.Context, k string, cas uint64) (casOut uint64, err error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -266,7 +266,7 @@ func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
 	return casOut, errRemove
 }
 
-func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	for {
 		var value []byte
 		var err error
@@ -365,7 +365,7 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 	}
 }
 
-func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+func (c *Collection) Incr(ctx context.Context, k string, amt, def uint64, exp uint32) (uint64, error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 	incrOptions := gocb.IncrementOptions{
@@ -451,12 +451,16 @@ func (c *Collection) GetExpiry(ctx context.Context, k string) (expiry uint32, ge
 	return expiry, getMetaError
 }
 
-func (c *Collection) Exists(k string) (exists bool, err error) {
+func (c *Collection) Exists(ctx context.Context, k string) (exists bool, err error) {
 	res, err := c.Collection.Exists(k, nil)
 	if err != nil {
 		return false, err
 	}
 	return res.Exists(), nil
+}
+
+func (c *Collection) GetMaxVbno(ctx context.Context) (uint16, error) {
+	return c.Bucket.GetMaxVbno(ctx)
 }
 
 // SGJsonTranscoder reads and writes JSON, with relaxed datatype restrictions on decode, and
@@ -607,9 +611,4 @@ func (c *Collection) setCollectionID() error {
 		return fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
 	}
 	return nil
-}
-
-// GetMaxVbno returns the number of vBuckets on this datastore.
-func (c *Collection) GetMaxVbno() (uint16, error) {
-	return c.Bucket.GetMaxVbno()
 }

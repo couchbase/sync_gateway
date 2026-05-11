@@ -32,7 +32,7 @@ func TestN1qlQuery(t *testing.T) {
 	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(ctx, key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -88,7 +88,7 @@ func TestN1qlQuery(t *testing.T) {
 	for {
 		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
-			queryCloseErr = queryResults.Close()
+			queryCloseErr = queryResults.Close(ctx)
 			break
 		}
 		assert.True(t, queryResult.Val > 2, "Query returned unexpected result")
@@ -107,7 +107,7 @@ func TestN1qlQuery(t *testing.T) {
 	for {
 		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
-			queryCloseErr = queryResults.Close()
+			queryCloseErr = queryResults.Close(ctx)
 			break
 		}
 		assert.True(t, queryResult.Val > 10, "Query returned unexpected result")
@@ -142,7 +142,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(ctx, key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestIndexFilterExpression: %v", err)
 		}
@@ -177,7 +177,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	for {
 		ok := queryResults.Next(ctx, &queryResult)
 		if !ok {
-			queryCloseErr = queryResults.Close()
+			queryCloseErr = queryResults.Close(ctx)
 			assert.NoError(t, queryCloseErr, "Error closing queryResults")
 			break
 		}
@@ -224,7 +224,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	for i := range 5 {
 		key := fmt.Sprintf("doc%d", i)
 		body := fmt.Sprintf(`{"val": %d}`, i)
-		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(key, 0, []byte(body))
+		added, err := n1qlStore.(sgbucket.DataStore).AddRaw(ctx, key, 0, []byte(body))
 		if err != nil {
 			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
@@ -257,16 +257,16 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	params = map[string]any{"minvalue": 2}
 	queryResults, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	require.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
-	assert.NoError(t, queryResults.Close())
+	assert.NoError(t, queryResults.Close(ctx))
 
 	// Omit params for parameterized query
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", KeyspaceQueryToken)
 	params = map[string]any{"othervalue": 2}
 	results, queryErr := n1qlStore.Query(ctx, queryExpression, params, RequestPlus, false)
 	if queryErr == nil {
-		for results.NextBytes() != nil {
+		for results.NextBytes(ctx) != nil {
 		}
-		queryErr = results.Close()
+		queryErr = results.Close(ctx)
 	}
 	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (missing params)")
 }

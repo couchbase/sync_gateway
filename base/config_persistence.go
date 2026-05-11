@@ -237,6 +237,7 @@ func (dbp *DocumentBootstrapPersistence) loadRawConfig(_ context.Context, c *goc
 	res, err := c.Get(key, &gocb.GetOptions{
 		Transcoder: gocb.NewRawJSONTranscoder(),
 	})
+
 	if err != nil {
 		return nil, 0, err
 	}
@@ -274,6 +275,7 @@ func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.C
 		Timeout:       time.Second * 10,
 		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
 	})
+
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
 			return 0, ErrNotFound

@@ -260,7 +260,7 @@ func (rev *DocumentRevision) Inject1xBodyProperties(ctx context.Context, db *Dat
 					minRevpos++
 				}
 			}
-			bodyAtts, err := db.loadAttachmentsData(rev.Attachments, minRevpos, rev.DocID)
+			bodyAtts, err := db.loadAttachmentsData(ctx, rev.Attachments, minRevpos, rev.DocID)
 			if err != nil {
 				return nil, err
 			}
@@ -322,7 +322,7 @@ func (rev *DocumentRevision) Mutable1xBody(ctx context.Context, db *DatabaseColl
 					minRevpos++
 				}
 			}
-			bodyAtts, err := db.loadAttachmentsData(rev.Attachments, minRevpos, rev.DocID)
+			bodyAtts, err := db.loadAttachmentsData(ctx, rev.Attachments, minRevpos, rev.DocID)
 			if err != nil {
 				return nil, err
 			}

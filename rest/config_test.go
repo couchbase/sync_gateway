@@ -156,8 +156,8 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestConfigValidationDeltaSync(t *testing.T) {
-	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
 	ctx := base.TestCtx(t)
+	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
 	buf := bytes.NewBufferString(jsonConfig)
 	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
@@ -177,8 +177,8 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 }
 
 func TestConfigValidationCache(t *testing.T) {
-	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 	ctx := base.TestCtx(t)
+	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 	buf := bytes.NewBufferString(jsonConfig)
 	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
@@ -225,8 +225,8 @@ func TestConfigValidationCache(t *testing.T) {
 }
 
 func TestConfigValidationImport(t *testing.T) {
-	jsonConfig := `{"databases": {"db": {"enable_shared_bucket_access":true, "import_docs": true, "import_partitions": 32}}}`
 	ctx := base.TestCtx(t)
+	jsonConfig := `{"databases": {"db": {"enable_shared_bucket_access":true, "import_docs": true, "import_partitions": 32}}}`
 	buf := bytes.NewBufferString(jsonConfig)
 	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
@@ -834,13 +834,14 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 }
 
 func TestSetMaxFileDescriptors(t *testing.T) {
+	ctx := base.TestCtx(t)
 	var maxFDs *uint64
-	err := SetMaxFileDescriptors(base.TestCtx(t), maxFDs)
+	err := SetMaxFileDescriptors(ctx, maxFDs)
 	assert.NoError(t, err, "Sets file descriptor limit to default when requested soft limit is nil")
 
 	// Set MaxFileDescriptors
 	maxFDsHigher := DefaultMaxFileDescriptors + 1
-	err = SetMaxFileDescriptors(base.TestCtx(t), &maxFDsHigher)
+	err = SetMaxFileDescriptors(ctx, &maxFDsHigher)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
 
@@ -956,13 +957,12 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 }
 
 func TestValidateServerContextSharedBuckets(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
-
-	ctx := base.TestCtx(t)
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
@@ -1423,31 +1423,32 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestDefaultLogging(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.ResetGlobalTestLogging(t)
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 
-	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+	require.NoError(t, config.SetupAndValidateLogging(ctx))
 	assert.Equal(t, base.LevelNone, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{}, base.ConsoleLogKey().EnabledLogKeys())
 
 	// setting just a log key should enable logging
 	config.Logging.Console = &base.ConsoleLoggerConfig{LogKeys: []string{"CRUD"}}
-	require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
+	require.NoError(t, config.SetupAndValidateLogging(ctx))
 	assert.Equal(t, base.LevelInfo, *base.ConsoleLogLevel())
 	assert.Equal(t, []string{"CRUD"}, base.ConsoleLogKey().EnabledLogKeys())
 }
 
 func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
 		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
 		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
-		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, false)
 		require.NoError(t, err)
 		defer sc.Close(ctx)
@@ -2214,9 +2215,9 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			}
 			terminator := make(chan bool)
 			defer close(terminator)
-			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
+			dbc := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
 			sc := &ServerContext{}
-			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
+			err := sc.initEventHandlers(base.TestCtx(t), dbc, &dbConfig)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2536,6 +2537,7 @@ func TestStartupConfigUpdateFrequencyValidation(t *testing.T) {
 }
 
 func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const errContains = "node_heartbeat_expiry"
 
 	testCases := []struct {
@@ -2582,7 +2584,7 @@ func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
 			if test.heartbeatExpiry != nil {
 				sc.Bootstrap.NodeHeartbeatExpiry = base.NewConfigDuration(*test.heartbeatExpiry)
 			}
-			err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+			err := sc.Validate(ctx, base.IsEnterpriseEdition())
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errContains)
@@ -2600,7 +2602,7 @@ func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
 	t.Run("DefaultStartupConfig materializes heartbeat_expiry, exposing floor violation when only config_update_frequency is overridden", func(t *testing.T) {
 		sc := DefaultStartupConfig("")
 		sc.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute)
-		err := sc.Validate(base.TestCtx(t), base.IsEnterpriseEdition())
+		err := sc.Validate(ctx, base.IsEnterpriseEdition())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), errContains)
 	})
@@ -3035,6 +3037,7 @@ func makeScopesConfigWithDefault(scopeName string, collections []string) *Scopes
 //   - Delete the invalid db config form the bucket
 //   - Force config poll reload and assert the invalid db is cleared
 func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
@@ -3046,7 +3049,6 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 	})
 	defer rt.Close()
 	realBucketName := rt.CustomTestBucket.GetName()
-	ctx := base.TestCtx(t)
 	const dbName = "db1"
 
 	// create db with correct config
@@ -3238,6 +3240,7 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 }
 
 func TestTLSWithoutCerts(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -3251,7 +3254,7 @@ func TestTLSWithoutCerts(t *testing.T) {
 	dbConfig.AutoImport = true
 	rt.CreateDatabase("db", dbConfig)
 	// ensure import feed works without TLS
-	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(`{"foo": "bar"}`))
+	err := rt.GetSingleDataStore().Set(ctx, "doc1", 0, nil, []byte(`{"foo": "bar"}`))
 	require.NoError(t, err)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
@@ -3260,6 +3263,7 @@ func TestTLSWithoutCerts(t *testing.T) {
 }
 
 func TestUserUpdatedAtField(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
@@ -3277,7 +3281,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 	ds := rt.MetadataStore()
 	var user map[string]any
 	userKey := metaKeys.UserKey("user1")
-	_, err := ds.Get(userKey, &user)
+	_, err := ds.Get(ctx, userKey, &user)
 	require.NoError(t, err)
 
 	// Check that the user has an updatedAt field
@@ -3297,7 +3301,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	user = map[string]any{}
-	_, err = ds.Get(userKey, &user)
+	_, err = ds.Get(ctx, userKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
@@ -3311,6 +3315,7 @@ func TestUserUpdatedAtField(t *testing.T) {
 }
 
 func TestRoleUpdatedAtField(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: base.GetTestBucket(t),
 		PersistentConfig: true,
@@ -3327,7 +3332,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	metaKeys := rt.GetDatabase().MetadataKeys
 	roleKey := metaKeys.RoleKey("role1")
 	var user map[string]any
-	_, err := ds.Get(roleKey, &user)
+	_, err := ds.Get(ctx, roleKey, &user)
 	require.NoError(t, err)
 
 	// Check that the user has an updatedAt field
@@ -3347,7 +3352,7 @@ func TestRoleUpdatedAtField(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	user = map[string]any{}
-	_, err = ds.Get(roleKey, &user)
+	_, err = ds.Get(ctx, roleKey, &user)
 	require.NoError(t, err)
 	newTimeStr := user["updated_at"].(string)
 	newTime, err := time.Parse(time.RFC3339, newTimeStr)
@@ -3517,6 +3522,7 @@ func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			dbConfig := DbConfig{
 				Name:        "db",
 				Unsupported: test.unsupportedSettings,
@@ -3524,7 +3530,6 @@ func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
 
 			validateReplications := false
 			validateOIDC := false
-			ctx := base.TestCtx(t)
 			err := dbConfig.validate(ctx, validateOIDC, validateReplications)
 			if test.error != "" {
 				require.Error(t, err)

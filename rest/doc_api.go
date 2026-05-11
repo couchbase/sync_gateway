@@ -262,7 +262,7 @@ func (h *handler) handleGetAttachment() error {
 		return db.ErrAttachmentVersion
 	}
 	attachmentKey := db.MakeAttachmentKey(version, docid, digest)
-	data, err := h.collection.GetAttachment(attachmentKey)
+	data, err := h.collection.GetAttachment(h.ctx(), attachmentKey)
 	if err != nil {
 		return err
 	}
@@ -845,7 +845,7 @@ func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVar("docid")
 	localDocID := db.LocalDocPrefix + docid
 
-	value, err := h.collection.GetSpecial(db.DocTypeLocal, docid)
+	value, err := h.collection.GetSpecial(h.ctx(), db.DocTypeLocal, docid)
 	if err != nil {
 		return err
 	}
@@ -875,7 +875,7 @@ func (h *handler) handlePutLocalDoc() error {
 		return err
 	}
 
-	revid, isNewDoc, err := h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+	revid, isNewDoc, err := h.collection.PutSpecial(h.ctx(), db.DocTypeLocal, docid, body)
 	if err != nil {
 		return err
 	}
@@ -903,7 +903,7 @@ func (h *handler) handleDelLocalDoc() error {
 	rev := h.getQuery("rev")
 	localDocID := db.LocalDocPrefix + docid
 
-	if err := h.collection.DeleteSpecial(db.DocTypeLocal, docid, rev); err != nil {
+	if err := h.collection.DeleteSpecial(h.ctx(), db.DocTypeLocal, docid, rev); err != nil {
 		return err
 	}
 

@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package db
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -51,7 +50,7 @@ func TestFeedImport(t *testing.T) {
 	initialImportFeedProcessedCount := db.DbStats.SharedBucketImport().ImportFeedProcessedCount.Value()
 
 	// Create via the SDK
-	writeCas, err := collection.dataStore.WriteCas(key, 0, 0, bodyBytes, 0)
+	writeCas, err := collection.dataStore.WriteCas(ctx, key, 0, 0, bodyBytes, 0)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -127,7 +126,7 @@ func TestFeedImport(t *testing.T) {
 				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
 			}
 			initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
-			_, err = collection.dataStore.WriteCas(docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
+			_, err = collection.dataStore.WriteCas(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
 			require.NoError(t, err)
 			base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportCount.Value, initialImportCount+1)
 
@@ -159,7 +158,7 @@ func TestOnDemandImport(t *testing.T) {
 		err := body.Unmarshal(bodyBytes)
 		assert.NoError(t, err, "Error unmarshalling body")
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		writeCas, err := collection.dataStore.WriteCas(getKey, 0, 0, bodyBytes, 0)
+		writeCas, err := collection.dataStore.WriteCas(ctx, getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
 		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, getKey)
 		require.NoError(t, err)
@@ -190,7 +189,7 @@ func TestOnDemandImport(t *testing.T) {
 				err := body.Unmarshal(bodyBytes)
 				assert.NoError(t, err, "Error unmarshalling body")
 				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-				writeCas, err := collection.dataStore.WriteCas(writeKey, 0, 0, bodyBytes, 0)
+				writeCas, err := collection.dataStore.WriteCas(ctx, writeKey, 0, 0, bodyBytes, 0)
 				require.NoError(t, err)
 
 				newDoc := &Document{
@@ -287,7 +286,7 @@ func TestOnDemandImport(t *testing.T) {
 				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
 			}
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			_, err := collection.dataStore.WriteCas(docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
+			_, err := collection.dataStore.WriteCas(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), 0)
 			require.NoError(t, err)
 
 			doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
@@ -329,7 +328,7 @@ func TestMigrateMetadata(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
-	_, err = collection.dataStore.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+	_, err = collection.dataStore.Add(ctx, key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
@@ -341,17 +340,17 @@ func TestMigrateMetadata(t *testing.T) {
 	// Update doc in the bucket with new expiry
 	laterExpirySeconds := time.Second * 60
 	laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
-	updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+	updateCallbackFn := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// This update function will not be "competing" with other updates, so it doesn't need
 		// to handle being called back multiple times or performing any merging with existing values.
 		exp := uint32(laterSyncMetaExpiry.Unix())
 		return bodyBytes, &exp, false, nil
 	}
-	_, err = collection.dataStore.Update(
+	_, err = collection.dataStore.Update(ctx,
 		key,
-		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
-		updateCallbackFn,
-	)
+		uint32(laterSyncMetaExpiry.Unix()),
+		updateCallbackFn)
+
 	require.NoError(t, err)
 
 	// Call migrateMeta with stale args that have old stale expiry
@@ -474,7 +473,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Create via the SDK
 			expiryDuration := time.Minute * 30
 			syncMetaExpiry := time.Now().Add(expiryDuration)
-			_, err = collection.dataStore.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+			_, err = collection.dataStore.Add(ctx, key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
@@ -487,17 +486,17 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Perform an SDK update to turn existingBucketDoc into a stale doc
 			laterExpiryDuration := time.Minute * 60
 			laterSyncMetaExpiry := time.Now().Add(laterExpiryDuration)
-			updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			updateCallbackFn := func(_ []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 				// This update function will not be "competing" with other updates, so it doesn't need
 				// to handle being called back multiple times or performing any merging with existing values.
 				exp := uint32(laterSyncMetaExpiry.Unix())
 				return bodyBytes, &exp, false, nil
 			}
-			_, err = collection.dataStore.Update(
+			_, err = collection.dataStore.Update(ctx,
 				key,
-				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
-				updateCallbackFn,
-			)
+				uint32(laterSyncMetaExpiry.Unix()),
+				updateCallbackFn)
+
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
@@ -518,6 +517,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 }
 
 func TestImportWithCasFailureUpdate(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test only works with a Couchbase server and XATTRS")
 	}
@@ -525,8 +525,6 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 	var db *Database
 	var existingBucketDoc *sgbucket.BucketDocument
 	var runOnce bool
-	var ctx context.Context
-
 	type testcase struct {
 		callback func(key string)
 		docname  string
@@ -566,8 +564,8 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			}`
 
 			collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			cas, _ := collection.dataStore.Get(key, &body)
-			_, err := collection.dataStore.WriteCas(key, 0, cas, []byte(valStr), sgbucket.Raw)
+			cas, _ := collection.dataStore.Get(ctx, key, &body)
+			_, err := collection.dataStore.WriteCas(ctx, key, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
 		}
 	}
@@ -637,7 +635,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Put a doc with inline sync data via sdk
-			_, err = collection.dataStore.Add(testcase.docname, 0, bodyBytes)
+			_, err = collection.dataStore.Add(ctx, testcase.docname, 0, bodyBytes)
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
@@ -833,10 +831,10 @@ func TestImportStampClusterUUID(t *testing.T) {
 	key := "doc1"
 	bodyBytes := rawDocNoMeta()
 
-	_, err := collection.dataStore.Add(key, 0, bodyBytes)
+	_, err := collection.dataStore.Add(ctx, key, 0, bodyBytes)
 	require.NoError(t, err)
 
-	_, cas, err := collection.dataStore.GetRaw(key)
+	_, cas, err := collection.dataStore.GetRaw(ctx, key)
 	require.NoError(t, err)
 
 	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.VirtualXattrRevSeqNo})
@@ -868,13 +866,14 @@ func TestImportStampClusterUUID(t *testing.T) {
 
 // TestImporNonZeroStart makes sure docs written before sync gateway start get imported
 func TestImportNonZeroStart(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 
 	doc1 := "doc1"
 	revID1 := "1-2a9efe8178aa817f4414ae976aa032d9"
 
-	_, err := bucket.GetSingleDataStore().Add(doc1, 0, rawDocNoMeta())
+	_, err := bucket.GetSingleDataStore().Add(ctx, doc1, 0, rawDocNoMeta())
 	require.NoError(t, err)
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
@@ -915,11 +914,11 @@ func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 	)
 	// write a document with inline sync metadata that not unmarshalable into SyncData. This document will be ignored and logged at debug level.
 	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go struct field documentRoot._sync of type db.SyncData
-	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo" : "bar", "_sync" : 1 }`))
+	_, err := bucket.GetSingleDataStore().Add(ctx, doc1, 0, []byte(`{"foo" : "bar", "_sync" : 1 }`))
 	require.NoError(t, err)
 
 	// this will be imported
-	err = bucket.GetSingleDataStore().Set(doc2, 0, nil, []byte(`{"foo" : "bar"}`))
+	err = bucket.GetSingleDataStore().Set(ctx, doc2, 0, nil, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -984,7 +983,7 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// add a document that is able to be imported
-	_, err = bucket.GetSingleDataStore().Add(doc4, 0, []byte(`{"foo" : "bar"}`))
+	_, err = bucket.GetSingleDataStore().Add(ctx, doc4, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -994,7 +993,7 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	// add new doc and update it via sdk to include _sync in body
 	_, _, err = collection.Put(ctx, doc5, Body{"foo": "bar"})
 	require.NoError(t, err)
-	err = bucket.GetSingleDataStore().SetRaw(doc5, 0, nil, []byte(`{"foo" : "bar", "_sync":"somedata"}`))
+	err = bucket.GetSingleDataStore().SetRaw(ctx, doc5, 0, nil, []byte(`{"foo" : "bar", "_sync":"somedata"}`))
 	require.NoError(t, err)
 
 	// this will error when calling importDoc() because the _sync data in body will not unmarshal inside migrateMetadata
@@ -1054,7 +1053,7 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	require.NoError(t, err)
 
 	// on demand import with empty _sync data in body
-	_, err = collection.dataStore.Add(doc3ID, 0, []byte(`{"some": "data", "_sync": {}}`))
+	_, err = collection.dataStore.Add(ctx, doc3ID, 0, []byte(`{"some": "data", "_sync": {}}`))
 	require.NoError(t, err)
 	_, err = collection.GetDocument(ctx, doc3ID, DocUnmarshalAll)
 	require.Error(t, err)
@@ -1090,9 +1089,9 @@ func TestMigrateMetadataInvalidSyncData(t *testing.T) {
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create a docs with invalid sync data
-	_, err := collection.dataStore.Add(doc1ID, 0, []byte(`{"some": "data", "_sync": {}}`))
+	_, err := collection.dataStore.Add(ctx, doc1ID, 0, []byte(`{"some": "data", "_sync": {}}`))
 	require.NoError(t, err)
-	_, err = collection.dataStore.Add(doc2ID, 0, []byte(`{"some": "data", "_sync": {"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}}`))
+	_, err = collection.dataStore.Add(ctx, doc2ID, 0, []byte(`{"some": "data", "_sync": {"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1121,10 +1120,10 @@ func TestImportFeedNonJSONNewDoc(t *testing.T) {
 
 	// logs because a JSON number is not a JSON object
 	// 	[DBG] .. col:sg_test_0 <ud>bookstand</ud> not able to be imported. Error: Could not unmarshal _sync out of document body: json: cannot unmarshal number into Go value of type db.documentRoot
-	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`1`))
+	_, err := bucket.GetSingleDataStore().Add(ctx, doc1, 0, []byte(`1`))
 	require.NoError(t, err)
 
-	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	_, err = bucket.GetSingleDataStore().Add(ctx, doc2, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1152,7 +1151,7 @@ func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 		doc2 = "chipchop"
 	)
 
-	_, err := bucket.GetSingleDataStore().Add(doc1, 0, []byte(`{"foo": "bar"}`))
+	_, err := bucket.GetSingleDataStore().Add(ctx, doc1, 0, []byte(`{"foo": "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1161,10 +1160,10 @@ func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 
 	// logs and increments ImportErrorCount
 	//     [INF] .. col:sg_test_0 Unmarshal error during importDoc json: cannot unmarshal number into Go value of type db.Body
-	err = bucket.GetSingleDataStore().Set(doc1, 0, nil, []byte(`1`))
+	err = bucket.GetSingleDataStore().Set(ctx, doc1, 0, nil, []byte(`1`))
 	require.NoError(t, err)
 
-	_, err = bucket.GetSingleDataStore().Add(doc2, 0, []byte(`{"foo" : "bar"}`))
+	_, err = bucket.GetSingleDataStore().Add(ctx, doc2, 0, []byte(`{"foo" : "bar"}`))
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1206,7 +1205,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	require.NotZero(t, syncData.Sequence, "Sequence should not be zero for SG write")
 
 	// 2. Create via the SDK
-	writeCas, err := collection.dataStore.WriteCas("sdkWrite", 0, 0, bodyBytes, 0)
+	writeCas, err := collection.dataStore.WriteCas(ctx, "sdkWrite", 0, 0, bodyBytes, 0)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1259,7 +1258,7 @@ func TestImportResurrectionMou(t *testing.T) {
 	require.Nil(t, mou)
 
 	// Update via SDK, expect mou to be created
-	err = collection.dataStore.Set(docID, 0, nil, []byte(`{"foo": "baz"}`))
+	err = collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"foo": "baz"}`))
 	require.NoError(t, err)
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
@@ -1273,7 +1272,7 @@ func TestImportResurrectionMou(t *testing.T) {
 	require.NotNil(t, syncData)
 
 	// Delete via SDK, the mou will be updated by the import process
-	require.NoError(t, collection.dataStore.Delete(docID))
+	require.NoError(t, collection.dataStore.Delete(ctx, docID))
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 2)
@@ -1336,7 +1335,7 @@ func TestImportConflictWithTombstone(t *testing.T) {
 	preImportDocXattrBytes := db.DbStats.Database().DocWritesXattrBytes.Value()
 
 	// Issue delete through SDK
-	err = collection.dataStore.Delete(docID)
+	err = collection.dataStore.Delete(ctx, docID)
 	require.NoError(t, err)
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
@@ -1361,6 +1360,7 @@ func TestImportConflictWithTombstone(t *testing.T) {
 func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key string) (syncData *SyncData, mou *MetadataOnlyUpdate, cas uint64) {
 
 	ctx := base.TestCtx(t)
+
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.MouXattrName})
 	require.NoError(t, err)
 
@@ -1393,7 +1393,7 @@ func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
 	key := t.Name()
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	// Create via the SDK
-	_, err := collection.dataStore.AddRaw(key, 0, bodyBytes)
+	_, err := collection.dataStore.AddRaw(ctx, key, 0, bodyBytes)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -1412,7 +1412,7 @@ func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
 	require.NoError(t, err)
 
 	// sdk update to trigger import
-	require.NoError(t, collection.dataStore.SetRaw(key, 0, nil, []byte(`{"foo":"baz"}`)))
+	require.NoError(t, collection.dataStore.SetRaw(ctx, key, 0, nil, []byte(`{"foo":"baz"}`)))
 
 	base.RequireWaitForStat(t, func() int64 {
 		return db.DbStats.SharedBucketImport().ImportErrorCount.Value()
@@ -1453,7 +1453,7 @@ func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
 	require.NoError(t, err)
 
 	// sdk update
-	require.NoError(t, collection.dataStore.SetRaw(key, 0, nil, []byte(`{"foo":"baz"}`)))
+	require.NoError(t, collection.dataStore.SetRaw(ctx, key, 0, nil, []byte(`{"foo":"baz"}`)))
 
 	// trigger on demand import
 	_, err = collection.GetDocument(ctx, key, DocUnmarshalAll)
@@ -1535,7 +1535,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 			return
 		}
 		if !resurrectOnce.Load() {
-			err := docDatastore.Set(key, 0, nil, []byte(`{"foo":"resurrected"}`))
+			err := docDatastore.Set(ctx, key, 0, nil, []byte(`{"foo":"resurrected"}`))
 			require.NoError(t, err)
 			resurrectOnce.Store(true)
 		}
@@ -1548,7 +1548,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 
 	// SDK-style Delete triggering isSgWrite=false inside GetDocSyncData
 	// which will trigger on-demand import with isDelete=true (rawDoc==nil).
-	err = docDatastore.Delete(docID)
+	err = docDatastore.Delete(ctx, docID)
 	require.NoError(t, err)
 
 	// UpdateCallback now acts only during the import write, not Put.

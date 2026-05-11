@@ -820,11 +820,11 @@ func (e *EmptyResultIterator) Next(_ context.Context, valuePtr any) bool {
 	return false
 }
 
-func (e *EmptyResultIterator) NextBytes() []byte {
+func (e *EmptyResultIterator) NextBytes(_ context.Context) []byte {
 	return []byte{}
 }
 
-func (e *EmptyResultIterator) Close() error {
+func (e *EmptyResultIterator) Close(_ context.Context) error {
 	return nil
 }
 

@@ -859,6 +859,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			var exp uint32
 			docID := t.Name()
 			cas := uint64(0)
@@ -1075,6 +1076,7 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			docID := t.Name()
 			if test.previousDoc != nil {
 				var exp uint32
@@ -1247,6 +1249,7 @@ func TestWriteWithXattrs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			if test.errorFunc != nil && test.errorIs != nil {
 				require.FailNow(t, "test case should specify errFunc  xor errorIs")
 			}
@@ -1437,6 +1440,7 @@ func TestWriteResurrectionWithXattrs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			docID := t.Name()
 			exp := uint32(0)
 			if test.previousDoc != nil {
@@ -1565,6 +1569,7 @@ func TestUpdateXattrs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			var exp uint32
 			docID := t.Name()
 			cas := uint64(0)
@@ -1623,7 +1628,7 @@ func TestWriteUpdateWithXattrsReplacingNilDoc(t *testing.T) {
 
 	// Write binary doc directly to bucket with a nil body
 	var nilBody []byte
-	_, err := col.AddRaw(docID, 0, nilBody)
+	_, err := col.AddRaw(ctx, docID, 0, nilBody)
 	require.NoError(t, err)
 
 	writeUpdateFunc := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
@@ -1662,7 +1667,7 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 		t.Skipf("rosmar does not support subdoc")
 	}
 
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
@@ -1721,7 +1726,7 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 
 	// Test SetXattrs
 	setXattrsDocID := t.Name() + "_setXattrs"
-	_, err = metaStore.Primary().AddRaw(setXattrsDocID, 0, []byte(`{"val": "init"}`))
+	_, err = metaStore.Primary().AddRaw(ctx, setXattrsDocID, 0, []byte(`{"val": "init"}`))
 	require.NoError(t, err)
 
 	xattrToSet := map[string][]byte{"_sync": []byte(`{"rev": "1-set"}`)}
@@ -1778,7 +1783,7 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 
 	docBody := []byte(`{"val": "updated"}`)
 	xattrsToWriteUpdate := map[string][]byte{"_sync": []byte(`{"rev": "2-b"}`)}
-	cb := func(current []byte, currentXattrs map[string][]byte, currentCas uint64) (sgbucket.UpdatedDoc, error) {
+	cb := func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
 		return sgbucket.UpdatedDoc{
 			Doc:    docBody,
 			Xattrs: xattrsToWriteUpdate,
@@ -1821,7 +1826,7 @@ func TestXattrStoreReadOperationsOnMetadataStore(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
@@ -1885,7 +1890,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 		t.Skipf("rosmar does not support subdoc")
 	}
 
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
@@ -1894,7 +1899,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 	// Flow should be Read from primary -> not found -> read from fallback
 	docID := t.Name() + "_fallback"
 	body := []byte(`{"a": "b", "c": {"d": "e"}}`)
-	_, err := metaStore.Fallback().AddRaw(docID, 0, body)
+	_, err := metaStore.Fallback().AddRaw(ctx, docID, 0, body)
 	require.NoError(t, err)
 
 	value, cas, err := metaStore.GetSubDocRaw(ctx, docID, "c.d")
@@ -1904,7 +1909,7 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 
 	// Add new doc to primary store, read from primary and assert
 	docID2 := t.Name() + "_primary"
-	_, err = metaStore.Primary().AddRaw(docID2, 0, body)
+	_, err = metaStore.Primary().AddRaw(ctx, docID2, 0, body)
 	require.NoError(t, err)
 
 	value, cas, err = metaStore.GetSubDocRaw(ctx, docID2, "c.d")
@@ -1927,14 +1932,14 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 		t.Skipf("rosmar does not support subdoc")
 	}
 
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
 
 	// Test SubdocInsert
 	insertDocID := t.Name() + "_insert"
-	_, err := metaStore.Primary().AddRaw(insertDocID, 0, []byte(`{"a": "b"}`))
+	_, err := metaStore.Primary().AddRaw(ctx, insertDocID, 0, []byte(`{"a": "b"}`))
 	require.NoError(t, err)
 
 	err = metaStore.SubdocInsert(ctx, insertDocID, "c", 0, "d")
@@ -1952,7 +1957,7 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 
 	// Test WriteSubDoc
 	writeDocID := t.Name() + "_write"
-	_, err = metaStore.Primary().AddRaw(writeDocID, 0, []byte(`{"a": "b"}`))
+	_, err = metaStore.Primary().AddRaw(ctx, writeDocID, 0, []byte(`{"a": "b"}`))
 	require.NoError(t, err)
 
 	cas, err := metaStore.WriteSubDoc(ctx, writeDocID, "a", 0, []byte(`"c"`))

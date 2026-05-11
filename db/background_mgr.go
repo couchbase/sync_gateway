@@ -130,7 +130,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 
 	var processClusterStatus []byte
 	if b.mode() != backgroundManagerModeLocal {
-		processClusterStatus, _, err = b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.StatusDocID())
+		processClusterStatus, _, err = b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.StatusDocID())
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return pkgerrors.Wrap(err, "Failed to get current process status")
 		}
@@ -211,7 +211,7 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 
 			// Delete the heartbeat doc to allow another process to run
 			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
-			_ = b.clusterAwareOptions.metadataStore.Delete(b.clusterAwareOptions.HeartbeatDocID())
+			_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
 		}
 	}()
 
@@ -231,11 +231,11 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 
 	// If we're running in cluster aware 'mode' base the check off of a heartbeat doc
 	if b.mode() == backgroundManagerModeSingleNode {
-		_, err := b.clusterAwareOptions.metadataStore.WriteCas(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
+		_, err := b.clusterAwareOptions.metadataStore.WriteCas(ctx, b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
 		if base.IsCasMismatch(err) {
 			// Check if markStop has been called but not yet processed
 			var status HeartbeatDoc
-			_, err := b.clusterAwareOptions.metadataStore.Get(b.clusterAwareOptions.HeartbeatDocID(), &status)
+			_, err := b.clusterAwareOptions.metadataStore.Get(ctx, b.clusterAwareOptions.HeartbeatDocID(), &status)
 			if err == nil && status.ShouldStop {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
 			}
@@ -391,7 +391,7 @@ func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, e
 		clusterState != string(BackgroundProcessStateCompleted) &&
 		clusterState != string(BackgroundProcessStateStopped) &&
 		clusterState != string(BackgroundProcessStateError) {
-		_, _, err = b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
+		_, _, err = b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
 				if clusterState == string(BackgroundProcessStateRunning) {
@@ -469,7 +469,7 @@ func (b *BackgroundManager) markStop(ctx context.Context) error {
 
 	currentState := b.GetRunState()
 	if b.mode() == backgroundManagerModeSingleNode {
-		_, _, err := b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
+		_, _, err := b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
 				return errBackgroundManagerProcessAlreadyStopped
@@ -477,7 +477,7 @@ func (b *BackgroundManager) markStop(ctx context.Context) error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to verify whether a process is running: %v", err)
 		}
 
-		err = b.clusterAwareOptions.metadataStore.Set(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, nil, HeartbeatDoc{ShouldStop: true})
+		err = b.clusterAwareOptions.metadataStore.Set(ctx, b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs, nil, HeartbeatDoc{ShouldStop: true})
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Failed to mark process as stopping: %v", err)
 		}
@@ -582,7 +582,7 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
 func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
 	docID := b.clusterAwareOptions.StatusDocID()
-	_, err := b.clusterAwareOptions.metadataStore.Update(docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+	_, err := b.clusterAwareOptions.metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		status, metadata, err := b.getStatusLocal()
 		if err != nil {
 			return nil, nil, false, err
@@ -611,6 +611,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 		}
 		return outputBytes, nil, false, nil
 	})
+
 	return err
 }
 
@@ -621,7 +622,7 @@ type HeartbeatDoc struct {
 // UpdateHeartbeatDocClusterAware simply performs a touch operation on the heartbeat document to update its expiry.
 // Implements a retry. Used for Cluster Aware operations
 func (b *BackgroundManager) UpdateHeartbeatDocClusterAware(ctx context.Context) error {
-	statusRaw, _, err := b.clusterAwareOptions.metadataStore.GetAndTouchRaw(b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
+	statusRaw, _, err := b.clusterAwareOptions.metadataStore.GetAndTouchRaw(ctx, b.clusterAwareOptions.HeartbeatDocID(), BackgroundManagerHeartbeatExpirySecs)
 	if err != nil {
 		// If we get an error but the error is doc not found and terminator closed it means we have terminated the
 		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc

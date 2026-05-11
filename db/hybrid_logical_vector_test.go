@@ -92,6 +92,7 @@ func TestInternalHLVFunctions(t *testing.T) {
 }
 
 func TestHLVCompact(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD)
 
 	// compact anything <= 25 - normally this would be a timestamp (to compare against CAS values)
@@ -114,11 +115,11 @@ func TestHLVCompact(t *testing.T) {
 	startingHLV := hlv.Copy()
 
 	// test no-op condition - this is only really used in tests that want to avoid compacting on writes - production code defaults to 30d purge interval
-	hlv.compactWithValue(base.TestCtx(t), t.Name(), 0)
+	hlv.compactWithValue(ctx, t.Name(), 0)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
 	// since we have < 5 PVs, compact should be a no-op, even if there are candidates based on the value
-	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
+	hlv.compactWithValue(ctx, t.Name(), compactValue)
 	assert.Equal(t, len(startingHLV.PreviousVersions), len(hlv.PreviousVersions))
 
 	// add more PVs to allow compaction
@@ -131,7 +132,7 @@ func TestHLVCompact(t *testing.T) {
 
 	// run again and purge PVs older than compactValue
 	// but ensure we retain at least 3 PV entries
-	hlv.compactWithValue(base.TestCtx(t), t.Name(), compactValue)
+	hlv.compactWithValue(ctx, t.Name(), compactValue)
 	assert.Equal(t, minPVEntriesRetained, len(hlv.PreviousVersions))
 
 	assert.Contains(t, hlv.PreviousVersions, "sourceD")
@@ -290,7 +291,7 @@ func TestHLVImport(t *testing.T) {
 		{
 			name: "SDK write, no existing doc",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
-				_, err := collection.dataStore.WriteCas(docID, 0, 0, standardBody, sgbucket.Raw)
+				_, err := collection.dataStore.WriteCas(ctx, docID, 0, 0, standardBody, sgbucket.Raw)
 				require.NoError(t, err, "write error")
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
@@ -313,7 +314,7 @@ func TestHLVImport(t *testing.T) {
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
 				_, doc, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 				require.NoError(t, err)
-				_, err = collection.dataStore.WriteCas(docID, 0, doc.Cas, standardBody, sgbucket.Raw)
+				_, err = collection.dataStore.WriteCas(ctx, docID, 0, doc.Cas, standardBody, sgbucket.Raw)
 				require.NoError(t, err, "write error")
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
@@ -420,7 +421,7 @@ func TestHLVImport(t *testing.T) {
 		{
 			name: "SDK write with valid _mou, but no HLV",
 			preFunc: func(t *testing.T, collection *DatabaseCollectionWithUser, docID string) {
-				cas, err := collection.dataStore.WriteCas(docID, 0, 0, standardBody, sgbucket.Raw)
+				cas, err := collection.dataStore.WriteCas(ctx, docID, 0, 0, standardBody, sgbucket.Raw)
 				require.NoError(t, err)
 				_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
 				require.NoError(t, err)

@@ -345,7 +345,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
-	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore(rt.Context()))
 	require.True(t, ok)
 
 	ctx := base.TestCtx(t)

@@ -78,7 +78,7 @@ func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
 	for iter.Next(base.TestCtx(t), &row) {
 		result = append(result, row)
 	}
-	assert.NoError(t, iter.Close())
+	assert.NoError(t, iter.Close(base.TestCtx(t)))
 	j, err := json.Marshal(result)
 	if !assert.NoError(t, err) {
 		return ""
@@ -221,6 +221,7 @@ func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 
 // Unit test to ensure only SELECT queries can run
 func TestUserN1QLQueriesInvalid(t *testing.T) {
+	ctx := base.TestCtx(t)
 	var kBadN1QLFunctionsConfig = FunctionsConfig{
 		Definitions: FunctionsDefs{
 			"evil_mutant": &FunctionConfig{
@@ -231,7 +232,7 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	_, err := CompileFunctions(base.TestCtx(t), kBadN1QLFunctionsConfig)
+	_, err := CompileFunctions(ctx, kBadN1QLFunctionsConfig)
 	assert.ErrorContains(t, err, "only SELECT queries are allowed") // See fn validateN1QLQuery
 
 	var kOKN1QLFunctionsConfig = FunctionsConfig{
@@ -251,6 +252,6 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	_, err = CompileFunctions(base.TestCtx(t), kOKN1QLFunctionsConfig)
+	_, err = CompileFunctions(ctx, kOKN1QLFunctionsConfig)
 	assert.NoError(t, err)
 }

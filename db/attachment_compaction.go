@@ -98,7 +98,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 			// Iterate over body key map
 			// These are strings containing IDs to documents containing conflicting bodies
 			for _, bodyKey := range attachmentData.History.BodyKeyMap {
-				bodyRaw, _, err := dataStore.GetRaw(bodyKey)
+				bodyRaw, _, err := dataStore.GetRaw(ctx, bodyKey)
 				if err != nil {
 					if base.IsDocNotFoundError(err) {
 						continue
@@ -357,7 +357,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		// Therefore, we want to purge the doc (unless running as dryRun mode)
 		if !dryRun {
 			base.TracefCtx(ctx, base.KeyAll, "[%s] Purging attachment %s", compactionLoggingID, base.UD(docID))
-			_, err := dataStore.Remove(docID, event.Cas)
+			_, err := dataStore.Remove(ctx, docID, event.Cas)
 			if err != nil {
 				if !base.IsDocNotFoundError(err) {
 					// attachment was removed separately, we don't need to worry about it

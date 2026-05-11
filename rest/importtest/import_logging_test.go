@@ -19,6 +19,7 @@ import (
 )
 
 func TestImportFilterLogging(t *testing.T) {
+	ctx := base.TestCtx(t)
 	const errorMessage = `ImportFilterError`
 	importFilter := `function (doc) { console.error("` + errorMessage + `"); return doc.type == "mobile"; }`
 	rtConfig := rest.RestTesterConfig{
@@ -36,7 +37,7 @@ func TestImportFilterLogging(t *testing.T) {
 	body := make(map[string]any)
 	body["type"] = "mobile"
 	body["channels"] = "A"
-	ok, err := rt.GetSingleDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleDataStore().Add(ctx, key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 

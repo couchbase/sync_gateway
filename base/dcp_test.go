@@ -246,7 +246,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 			if tc.existingCurrentIndex {
 				// Define an existing CBGT index with current naming
-				bucketUUID, _ := bucket.UUID()
+				bucketUUID, _ := bucket.UUID(ctx)
 				sourceParams, err := cbgtFeedParams(ctx, nil, tc.dbName)
 				require.NoError(t, err)
 				legacyIndexName, err := GenerateCBGTIndexName(tc.dbName, tc.feedType)
@@ -329,7 +329,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 		&cbgt.PIndexImplType{})
 
 	// Define a CBGT index with legacy naming within safe limits
-	bucketUUID, _ := bucket.UUID()
+	bucketUUID, _ := bucket.UUID(ctx)
 	sourceParams, err := cbgtFeedParams(ctx, nil, testDbName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyImportIndexName(testDbName)
@@ -412,7 +412,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		&cbgt.PIndexImplType{})
 
 	// Define a CBGT index with legacy naming not within safe limits
-	bucketUUID, _ := bucket.UUID()
+	bucketUUID, _ := bucket.UUID(ctx)
 	sourceParams, err := cbgtFeedParams(ctx, nil, unsafeTestDBName)
 	require.NoError(t, err)
 	legacyIndexName := GenerateLegacyImportIndexName(unsafeTestDBName)

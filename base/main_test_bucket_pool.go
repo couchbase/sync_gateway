@@ -321,10 +321,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	tbp.createCollections(ctx, walrusBucket)
 
 	// Create default collection here so that it gets initialized by bucketInitFunc
-	_ = walrusBucket.DefaultDataStore()
+	_ = walrusBucket.DefaultDataStore(ctx)
 
 	// Create mobile system collection here
-	_ = walrusBucket.MobileSystemDataStore()
+	_ = walrusBucket.MobileSystemDataStore(ctx)
 
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
@@ -538,7 +538,7 @@ func (tbp *TestBucketPool) removeOldTestBuckets(ctx context.Context) error {
 func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket) {
 	tbp.Logf(ctx, "Emptying prepared statements for bucket")
 	// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team
-	if n1qlStore, ok := AsN1QLStore(b.DefaultDataStore()); ok {
+	if n1qlStore, ok := AsN1QLStore(b.DefaultDataStore(ctx)); ok {
 		if err := n1qlStore.waitUntilQueryServiceReady(time.Minute); err != nil {
 			tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
 		}
@@ -549,7 +549,7 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket
 			tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 		}
 
-		if err := queryRes.Close(); err != nil {
+		if err := queryRes.Close(ctx); err != nil {
 			tbp.Fatalf(ctx, "Failed to close query: %v", err)
 		}
 	}

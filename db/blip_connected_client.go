@@ -113,7 +113,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 			// Write each iterated result to the response:
 			defer func() {
 				if iter != nil {
-					_ = iter.Close()
+					_ = iter.Close(ctx)
 				}
 			}()
 			var out bytes.Buffer
@@ -127,7 +127,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 					return err
 				}
 			}
-			err = iter.Close()
+			err = iter.Close(ctx)
 			iter = nil
 			if err != nil {
 				return err

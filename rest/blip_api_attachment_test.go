@@ -507,6 +507,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
@@ -538,7 +539,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 		// Confirm attachment is in the bucket
 		attachmentAKey := db.MakeAttachmentKey(2, docID, digest)
-		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
+		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(ctx, attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attachmentA)
 
@@ -548,7 +549,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 		client1.rt.WaitForVersion("doc", version)
 
 		// Check if attachment is still in bucket
-		bucketAttachmentA, _, err = client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
+		bucketAttachmentA, _, err = client1.rt.GetSingleDataStore().GetRaw(ctx, attachmentAKey)
 		assert.NoError(t, err)
 		assert.Equal(t, bucketAttachmentA, attachmentA)
 
@@ -560,6 +561,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	rtConfig := &RestTesterConfig{
@@ -585,7 +587,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 		// Confirm attachment is in the bucket
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
-		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(attachmentAKey)
+		bucketAttachmentA, _, err := client1.rt.GetSingleDataStore().GetRaw(ctx, attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attBody)
 
@@ -607,6 +609,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	rtConfig := &RestTesterConfig{
@@ -634,17 +637,17 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 
 		attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
 		dataStore := client1.rt.GetSingleDataStore()
-		bucketAttachmentA, _, err := dataStore.GetRaw(attachmentAKey)
+		bucketAttachmentA, _, err := dataStore.GetRaw(ctx, attachmentAKey)
 		require.NoError(t, err)
 		require.EqualValues(t, bucketAttachmentA, attBody)
 
 		v1Key := db.MakeAttachmentKey(1, "doc", digest)
-		v1Body, _, err := dataStore.GetRaw(v1Key)
+		v1Body, _, err := dataStore.GetRaw(ctx, v1Key)
 		require.NoError(t, err)
 		require.EqualValues(t, attBody, v1Body)
 
 		v2Key := db.MakeAttachmentKey(2, "doc", digest)
-		_, _, err = dataStore.GetRaw(v2Key)
+		_, _, err = dataStore.GetRaw(ctx, v2Key)
 		require.Error(t, err)
 
 		btcRunner.StartOneshotPull(client1.id)
@@ -662,12 +665,12 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 
 		// Validate that the attachment hasn't been migrated to V2
 		v1Key = db.MakeAttachmentKey(1, "doc", digest)
-		v1Body, _, err = dataStore.GetRaw(v1Key)
+		v1Body, _, err = dataStore.GetRaw(ctx, v1Key)
 		require.NoError(t, err)
 		require.EqualValues(t, attBody, v1Body)
 
 		v2Key = db.MakeAttachmentKey(2, "doc", digest)
-		_, _, err = dataStore.GetRaw(v2Key)
+		_, _, err = dataStore.GetRaw(ctx, v2Key)
 		require.Error(t, err)
 		// Confirm correct type of error for both integration test and Walrus
 		if !errors.Is(err, sgbucket.MissingError{Key: v2Key}) {

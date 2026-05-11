@@ -1208,6 +1208,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 }
 
 func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
+	ctx := base.TestCtx(t)
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.Ptr(2),
@@ -1242,7 +1243,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	leakyDataStore.SetGetRawCallback(func(s string) error {
 		if shouldDeleteDoc {
 			shouldDeleteDoc = false
-			require.NoError(t, leakyDataStore.Delete("doc"))
+			require.NoError(t, leakyDataStore.Delete(ctx, "doc"))
 		}
 		return nil
 	})
@@ -1476,7 +1477,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	ctx := rt.Context()
 
-	cas, err := data.Get("accessDoc", nil)
+	cas, err := data.Get(ctx, "accessDoc", nil)
 	require.NoError(t, err)
 
 	_, err = data.UpdateXattrs(ctx, "accessDoc", 0, cas, map[string][]byte{xattrKey: []byte(`{"userChannels" : {"user": "a"}}`)}, nil)
@@ -1487,7 +1488,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
 
-	cas, err = data.Get("accessDoc", nil)
+	cas, err = data.Get(ctx, "accessDoc", nil)
 	require.NoError(t, err)
 
 	require.NoError(t, data.RemoveXattrs(ctx, "accessDoc", []string{xattrKey}, cas))

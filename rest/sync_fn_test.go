@@ -493,6 +493,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 }
 
 func TestResyncRegenerateSequences(t *testing.T) {
+	ctx := base.TestCtx(t)
 	syncFn := `
 	function(doc) {
 		if (doc.userdoc){
@@ -532,11 +533,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", ds, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
+	_, err := rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
@@ -574,11 +575,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqAfter := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqAfter := body["sequence"].(float64)
 

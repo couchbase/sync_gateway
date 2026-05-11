@@ -87,7 +87,7 @@ func (db *Database) checkDDocAccess(ddocName string) error {
 	return nil
 }
 
-func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err error) {
+func (db *Database) GetDesignDoc(ctx context.Context, ddocName string) (ddoc sgbucket.DesignDoc, err error) {
 	if err = db.checkDDocAccess(ddocName); err != nil {
 		return ddoc, err
 	}
@@ -95,7 +95,7 @@ func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err 
 	if err != nil {
 		return ddoc, err
 	}
-	return vs.GetDDoc(ddocName)
+	return vs.GetDDoc(ctx, ddocName)
 }
 
 func (db *Database) PutDesignDoc(ctx context.Context, ddocName string, ddoc sgbucket.DesignDoc) (err error) {
@@ -232,14 +232,14 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	}
 }
 
-func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
+func (db *Database) DeleteDesignDoc(ctx context.Context, ddocName string) (err error) {
 	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
 	if err != nil {
 		return err
 	}
 
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = vs.DeleteDDoc(ddocName)
+		err = vs.DeleteDDoc(ctx, ddocName)
 	}
 	return
 }
@@ -379,10 +379,10 @@ func InitializeViews(ctx context.Context, ds sgbucket.DataStore) error {
 func checkExistingDDocs(ctx context.Context, viewStore sgbucket.ViewStore) bool {
 
 	// Check whether design docs already exist
-	_, getDDocErr := viewStore.GetDDoc(DesignDocSyncGateway())
+	_, getDDocErr := viewStore.GetDDoc(ctx, DesignDocSyncGateway())
 	sgDDocExists := getDDocErr == nil
 
-	_, getDDocErr = viewStore.GetDDoc(DesignDocSyncHousekeeping())
+	_, getDDocErr = viewStore.GetDDoc(ctx, DesignDocSyncHousekeeping())
 	sgHousekeepingDDocExists := getDDocErr == nil
 
 	if sgDDocExists && sgHousekeepingDDocExists {
@@ -688,7 +688,7 @@ func waitForViewIndexing(ctx context.Context, viewStore sgbucket.ViewStore, buck
 	for {
 		results, err := viewStore.ViewQuery(ctx, ddocName, viewName, opts)
 		if results != nil {
-			_ = results.Close()
+			_ = results.Close(ctx)
 		}
 		if err == nil {
 			return nil
@@ -733,7 +733,7 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 
 			if !previewOnly {
 				removeDDocErr, _ := base.RetryLoop(ctx, "DeleteDDocLoop", func() (shouldRetry bool, err error, value any) {
-					err = viewStore.DeleteDDoc(ddocName)
+					err = viewStore.DeleteDDoc(ctx, ddocName)
 					return isRetriableDesignDocError(err), err, nil
 				}, getDesignDocRetrySleeperFunc())
 				if removeDDocErr != nil {
@@ -743,7 +743,7 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 				}
 			} else {
 				existsDDocErr, _ := base.RetryLoop(ctx, "GetDDocRetryLoop", func() (shouldRetry bool, err error, value any) {
-					_, err = viewStore.GetDDoc(ddocName)
+					_, err = viewStore.GetDDoc(ctx, ddocName)
 					return isRetriableDesignDocError(err), err, nil
 				}, getDesignDocRetrySleeperFunc())
 

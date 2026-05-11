@@ -534,7 +534,7 @@ func TestResyncMou(t *testing.T) {
 	require.Nil(t, mou)
 
 	// 2. Create via the SDK
-	_, err = collection.dataStore.WriteCas("sdkWrite", 0, 0, docBody, 0)
+	_, err = collection.dataStore.WriteCas(ctx, "sdkWrite", 0, 0, docBody, 0)
 	require.NoError(t, err)
 
 	base.RequireWaitForStat(t, func() int64 {
@@ -644,7 +644,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	defaultCollection := bucket.DefaultDataStore()
+	defaultCollection := bucket.DefaultDataStore(ctx)
 	customCollection := bucket.GetSingleDataStore()
 	resyncID := "1234"
 	testCases := []struct {
@@ -725,6 +725,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			autoImport := false
 			db, err := NewDatabaseContext(
 				ctx,

@@ -20,6 +20,7 @@ import (
 )
 
 func TestUserXattrsRawGet(t *testing.T) {
+	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
@@ -37,10 +38,10 @@ func TestUserXattrsRawGet(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	rt.WaitForPendingChanges()
 
-	cas, err := rt.GetSingleDataStore().Get(docKey, nil)
+	cas, err := rt.GetSingleDataStore().Get(ctx, docKey, nil)
 	require.NoError(t, err)
 
-	ctx := rt.Context()
+	ctx = rt.Context()
 	_, err = rt.GetSingleDataStore().UpdateXattrs(ctx, docKey, 0, cas,
 		map[string][]byte{
 			xattrKey: base.MustJSONMarshal(t, "val"),

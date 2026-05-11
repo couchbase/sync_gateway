@@ -110,7 +110,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	//
 	// This may not be true if a user migrated/XDCR'd an existing _default collection into a named collection,
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
-	dataStore := database.Bucket.DefaultDataStore()
+	dataStore := database.Bucket.DefaultDataStore(ctx)
 	collectionID := base.DefaultCollectionID
 
 	persistClusterStatus := func() {

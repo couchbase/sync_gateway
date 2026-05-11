@@ -461,7 +461,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 func writeUserDirect(t *testing.T, db *Database, username string, sequence uint64) {
 	docId := db.MetadataKeys.UserKey(username)
-	_, err := db.MetadataStore.Add(docId, 0, Body{"sequence": sequence, "name": username})
+	_, err := db.MetadataStore.Add(base.TestCtx(t), docId, 0, Body{"sequence": sequence, "name": username})
 	require.NoError(t, err)
 }
 
@@ -845,7 +845,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.Len(t, changes, 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	_, incrErr := dbCollection.dataStore.Incr(db.MetadataKeys.SyncSeqKey(), 7, 7, 0)
+	_, incrErr := dbCollection.dataStore.Incr(ctx, db.MetadataKeys.SyncSeqKey(), 7, 7, 0)
 	require.NoError(t, incrErr)
 
 	// Modify user to have access to both channels (sequence 2):
@@ -3056,6 +3056,7 @@ func TestAddPendingLogs(t *testing.T) {
 
 	for index, testCase := range testCases {
 		t.Run(fmt.Sprintf("case_%d", index), func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			testChannelID := channels.NewID(testCase.channelName, GetSingleDatabaseCollection(t, dbContext).GetCollectionID())
 			testChangeCache := &changeCache{}
 			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{

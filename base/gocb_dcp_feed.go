@@ -18,8 +18,8 @@ import (
 )
 
 // getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
-func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
-	numVbuckets, err := cbstore.GetMaxVbno()
+func getHighSeqMetadata(ctx context.Context, cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
+	numVbuckets, err := cbstore.GetMaxVbno(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
@@ -106,7 +106,7 @@ func StartGocbDCPFeed(ctx context.Context, bucket *GocbV2Bucket, bucketName stri
 	}
 
 	if args.Backfill == sgbucket.FeedNoBackfill {
-		metadata, err := getHighSeqMetadata(bucket)
+		metadata, err := getHighSeqMetadata(ctx, bucket)
 		if err != nil {
 			return err
 		}

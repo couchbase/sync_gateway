@@ -106,7 +106,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, cas, getErr := c.dataStore.GetRaw(key)
+		rawDoc, cas, getErr := c.dataStore.GetRaw(ctx, key)
 		if getErr != nil {
 			return nil, nil, getErr
 		}
@@ -204,7 +204,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := c.dataStore.GetRaw(key)
+		rawDocBytes, _, err := c.dataStore.GetRaw(ctx, key)
 		if err != nil {
 			return emptySyncData, err
 		}
@@ -2658,7 +2658,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(col.dataStore)
+	err = doc.persistModifiedRevisionBodies(ctx, col.dataStore)
 	if err != nil {
 		return
 	}
@@ -2974,7 +2974,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		var obsoleteAttachments []string
 		for previousAttachmentID, previousAttachmentName := range previousAttachments {
 			if _, found := leafAttachments[previousAttachmentID]; !found {
-				err = db.dataStore.Delete(previousAttachmentID)
+				err = db.dataStore.Delete(ctx, previousAttachmentID)
 				if err != nil {
 					base.ErrorfCtx(ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", previousAttachmentID, base.UD(doc.ID), err)
 				} else {
@@ -3216,7 +3216,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 	}
 
 	for attachmentID, attachmentNames := range attachments {
-		err = db.dataStore.Delete(attachmentID)
+		err = db.dataStore.Delete(ctx, attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
@@ -3242,7 +3242,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 			return err
 		}
 	} else {
-		err := db.dataStore.Delete(key)
+		err := db.dataStore.Delete(ctx, key)
 		if err != nil {
 			return err
 		}
@@ -3420,7 +3420,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 		channelSet.Add(accessRow.Value)
 	}
 
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	if closeErr != nil {
 		return nil, closeErr
 	}
@@ -3457,7 +3457,7 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	for results.Next(ctx, &roleAccessRow) {
 		roleChannelSet.Add(roleAccessRow.Value)
 	}
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	if closeErr != nil {
 		return nil, closeErr
 	}

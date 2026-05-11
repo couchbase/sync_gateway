@@ -81,6 +81,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 	for i, test := range tests {
 		rt.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			if test.requireCollections {
 				base.TestRequiresCollections(t)
 			}
@@ -97,12 +98,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			}
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
-				docBody, _, err := ds.GetRaw(docID)
+				docBody, _, err := ds.GetRaw(ctx, docID)
 				assert.NoError(t, err)
 				assert.NotNil(t, docBody)
 
-				defaultDataStore := rt.Bucket().DefaultDataStore()
-				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
+				defaultDataStore := rt.Bucket().DefaultDataStore(ctx)
+				_, err = defaultDataStore.Get(ctx, docID, &gocb.GetOptions{})
 				if rt.GetDatabase().OnlyDefaultCollection() {
 					assert.NoError(t, err)
 				} else {
@@ -213,6 +214,7 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 }
 
 func TestSingleCollectionDCP(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test relies on import - needs xattrs")
@@ -231,7 +233,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 	const docID = "doc1"
 
-	ok, err := tc.AddRaw(docID, 0, []byte(`{"test":true}`))
+	ok, err := tc.AddRaw(ctx, docID, 0, []byte(`{"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -245,6 +247,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 }
 
 func TestMultiCollectionDCP(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 	base.SkipImportTestsIfNotEnabled(t)
 
@@ -259,7 +262,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	require.Len(t, colls, numCollections)
 
 	for _, c := range colls {
-		_, err := c.GetCollectionDatastore().Add(t.Name(), 0, map[string]any{"test": true})
+		_, err := c.GetCollectionDatastore().Add(ctx, t.Name(), 0, map[string]any{"test": true})
 		require.NoError(t, err)
 	}
 
@@ -277,11 +280,11 @@ func TestMultiCollectionDCP(t *testing.T) {
 }
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -414,8 +417,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 }
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
-	base.TestRequiresCollections(t)
 	ctx := base.TestCtx(t)
+	base.TestRequiresCollections(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -545,13 +548,13 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 }
 
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -568,9 +571,9 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 }
 
 func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -578,7 +581,7 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 	const customCollectionName = "new_collection"
 	require.NoError(t, tb.CreateDataStore(base.TestCtx(t), base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	defer func() {
-		assert.NoError(t, tb.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
 	}()
 
 	rtConfig := &RestTesterConfig{
@@ -603,13 +606,13 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("can not create new buckets and scopes in walrus")
 	}
 
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -622,11 +625,11 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 		require.NoError(t, tb.CreateDataStore(ctx, col))
 	}
 	defer func() {
-		collection, err := base.AsCollection(tb.DefaultDataStore())
+		collection, err := base.AsCollection(tb.DefaultDataStore(ctx))
 		require.NoError(t, err)
 		cm := collection.Collection.Bucket().Collections()
 		for _, col := range collectionNames {
-			assert.NoError(t, tb.DropDataStore(col))
+			assert.NoError(t, tb.DropDataStore(ctx, col))
 			assert.NoError(t, cm.DropScope(col.ScopeName(), nil))
 		}
 	}()
@@ -672,16 +675,16 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 }
 
 func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
 	var newCollection *base.ScopeAndCollectionName
 	defer func() {
 		if newCollection != nil {
-			assert.NoError(t, bucket.DropDataStore(*newCollection))
+			assert.NoError(t, bucket.DropDataStore(ctx, *newCollection))
 		}
 	}()
 
@@ -720,6 +723,7 @@ func TestCollectionsAddNamedCollectionToImplicitDefaultScope(t *testing.T) {
 }
 
 func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
 	bucket := base.GetTestBucket(t)
@@ -728,7 +732,7 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 	var newCollection *base.ScopeAndCollectionName
 	defer func() {
 		if newCollection != nil {
-			assert.NoError(t, bucket.DropDataStore(*newCollection))
+			assert.NoError(t, bucket.DropDataStore(ctx, *newCollection))
 		}
 	}()
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, CustomTestBucket: bucket.NoCloseClone()}, 1)
@@ -760,9 +764,9 @@ func TestCollectionsChangeConfigScopeFromImplicitDefault(t *testing.T) {
 
 // TestCollecitonStats ensures that stats are specific to each collection.
 func TestCollectionStats(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -880,7 +884,7 @@ func TestCollectionStats(t *testing.T) {
 	if base.TestUseXattrs() {
 		dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
 		require.NoError(t, err)
-		ok, err := dbc.GetCollectionDatastore().AddRaw("importeddoc", 0, []byte(`{"imported":true}`))
+		ok, err := dbc.GetCollectionDatastore().AddRaw(ctx, "importeddoc", 0, []byte(`{"imported":true}`))
 		require.NoError(t, err)
 		assert.True(t, ok)
 		base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
@@ -894,9 +898,9 @@ func TestCollectionStats(t *testing.T) {
 //   - Get conflict error on collection update and assert that the runtime config rolls back to the old config for
 //     database db1
 func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -965,9 +969,9 @@ func TestRuntimeConfigUpdateAfterConfigUpdateConflict(t *testing.T) {
 //   - Fetch runtime config and assert the scope config matches what we expect
 //   - Assert we can perform crud operations against each collection 1 and 2
 func TestRaceBetweenConfigPollAndDbConfigUpdate(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 

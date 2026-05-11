@@ -3303,6 +3303,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 }
 
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t,
@@ -3333,7 +3334,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		// default data store - we're not using a named scope/collection in this test
-		add, err := rt.GetSingleDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		add, err := rt.GetSingleDataStore().Add(ctx, "TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
@@ -3577,13 +3578,13 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
-	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
@@ -3705,6 +3706,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			docID := fmt.Sprintf("test%d", i)
 			rawBody, err := json.Marshal(test.inputBody)
 			require.NoError(t, err)
@@ -3717,7 +3719,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]any
-			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleDataStore().Get(ctx, docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDocBody(docID)
 			// Confirm input body is in the bucket doc
@@ -3884,9 +3886,9 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rest.RequireBucketSpecificCredentials(t)
 
-	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
@@ -3988,12 +3990,12 @@ func TestDatabaseCreationErrorCode(t *testing.T) {
 //   - Create db with sync function that calls env variable
 //   - Assert that db is created
 func TestDatabaseCreationWithEnvVariable(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
 	tb := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth
@@ -4024,12 +4026,12 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 }
 
 func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
 	tb := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth

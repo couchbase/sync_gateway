@@ -197,7 +197,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
 			dbc := db.CollectionByID[collectionID]
-			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, MetaVersionValue); err != nil {
+			if err := base.SetSyncInfoMetaVersion(ctx, dbc.dataStore, MetaVersionValue); err != nil {
 				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
 				return err
 			}

@@ -241,7 +241,7 @@ func (body Body) getExpiry() (uint32, bool, error) {
 // getOldRevisionJSON looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
 func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revOrCV string) ([]byte, base.Set, bool, error) {
-	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revOrCV))
+	data, _, err := c.dataStore.GetRaw(ctx, oldRevisionKey(docid, revOrCV))
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revOrCV)
 		return nil, nil, false, ErrMissing
@@ -317,7 +317,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSONBody(ctx context.Context
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
 	nonJSONBytes := withNonJSONPrefix(nonJSONPrefixKindRevBody, body)
-	err := db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
+	err := db.dataStore.SetRaw(ctx, oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), rev, len(body), expiry)
 	} else {
@@ -350,7 +350,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	bodyWithMeta := sgbucket.EncodeValueWithXattrs(body, meta...)
 	nonJSONBytes := withNonJSONPrefix(nonJSONPrefixKindRevWithMeta, bodyWithMeta)
 
-	err = db.dataStore.SetRaw(oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
+	err = db.dataStore.SetRaw(ctx, oldRevisionKey(docid, rev), expiry, nil, nonJSONBytes)
 	if err != nil {
 		base.WarnfCtx(ctx, "setOldRevisionJSONBodyWithMeta failed: doc=%q rev=%q err=%v", base.UD(docid), rev, err)
 		return err
@@ -362,7 +362,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 
 // Extends the expiry on a revision backup.  If this fails w/ key not found, will attempt to recreate the revision backup when body is non-empty.
 func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context, docid string, revid string, body []byte, expiry uint32, channels base.Set, deleted bool) error {
-	_, err := db.dataStore.Touch(oldRevisionKey(docid, revid), expiry)
+	_, err := db.dataStore.Touch(ctx, oldRevisionKey(docid, revid), expiry)
 	if base.IsDocNotFoundError(err) && len(body) > 0 {
 		return db.setOldRevisionJSON(ctx, docid, revid, body, deleted, expiry, channels)
 	}
@@ -372,7 +372,7 @@ func (db *DatabaseCollectionWithUser) refreshOldRevisionJSON(ctx context.Context
 // Currently only used by unit tests - deletes an archived old revision from the database
 func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
 	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
-	return c.dataStore.Delete(oldRevisionKey(docid, revid))
+	return c.dataStore.Delete(ctx, oldRevisionKey(docid, revid))
 }
 
 // ////// UTILITY FUNCTIONS:

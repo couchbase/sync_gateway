@@ -226,6 +226,7 @@ func TestGetDocWithCV(t *testing.T) {
 }
 
 func TestBulkGetWithCV(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -234,18 +235,18 @@ func TestBulkGetWithCV(t *testing.T) {
 	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updates": 1}`)
 	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updated": 2}`)
 	doc1Version = rt.UpdateDoc(doc1ID, doc1Version, `{"foo": "bar", "updated": 3}`)
-	doc1RevTreeGen, _ := db.ParseRevID(base.TestCtx(t), doc1Version.RevTreeID)
+	doc1RevTreeGen, _ := db.ParseRevID(ctx, doc1Version.RevTreeID)
 	doc1Raw := rt.GetRawDoc(doc1ID)
 	// build newest to oldest list of revtree digests (required for validating _revisions response)
 	var doc1HistoryDigests = make([]string, 0, doc1RevTreeGen)
 	for _, v := range slices.Backward(slices.Sorted(maps.Keys(doc1Raw.Xattrs.Sync.History))) {
-		_, digest := db.ParseRevID(base.TestCtx(t), v)
+		_, digest := db.ParseRevID(ctx, v)
 		doc1HistoryDigests = append(doc1HistoryDigests, digest)
 	}
 
 	doc2ID := "doc2"
 	doc2Version := rt.PutDoc(doc2ID, `{"foo": "baz"}`)
-	doc2RevTreeGen, doc2RevTreeDigest := db.ParseRevID(base.TestCtx(t), doc2Version.RevTreeID)
+	doc2RevTreeGen, doc2RevTreeDigest := db.ParseRevID(ctx, doc2Version.RevTreeID)
 
 	testCases := []struct {
 		name     string

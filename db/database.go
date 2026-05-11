@@ -407,10 +407,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	metadataStore := options.MetadataStore
 	if metadataStore == nil {
 		base.DebugfCtx(ctx, base.KeyAll, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
-		metadataStore = bucket.DefaultDataStore()
+		metadataStore = bucket.DefaultDataStore(ctx)
 	}
 
-	bucketUUID, err := bucket.UUID()
+	bucketUUID, err := bucket.UUID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +446,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CachedCCVStartingCas: &base.VBucketCAS{},
 		SameSiteCookieMode:   http.SameSiteDefaultMode,
 	}
-	dbContext.numVBuckets, err = bucket.GetMaxVbno()
+	dbContext.numVBuckets, err = bucket.GetMaxVbno(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +554,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			if !base.IsDefaultCollection(scopeName, collName) {
 				ctx = base.CollectionLogCtx(ctx, scopeName, collName)
 			}
-			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+			dataStore, err := bucket.NamedDataStore(ctx, base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
 				return nil, base.RedactErrorf("Could not connect to %s.%s.%s: %w", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collName), err)
 			}
@@ -773,7 +773,7 @@ func (context *DatabaseContext) RestartListener(ctx context.Context) error {
 
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(ctx context.Context, previewOnly bool) (removedDesignDocs []string, err error) {
-	ds := dbCtx.Bucket.DefaultDataStore()
+	ds := dbCtx.Bucket.DefaultDataStore(ctx)
 	viewStore, ok := ds.(sgbucket.ViewStore)
 	if !ok {
 		return []string{}, fmt.Errorf("Datastore does not support views")
@@ -955,7 +955,7 @@ func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachD
 	if err != nil {
 		return err
 	}
-	return results.Close()
+	return results.Close(ctx)
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
@@ -1100,7 +1100,7 @@ outerLoop:
 			}
 		}
 
-		closeErr := results.Close()
+		closeErr := results.Close(ctx)
 		if closeErr != nil {
 			return nil, closeErr
 		}
@@ -1212,7 +1212,7 @@ outerLoop:
 			}
 		}
 
-		closeErr := results.Close()
+		closeErr := results.Close(ctx)
 		if closeErr != nil {
 			return nil, nil, closeErr
 		}
@@ -1300,7 +1300,7 @@ outerLoop:
 			}
 		}
 
-		closeErr := results.Close()
+		closeErr := results.Close(ctx)
 		if closeErr != nil {
 			return nil, closeErr
 		}
@@ -1389,7 +1389,7 @@ outerLoop:
 			}
 		}
 
-		closeErr := results.Close()
+		closeErr := results.Close(ctx)
 		if closeErr != nil {
 			return nil, closeErr
 		}
@@ -1492,7 +1492,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 			for results.Next(ctx, &tombstonesRow) {
 				select {
 				case <-terminator.Done():
-					closeErr := results.Close()
+					closeErr := results.Close(ctx)
 					if closeErr != nil {
 						return 0, closeErr
 					}
@@ -1511,7 +1511,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 				} else if base.IsDocNotFoundError(purgeErr) {
 					// If key no longer exists, need to add and remove to trigger removal from view
-					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
+					_, addErr := collection.dataStore.Add(ctx, tombstonesRow.Id, 0, purgeBody)
 					if isScheduledBackgroundTask {
 						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 					}
@@ -1525,7 +1525,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 					// so mark it to be removed from cache, even if the subsequent delete fails
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-					delErr := collection.dataStore.Delete(tombstonesRow.Id)
+					delErr := collection.dataStore.Delete(ctx, tombstonesRow.Id)
 					if isScheduledBackgroundTask {
 						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 					}
@@ -1539,7 +1539,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 				}
 			}
 
-			err = results.Close()
+			err = results.Close(ctx)
 			if err != nil {
 				return 0, err
 			}
@@ -2182,8 +2182,8 @@ func (dbc *DatabaseContext) AuthenticatorOptions(ctx context.Context) auth.Authe
 // GetRequestPlusSequence fetches the current value of the sequence counter for the database.
 // Uses getSequence (instead of lastSequence) as it's intended to be up to date with allocations
 // across all nodes, while lastSequence is just the latest allocation from this node
-func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
-	return dbc.sequences.getSequence()
+func (dbc *DatabaseContext) GetRequestPlusSequence(ctx context.Context) (uint64, error) {
+	return dbc.sequences.getSequence(ctx)
 }
 
 func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedError error) {

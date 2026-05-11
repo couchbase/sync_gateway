@@ -260,10 +260,10 @@ func TestCfgNodePoller_Register(t *testing.T) {
 			// Common setup: create documents
 			createdCas := make(map[string]uint64)
 			for _, key := range test.keysToCreate {
-				added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+				added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 				require.NoError(t, err)
 				require.True(t, added)
-				cas, err := datastore.Get(key, nil)
+				cas, err := datastore.Get(ctx, key, nil)
 				require.NoError(t, err)
 				createdCas[key] = cas
 			}
@@ -271,7 +271,7 @@ func TestCfgNodePoller_Register(t *testing.T) {
 			// Cleanup created docs after test
 			t.Cleanup(func() {
 				for _, key := range test.keysToCreate {
-					_ = datastore.Delete(key)
+					_ = datastore.Delete(ctx, key)
 				}
 			})
 
@@ -319,13 +319,13 @@ func TestCfgNodePoller_Register(t *testing.T) {
 		key := "update_then_register"
 
 		// Create initial document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		// Cleanup created doc after test
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Register first time
@@ -338,11 +338,11 @@ func TestCfgNodePoller_Register(t *testing.T) {
 		require.NotEqual(t, uint64(0), initialCas)
 
 		// Update document externally
-		err = datastore.Set(key, 0, nil, []byte(`{"updated": true}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
 		require.NoError(t, err)
 
 		// Get new CAS from datastore
-		newExpectedCas, err := datastore.Get(key, nil)
+		newExpectedCas, err := datastore.Get(ctx, key, nil)
 		require.NoError(t, err)
 		require.NotEqual(t, initialCas, newExpectedCas, "document should have new CAS after update")
 
@@ -426,7 +426,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 
 			// Setup: create initial documents
 			for _, key := range test.keysToCreate {
-				added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+				added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 				require.NoError(t, err)
 				require.True(t, added)
 			}
@@ -434,10 +434,10 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 			// Cleanup all potentially created docs after test
 			t.Cleanup(func() {
 				for _, key := range test.keysToCreate {
-					_ = datastore.Delete(key)
+					_ = datastore.Delete(ctx, key)
 				}
 				for _, key := range test.keysToUpdate {
-					_ = datastore.Delete(key)
+					_ = datastore.Delete(ctx, key)
 				}
 			})
 
@@ -449,21 +449,21 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 
 			// Update documents (creates if doesn't exist)
 			for _, key := range test.keysToUpdate {
-				err := datastore.Set(key, 0, nil, []byte(`{"updated": true}`))
+				err := datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
 				require.NoError(t, err)
 			}
 
 			// Delete documents (creates tombstone)
 			for _, key := range test.keysToDelete {
-				err := datastore.Delete(key)
+				err := datastore.Delete(ctx, key)
 				require.NoError(t, err)
 			}
 
 			// Purge documents (complete removal - no tombstone)
 			for _, key := range test.keysToPurge {
-				cas, err := datastore.Get(key, nil)
+				cas, err := datastore.Get(ctx, key, nil)
 				require.NoError(t, err)
-				_, err = datastore.Remove(key, cas)
+				_, err = datastore.Remove(ctx, key, cas)
 				require.NoError(t, err)
 			}
 
@@ -489,7 +489,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 				} else {
 					require.NotEqual(t, uint64(0), poller.keyWatcher[key], "key %s should have non-zero cas after poll", key)
 					// Verify CAS matches current datastore value
-					currentCas, err := datastore.Get(key, nil)
+					currentCas, err := datastore.Get(ctx, key, nil)
 					require.NoError(t, err)
 					require.Equal(t, currentCas, poller.keyWatcher[key], "key %s CAS should match datastore", key)
 				}
@@ -523,16 +523,16 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Get expected CAS
-		expectedCas, err := datastore.Get(key, nil)
+		expectedCas, err := datastore.Get(ctx, key, nil)
 		require.NoError(t, err)
 
 		// Call Poll
@@ -561,12 +561,12 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		key := "duplicate_event_test"
 
 		// Create document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Register key
@@ -574,7 +574,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update document
-		err = datastore.Set(key, 0, nil, []byte(`{"updated": true}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
 		require.NoError(t, err)
 
 		// First poll - should fire event
@@ -612,12 +612,12 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		key := "deleted_doc_test"
 
 		// Create document
-		initialCas, err := datastore.WriteCas(key, 0, 0, []byte(`{"test": true}`), 0)
+		initialCas, err := datastore.WriteCas(ctx, key, 0, 0, []byte(`{"test": true}`), 0)
 		require.NoError(t, err)
 		require.NotZero(t, initialCas)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Register key
@@ -625,7 +625,7 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Delete document (creates tombstone)
-		cas, err := datastore.Remove(key, initialCas)
+		cas, err := datastore.Remove(ctx, key, initialCas)
 		require.NoError(t, err)
 
 		// Call Poll
@@ -661,17 +661,17 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		key2 := "race_condition_doc2"
 
 		// Create both documents
-		added, err := datastore.Add(key1, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key1, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
-		added, err = datastore.Add(key2, 0, []byte(`{"test": true}`))
+		added, err = datastore.Add(ctx, key2, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key1)
-			_ = datastore.Delete(key2)
+			_ = datastore.Delete(ctx, key1)
+			_ = datastore.Delete(ctx, key2)
 		})
 
 		// Register both keys
@@ -682,11 +682,11 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NoError(t, err)
 
 		// Change first document
-		err = datastore.Set(key1, 0, nil, []byte(`{"updated": true}`))
+		err = datastore.Set(ctx, key1, 0, nil, []byte(`{"updated": true}`))
 		require.NoError(t, err)
 
 		// Change second document
-		err = datastore.Set(key2, 0, nil, []byte(`{"updated": true}`))
+		err = datastore.Set(ctx, key2, 0, nil, []byte(`{"updated": true}`))
 		require.NoError(t, err)
 
 		// Run poll - should detect both changes
@@ -709,11 +709,11 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.NotEqual(t, uint64(0), poller.keyWatcher[key2], "second document should have non-zero cas after poll")
 
 		// Verify CAS matches current datastore values
-		currentCas1, err := datastore.Get(key1, nil)
+		currentCas1, err := datastore.Get(ctx, key1, nil)
 		require.NoError(t, err)
 		require.Equal(t, currentCas1, poller.keyWatcher[key1], "first document CAS should match datastore")
 
-		currentCas2, err := datastore.Get(key2, nil)
+		currentCas2, err := datastore.Get(ctx, key2, nil)
 		require.NoError(t, err)
 		require.Equal(t, currentCas2, poller.keyWatcher[key2], "second document CAS should match datastore")
 	})
@@ -746,12 +746,12 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 		key := "stop_on_cancel_test"
 
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		err = poller.Register(key)
@@ -769,7 +769,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// Update document after cancellation
-		err = datastore.Set(key, 0, nil, []byte(`{"updated": true}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
 		require.NoError(t, err)
 
 		// Record event count before waiting
@@ -805,12 +805,12 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		poller.startPolling(ctx)
 
 		// Create document - should be detected on next poll
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Wait for poll to detect the change
@@ -835,12 +835,12 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 
 		key := "changes_over_time_test"
 
-		added, err := datastore.Add(key, 0, []byte(`{"version": 1}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"version": 1}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		err = poller.Register(key)
@@ -849,7 +849,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		poller.startPolling(ctx)
 
 		// First update
-		err = datastore.Set(key, 0, nil, []byte(`{"version": 2}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 2}`))
 		require.NoError(t, err)
 
 		// Wait for first event
@@ -858,7 +858,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		}, waitTime, 5*time.Millisecond, "first update should be detected")
 
 		// Second update
-		err = datastore.Set(key, 0, nil, []byte(`{"version": 3}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 3}`))
 		require.NoError(t, err)
 
 		// Wait for second event
@@ -867,7 +867,7 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		}, waitTime, 5*time.Millisecond, "second update should be detected")
 
 		// Third update
-		err = datastore.Set(key, 0, nil, []byte(`{"version": 4}`))
+		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 4}`))
 		require.NoError(t, err)
 
 		// Wait for third event
@@ -901,12 +901,12 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// Now create the document
-		added, err := datastore.Add(key, 0, []byte(`{"test": true}`))
+		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		t.Cleanup(func() {
-			_ = datastore.Delete(key)
+			_ = datastore.Delete(ctx, key)
 		})
 
 		// Wait and verify no events were fired
@@ -1112,7 +1112,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		assert.NoError(t, eventB.Error)
 
 		// Node A deletes the document
-		delCas, err := dataStore.Remove(nodeA.sgCfgBucketKey(key), initialCas)
+		delCas, err := dataStore.Remove(ctx, nodeA.sgCfgBucketKey(key), initialCas)
 		require.NoError(t, err)
 
 		// Node A should detect its own deletion
@@ -1231,7 +1231,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A deletes key3
-		delCas, err := dataStore.Remove(nodeA.sgCfgBucketKey(key3), casA3)
+		delCas, err := dataStore.Remove(ctx, nodeA.sgCfgBucketKey(key3), casA3)
 		require.NoError(t, err)
 
 		// Node A should detect: key2 update (self), key1 update (from B), key3 delete (self)
@@ -1514,7 +1514,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 
 		// Node A deletes the document
 		//err = nodeA.Del(key, initialCas)
-		delCas, err := dataStore.Remove(nodeA.sgCfgBucketKey(key), initialCas)
+		delCas, err := dataStore.Remove(ctx, nodeA.sgCfgBucketKey(key), initialCas)
 		require.NoError(t, err)
 
 		// Both nodes detect deletion
@@ -1568,7 +1568,7 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	vBuckets, err := bucket.GetMaxVbno()
+	vBuckets, err := bucket.GetMaxVbno(ctx)
 	require.NoError(t, err)
 
 	metadataStore := bucket.GetSingleDataStore()
@@ -1590,11 +1590,11 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	var checkpoints []string
 	for vb := range vBuckets {
 		checkpointName := fmt.Sprintf("%s%d", checkpointPrefix, vb)
-		exists, err := metadataStore.Exists(checkpointName)
+		exists, err := metadataStore.Exists(ctx, checkpointName)
 		require.NoError(t, err)
 		require.False(t, exists, "Checkpoint should not exist before persistence", checkpointName)
 		require.NoError(t, dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`)))
-		exists, err = metadataStore.Exists(checkpointName)
+		exists, err = metadataStore.Exists(ctx, checkpointName)
 		require.NoError(t, err)
 		require.True(t, exists, "Checkpoint should exist after persistence", checkpointName)
 		checkpoints = append(checkpoints, checkpointName)
@@ -1602,7 +1602,7 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	require.NoError(t, PurgeDCPCheckpoints(ctx, metadataStore, checkpointPrefix, DCPFeedSharded))
 
 	for _, checkpoint := range checkpoints {
-		exists, err := metadataStore.Exists(checkpoint)
+		exists, err := metadataStore.Exists(ctx, checkpoint)
 		require.NoError(t, err)
 		require.False(t, exists, "Checkpoint should not exist after purge", checkpoint)
 	}

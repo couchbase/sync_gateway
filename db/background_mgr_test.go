@@ -80,7 +80,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore()
+	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test")
 
 	modes := []struct {
@@ -144,7 +144,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore()
+	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-transitions")
 
 	options := &ClusterAwareBackgroundManagerOptions{
@@ -210,7 +210,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore()
+	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-simultaneous")
 
 	options := &ClusterAwareBackgroundManagerOptions{
@@ -274,7 +274,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore()
+	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-start-time")
 
 	options := &ClusterAwareBackgroundManagerOptions{
@@ -326,7 +326,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore()
+	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-multi-start-time")
 
 	options := &ClusterAwareBackgroundManagerOptions{

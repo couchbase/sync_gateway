@@ -65,7 +65,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 
 	// Run the N1QL query:
 	// TODO: Multi-collection support for user functions is not implemented.
-	iter, err := db.N1QLQueryWithStats(fn.ctx, fn.db.Bucket.DefaultDataStore(), db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
+	iter, err := db.N1QLQueryWithStats(fn.ctx, fn.db.Bucket.DefaultDataStore(fn.ctx), db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
 		base.RequestPlus, false, fn.db.DbStats, fn.db.Options.SlowQueryWarningThreshold)
 
 	if err != nil {
@@ -90,7 +90,7 @@ func (fn *n1qlInvocation) Run(ctx context.Context) (any, error) {
 	}
 	defer func() {
 		if rows != nil {
-			_ = rows.Close()
+			_ = rows.Close(ctx)
 		}
 	}()
 	result := []any{}
@@ -98,7 +98,7 @@ func (fn *n1qlInvocation) Run(ctx context.Context) (any, error) {
 	for rows.Next(ctx, &row) {
 		result = append(result, row)
 	}
-	err = rows.Close()
+	err = rows.Close(ctx)
 	rows = nil // prevent 'defer' from closing again
 	return result, err
 }

@@ -76,7 +76,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		_, err := dataStore.Add(mobileKey, 0, mobileBody)
+		_, err := dataStore.Add(ctx, mobileKey, 0, mobileBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 	nonMobileKey := "TestImportFilterInvalid"
@@ -84,7 +84,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		_, err := dataStore.Add(nonMobileKey, 0, nonMobileBody)
+		_, err := dataStore.Add(ctx, nonMobileKey, 0, nonMobileBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 	onPremKey := "TestImportFilter2Valid"
@@ -92,7 +92,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	onPremBody["type"] = "onprem"
 	onPremBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		_, err := dataStore.Add(onPremKey, 0, onPremBody)
+		_, err := dataStore.Add(ctx, onPremKey, 0, onPremBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 
@@ -176,7 +176,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		_, err := dataStore.Add(prvKey, 0, prvBody)
+		_, err := dataStore.Add(ctx, prvKey, 0, prvBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 
@@ -218,11 +218,11 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		_, err := dataStore.Add(prvKey, 0, prvBody)
+		_, err := dataStore.Add(ctx, prvKey, 0, prvBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
 	// Write to removed collection and ensure new docs in the collection are not imported
-	_, err = dataStore3.Add(prvKey, 0, mobileBody)
+	_, err = dataStore3.Add(ctx, prvKey, 0, mobileBody)
 	require.NoError(t, err, "Error writing SDK doc")
 
 	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
@@ -295,7 +295,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	docCount := 10
 	for _, dataStore := range dataStores {
 		for j := range docCount {
-			_, err := dataStore.Add(fmt.Sprintf("datastore%d", j), 0, docBody)
+			_, err := dataStore.Add(ctx, fmt.Sprintf("datastore%d", j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}
 	}
@@ -384,7 +384,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	docBody["foo"] = "bar"
 	for i, dataStore := range []base.DataStore{dataStore1, dataStore2} {
 		for j := range docCount {
-			_, err := dataStore.Add(fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
+			_, err := dataStore.Add(ctx, fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}
 	}
@@ -418,7 +418,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	// write datastore2 docs first, so we know they are ignored by import feed
 	for i, dataStore := range []base.DataStore{dataStore2, dataStore1} {
 		for j := docCount; j < (docCount * 2); j++ {
-			_, err := dataStore.Add(fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
+			_, err := dataStore.Add(ctx, fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
 			require.NoError(t, err, "Error writing SDK doc")
 		}
 	}

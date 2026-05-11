@@ -43,7 +43,7 @@ func (h *handler) handleRosmarGet() error {
 		}
 		defer bucket.Close(h.ctx())
 
-		dsNames, err := bucket.ListDataStores()
+		dsNames, err := bucket.ListDataStores(h.ctx())
 		if err != nil {
 			return err
 		}
@@ -117,7 +117,7 @@ func (h *handler) handleRosmarDelete() error {
 		// DELETE /_rosmar/bucketname.scopename
 		scopeName := parts[1]
 
-		dsNames, err := bucket.ListDataStores()
+		dsNames, err := bucket.ListDataStores(h.ctx())
 		if err != nil {
 			return err
 		}
@@ -126,7 +126,7 @@ func (h *handler) handleRosmarDelete() error {
 		for _, ds := range dsNames {
 			if ds.ScopeName() == scopeName {
 				droppedAny = true
-				if err := bucket.DropDataStore(ds); err != nil {
+				if err := bucket.DropDataStore(h.ctx(), ds); err != nil {
 					return err
 				}
 			}
@@ -141,7 +141,7 @@ func (h *handler) handleRosmarDelete() error {
 		scopeName := parts[1]
 		collectionName := parts[2]
 
-		err = bucket.DropDataStore(base.NewScopeAndCollectionName(scopeName, collectionName))
+		err = bucket.DropDataStore(h.ctx(), base.NewScopeAndCollectionName(scopeName, collectionName))
 		if err != nil {
 			return err
 		}

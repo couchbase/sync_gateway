@@ -476,6 +476,6 @@ func TestUserKeysHash(t *testing.T) {
 }
 
 func docExists(t *testing.T, dataStore base.DataStore, key string) {
-	_, _, err := dataStore.GetRaw(key)
+	_, _, err := dataStore.GetRaw(base.TestCtx(t), key)
 	require.Nil(t, err, "doc %s should exist in datastore", key)
 }

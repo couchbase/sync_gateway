@@ -58,7 +58,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		startingBody  = `{"key":"value"}`
 	)
 	dataStores := map[base.DataStore]base.DataStore{
-		fromBucket.DefaultDataStore(): toBucket.DefaultDataStore(),
+		fromBucket.DefaultDataStore(ctx): toBucket.DefaultDataStore(ctx),
 	}
 	var fromDs base.DataStore
 	var toDs base.DataStore
@@ -69,8 +69,8 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		require.NoError(t, err)
 		dataStores[fromDs] = toDs
 	} else {
-		fromDs = fromBucket.DefaultDataStore()
-		toDs = toBucket.DefaultDataStore()
+		fromDs = fromBucket.DefaultDataStore(ctx)
+		toDs = toBucket.DefaultDataStore(ctx)
 	}
 	fromBucketSourceID, err := base.GetSourceID(ctx, fromBucket)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	for _, doc := range []string{syncDoc, attachmentDoc, normalDoc} {
 		var inputCas uint64
 		var err error
-		docCas[doc], err = fromDs.WriteCas(doc, exp, inputCas, []byte(startingBody), 0)
+		docCas[doc], err = fromDs.WriteCas(ctx, doc, exp, inputCas, []byte(startingBody), 0)
 		require.NoError(t, err)
 		_, _, err = fromDs.GetXattrs(ctx, doc, []string{base.VvXattrName})
 		// make sure that the doc does not have a version vector
@@ -106,7 +106,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, cas)
 	}
 
-	_, err = toDs.Get(syncDoc, nil)
+	_, err = toDs.Get(ctx, syncDoc, nil)
 	base.RequireDocNotFoundError(t, err)
 
 	var totalDocsWritten uint64
@@ -148,8 +148,8 @@ func getTwoBucketDataStores(t *testing.T) (base.Bucket, sgbucket.DataStore, base
 		toDs, err = toBucket.GetNamedDataStore(0)
 		require.NoError(t, err)
 	} else {
-		fromDs = fromBucket.DefaultDataStore()
-		toDs = toBucket.DefaultDataStore()
+		fromDs = fromBucket.DefaultDataStore(ctx)
+		toDs = toBucket.DefaultDataStore(ctx)
 	}
 	return fromBucket, fromDs, toBucket, toDs
 }
@@ -185,7 +185,7 @@ func TestReplicateVV(t *testing.T) {
 			},
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
-				cas, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"key":"value"}`), 0)
+				cas, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(`{"key":"value"}`), 0)
 				require.NoError(t, err)
 				return cas
 			},
@@ -203,9 +203,9 @@ func TestReplicateVV(t *testing.T) {
 			},
 			hasHLV: true,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
-				_, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
+				_, err := toDs.WriteCas(ctx, docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
 				require.NoError(t, err)
-				cas, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
+				cas, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
 				require.NoError(t, err)
 				return cas
 			},
@@ -216,9 +216,9 @@ func TestReplicateVV(t *testing.T) {
 			body:   `{"datastore":"toDs"}`,
 			hasHLV: false,
 			preXDCRFunc: func(t *testing.T, docID string) uint64 {
-				_, err := fromDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
+				_, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(`{"datastore":"fromDs"}`), 0)
 				require.NoError(t, err)
-				cas, err := toDs.WriteCas(docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
+				cas, err := toDs.WriteCas(ctx, docID, 0, 0, []byte(`{"datastore":"toDs"}`), 0)
 				require.NoError(t, err)
 				return cas
 			},
@@ -248,6 +248,7 @@ func TestReplicateVV(t *testing.T) {
 	var totalDocsProcessed uint64 // totalDocsProcessed will be incremented in each subtest
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			fromCAS := testCase.preXDCRFunc(t, testCase.docID)
 
 			xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
@@ -285,7 +286,7 @@ func TestVVWriteTwice(t *testing.T) {
 
 	docID := "doc1"
 	ver1Body := `{"ver":1}`
-	fromCAS, err := fromDs.WriteCas(docID, 0, 0, []byte(ver1Body), 0)
+	fromCAS, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(ver1Body), 0)
 	require.NoError(t, err)
 	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
 	defer func() {
@@ -299,7 +300,7 @@ func TestVVWriteTwice(t *testing.T) {
 	require.JSONEq(t, ver1Body, string(body))
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
-	fromCAS2, err := fromDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
+	fromCAS2, err := fromDs.WriteCas(ctx, docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
 	require.NoError(t, err)
 	requireWaitForXDCRDocsProcessed(t, xdcr, 2)
 
@@ -511,7 +512,7 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 
 	docID := "doc1"
 	ver1Body := `{"ver":1}`
-	fromCAS, err := fromDs.WriteCas(docID, 0, 0, []byte(ver1Body), 0)
+	fromCAS, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(ver1Body), 0)
 	require.NoError(t, err)
 	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
 	defer func() {
@@ -527,7 +528,7 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// write to dest bucket again
-	toCas2, err := toDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":3}`), 0)
+	toCas2, err := toDs.WriteCas(ctx, docID, 0, fromCAS, []byte(`{"ver":3}`), 0)
 	require.NoError(t, err)
 
 	body, xattrs, destCas, err = toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName, base.MouXattrName})
@@ -603,9 +604,9 @@ func TestReplicateXattrs(t *testing.T) {
 	var totalDocsProcessed uint64 // totalDocsProcessed will be incremented in each subtest
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			docID := testCase.name
 
-			ctx := base.TestCtx(t)
 			body := []byte(`{"key":"value"}`)
 			if testCase.startingDestXattrs != nil {
 				_, err := toDs.WriteWithXattrs(ctx, docID, 0, 0, body, testCase.startingDestXattrs, nil, nil)
@@ -719,7 +720,7 @@ func TestVVMultiActor(t *testing.T) {
 	// Create document on source
 	docID := "doc1"
 	ver1Body := `{"ver":1}`
-	fromCAS, err := fromDs.WriteCas(docID, 0, 0, []byte(ver1Body), 0)
+	fromCAS, err := fromDs.WriteCas(ctx, docID, 0, 0, []byte(ver1Body), 0)
 	require.NoError(t, err)
 
 	// start bidirectional XDCR
@@ -741,7 +742,7 @@ func TestVVMultiActor(t *testing.T) {
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// Update document on remote
-	toCAS, err := toDs.WriteCas(docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
+	toCAS, err := toDs.WriteCas(ctx, docID, 0, fromCAS, []byte(`{"ver":2}`), 0)
 	require.NoError(t, err)
 	requireWaitForXDCRDocsWritten(t, xdcrTarget, 1)
 
@@ -758,7 +759,7 @@ func TestVVMultiActor(t *testing.T) {
 	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// Update document on remote again.  Verifies that another update to cv doesn't affect pv.
-	toCAS2, err := toDs.WriteCas(docID, 0, toCAS, []byte(`{"ver":3}`), 0)
+	toCAS2, err := toDs.WriteCas(ctx, docID, 0, toCAS, []byte(`{"ver":3}`), 0)
 	require.NoError(t, err)
 	requireWaitForXDCRDocsWritten(t, xdcrTarget, 2)
 
@@ -775,7 +776,7 @@ func TestVVMultiActor(t *testing.T) {
 	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// Update document on source bucket.  Verifies that local source is moved from pv to cv, target source from cv to pv.
-	fromCAS2, err := fromDs.WriteCas(docID, 0, toCAS2, []byte(`{"ver":4}`), 0)
+	fromCAS2, err := fromDs.WriteCas(ctx, docID, 0, toCAS2, []byte(`{"ver":4}`), 0)
 	require.NoError(t, err)
 	requireWaitForXDCRDocsWritten(t, xdcrSource, 2)
 

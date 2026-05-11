@@ -38,7 +38,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	var session LoginSession
-	_, err := auth.datastore.Get(auth.DocIDForSession(cookie.Value), &session)
+	_, err := auth.datastore.Get(auth.LogCtx, auth.DocIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session not found: %s", base.UD(cookie.Value))
@@ -60,7 +60,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
 		session.Expiration = time.Now().Add(duration)
-		if err = auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
+		if err = auth.datastore.Set(auth.LogCtx, auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
 			return nil, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
@@ -106,7 +106,7 @@ func (auth *Authenticator) deleteOneTimeSession(ctx context.Context, session *Lo
 	if session.OneTime == nil || !*session.OneTime {
 		return nil
 	}
-	err := auth.datastore.Delete(auth.DocIDForSession(session.ID))
+	err := auth.datastore.Delete(auth.LogCtx, auth.DocIDForSession(session.ID))
 	if err != nil {
 		// If doc is not found, it probably means someone else is simultaneously using the one-time session, error.
 		// If the delete error comes from another source, still treat this as an error, expecting the client to retry
@@ -149,7 +149,7 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 	if oneTime {
 		session.OneTime = &oneTime
 	}
-	if err := auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
+	if err := auth.datastore.Set(auth.LogCtx, auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
 	}
 	base.Audit(ctx, base.AuditIDPublicUserSessionCreated, base.AuditFields{
@@ -163,7 +163,7 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 // GetSession returns a session by ID. Return a not found error if the session is not found, or is invalid.
 func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, error) {
 	var session LoginSession
-	_, err := auth.datastore.Get(auth.DocIDForSession(sessionID), &session)
+	_, err := auth.datastore.Get(auth.LogCtx, auth.DocIDForSession(sessionID), &session)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -213,7 +213,7 @@ func (auth Authenticator) DeleteSessionForCookie(ctx context.Context, rq *http.R
 }
 
 func (auth Authenticator) DeleteSession(ctx context.Context, sessionID string, username string) error {
-	err := auth.datastore.Delete(auth.DocIDForSession(sessionID))
+	err := auth.datastore.Delete(auth.LogCtx, auth.DocIDForSession(sessionID))
 	if err == nil {
 		auditFields := base.AuditFields{base.AuditFieldSessionID: sessionID}
 		if username != "" {

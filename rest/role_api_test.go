@@ -25,6 +25,7 @@ import (
 )
 
 func TestRolePurge(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ds := rt.GetSingleDataStore()
@@ -42,7 +43,7 @@ func TestRolePurge(t *testing.T) {
 	RequireStatus(t, resp, http.StatusNotFound)
 
 	// Ensure role is 'soft-deleted' and we can still get the doc
-	role, err := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
+	role, err := rt.GetDatabase().Authenticator(ctx).GetRoleIncDeleted("role")
 	assert.NoError(t, err)
 	assert.NotNil(t, role)
 
@@ -55,7 +56,7 @@ func TestRolePurge(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Ensure role is purged, can't access at all
-	role, err = rt.GetDatabase().Authenticator(base.TestCtx(t)).GetRoleIncDeleted("role")
+	role, err = rt.GetDatabase().Authenticator(ctx).GetRoleIncDeleted("role")
 	assert.Nil(t, err)
 	assert.Nil(t, role)
 

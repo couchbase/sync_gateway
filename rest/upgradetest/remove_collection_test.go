@@ -59,7 +59,7 @@ func TestRemoveCollection(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// drop a data store
-	require.NoError(t, rt.TestBucket.DropDataStore(deletedDataStore))
+	require.NoError(t, rt.TestBucket.DropDataStore(base.TestCtx(t), deletedDataStore))
 	require.Len(t, rt.TestBucket.GetNonDefaultDatastoreNames(), len(dataStores)-1)
 
 	rt.Close()

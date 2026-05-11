@@ -530,9 +530,9 @@ func TestKeyNotFound(t *testing.T) {
 	defer bucket.Close(ctx)
 	ds := bucket.GetSingleDataStore()
 	var body []byte
-	_, getErr := ds.Get("nonexistentKey", &body)
+	_, getErr := ds.Get(ctx, "nonexistentKey", &body)
 	RequireDocNotFoundError(t, getErr)
 
-	_, _, getRawErr := ds.GetRaw("nonexistentKey")
+	_, _, getRawErr := ds.GetRaw(ctx, "nonexistentKey")
 	RequireDocNotFoundError(t, getRawErr)
 }

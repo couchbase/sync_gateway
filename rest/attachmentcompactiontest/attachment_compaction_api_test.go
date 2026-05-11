@@ -75,7 +75,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		require.NoError(t, err)
 	}
 
@@ -173,6 +173,7 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 }
 
 func TestAttachmentCompactionDryRun(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -184,7 +185,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -214,7 +215,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	}
 
 	for _, docID := range attachmentKeys {
-		_, _, err := dataStore.GetRaw(docID)
+		_, _, err := dataStore.GetRaw(ctx, docID)
 		assert.NoError(t, err)
 	}
 
@@ -225,7 +226,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	assert.Equal(t, int64(5), status.PurgedAttachments)
 
 	for _, docID := range attachmentKeys {
-		_, _, err := dataStore.GetRaw(docID)
+		_, _, err := dataStore.GetRaw(ctx, docID)
 		assert.Error(t, err)
 		assert.True(t, base.IsDocNotFoundError(err))
 	}
@@ -269,6 +270,7 @@ func TestAttachmentCompactionReset(t *testing.T) {
 }
 
 func TestAttachmentCompactionInvalidDocs(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -279,13 +281,13 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 
 	dataStore := rt.GetSingleDataStore()
 	// Create a raw binary doc
-	_, err := dataStore.AddRaw("binary", 0, []byte("binary doc"))
+	_, err := dataStore.AddRaw(ctx, "binary", 0, []byte("binary doc"))
 	assert.NoError(t, err)
 
 	// Create a CBS tombstone
-	_, err = dataStore.AddRaw("deleted", 0, []byte("{}"))
+	_, err = dataStore.AddRaw(ctx, "deleted", 0, []byte("{}"))
 	assert.NoError(t, err)
-	err = dataStore.Delete("deleted")
+	err = dataStore.Delete(ctx, "deleted")
 	assert.NoError(t, err)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -294,9 +296,9 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	rest.CreateLegacyAttachmentDoc(t, ctx, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
-	err = dataStore.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
+	err = dataStore.SetRaw(ctx, base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
-	err = dataStore.SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
+	err = dataStore.SetRaw(ctx, base.AttPrefix+"test2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Write a normal doc to ensure this passes through fine
@@ -314,6 +316,7 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 }
 
 func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -322,7 +325,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	defer rt.Close()
 
 	// Create attachment with no doc reference
-	err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
+	err := rt.GetDatabase().Bucket.DefaultDataStore(ctx).SetRaw(ctx, base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	databaseStats := rt.GetDatabase().DbStats.Database()
@@ -379,6 +382,7 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 }
 
 func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -390,7 +394,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		require.NoError(t, err)
 	}
 
