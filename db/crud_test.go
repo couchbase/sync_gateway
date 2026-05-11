@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"log"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -2279,6 +2280,124 @@ func TestSyncDataCVEqual(t *testing.T) {
 				Value:    testCase.cvValue,
 			}
 			require.Equal(t, testCase.cvEqual, testCase.syncData.CVEqual(cv))
+		})
+	}
+}
+
+func TestXattrRevokedChannelVersionPath(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelName string
+		expected    string
+		wantErr     bool
+	}{
+		{
+			name:        "simple channel name",
+			channelName: "mychannel",
+			expected:    "_sync.channels.mychannel.rev.ver",
+		},
+		{
+			name:        "channel name with dots",
+			channelName: "location.com.subscriber.default_location",
+			expected:    "_sync.channels.`location.com.subscriber.default_location`.rev.ver",
+		},
+		{
+			name:        "channel name with dots and backticks",
+			channelName: "channel.with`backtick",
+			expected:    "_sync.channels.`channel.with``backtick`.rev.ver",
+		},
+		{
+			name:        "channel name with uppercase letters",
+			channelName: "MyChannel",
+			expected:    "_sync.channels.MyChannel.rev.ver",
+		},
+		{
+			name:        "channel name with uppercase letters and dots",
+			channelName: "My.Channel",
+			expected:    "_sync.channels.`My.Channel`.rev.ver",
+		},
+		{
+			name:        "channel name with digits",
+			channelName: "channel123",
+			expected:    "_sync.channels.channel123.rev.ver",
+		},
+		{
+			name:        "channel name with digits and dots",
+			channelName: "channel.123",
+			expected:    "_sync.channels.`channel.123`.rev.ver",
+		},
+		{
+			name:        "channel name with underscore only",
+			channelName: "my_channel",
+			expected:    "_sync.channels.my_channel.rev.ver",
+		},
+		{
+			name:        "channel name with equals sign",
+			channelName: "key=value",
+			expected:    "_sync.channels.key=value.rev.ver",
+		},
+		{
+			name:        "channel name with equals sign and dots",
+			channelName: "config.key=value",
+			expected:    "_sync.channels.`config.key=value`.rev.ver",
+		},
+		{
+			name:        "channel name with plus sign",
+			channelName: "a+b",
+			expected:    "_sync.channels.a+b.rev.ver",
+		},
+		{
+			name:        "channel name with plus sign and dots",
+			channelName: "a.b+c",
+			expected:    "_sync.channels.`a.b+c`.rev.ver",
+		},
+		{
+			name:        "channel name with forward slash",
+			channelName: "scope/channel",
+			expected:    "_sync.channels.scope/channel.rev.ver",
+		},
+		{
+			name:        "channel name with forward slash and dots",
+			channelName: "scope/channel.sub",
+			expected:    "_sync.channels.`scope/channel.sub`.rev.ver",
+		},
+		{
+			name:        "channel name with comma",
+			channelName: "a,b",
+			expected:    "_sync.channels.a,b.rev.ver",
+		},
+		{
+			name:        "channel name with comma and dots",
+			channelName: "a.b,c",
+			expected:    "_sync.channels.`a.b,c`.rev.ver",
+		},
+		{
+			name:        "channel name with at sign",
+			channelName: "user@example",
+			expected:    "_sync.channels.user@example.rev.ver",
+		},
+		{
+			name:        "channel name with at sign and dots",
+			channelName: "user@example.com",
+			expected:    "_sync.channels.`user@example.com`.rev.ver",
+		},
+		{
+			// Scaffold "_sync.channels." (15) + ".rev.ver" (8) = 23 chars; a name of 1002 chars
+			// produces a path of 1025 bytes, exceeding the CBS subdoc path limit of 1024.
+			name:        "channel name exceeding subdoc path limit",
+			channelName: strings.Repeat("a", 1002),
+			wantErr:     true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := xattrRevokedChannelVersionPath("_sync", tc.channelName)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }

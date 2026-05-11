@@ -3849,3 +3849,166 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 	})
 }
+
+func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		// Sync function assigns each doc to "chan.<doc.chan>" and grants alice access
+		// via a per-doc "test.<docID>" channel, ensuring every channel under test has
+		// a dot (triggering backtick-escaping of the subdoc path component).
+		rtConfig := RestTesterConfig{
+			SyncFn: `function (doc, oldDoc) {
+  var testChannel = "test." + doc._id;
+  access("alice", testChannel);
+
+  if (doc.chan && doc.chan.length > 0) {
+    var testChannel2 = "chan." + doc.chan;
+    channel(testChannel2);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		// assertChannelRemoval pushes two revisions of a document so that the first
+		// channel is revoked, then checks that the removal version is recorded correctly.
+		assertChannelRemoval := func(docID, rev1, initialChan, rev2, updatedChan, expectedRemovedChannel string) {
+			t.Helper()
+			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, initialChan)))
+			rt.WaitForVersion(docID, v)
+
+			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, []byte(fmt.Sprintf(`{"chan": %q}`, updatedChan)))
+			rt.WaitForVersion(docID, v)
+
+			xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName})
+			require.NoError(t, err)
+
+			var syncData db.SyncData
+			syncXattr, ok := xattrs[base.SyncXattrName]
+			require.True(t, ok, "missing _sync xattr")
+			require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
+
+			var hlv db.HybridLogicalVector
+			vvXattr, ok := xattrs[base.VvXattrName]
+			require.True(t, ok, "missing _vv xattr")
+			require.NoError(t, base.JSONUnmarshal(vvXattr, &hlv))
+
+			removalData, ok := syncData.Channels[expectedRemovedChannel]
+			require.True(t, ok, "channel %q not found in sync data", expectedRemovedChannel)
+
+			assert.Equal(t, hlv.Version, base.HexCasToUint64(removalData.Rev.CurrentVersion))
+			assert.Equal(t, hlv.SourceID, removalData.Rev.CurrentSource)
+			assert.Equal(t, syncData.RevAndVersion.RevTreeID, removalData.Rev.RevTreeID)
+		}
+
+		// Dots in channel name — path component must be backtick-escaped.
+		assertChannelRemoval(
+			"38839af8-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "channel.test1",
+			"2-abc", "channel.test2",
+			"chan.channel.test1",
+		)
+		// Brackets with an index — e.g. "example[10]ChannelName". Brackets are CBS
+		// array-index syntax in subdoc paths; the dot prefix means the component is
+		// backtick-wrapped so the brackets are treated as literals.
+		assertChannelRemoval(
+			"bracket-index-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "example[10]ChannelName",
+			"2-abc", "example[11]ChannelName",
+			"chan.example[10]ChannelName",
+		)
+		// Empty brackets — same escaping concern as above.
+		assertChannelRemoval(
+			"bracket-empty-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "literal[]bracketchannel",
+			"2-abc", "literalbothchannels",
+			"chan.literal[]bracketchannel",
+		)
+		// Brackets with index at end of name — CBS would interpret this as an array
+		// index operator if not escaped; the dot prefix ensures backtick-wrapping.
+		assertChannelRemoval(
+			"bracket-suffix-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "exampleChannelName[10]",
+			"2-abc", "exampleChannelName[11]",
+			"chan.exampleChannelName[10]",
+		)
+	})
+}
+
+func TestChannelRemovalWithLongChannelName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		// Use the channel name directly (no prefix) so the test controls the exact length.
+		rtConfig := RestTesterConfig{
+			SyncFn: `function (doc, oldDoc) {
+  access("alice", "test." + doc._id);
+  if (doc.chan && doc.chan.length > 0) {
+    channel(doc.chan);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		longChannelName := strings.Repeat("a", 1025)
+		const docID = "long-channel-name-doc"
+
+		// Rev 1: assign the doc to the long channel. No channel is revoked on a new
+		// document, so no macro expansion path is built and the write succeeds.
+		v := btcRunner.AddRevTreeRev(client.id, docID, "1-abc", EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, longChannelName)))
+		rt.WaitForVersion(docID, v)
+
+		// Rev 2: move the doc to a short channel, revoking the long channel. Building
+		// the subdoc macro expansion path for the revoked channel exceeds the CBS
+		// 1024-byte limit, so the write must fail. We construct the rev message manually
+		// so we can inspect the error response directly rather than via WaitForVersion.
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "2-abc"
+		revRequest.Properties[db.RevMessageHistory] = v.RevTreeID
+		revRequest.SetBody([]byte(`{"chan": "shortchannel"}`))
+		btcRunner.SingleCollection(client.id).sendPushMsg(revRequest)
+
+		revResp := revRequest.Response()
+		if btcRunner.SingleCollection(client.id).UseHLV() {
+			// HLV replication does not use subdoc macro expansion for revoked channels,
+			// so the write succeeds.
+			require.NotEqual(t, blip.ErrorType, revResp.Type())
+			require.NotContains(t, revResp.Properties, "Error-Code")
+		} else {
+			// RevTree replication builds a subdoc macro expansion path for revoked
+			// channels; a 1025-char channel name exceeds the CBS 1024-byte path limit.
+			require.Equal(t, blip.ErrorType, revResp.Type())
+			require.Equal(t, strconv.Itoa(http.StatusInternalServerError), revResp.Properties["Error-Code"])
+		}
+	})
+}
