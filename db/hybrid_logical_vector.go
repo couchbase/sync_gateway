@@ -577,13 +577,15 @@ func (hlv *HybridLogicalVector) toHistoryForHLV(sortFunc func(HLVVersions) iter.
 
 // appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
 // but putting the function here as it's required when the HLV's current version is being macro expanded
-func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) (updatedSpec []sgbucket.MacroExpansionSpec) {
+func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) ([]sgbucket.MacroExpansionSpec, error) {
 	for _, channelName := range channelNames {
-		spec := sgbucket.NewMacroExpansionSpec(xattrRevokedChannelVersionPath(base.SyncXattrName, channelName), sgbucket.MacroCas)
-		currentSpec = append(currentSpec, spec)
+		path, err := xattrRevokedChannelVersionPath(base.SyncXattrName, channelName)
+		if err != nil {
+			return nil, err
+		}
+		currentSpec = append(currentSpec, sgbucket.NewMacroExpansionSpec(path, sgbucket.MacroCas))
 	}
-	return currentSpec
-
+	return currentSpec, nil
 }
 
 // extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
