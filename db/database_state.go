@@ -52,10 +52,10 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *Databa
 
 // UpdateState persists the given DatabaseState to the metadata store using a CAS write, then updates the
 // in-memory State and CAS on success. Returns an error store failure.
-func (dbMgr *DatabaseStateMgr) UpdateState(newState DatabaseState) error {
+func (dbMgr *DatabaseStateMgr) UpdateState(ctx context.Context, newState DatabaseState) error {
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
-	cas, err := dbMgr.metadataStore.Update(dbMgr.dbStateID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	cas, err := dbMgr.metadataStore.Update(ctx, dbMgr.dbStateID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		var state DatabaseState
 		if current != nil {
 			err = base.JSONUnmarshal(current, &state)
@@ -81,9 +81,9 @@ func (dbMgr *DatabaseStateMgr) UpdateState(newState DatabaseState) error {
 
 // GetState reads the current DatabaseState document from the metadata store. Returns the state and its CAS value.
 // A doc-not-found error is treated as a zero-value state.
-func (dbMgr *DatabaseStateMgr) GetState() (*DatabaseState, uint64, error) {
+func (dbMgr *DatabaseStateMgr) GetState(ctx context.Context) (*DatabaseState, uint64, error) {
 	var state DatabaseState
-	cas, err := dbMgr.metadataStore.Get(dbMgr.dbStateID, &state)
+	cas, err := dbMgr.metadataStore.Get(ctx, dbMgr.dbStateID, &state)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -120,7 +120,7 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // changed. If the document is not found it calls resumeFunc(false) to signal that resync is no longer
 // running. CAS changes that match the locally held CAS are ignored to avoid redundant callbacks.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	state, cas, err := dbMgr.GetState()
+	state, cas, err := dbMgr.GetState(ctx)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			if cas != dbMgr.CAS.Load() {
