@@ -12,6 +12,9 @@ post:
 
     While frozen, subsequent node upgrades will not advance the reported `cluster_compat_version`, preserving the option to roll a node back to the prior major/minor.
 
+    Returns success only if every tracked bucket accepts the freeze.
+    If one or more buckets fail to accept it, a `503` is returned with the current state — the cluster compatibility version may still be partially pinned, and the request should be retried.
+
     To clear the pinned version, call `POST /_cluster_compat_version/unfreeze`.
 
     Required Sync Gateway RBAC roles:
@@ -26,6 +29,25 @@ post:
             $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized
+    '500':
+      description: An unexpected error occurred while freezing the cluster compatibility version
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '503':
+      description: |-
+        The freeze could not be fully applied. Possible reasons:
+          * Cluster compatibility version tracking is not enabled on this node.
+          * The cluster compatibility version has not yet been computed (e.g. immediately after startup).
+          * No tracked bucket registries.
+          * One or more tracked buckets did not accept the freeze (partial failure). In this case the response body is a `ClusterCompatVersionState` describing the version (if any) that is currently pinned, so the admin can see what did take effect.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: ../../components/schemas.yaml#/HTTP-Error
+              - $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
   tags:
     - Server
   operationId: post__cluster_compat_version_freeze

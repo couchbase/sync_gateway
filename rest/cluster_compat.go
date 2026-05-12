@@ -22,9 +22,16 @@ import (
 // version has been observed yet (e.g. immediately after startup, before any node has registered).
 var ErrFreezeNoVersion = errors.New("cluster compatibility version not yet computed")
 
-// ErrFreezeNoBucketsWritten is returned by clusterCompatManager.Freeze when every tracked
-// bucket write failed. The cluster is unchanged in this case.
-var ErrFreezeNoBucketsWritten = errors.New("freeze could not be applied to any tracked bucket")
+// ErrFreezeNoBucketsWritten is returned by clusterCompatManager.Freeze when there are no
+// tracked buckets at all — there is nowhere to persist the freeze. Distinct from
+// ErrFreezePartial which signals that some buckets accepted the freeze and others didn't.
+var ErrFreezeNoBucketsWritten = errors.New("freeze could not be applied: no tracked buckets")
+
+// ErrFreezePartial is returned by clusterCompatManager.Freeze when one or more tracked
+// buckets did not accept the freeze. The cluster compatibility version may only be partially
+// pinned in this case — the caller should surface the returned aggregate freeze record so
+// the admin can see which version (if any) is still in effect.
+var ErrFreezePartial = errors.New("freeze did not fully apply across all tracked buckets")
 
 // ErrUnfreezePartial is returned by clusterCompatManager.Unfreeze when one or more tracked
 // buckets still hold a freeze record after the operation. The cluster compatibility version
@@ -422,14 +429,20 @@ func mergeFreeze(a, b *base.RegistryFreeze) *base.RegistryFreeze {
 }
 
 // Freeze captures the currently-reported cluster compat version into every tracked bucket
-// registry, pinning the cluster from advancing past it. Success is returned as long as at
-// least one bucket now holds the freeze — the cluster is held back as long as any part of
-// it is frozen, which is the safe direction.
+// registry, pinning the cluster from advancing past it. Success requires that every tracked
+// bucket accepts the freeze: a partial freeze would leave bucket registries (and any
+// downgrade-gate decisions keyed off them) in an inconsistent state.
 //
 // Returns ErrFreezeNoVersion if no version has been observed yet (e.g. immediately after
-// startup). Returns ErrFreezeNoBucketsWritten if there are no tracked buckets, or if every
-// bucket write failed. On success, the manager's cached freeze and reported version are
-// updated and the returned record is the aggregate freeze now in effect.
+// startup). Returns ErrFreezeNoBucketsWritten if there are no tracked buckets at all.
+// Returns ErrFreezePartial alongside whatever aggregate freeze did take effect when one or
+// more tracked buckets failed to accept the freeze — callers should surface the aggregate to
+// the admin so they can see which version is currently pinned and on which buckets.
+//
+// On full success the manager's cached freeze and reported version are updated and the
+// returned record is the aggregate freeze now in effect across all tracked buckets. On
+// partial failure the cache is also updated to reflect what did take effect, and the
+// returned aggregate is the partial freeze (nil if no bucket accepted it).
 func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze, error) {
 	current := m.getCachedVersion()
 	if current == nil {
@@ -450,13 +463,14 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 		succeeded++
 		aggregate = mergeFreeze(aggregate, freeze)
 	}
-	if succeeded == 0 {
-		return nil, ErrFreezeNoBucketsWritten
-	}
 	m.mu.Lock()
 	m.cachedFreeze = aggregate
 	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
 	m.mu.Unlock()
+	if succeeded < len(buckets) {
+		base.WarnfCtx(ctx, "Cluster compatibility version freeze did not fully apply: %d/%d tracked buckets accepted the freeze", succeeded, len(buckets))
+		return aggregate, ErrFreezePartial
+	}
 	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version frozen at %v (applied to %d/%d tracked buckets)", &aggregate.Version, succeeded, len(buckets))
 	return aggregate, nil
 }

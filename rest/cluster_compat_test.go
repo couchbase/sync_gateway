@@ -1350,6 +1350,44 @@ func TestClusterCompatFreezeBeforeVersion(t *testing.T) {
 	assert.ErrorIs(t, err, ErrFreezeNoVersion)
 }
 
+// TestClusterCompatFreezePartialFailure verifies that when a tracked bucket cannot be
+// frozen (e.g. its registry doc is unparseable), Freeze returns ErrFreezePartial rather
+// than silently succeeding. This makes Freeze success-on-all (mirror of Unfreeze), so the
+// admin gets a clear error and can see in the response which buckets did get frozen.
+func TestClusterCompatFreezePartialFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	_, err := ccm.Freeze(ctx)
+	assert.ErrorIs(t, err, ErrFreezePartial)
+}
+
+// TestClusterCompatFreezePartialFailureREST verifies the REST handler returns 503 with a
+// ClusterCompatVersionState body when Freeze partially fails — mirroring unfreeze.
+func TestClusterCompatFreezePartialFailureREST(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	var state ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
+}
+
 // corruptGatewayRegistry overwrites the registry doc on the given bucket with a non-object
 // JSON value so that getGatewayRegistry's unmarshal fails. This simulates a bucket whose
 // registry has become inaccessible — used to drive the partial-failure branch of Unfreeze.

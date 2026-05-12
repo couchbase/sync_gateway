@@ -11,6 +11,7 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -37,24 +38,35 @@ func (h *handler) handleGetClusterCompatVersion() error {
 }
 
 // handleFreezeClusterCompatVersion captures the current cluster compatibility version and
-// pins the cluster to it. Asymmetric with unfreeze: success is returned as long as the
-// freeze takes effect cluster-wide, even if not every bucket write succeeded.
+// pins the cluster to it. Success requires every tracked bucket accept the freeze; on
+// partial failure the current state is written as the body of a 503 response so the admin
+// can see which version (if any) ended up pinned.
+//
+// Audits only on full success — partial-failure attempts are still captured by the standard
+// admin HTTP API request audit (AuditIDAdminHTTPAPIRequest).
 func (h *handler) handleFreezeClusterCompatVersion() error {
 	mgr, err := h.requireClusterCompatManager()
 	if err != nil {
 		return err
 	}
-	if _, err := mgr.Freeze(h.ctx()); err != nil {
+	freeze, err := mgr.Freeze(h.ctx())
+	if err != nil {
 		switch {
 		case errors.Is(err, ErrFreezeNoVersion):
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "cluster compatibility version not yet computed; retry once GET /_cluster_compat_version returns a version")
 		case errors.Is(err, ErrFreezeNoBucketsWritten):
-			return base.HTTPErrorf(http.StatusServiceUnavailable, "could not freeze cluster compatibility version: no tracked bucket registries could be written")
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "could not freeze cluster compatibility version: no tracked bucket registries")
+		case errors.Is(err, ErrFreezePartial):
+			h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
+			return nil
 		default:
 			return base.HTTPErrorf(http.StatusInternalServerError, "failed to freeze cluster compatibility version: %v", err)
 		}
 	}
-	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionFreeze, nil)
+	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionFreeze, base.AuditFields{
+		base.AuditFieldClusterCompatVersion: freeze.Version.String(),
+		base.AuditFieldFrozenAt:             freeze.FrozenAt.Format(time.RFC3339),
+	})
 	state := buildClusterCompatVersionState(mgr)
 	h.writeJSON(state)
 	return nil
@@ -64,14 +76,18 @@ func (h *handler) handleFreezeClusterCompatVersion() error {
 // Strict contract: success only if the cluster is fully unfrozen. On partial failure the
 // current state is written as the body of a 503 response so the admin can see what is
 // still held back.
+//
+// Audits only on full success — matching freeze, where the audit records the action
+// having taken effect. Partial-failure attempts are still captured by the standard admin
+// HTTP API request audit (AuditIDAdminHTTPAPIRequest).
 func (h *handler) handleUnfreezeClusterCompatVersion() error {
 	mgr, err := h.requireClusterCompatManager()
 	if err != nil {
 		return err
 	}
-	// Audit the unfreeze attempt unconditionally — admins need a record of the action whether
-	// or not it fully applied. The response body distinguishes success from partial failure.
-	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, nil)
+	// Capture the freeze about to be cleared so we can include it in the audit payload —
+	// after Unfreeze succeeds the cached freeze is gone.
+	priorFreeze := mgr.getCachedFreeze()
 	if _, err := mgr.Unfreeze(h.ctx()); err != nil {
 		if errors.Is(err, ErrUnfreezePartial) {
 			h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
@@ -79,6 +95,12 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, "failed to clear cluster compatibility version freeze: %v", err)
 	}
+	auditFields := base.AuditFields{}
+	if priorFreeze != nil {
+		auditFields[base.AuditFieldClusterCompatVersion] = priorFreeze.Version.String()
+		auditFields[base.AuditFieldFrozenAt] = priorFreeze.FrozenAt.Format(time.RFC3339)
+	}
+	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, auditFields)
 	state := buildClusterCompatVersionState(mgr)
 	h.writeJSON(state)
 	return nil
