@@ -3489,7 +3489,7 @@ GatewayRegistry:
       description: |-
         Cluster compatibility version freeze record. When present, the
         cluster compatibility version reported by this Sync Gateway is capped at
-        `frozen.version` until the freeze is cleared via
+        `frozen_cluster_compat_version.version` until the freeze is cleared via
         `POST /_cluster_compat_version/unfreeze`.
 
 RegistryNode:

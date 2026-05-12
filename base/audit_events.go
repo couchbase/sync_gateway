@@ -476,16 +476,24 @@ var AuditEvents = events{
 		IsGlobalEvent:      true,
 	},
 	AuditIDClusterCompatVersionFreeze: {
-		Name:               "Sync Gateway cluster compatibility version frozen",
-		Description:        "An admin pinned the Sync Gateway cluster compatibility version to its current value",
+		Name:        "Sync Gateway cluster compatibility version frozen",
+		Description: "An admin pinned the Sync Gateway cluster compatibility version to its current value",
+		MandatoryFields: AuditFields{
+			AuditFieldClusterCompatVersion: "4.1",
+			AuditFieldFrozenAt:             "2026-01-02T15:04:05Z",
+		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 		IsGlobalEvent:      true,
 	},
 	AuditIDClusterCompatVersionUnfreeze: {
-		Name:               "Sync Gateway cluster compatibility version unfrozen",
-		Description:        "An admin cleared the Sync Gateway cluster compatibility version freeze",
+		Name:        "Sync Gateway cluster compatibility version unfrozen",
+		Description: "An admin cleared the Sync Gateway cluster compatibility version freeze",
+		OptionalFields: AuditFields{
+			AuditFieldClusterCompatVersion: "4.1",
+			AuditFieldFrozenAt:             "2026-01-02T15:04:05Z",
+		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,

@@ -28,7 +28,7 @@ get:
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized
     '503':
-      description: No bucket registries are currently reachable
+      description: Cluster compatibility version tracking is not enabled on this node
       content:
         application/json:
           schema:

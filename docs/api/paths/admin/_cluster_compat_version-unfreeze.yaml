@@ -28,14 +28,24 @@ post:
             $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized
-    '503':
-      description: |-
-        The unfreeze operation did not fully apply. The cluster compatibility version may still be
-        held back. The response body shows the current state.
+    '500':
+      description: An unexpected error occurred while clearing the cluster compatibility version freeze
       content:
         application/json:
           schema:
-            $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '503':
+      description: |-
+        The unfreeze did not fully apply. The cluster compatibility version may still be held back
+        and the request should be retried. The response body is either a `ClusterCompatVersionState`
+        showing the residual freeze, or an `HTTP-Error` if cluster compatibility version tracking is
+        not enabled on this node.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+              - $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
     - Server
   operationId: post__cluster_compat_version_unfreeze
