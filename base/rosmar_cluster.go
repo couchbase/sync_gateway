@@ -230,8 +230,6 @@ func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID strin
 func (c *RosmarCluster) Close() {
 }
 
-func (c *RosmarCluster) SetConnectionStringServerless() error { return nil }
-
 // AsRosmarBucket returns a bucket as a rosmar.Bucket, or an error if it is not one.
 func AsRosmarBucket(bucket Bucket) (*rosmar.Bucket, error) {
 	baseBucket := GetBaseBucket(bucket)

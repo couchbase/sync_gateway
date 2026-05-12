@@ -394,7 +394,6 @@ type bootstrapConnectionOpts struct {
 	x509KeyPath          string
 	caCertPath           string
 	bucketConnectionMode base.BucketConnectionMode
-	isServerless         bool
 	bucketCredentials    base.PerBucketCredentialsConfig
 	tlsSkipVerify        *bool
 	useXattrConfig       bool
@@ -416,7 +415,6 @@ func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, 
 	opts.x509CertPath = config.Bootstrap.X509CertPath
 	opts.x509KeyPath = config.Bootstrap.X509KeyPath
 	opts.caCertPath = config.Bootstrap.CACertPath
-	opts.isServerless = config.IsServerless()
 	opts.bucketCredentials = config.BucketCredentials
 	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
 	opts.useXattrConfig = base.ValDefault(config.Unsupported.UseXattrConfig, false)
@@ -439,13 +437,7 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 		return base.NewRosmarCluster(opts.server)
 	}
 
-	var connStr string
-	var err error
-	if opts.isServerless {
-		connStr, err = base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultServerlessGoCBConnStringParams())
-	} else {
-		connStr, err = base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultGoCBConnStringParams())
-	}
+	connStr, err := base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultGoCBConnStringParams())
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +451,6 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 			CACertpath:    opts.caCertPath,
 			TLSSkipVerify: base.ValDefault(opts.tlsSkipVerify, false),
 		},
-		opts.isServerless,
 		opts.bucketCredentials,
 		opts.useXattrConfig,
 		opts.bucketConnectionMode)

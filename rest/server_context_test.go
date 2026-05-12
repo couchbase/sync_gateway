@@ -831,7 +831,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"type":"doc2"}`)
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
 
-	// put doc2 bypassing offline checks (this step will begin to fail with Elixir - since we're making offline more comprehensive)
+	// put doc2 bypassing offline checks
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	_, _, err = collection.Put(ctx, "doc2", db.Body{"type": "doc2"})
 	require.NoError(t, err)

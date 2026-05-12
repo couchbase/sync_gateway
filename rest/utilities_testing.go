@@ -71,7 +71,6 @@ type RestTesterConfig struct {
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	PersistentConfig                bool
 	GroupID                         *string
-	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
 	nodeClusterCompatVersion        *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
@@ -258,21 +257,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
-	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
-	if rt.serverless {
-		if !rt.PersistentConfig {
-			rt.TB().Fatalf("Persistent config must be used when running in serverless mode")
-		}
-		sc.BucketCredentials = map[string]*base.CredentialsConfig{
-			testBucket.GetName(): {
-				Username: base.TestClusterUsername(),
-				Password: base.TestClusterPassword(),
-			},
-		}
-	}
 
 	if rt.RestTesterConfig.GroupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.GroupID
@@ -2370,19 +2357,6 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
-}
-
-func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
-	return sc._isDatabaseSuspended(dbName)
-}
-
-func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
-
-	return sc._suspendDatabase(ctx, dbName)
 }
 
 // getRESTkeyspace returns a keyspace for REST URIs

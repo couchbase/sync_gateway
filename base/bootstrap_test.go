@@ -49,8 +49,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to TestBucketPool.numBuckets
 
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-	forcePerBucketAuth := false
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), forcePerBucketAuth, perBucketCredentialsConfig, TestUseXattrs(), CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), perBucketCredentialsConfig, TestUseXattrs(), CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)

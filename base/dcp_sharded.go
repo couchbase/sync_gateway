@@ -29,10 +29,9 @@ import (
 )
 
 const (
-	CBGTIndexTypeSyncGatewayImport    = "syncGateway-import-"
-	DefaultImportPartitions           = 16
-	DefaultImportPartitionsServerless = 6
-	CBGTCfgIndexDefs                  = SyncDocPrefix + "cfgindexDefs"
+	CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
+	DefaultImportPartitions        = 16
+	CBGTCfgIndexDefs               = SyncDocPrefix + "cfgindexDefs"
 	CBGTCfgNodeDefsKnown              = SyncDocPrefix + "cfgnodeDefs-known"
 	CBGTCfgNodeDefsWanted             = SyncDocPrefix + "cfgnodeDefs-wanted"
 	CBGTCfgPlanPIndexes               = SyncDocPrefix + "cfgplanPIndexes"
@@ -858,14 +857,6 @@ func RemoveDestFactory(destKey string) {
 	cbgtDestFactoriesLock.Lock()
 	delete(cbgtDestFactories, destKey)
 	cbgtDestFactoriesLock.Unlock()
-}
-
-func GetDefaultImportPartitions(serverless bool) uint16 {
-	if serverless {
-		return DefaultImportPartitionsServerless
-	} else {
-		return DefaultImportPartitions
-	}
 }
 
 type sgMgrEventHandlers struct {

@@ -1672,13 +1672,6 @@ Database:
         Disable this when you are confident all clients use newer CV-based revisions and no longer require legacy RevTree ID lookups.
       type: boolean
       default: true
-    suspendable:
-      description: |-
-        Set to true to allow the database to be suspended.
-
-        Defaults to true when running in serverless mode otherwise defaults to false.
-      type: boolean
-      default: false
     sync:
       description: |-
         The Javascript function that newly created documents are ran through for the default scope and collection.
@@ -2110,21 +2103,6 @@ Compact-status:
     - start_time
     - last_error
   title: Compact-status
-Serverless:
-  description: Configuration for when SG is running in serverless mode
-  type: object
-  properties:
-    enabled:
-      description: Run SG in to serverless mode
-      type: boolean
-      readOnly: true
-    min_config_fetch_interval:
-      description: |-
-        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about.
-
-        This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
-      type: string
-      default: 1s
 Startup-config:
   type: object
   x-requirePropertiesSorted: true
@@ -2413,8 +2391,6 @@ Startup-config:
               description: Whether HTTP2 support is enabled
               type: boolean
               default: false
-        serverless:
-          $ref: '#/Serverless'
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.

@@ -74,8 +74,6 @@ const (
 	// opt-in -> opt-out -> remove lifecycle for the system metadata collection feature.
 	DefaultUseSystemMetadataCollection = false
 
-	DefaultMinConfigFetchInterval = time.Second
-
 	tapFeedType = "tap"
 )
 
@@ -194,7 +192,6 @@ type DbConfig struct {
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
-	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
 	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
 	Logging                          *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
@@ -469,7 +466,7 @@ func (dbConfig *DbConfig) setDatabaseCredentials(credentials base.CredentialsCon
 }
 
 // setup populates fields in the dbConfig
-func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig, forcePerBucketAuth bool) error {
+func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapConfig BootstrapConfig, dbCredentials, bucketCredentials *base.CredentialsConfig) error {
 	dbConfig.Name = dbName
 
 	// use db name as bucket if absent from config (handling for old non-stamped configs)
@@ -480,8 +477,6 @@ func (dbConfig *DbConfig) setup(ctx context.Context, dbName string, bootstrapCon
 	dbConfig.inheritFromBootstrap(bootstrapConfig)
 	if bucketCredentials != nil {
 		dbConfig.setDatabaseCredentials(*bucketCredentials)
-	} else if forcePerBucketAuth {
-		return fmt.Errorf("unable to setup database on bucket %q since credentials are not defined in bucket_credentials", base.MD(*dbConfig.Bucket).Redact())
 	}
 	// Per db credentials override bootstrap and bucket level credentials
 	if dbCredentials != nil {
@@ -1559,10 +1554,6 @@ func (sc *StartupConfig) Validate(ctx context.Context, isEnterpriseEdition bool)
 		}
 	}
 
-	if sc.IsServerless() && len(sc.BucketCredentials) == 0 {
-		multiError = multiError.Append(fmt.Errorf("at least 1 bucket must be defined in bucket_credentials when running in serverless mode"))
-	}
-
 	if sc.BucketCredentials != nil {
 		for bucketName, creds := range sc.BucketCredentials {
 			if (creds.X509CertPath != "" || creds.X509KeyPath != "") && (creds.Username != "" || creds.Password != "") {
@@ -1740,18 +1731,6 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	return sc._applyConfigs(ctx, fetchedConfigs, true), nil
 }
 
-// fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
-// the fetched configs contain the dbName.
-func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName string, refreshInterval *base.ConfigDuration) (found bool, err error) {
-	configs, err := sc.fetchConfigsSince(ctx, refreshInterval)
-	if err != nil {
-		return false, err
-	}
-
-	found = configs[dbName] != nil
-	return found, nil
-}
-
 func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
@@ -1814,18 +1793,9 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 // function. Returns an error if the bootstrap context can't find the bucket or the callback function returns an
 // error and the exit return value for callback is true.
 func (sc *ServerContext) findBucketWithCallback(ctx context.Context, callback func(bucket string) (exit bool, err error)) (err error) {
-	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
-	var buckets []string
-	if sc.Config.IsServerless() {
-		buckets = make([]string, 0, len(sc.Config.BucketCredentials))
-		for bucket, _ := range sc.Config.BucketCredentials {
-			buckets = append(buckets, bucket)
-		}
-	} else {
-		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
-		if err != nil {
-			return fmt.Errorf("couldn't get buckets from cluster: %w", err)
-		}
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
+	if err != nil {
+		return fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
 	for _, bucket := range buckets {
@@ -1962,47 +1932,11 @@ func (sc *ServerContext) bucketNameFromDbName(ctx context.Context, dbName string
 	return bucketName, true
 }
 
-// fetchConfigsSince returns database configs from the server context. These configs are refreshed before returning if
-// they are older than the refreshInterval. The refreshInterval defaults to DefaultMinConfigFetchInterval if nil.
-func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval *base.ConfigDuration) (dbNameConfigs map[string]*RuntimeDatabaseConfig, err error) {
-	minInterval := DefaultMinConfigFetchInterval
-	if refreshInterval != nil {
-		minInterval = refreshInterval.Value()
-	}
-
-	if time.Since(sc.fetchConfigsLastUpdate) > minInterval {
-		_, err = sc.fetchAndLoadConfigs(ctx, false)
-		if err != nil {
-			return nil, err
-		}
-		sc.fetchConfigsLastUpdate = time.Now()
-	}
-
-	return sc._dbConfigs, nil
-}
-
 // GetBucketNames returns a slice of the bucket names associated with the server context
 func (sc *ServerContext) GetBucketNames(ctx context.Context) (buckets []string, err error) {
-	if sc.Config.IsServerless() {
-		buckets = make([]string, len(sc.Config.BucketCredentials))
-		for bucket, _ := range sc.Config.BucketCredentials {
-			buckets = append(buckets, bucket)
-		}
-		// TODO: Enable code as part of CBG-2280
-		// Return buckets that have credentials set that do not have a db associated with them
-		// buckets = make([]string, len(sc.Config.BucketCredentials)-len(sc.bucketDbName))
-		// for bucket := range sc.Config.BucketCredentials {
-		//	i := 0
-		//	if sc.bucketDbName[bucket] == "" {
-		//		buckets[i] = bucket
-		//		i++
-		//	}
-		// }
-	} else {
-		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
-		}
+	buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 	return buckets, nil
 }
@@ -2139,11 +2073,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
-
-	// Prevent database from being unsuspended when it is suspended
-	if sc._isDatabaseSuspended(cnf.Name) {
-		return true, nil
-	}
 
 	// TODO: Dynamic update instead of reload
 	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, loadFromBucket); err != nil {

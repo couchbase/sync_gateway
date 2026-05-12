@@ -22,7 +22,7 @@ const (
 	kvPoolSizeKey    = "kv_pool_size"
 )
 
-// GoCBConnStringParams represents parameters that are passed to gocb when creating a new connection string. These are the subset of values that are changed when running with serverless mode.
+// GoCBConnStringParams represents tunable parameters that are passed to gocb when creating a new connection string.
 type GoCBConnStringParams struct {
 	KvPoolSize    int // corresponds to kv_pool_size
 	KvBufferSize  int // corresponds to kv_buffer_size
@@ -35,15 +35,6 @@ func DefaultGoCBConnStringParams() *GoCBConnStringParams {
 		KvPoolSize:    DefaultGocbKvPoolSize,
 		KvBufferSize:  0,
 		DcpBufferSize: 0,
-	}
-}
-
-// DefaultServerlessGoCBConnStringParams returns a GoCBConnStringParams with the default values for serverless deployments.
-func DefaultServerlessGoCBConnStringParams() *GoCBConnStringParams {
-	return &GoCBConnStringParams{
-		KvPoolSize:    DefaultGocbKvPoolSizeServerless,
-		KvBufferSize:  DefaultKvBufferSizeServerless,
-		DcpBufferSize: DefaultDCPBufferServerless,
 	}
 }
 

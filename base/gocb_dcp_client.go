@@ -29,9 +29,6 @@ const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
 const DefaultNumWorkers = 8
 
-// DCP buffer size if we are running in serverless
-const DefaultDCPBufferServerless = 1 * 1024 * 1024
-
 const getVbSeqnoTimeout = 30 * time.Second
 
 const infiniteOpenStreamRetries = uint32(math.MaxUint32)

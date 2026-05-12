@@ -20,7 +20,6 @@ import (
 // RuntimeDatabaseConfig is the non-persisted database config that has the persisted DatabaseConfig embedded
 type RuntimeDatabaseConfig struct {
 	DatabaseConfig
-	isSuspended bool
 }
 
 // DatabaseConfig is a 3.x/persisted database config that represents a config stored in the bucket.
@@ -187,7 +186,6 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		ClientPartitionWindowSecs:        base.Ptr(int(base.DefaultClientPartitionWindow.Seconds())),
 		Guest:                            &auth.PrincipalConfig{Disabled: base.Ptr(true)},
 		JavascriptTimeoutSecs:            base.Ptr(base.DefaultJavascriptTimeoutSecs),
-		Suspendable:                      base.Ptr(sc.IsServerless()),
 		ChangesRequestPlus:               base.Ptr(false),
 		Logging:                          DefaultPerDBLogging(sc.Logging),
 		DisablePublicAllDocs:             base.Ptr(false),
@@ -196,7 +194,7 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 	if useXattrs {
 		dbConfig.AutoImport = base.Ptr(base.DefaultAutoImport)
 		if base.IsEnterpriseEdition() {
-			dbConfig.ImportPartitions = base.Ptr(base.GetDefaultImportPartitions(sc.IsServerless()))
+			dbConfig.ImportPartitions = base.Ptr(uint16(base.DefaultImportPartitions))
 		} else {
 			dbConfig.ImportPartitions = nil
 		}
