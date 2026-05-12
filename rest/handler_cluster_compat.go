@@ -85,10 +85,8 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 	if err != nil {
 		return err
 	}
-	// Capture the freeze about to be cleared so we can include it in the audit payload —
-	// after Unfreeze succeeds the cached freeze is gone.
-	priorFreeze := mgr.getCachedFreeze()
-	if _, err := mgr.Unfreeze(h.ctx()); err != nil {
+	cleared, _, err := mgr.Unfreeze(h.ctx())
+	if err != nil {
 		if errors.Is(err, ErrUnfreezePartial) {
 			h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
 			return nil
@@ -96,9 +94,9 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "failed to clear cluster compatibility version freeze: %v", err)
 	}
 	auditFields := base.AuditFields{}
-	if priorFreeze != nil {
-		auditFields[base.AuditFieldClusterCompatVersion] = priorFreeze.Version.String()
-		auditFields[base.AuditFieldFrozenAt] = priorFreeze.FrozenAt.Format(time.RFC3339)
+	if cleared != nil {
+		auditFields[base.AuditFieldClusterCompatVersion] = cleared.Version.String()
+		auditFields[base.AuditFieldFrozenAt] = cleared.FrozenAt.Format(time.RFC3339)
 	}
 	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, auditFields)
 	state := buildClusterCompatVersionState(mgr)

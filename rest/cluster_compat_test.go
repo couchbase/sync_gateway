@@ -1232,9 +1232,11 @@ func TestClusterCompatFreezeAndUnfreeze(t *testing.T) {
 	require.NotNil(t, registry.Frozen, "freeze should be persisted to bucket registry")
 	assert.Equal(t, freeze.Version, registry.Frozen.Version)
 
-	residual, err := ccm.Unfreeze(ctx)
+	cleared, residual, err := ccm.Unfreeze(ctx)
 	require.NoError(t, err)
 	assert.Nil(t, residual)
+	require.NotNil(t, cleared, "Unfreeze should return the freeze record that was cleared")
+	assert.Equal(t, base.NodeClusterCompatVersion, cleared.Version)
 
 	registry, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
@@ -1420,7 +1422,7 @@ func TestClusterCompatUnfreezePartialFailure(t *testing.T) {
 
 	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
 
-	_, err = ccm.Unfreeze(ctx)
+	_, _, err = ccm.Unfreeze(ctx)
 	assert.ErrorIs(t, err, ErrUnfreezePartial)
 }
 

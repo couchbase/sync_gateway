@@ -332,6 +332,12 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 	}
 	newVersion := computeCCV(nodes, freeze)
 
+	// Race window: if a Freeze or Unfreeze completed between refreshNodeRegistrations
+	// returning and the lock acquisition below, this write overwrites their mutation with
+	// data that was observed *before* the admin op ran. The cache will be stale (a phantom
+	// freeze or a missing freeze) until the next periodic Refresh rebuilds from authoritative
+	// bucket state. Admin endpoints are rare, the window is bounded by the bucket I/O above,
+	// and the self-heal is automatic — accepted as a transient over more locking machinery.
 	m.mu.Lock()
 	oldVersion := m.cachedVersion
 	m.cachedNodes = nodes
@@ -443,19 +449,42 @@ func mergeFreeze(a, b *base.RegistryFreeze) *base.RegistryFreeze {
 // returned record is the aggregate freeze now in effect across all tracked buckets. On
 // partial failure the cache is also updated to reflect what did take effect, and the
 // returned aggregate is the partial freeze (nil if no bucket accepted it).
+//
+// Locking: the cached cluster compat version is snapshotted under m.mu.RLock at the start
+// and the RLock is held across all bucket writes. This blocks concurrent Refresh from
+// completing its post-I/O write phase while a freeze is in progress, so the version we
+// write is guaranteed not to shift relative to what was reported by GET. Bucket I/O is
+// otherwise rare admin work, so the contention cost is negligible.
+//
+// Cross-bucket drift on retry: SetRegistryFreeze is idempotent — once a bucket has a freeze
+// record, subsequent calls return the existing record unchanged. If a Freeze partially
+// fails and the cluster's live-node minimum then advances before the admin retries, the
+// retry will leave already-frozen buckets at the original version while writing the newer
+// version to the previously-failed buckets. The mergeFreeze aggregate keeps the reported
+// version at the minimum so clients see a consistent CCV, but per-bucket HWM caps (see
+// RegisterNodeVersion in config_manager.go) use each bucket's local freeze. The practical
+// effect is that HWM may advance further on the higher-version bucket — which errs toward
+// refusing downgrades, the safe direction.
 func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze, error) {
-	current := m.getCachedVersion()
-	if current == nil {
+	m.mu.RLock()
+	if m.cachedVersion == nil {
+		m.mu.RUnlock()
 		return nil, ErrFreezeNoVersion
 	}
-	buckets := m.trackedBucketList()
+	current := *m.cachedVersion
+	buckets := make([]string, 0, len(m.trackedBuckets))
+	for b := range m.trackedBuckets {
+		buckets = append(buckets, b)
+	}
 	if len(buckets) == 0 {
+		m.mu.RUnlock()
 		return nil, ErrFreezeNoBucketsWritten
 	}
+	// Hold RLock across the bucket writes so cachedVersion cannot shift under us.
 	var aggregate *base.RegistryFreeze
 	succeeded := 0
 	for _, bucket := range buckets {
-		freeze, err := m.sc.BootstrapContext.SetRegistryFreeze(ctx, bucket, *current)
+		freeze, err := m.sc.BootstrapContext.SetRegistryFreeze(ctx, bucket, current)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to set cluster compat version freeze in bucket %s: %v", base.MD(bucket), err)
 			continue
@@ -463,10 +492,13 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 		succeeded++
 		aggregate = mergeFreeze(aggregate, freeze)
 	}
+	m.mu.RUnlock()
+
 	m.mu.Lock()
 	m.cachedFreeze = aggregate
 	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
 	m.mu.Unlock()
+
 	if succeeded < len(buckets) {
 		base.WarnfCtx(ctx, "Cluster compatibility version freeze did not fully apply: %d/%d tracked buckets accepted the freeze", succeeded, len(buckets))
 		return aggregate, ErrFreezePartial
@@ -483,16 +515,26 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 // Returns ErrUnfreezePartial if any bucket retains a freeze record. The manager's cached
 // freeze and reported version are rebuilt to reflect the actual state across buckets in
 // either case.
-func (m *clusterCompatManager) Unfreeze(ctx context.Context) (*base.RegistryFreeze, error) {
+//
+// The first return value is the aggregate freeze that was in effect at the start of the
+// call (captured under lock before any mutation). Handlers can use it to populate audit
+// fields without a separate peek-then-clear that could race with Refresh.
+func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual *base.RegistryFreeze, err error) {
+	m.mu.RLock()
+	if m.cachedFreeze != nil {
+		cp := *m.cachedFreeze
+		cleared = &cp
+	}
+	m.mu.RUnlock()
+
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
 		m.mu.Lock()
 		m.cachedFreeze = nil
 		m.cachedVersion = computeCCV(m.cachedNodes, nil)
 		m.mu.Unlock()
-		return nil, nil
+		return cleared, nil, nil
 	}
-	var residual *base.RegistryFreeze
 	clearFailed := 0
 	for _, bucket := range buckets {
 		err := m.sc.BootstrapContext.ClearRegistryFreeze(ctx, bucket)
@@ -516,15 +558,15 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (*base.RegistryFree
 	m.mu.Unlock()
 	if residual != nil {
 		base.WarnfCtx(ctx, "Cluster compatibility version unfreeze did not fully apply: %d/%d buckets failed; cluster still frozen at %v", clearFailed, len(buckets), &residual.Version)
-		return residual, ErrUnfreezePartial
+		return cleared, residual, ErrUnfreezePartial
 	}
 	if clearFailed > 0 {
 		// Buckets failed but no residual freeze on re-read — return error anyway, since the
 		// admin asked for a guarantee and we can't make one.
-		return nil, ErrUnfreezePartial
+		return cleared, nil, ErrUnfreezePartial
 	}
 	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version freeze cleared on %d buckets", len(buckets))
-	return nil, nil
+	return cleared, nil, nil
 }
 
 // clusterCompatVersionEqual compares two possibly-nil ClusterCompatVersion pointers.
