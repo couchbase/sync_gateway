@@ -110,7 +110,7 @@ type BackgroundManagerProcessI interface {
 	Init(ctx context.Context, options map[string]any, clusterStatus []byte) error
 	// Run implements all of the work of the process.
 	Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
-	// GetProcessStatus passes the BackgroundManagerStatus, the previousStatus that was serialized. previousStatus is
+	// GetProcessStatus accepts the current BackgroundManagerStatus and the previousStatus that was serialized. previousStatus is
 	// only populated when updating cluster status, it may be nil in some circumstances. This is only used for multi
 	// node background managers.
 	GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) (statusOut []byte, meta []byte, err error)
