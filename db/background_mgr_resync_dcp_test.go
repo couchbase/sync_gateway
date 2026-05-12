@@ -45,9 +45,11 @@ func TestResyncDCPInit(t *testing.T) {
 					BackgroundManagerStatus: BackgroundManagerStatus{
 						State: BackgroundProcessStateStopped,
 					},
-					ResyncID:      uuid.NewString(),
-					DocsChanged:   10,
-					DocsProcessed: 20,
+					ResyncID: uuid.NewString(),
+					resyncStats: resyncStats{
+						DocsChanged:   10,
+						DocsProcessed: 20,
+					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs: []uint64{1},
@@ -63,9 +65,11 @@ func TestResyncDCPInit(t *testing.T) {
 					BackgroundManagerStatus: BackgroundManagerStatus{
 						State: BackgroundProcessStateStopped,
 					},
-					ResyncID:      uuid.NewString(),
-					DocsChanged:   10,
-					DocsProcessed: 20,
+					ResyncID: uuid.NewString(),
+					resyncStats: resyncStats{
+						DocsChanged:   10,
+						DocsProcessed: 20,
+					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs:       []uint64{1},
@@ -82,9 +86,11 @@ func TestResyncDCPInit(t *testing.T) {
 					BackgroundManagerStatus: BackgroundManagerStatus{
 						State: BackgroundProcessStateCompleted,
 					},
-					ResyncID:      uuid.NewString(),
-					DocsChanged:   10,
-					DocsProcessed: 20,
+					ResyncID: uuid.NewString(),
+					resyncStats: resyncStats{
+						DocsChanged:   10,
+						DocsProcessed: 20,
+					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs: []uint64{1},
@@ -100,9 +106,11 @@ func TestResyncDCPInit(t *testing.T) {
 					BackgroundManagerStatus: BackgroundManagerStatus{
 						State: BackgroundProcessStateStopped,
 					},
-					ResyncID:      uuid.NewString(),
-					DocsChanged:   10,
-					DocsProcessed: 20,
+					ResyncID: uuid.NewString(),
+					resyncStats: resyncStats{
+						DocsChanged:   10,
+						DocsProcessed: 20,
+					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs: []uint64{1},

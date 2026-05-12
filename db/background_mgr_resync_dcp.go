@@ -441,12 +441,13 @@ func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames base.CollectionNa
 	r.ResyncedCollections = collectionNames
 }
 
+// ResyncManagerResponseDCP is the struct used to serialize the status of the resync process. This matches the output
+// expected by GET /{db}/_resync
 type ResyncManagerResponseDCP struct {
 	BackgroundManagerStatus
 	ResyncID              string              `json:"resync_id"`
-	DocsChanged           int64               `json:"docs_changed"`
-	DocsProcessed         int64               `json:"docs_processed"`
 	CollectionsProcessing map[string][]string `json:"collections_processing,omitempty"`
+	resyncStats
 }
 
 // resyncStats is a part of the ResyncManagerResponseDCP struct that only contains the stats fields for efficincy.
@@ -498,9 +499,11 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 	response := ResyncManagerResponseDCP{
 		BackgroundManagerStatus: status,
 		ResyncID:                r.ResyncID,
-		DocsChanged:             previousStats.DocsChanged + r.docsChangedSinceLastUpdate.Load(),
-		DocsProcessed:           previousStats.DocsProcessed + r.docsProcessedSinceLastUpdate.Load(),
-		CollectionsProcessing:   r.ResyncedCollections,
+		resyncStats: resyncStats{
+			DocsChanged:   previousStats.DocsChanged + r.docsChangedSinceLastUpdate.Load(),
+			DocsProcessed: previousStats.DocsProcessed + r.docsProcessedSinceLastUpdate.Load(),
+		},
+		CollectionsProcessing: r.ResyncedCollections,
 	}
 
 	// Fallback to internal serialized state if no previous status was provided.
