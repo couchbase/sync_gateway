@@ -411,7 +411,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 			msgBody, err := msg.Body()
 			assert.NoError(t, err)
 			assert.Equal(t, `{"greetings":{"2-":[{"howdy":1234567890123}]}}`, string(msgBody))
-			assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, deltaSentCount+1)
 		} else {
 			// Check the request was NOT sent with a deltaSrc property
 			assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
@@ -520,7 +520,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		msgBody, err := revMsg1.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":1234567890123}]}}`, string(msgBody))
-		assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, deltaSentCount+1)
 
 		// Check the resent request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", revMsg2.Properties[db.RevMessageDeltaSrc])
@@ -805,33 +805,33 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 				msg.SerialNumber(), client2.pullReplication.GetAllMessagesSummary())
 		}
 
-		var deltaCacheHitsEnd int64
-		var deltaCacheMissesEnd int64
-		var deltasRequestedEnd int64
-		var deltasSentEnd int64
+		var deltaCacheHitsEnd func() int64
+		var deltaCacheMissesEnd func() int64
+		var deltasRequestedEnd func() int64
+		var deltasSentEnd func() int64
 
 		if rt.GetDatabase().DbStats.DeltaSync() != nil {
-			deltaCacheHitsEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value()
-			deltaCacheMissesEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value()
-			deltasRequestedEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value()
-			deltasSentEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
+			deltaCacheHitsEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value
+			deltaCacheMissesEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value
+			deltasRequestedEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value
+			deltasSentEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value
 		}
 
 		sgCanUseDelta := base.IsEnterpriseEdition()
 		if sgCanUseDelta {
 			if !base.TestDisableRevCache() {
-				assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
-				assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+				base.RequireWaitForStat(t, deltaCacheHitsEnd, deltaCacheHitsStart+1)
+				base.RequireWaitForStat(t, deltaCacheMissesEnd, deltaCacheMissesStart+1)
 			}
-			assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
-			assert.Equal(t, deltasSentStart+2, deltasSentEnd)
+			base.RequireWaitForStat(t, deltasRequestedEnd, deltasRequestedStart+2)
+			base.RequireWaitForStat(t, deltasSentEnd, deltasSentStart+2)
 		} else {
 			if !base.TestDisableRevCache() {
-				assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
-				assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+				base.RequireWaitForStat(t, deltaCacheHitsEnd, deltaCacheHitsStart)
+				base.RequireWaitForStat(t, deltaCacheMissesEnd, deltaCacheMissesStart)
 			}
-			assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
-			assert.Equal(t, deltasSentStart, deltasSentEnd)
+			base.RequireWaitForStat(t, deltasRequestedEnd, deltasRequestedStart)
+			base.RequireWaitForStat(t, deltasSentEnd, deltasSentStart)
 		}
 	})
 }
@@ -1175,7 +1175,7 @@ func TestSendDeltaWhenDeltaCalculatedFromBackup(t *testing.T) {
 		version = rt.UpdateDoc("doc1", version, `{"channels": ["public"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
 		data := btcRunner.WaitForVersion(client.id, docID, version)
 		require.JSONEq(t, `{"channels": ["public"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`, string(data))
-		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, 1)
 	})
 }
 
@@ -1254,7 +1254,7 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 		btcRunner.StartOneshotPull(client.id)
 		btcRunner.WaitForVersion(client.id, docID, version2)
 
-		assert.Equal(t, int64(1), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, 1)
 	})
 }
 
@@ -1490,6 +1490,6 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		btcRunner.WaitForVersion(client.id, docID, version3)
 
 		// expect two deltas sent
-		assert.Equal(t, int64(2), rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, 2)
 	})
 }
