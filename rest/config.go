@@ -1634,6 +1634,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 	}
 
 	sc := NewServerContext(ctx, config, persistentConfig)
+	logRuntimeEnvironment(ctx, sc.RuntimeStatus)
 
 	nodeUID, err := base.GenerateNodeUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
 	if err != nil {

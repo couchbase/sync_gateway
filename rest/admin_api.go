@@ -1657,10 +1657,17 @@ type DatabaseStatus struct {
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
 
+type RuntimeStatus struct {
+	GoMemlimitBytes        int64   `json:"go_memlimit_bytes"`
+	GoMaxprocs             int     `json:"go_maxprocs"`
+	CgroupMemoryLimitBytes *uint64 `json:"cgroup_memory_limit_bytes,omitempty"`
+}
+
 type Status struct {
 	Databases            map[string]DatabaseStatus `json:"databases"`
 	Version              string                    `json:"version"`
 	Vendor               vendor                    `json:"vendor"`
+	Runtime              *RuntimeStatus            `json:"runtime,omitempty"`
 	NodeUID              string                    `json:"node_uid,omitempty"`
 	ClusterCompatVersion string                    `json:"cluster_compat_version,omitempty"`
 }
@@ -1677,6 +1684,7 @@ func (h *handler) handleGetStatus() error {
 		status.Version = base.LongVersionString
 		status.Vendor.Version = base.ProductAPIVersion
 		status.NodeUID = h.server.NodeUID
+		status.Runtime = h.server.RuntimeStatus
 		if h.server.ClusterCompat != nil {
 			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
 				status.ClusterCompatVersion = v.String()

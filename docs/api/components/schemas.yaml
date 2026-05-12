@@ -2986,6 +2986,33 @@ Status:
     vendor:
       allOf:
         - $ref: '#/Vendor'
+    runtime:
+      description: |-
+        Runtime environment information for this Sync Gateway node. Includes Go runtime
+        settings and container memory limits. Omitted if `api.hide_product_version=true`.
+      type: object
+      properties:
+        go_memlimit_bytes:
+          description: |-
+            The effective Go memory limit (`GOMEMLIMIT`) in bytes. This is the soft memory
+            limit that the Go garbage collector targets. A value of `9223372036854775807`
+            (`math.MaxInt64`) indicates no limit is set.
+          type: integer
+          format: int64
+          example: 1073741824
+        go_maxprocs:
+          description: The effective number of OS threads (`GOMAXPROCS`) that can execute Go code simultaneously.
+          type: integer
+          minimum: 1
+          example: 4
+        cgroup_memory_limit_bytes:
+          description: |-
+            The cgroup memory hard limit in bytes, as reported by the container runtime
+            (cgroupv2 `memory.max` or cgroupv1 `memory.limit_in_bytes`). Only present when
+            running inside a cgroup with a memory limit configured.
+          type: integer
+          format: uint64
+          example: 2147483648
     node_uid:
       description: |-
         Stable identifier for this Sync Gateway node, derived deterministically from host
