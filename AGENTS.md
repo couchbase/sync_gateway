@@ -97,6 +97,17 @@ Never add the `cb_sg_enterprise` tag to test commands unless intentionally testi
 ### REST API changes
 - When modifying REST handlers, query parameters, or response schemas, update the OpenAPI specs in `docs/api/`.
 
+### Code review conventions
+- Use `context.WithCancelCause` instead of `context.WithCancel` so cancellation reasons propagate.
+- Prefer expressing loop exit conditions in the `for` declaration itself rather than relying on `break` inside the body; ensure loops have a clear termination condition.
+- Comments should explain *why* / intent, not restate *what* the code does.
+- Watch for concurrency hazards (mutex contention, races) when reviewing.
+
+### Xattrs are mandatory (SG 4.0+)
+- Xattr mode is the only supported mode on `main`. New code must assume xattrs are enabled — do not add `UseXattrs` checks, non-xattr write/read branches, or config surfaces that let xattr-mode be turned off.
+- The one preserved carve-out is **read-side migration of pre-existing non-xattr documents** already present in a bucket: that gradual-migration path must still work so older data is upgraded on access. No new code paths should *produce* non-xattr data.
+- When touching existing `UseXattrs` checks, prefer simplifying toward the xattrs-on branch and deleting the alternative, unless the code is part of the read/migration path described above.
+
 ## Security
 
 - NEVER log credentials, tokens, or keys.
