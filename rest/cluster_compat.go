@@ -512,13 +512,18 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 // remains held back, so an error is returned along with the residual freeze record so the
 // caller can surface the remaining state to the admin.
 //
-// Returns ErrUnfreezePartial if any bucket retains a freeze record. The manager's cached
-// freeze and reported version are rebuilt to reflect the actual state across buckets in
-// either case.
+// Returns ErrUnfreezePartial in two situations the caller should disambiguate using the
+// returned residual:
+//   - residual != nil: at least one bucket still has a freeze record on re-read. The cache
+//     is updated to that aggregate so the reporting endpoint reflects on-disk truth.
+//   - residual == nil: one or more bucket clears failed AND the post-failure re-reads also
+//     failed, so the actual on-disk state is unknown. The cache is deliberately left
+//     untouched in this case — the pre-op snapshot is the most honest representation until
+//     the next periodic Refresh self-heals from authoritative bucket state.
 //
 // The first return value is the aggregate freeze that was in effect at the start of the
 // call (captured under lock before any mutation). Handlers can use it to populate audit
-// fields without a separate peek-then-clear that could race with Refresh.
+// fields or error messages without a separate peek-then-clear that could race with Refresh.
 func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual *base.RegistryFreeze, err error) {
 	m.mu.RLock()
 	if m.cachedFreeze != nil {
@@ -552,17 +557,23 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual 
 			}
 		}
 	}
-	m.mu.Lock()
-	m.cachedFreeze = residual
-	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
-	m.mu.Unlock()
+	// Only mutate the cache when we have certainty about on-disk state: a full success
+	// (clearFailed == 0) clears it; a verified residual replaces it. If buckets failed and
+	// re-reads also failed, leave the cache as-is so the reporting endpoint keeps showing
+	// the pre-op snapshot until Refresh self-heals.
+	if clearFailed == 0 || residual != nil {
+		m.mu.Lock()
+		m.cachedFreeze = residual
+		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+		m.mu.Unlock()
+	}
 	if residual != nil {
 		base.WarnfCtx(ctx, "Cluster compatibility version unfreeze did not fully apply: %d/%d buckets failed; cluster still frozen at %v", clearFailed, len(buckets), &residual.Version)
 		return cleared, residual, ErrUnfreezePartial
 	}
 	if clearFailed > 0 {
-		// Buckets failed but no residual freeze on re-read — return error anyway, since the
-		// admin asked for a guarantee and we can't make one.
+		// Buckets failed and re-read couldn't verify residual state — return error anyway,
+		// since the admin asked for a guarantee and we can't make one. Cache is preserved.
 		return cleared, nil, ErrUnfreezePartial
 	}
 	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version freeze cleared on %d buckets", len(buckets))

@@ -1404,10 +1404,13 @@ func corruptGatewayRegistry(t *testing.T, rt *RestTester, bucketName string) {
 	require.NoError(t, err)
 }
 
-// TestClusterCompatUnfreezePartialFailure verifies that when ClearRegistryFreeze fails on a
-// tracked bucket, Unfreeze returns ErrUnfreezePartial. The bucket's registry is overwritten
-// with an unparseable value so getGatewayRegistry fails — which propagates through
-// ClearRegistryFreeze and the residual re-read, hitting the clearFailed > 0 branch.
+// TestClusterCompatUnfreezePartialFailure verifies that when ClearRegistryFreeze fails on
+// a tracked bucket AND the residual re-read also fails, Unfreeze returns
+// ErrUnfreezePartial with residual==nil. The bucket's registry is overwritten with an
+// unparseable value so getGatewayRegistry fails — which propagates through both
+// ClearRegistryFreeze and the residual re-read, hitting the clearFailed>0 / residual==nil
+// branch. Also verifies the cache is preserved (not wiped to nil) so admins see a stable
+// view until Refresh self-heals.
 func TestClusterCompatUnfreezePartialFailure(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1417,17 +1420,27 @@ func TestClusterCompatUnfreezePartialFailure(t *testing.T) {
 	require.NotNil(t, ccm)
 	ccm.Refresh(ctx)
 
-	_, err := ccm.Freeze(ctx)
+	preFreeze, err := ccm.Freeze(ctx)
 	require.NoError(t, err)
+	require.NotNil(t, preFreeze)
 
 	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
 
-	_, _, err = ccm.Unfreeze(ctx)
+	cleared, residual, err := ccm.Unfreeze(ctx)
 	assert.ErrorIs(t, err, ErrUnfreezePartial)
+	require.NotNil(t, cleared, "Unfreeze should return the pre-op freeze record so the handler can surface it")
+	assert.Equal(t, preFreeze.Version, cleared.Version)
+	assert.Nil(t, residual, "re-read should fail on the corrupted registry, leaving residual unknown")
+
+	cached := ccm.getCachedFreeze()
+	require.NotNil(t, cached, "cache must be preserved when residual state could not be verified")
+	assert.Equal(t, preFreeze.Version, cached.Version, "cache should still reflect the pre-op freeze")
 }
 
-// TestClusterCompatUnfreezePartialFailureREST verifies the REST handler returns 503 with a
-// ClusterCompatVersionState body when Unfreeze partially fails.
+// TestClusterCompatUnfreezePartialFailureREST verifies the REST handler returns 503 with
+// an HTTP-Error body (not a ClusterCompatVersionState) when Unfreeze fails and the
+// residual state could not be verified. The error reason must include the previously-
+// frozen version so the admin has a recovery target.
 func TestClusterCompatUnfreezePartialFailureREST(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1440,13 +1453,20 @@ func TestClusterCompatUnfreezePartialFailureREST(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
 	RequireStatus(t, resp, http.StatusOK)
 
+	preFreezeVersion := base.NodeClusterCompatVersion.String()
+
 	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/unfreeze", "")
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
 
-	var state ClusterCompatVersionState
-	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
+	var httpErr struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &httpErr))
+	assert.NotEmpty(t, httpErr.Error)
+	assert.Contains(t, httpErr.Reason, preFreezeVersion, "error reason should name the previously-frozen version so the admin has a recovery target")
 }
 
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured

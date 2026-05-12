@@ -74,8 +74,12 @@ func (h *handler) handleFreezeClusterCompatVersion() error {
 
 // handleUnfreezeClusterCompatVersion clears the cluster compatibility version freeze.
 // Strict contract: success only if the cluster is fully unfrozen. On partial failure the
-// current state is written as the body of a 503 response so the admin can see what is
-// still held back.
+// response depends on whether the residual on-disk state could be verified:
+//   - residual != nil: write the current state as a 503 body so the admin sees which
+//     buckets are still holding a freeze.
+//   - residual == nil: the on-disk state is unknown (bucket clear and re-read both
+//     failed). Return an HTTPError naming the version that was frozen before the attempt
+//     so the admin has a recovery target. The OpenAPI 503 oneOf already documents this.
 //
 // Audits only on full success — matching freeze, where the audit records the action
 // having taken effect. Partial-failure attempts are still captured by the standard admin
@@ -85,11 +89,18 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 	if err != nil {
 		return err
 	}
-	cleared, _, err := mgr.Unfreeze(h.ctx())
+	cleared, residual, err := mgr.Unfreeze(h.ctx())
 	if err != nil {
 		if errors.Is(err, ErrUnfreezePartial) {
-			h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
-			return nil
+			if residual != nil {
+				h.writeJSONStatus(http.StatusServiceUnavailable, buildClusterCompatVersionState(mgr))
+				return nil
+			}
+			prevVersion := "unknown"
+			if cleared != nil {
+				prevVersion = cleared.Version.String()
+			}
+			return base.HTTPErrorf(http.StatusServiceUnavailable, "unfreeze did not fully apply and the residual cluster compatibility version freeze state could not be verified; cluster was previously frozen at %s — retry once the underlying bucket issue is resolved", prevVersion)
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, "failed to clear cluster compatibility version freeze: %v", err)
 	}
