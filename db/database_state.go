@@ -21,9 +21,9 @@ type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
 }
 
-type ResyncHandler func(resume *bool)
+type ResyncHandler func(resume bool)
 
-func TempResyncHandler(resume *bool) {
+func TempResyncHandler(resume bool) {
 	return
 }
 
@@ -35,6 +35,7 @@ type DatabaseStateMgr struct {
 	pollingInterval time.Duration
 	resyncHandler   ResyncHandler
 	lock            sync.Mutex
+	done            chan bool
 }
 
 // NewDatabaseStateMgr creates an OfflineDatabaseStateMgr for the given database.
@@ -45,6 +46,7 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *Databa
 		terminator:      base.NewSafeTerminator(),
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
+		done:            make(chan bool),
 	}
 }
 
@@ -88,19 +90,20 @@ func (dbMgr *DatabaseStateMgr) GetState() (*DatabaseState, uint64, error) {
 	return &state, cas, nil
 }
 
-// AddResyncFunc registers the callback that is invoked by the polling loop when a state change is detected.
+// SetResyncFunc registers the callback that is invoked by the polling loop when a state change is detected.
 // The callback receives true if a resync should resume, or false if the state document was removed (resync complete).
-func (dbMgr *DatabaseStateMgr) AddResyncFunc(resyncFunc ResyncHandler) {
+func (dbMgr *DatabaseStateMgr) SetResyncFunc(resyncFunc ResyncHandler) {
 	dbMgr.resyncHandler = resyncFunc
 }
 
 // StartPolling launches a background goroutine that periodically calls poll() at dbMgr.pollingInterval.
-// The goroutine exits when StopPolling is called (via the terminator). AddResyncFunc must be called before
+// The goroutine exits when StopPolling is called (via the terminator). SetResyncFunc must be called before
 // StartPolling so that state change notifications have a registered handler.
 func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	ticker := time.NewTicker(dbMgr.pollingInterval)
 	go func() {
 		defer base.FatalPanicHandler(ctx)
+		defer close(dbMgr.done)
 		for {
 			select {
 			case <-dbMgr.terminator.Done():
@@ -121,7 +124,7 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			if cas != dbMgr.CAS.Load() {
-				dbMgr.resyncHandler(base.Ptr(false))
+				dbMgr.resyncHandler(false)
 				dbMgr.CAS.Store(cas)
 			}
 			return
@@ -132,11 +135,12 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if cas == dbMgr.CAS.Load() {
 		return
 	}
-	dbMgr.resyncHandler(state.ResyncRunning)
+	dbMgr.resyncHandler(*state.ResyncRunning)
 	dbMgr.CAS.Store(cas)
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.
 func (dbMgr *DatabaseStateMgr) StopPolling() {
 	dbMgr.terminator.Close()
+	<-dbMgr.done
 }

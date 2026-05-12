@@ -75,7 +75,7 @@ func TestGetState(t *testing.T) {
 	})
 }
 
-// TestDatabaseStateMgrPolling verifies AddResyncFunc, StartPolling and StopPolling behaviour:
+// TestDatabaseStateMgrPolling verifies SetResyncFunc, StartPolling and StopPolling behaviour:
 // the registered callback is invoked with the correct resume value on CAS changes or doc-not-found, skipped
 // when the CAS is unchanged, and driven automatically by the polling goroutine.
 func TestDatabaseStateMgrPolling(t *testing.T) {
@@ -94,19 +94,17 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			return nil, nil, true, nil
 		})
 		require.NoError(t, err)
-		var called atomic.Bool
+		var callCount atomic.Int32
 		var resumeVal atomic.Bool
-		mgr.AddResyncFunc(func(resume *bool) {
-			called.Store(true)
-			if resume != nil {
-				resumeVal.Store(*resume)
-			}
+		mgr.SetResyncFunc(func(resume bool) {
+			callCount.Add(1)
+			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
 		defer mgr.StopPolling()
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.True(c, called.Load())
+			assert.Equal(c, int32(1), callCount.Load())
 			assert.False(c, resumeVal.Load())
 		}, 2*time.Second, 10*time.Millisecond)
 	})
@@ -118,19 +116,17 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: base.Ptr(true)}))
 		mgr.CAS.Store(0) // simulate stale CAS so the poller sees a change
 
-		var called atomic.Bool
+		var callCount atomic.Int32
 		var resumeVal atomic.Bool
-		mgr.AddResyncFunc(func(resume *bool) {
-			called.Store(true)
-			if resume != nil {
-				resumeVal.Store(*resume)
-			}
+		mgr.SetResyncFunc(func(resume bool) {
+			callCount.Add(1)
+			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
 		defer mgr.StopPolling()
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.True(c, called.Load())
+			assert.Equal(c, int32(1), callCount.Load())
 			assert.True(c, resumeVal.Load())
 		}, 2*time.Second, 10*time.Millisecond)
 	})
@@ -142,7 +138,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.NoError(t, mgr.UpdateState(DatabaseState{ResyncRunning: base.Ptr(true)}))
 
 		var callCount atomic.Int32
-		mgr.AddResyncFunc(func(_ *bool) { callCount.Add(1) })
+		mgr.SetResyncFunc(func(_ bool) { callCount.Add(1) })
 		mgr.StartPolling(ctx)
 
 		time.Sleep(50 * time.Millisecond)
@@ -158,9 +154,11 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		// Register a callback that forwards the resume value to a buffered channel.
 		// The select/default prevents blocking if the channel is already full.
 		called := make(chan bool, 1)
-		mgr.AddResyncFunc(func(resume *bool) {
+		var callCount atomic.Int32
+		mgr.SetResyncFunc(func(resume bool) {
+			callCount.Add(1)
 			select {
-			case called <- *resume:
+			case called <- resume:
 				return
 			default:
 			}
@@ -182,6 +180,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 
 		// Confirm the goroutine is running by waiting for the callback to fire.
 		base.RequireChanRecvWithTimeout(t, called, 2*time.Second)
+		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback before stopping")
 
 		// Stop the polling goroutine.
 		mgr.StopPolling()
@@ -201,5 +200,6 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		// confirming the goroutine has stopped.
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, called)
+		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback after stopping (no additional calls)")
 	})
 }
