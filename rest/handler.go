@@ -973,9 +973,9 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 			if updates.Name != nil {
 				user, err := dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
 				if err != nil {
-					return auditFields, err
+					return err
 				} else if user == nil {
-					return auditFields, ErrInvalidLogin
+					return ErrInvalidLogin
 				}
 				h.user = user
 			}
