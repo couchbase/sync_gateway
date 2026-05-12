@@ -3906,10 +3906,10 @@ func xattrRevokedChannelVersionPath(xattrKey string, channelName string) (string
 }
 
 // escapeSubdocPathComponent wraps a Couchbase subdocument path component in backticks when it
-// contains a dot (the subdoc path separator), preventing the server from interpreting the dots
-// as nested key references. Any backticks within the component are doubled to escape them.
+// contains characters that are special in subdoc paths: dots (path separator) or square brackets
+// (array index syntax). Any backticks within the component are doubled to escape them.
 func escapeSubdocPathComponent(component string) string {
-	if !strings.Contains(component, ".") {
+	if !strings.ContainsAny(component, ".[]`") {
 		return component
 	}
 	return "`" + strings.ReplaceAll(component, "`", "``") + "`"
