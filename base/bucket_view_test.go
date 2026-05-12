@@ -46,22 +46,22 @@ func TestView(t *testing.T) {
 	require.NoError(t, err)
 
 	defer func() {
-		err := viewStore.DeleteDDoc(ddocName)
+		err := viewStore.DeleteDDoc(ctx, ddocName)
 		if err != nil {
 			log.Printf("Error removing design doc during test teardown")
 		}
 	}()
 
 	// Put test docs
-	err = dataStore.Set("u1", 0, nil, map[string]any{"type": "Circle"})
+	err = dataStore.Set(ctx, "u1", 0, nil, map[string]any{"type": "Circle"})
 	assert.NoError(t, err)
-	err = dataStore.Set("u2", 0, nil, map[string]any{"type": "Northern"})
+	err = dataStore.Set(ctx, "u2", 0, nil, map[string]any{"type": "Northern"})
 	assert.NoError(t, err)
-	err = dataStore.Set("u3", 0, nil, map[string]any{"type": "District"})
+	err = dataStore.Set(ctx, "u3", 0, nil, map[string]any{"type": "District"})
 	assert.NoError(t, err)
 
 	// Confirm view availability
-	ddocCheck, getErr := viewStore.GetDDoc(ddocName)
+	ddocCheck, getErr := viewStore.GetDDoc(ctx, ddocName)
 	assert.NoError(t, getErr)
 	assert.NotNil(t, ddocCheck)
 
@@ -161,19 +161,19 @@ func TestView(t *testing.T) {
 		rowCount++
 	}
 	assert.Equal(t, 3, rowCount)
-	assert.NoError(t, iterator.Close())
+	assert.NoError(t, iterator.Close(ctx))
 
 	// ViewQuery, NextBytes
 	bytesIterator, viewQueryErr := viewStore.ViewQuery(ctx, ddocName, viewName, viewQueryParams)
 	require.NoError(t, viewQueryErr)
 	rowCount = 0
 	for {
-		nextBytes := bytesIterator.NextBytes()
+		nextBytes := bytesIterator.NextBytes(ctx)
 		if nextBytes == nil {
 			break
 		}
 		rowCount++
 	}
 	assert.Equal(t, 3, rowCount)
-	assert.NoError(t, iterator.Close())
+	assert.NoError(t, bytesIterator.Close(ctx))
 }

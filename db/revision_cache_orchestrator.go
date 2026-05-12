@@ -59,14 +59,22 @@ func (c *RevisionCacheOrchestrator) Peek(ctx context.Context, docID, versionStri
 	return c.revisionCache.Peek(ctx, docID, versionString, collectionID)
 }
 
-func (c *RevisionCacheOrchestrator) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
-	c.revisionCache.Put(ctx, docRev, collectionID)
+func (c *RevisionCacheOrchestrator) Put(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
+	err := c.revisionCache.Put(ctx, docRev, collectionID)
+	if err != nil {
+		return err
+	}
 	c.triggerMemoryEviction()
+	return nil
 }
 
-func (c *RevisionCacheOrchestrator) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) {
-	c.revisionCache.Upsert(ctx, docRev, collectionID)
+func (c *RevisionCacheOrchestrator) Upsert(ctx context.Context, docRev DocumentRevision, collectionID uint32) error {
+	err := c.revisionCache.Upsert(ctx, docRev, collectionID)
+	if err != nil {
+		return err
+	}
 	c.triggerMemoryEviction()
+	return nil
 }
 
 func (c *RevisionCacheOrchestrator) Remove(ctx context.Context, docID, versionString string, collectionID uint32) {

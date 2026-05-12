@@ -87,7 +87,7 @@ func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName stri
 	}
 	closeFn := func(ctx context.Context) { bucket.Close(ctx) }
 
-	ds, err := bucket.NamedDataStore(DefaultScopeAndCollectionName())
+	ds, err := bucket.NamedDataStore(ctx, DefaultScopeAndCollectionName())
 	if err != nil {
 		AssertfCtx(ctx, "Unexpected error getting default collection for bucket %q: %v", bucketName, err)
 		closeFn(ctx)
@@ -104,7 +104,7 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 	}
 	defer closer(ctx)
 
-	return ds.Get(docID, valuePtr)
+	return ds.Get(ctx, docID, valuePtr)
 }
 
 // InsertMetadataDocument inserts a metadata document, and fails if it already exists.
@@ -115,7 +115,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 	}
 	defer closer(ctx)
 
-	return ds.WriteCas(key, 0, 0, value, 0)
+	return ds.WriteCas(ctx, key, 0, 0, value, 0)
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
@@ -125,7 +125,7 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 		return 0, err
 	}
 	defer closer(ctx)
-	return ds.WriteCas(docID, 0, cas, value, 0)
+	return ds.WriteCas(ctx, docID, 0, cas, value, 0)
 }
 
 // TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
@@ -139,7 +139,7 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 	defer closer(ctx)
 
 	// FIXME to not touch the whole document?
-	return ds.Touch(docID, 0)
+	return ds.Touch(ctx, docID, 0)
 }
 
 // DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
@@ -150,7 +150,7 @@ func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, ke
 	}
 	defer closer(ctx)
 
-	_, err = ds.Remove(key, cas)
+	_, err = ds.Remove(ctx, key, cas)
 	return err
 }
 
@@ -163,7 +163,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 	defer closer(ctx)
 	for {
 		var bucketValue []byte
-		cas, err := ds.Get(docID, &bucketValue)
+		cas, err := ds.Get(ctx, docID, &bucketValue)
 		if err != nil {
 			return 0, err
 		}
@@ -173,7 +173,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 		}
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			removeCasOut, err := ds.Remove(docID, cas)
+			removeCasOut, err := ds.Remove(ctx, docID, cas)
 			if err != nil {
 				// retry on cas failure
 				if errors.As(err, &sgbucket.CasMismatchErr{}) {
@@ -184,7 +184,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 			return removeCasOut, nil
 		}
 
-		replaceCfgCasOut, err := ds.WriteCas(docID, 0, cas, newConfig, 0)
+		replaceCfgCasOut, err := ds.WriteCas(ctx, docID, 0, cas, newConfig, 0)
 		if err != nil {
 			if errors.As(err, &sgbucket.CasMismatchErr{}) {
 				// retry on cas failure
@@ -206,7 +206,7 @@ func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (
 	}
 	defer closer(ctx)
 
-	return ds.Exists(docID)
+	return ds.Exists(ctx, docID)
 }
 
 // GetDocument fetches a document from the default collection.  Does not use configPersistence - callers
@@ -218,7 +218,7 @@ func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID strin
 	}
 	defer closer(ctx)
 
-	_, err = ds.Get(docID, rv)
+	_, err = ds.Get(ctx, docID, rv)
 	if IsDocNotFoundError(err) {
 		return false, nil
 	}

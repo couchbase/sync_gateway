@@ -376,22 +376,23 @@ func (d *invalidDatabaseConfigs) addInvalidDatabase(ctx context.Context, dbname 
 		}
 	}
 
-	logMessage := "Must repair invalid database config for %q for it to be usable!"
+	logMessage := "Couldn't load database %q: "
 	logArgs := []any{base.MD(dbname)}
 
 	// build log message
 	if isBucketMismatch := *cnf.Bucket != bucket; isBucketMismatch {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseBucketMismatches.Add(1)
-		logMessage += " Mismatched buckets (config bucket: %q, actual bucket: %q)"
+		logMessage += "Must repair invalid database config - Mismatched buckets (config bucket: %q, actual bucket: %q)"
 		logArgs = append(logArgs, base.MD(d.dbNames[dbname].configBucketName), base.MD(d.dbNames[dbname].persistedBucketName))
 	} else if cnf.Version == invalidDatabaseConflictingCollectionsVersion {
 		base.SyncGatewayStats.GlobalStats.ConfigStat.DatabaseRollbackCollectionCollisions.Add(1)
-		logMessage += " Conflicting collections detected"
+		logMessage += "Must repair invalid database config - Conflicting collections detected"
 	} else if databaseErr != nil {
-		logMessage += " Error encountered loading database."
+		logMessage += "Error encountered loading database: %v"
+		logArgs = append(logArgs, *databaseErr)
 	} else {
 		// Nothing is expected to hit this case, but we might add more invalid sentinel values and forget to update this code.
-		logMessage += " Database was marked invalid. See logs for details."
+		logMessage += "Database was marked invalid without cause. See logs for details."
 	}
 
 	// if we get here we already have the db logged as an invalid config, so now we need to work out iof we should log for it now
@@ -1736,7 +1737,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 	}
 
-	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup, true), nil
+	return sc._applyConfigs(ctx, fetchedConfigs, true), nil
 }
 
 // fetchAndLoadDatabaseSince refreshes all dbConfigs if they where last fetched past the refreshInterval. It then returns found if
@@ -1768,7 +1769,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 		// setting the config cas to 0 will force the reload of the config from the further down stack
 		dbConfig.cfgCas = 0
 	}
-	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false, false)
+	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
 	return true, nil
 }
@@ -2077,9 +2078,9 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool, loadFromBucket bool) (count int) {
+func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, loadFromBucket bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup, loadFromBucket)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, loadFromBucket)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -2095,36 +2096,22 @@ func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[st
 func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig) (count int) {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
-	return sc._applyConfigs(ctx, dbNameConfigs, false, false)
+	return sc._applyConfigs(ctx, dbNameConfigs, false)
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup, loadFromBucket bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, loadFromBucket bool) (applied bool, err error) {
 	ctx := nonContextStruct.Ctx
 
-	// TODO: CBG-5266 - Remove/replace with clusterCompatVersion downgrade check
-	nodeSGVersion := sc.BootstrapContext.sgVersion
-	err = sc.BootstrapContext.CheckMinorDowngrade(ctx, *cnf.Bucket, nodeSGVersion)
-	if err != nil {
-		return false, err
-	}
-	// 3.0.0 doesn't write a SGVersion, but everything else will
-	configSGVersionStr := "3.0.0"
-	if cnf.SGVersion != "" {
-		configSGVersionStr = cnf.SGVersion
-	}
-
-	configSGVersion, err := base.NewComparableBuildVersionFromString(configSGVersionStr)
-	if err != nil {
-		return false, err
-	}
-
-	if !isInitialStartup {
-		// TODO: CBG-5266 - Remove/replace with clusterCompatVersion check
-		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
-		if nodeSGVersion.Less(configSGVersion) {
-			base.WarnfCtx(ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
-			return false, nil
+	// Register this node in the bucket's registry. This both gates the load (refusing to
+	// proceed if the bucket's cluster compat HWM is higher than this node's version) and
+	// stamps our heartbeat. Registration is lazy — we never touch buckets SG is not serving.
+	if sc.ClusterCompat != nil {
+		if err := sc.ClusterCompat.RegisterBucket(ctx, *cnf.Bucket); err != nil {
+			// Surface the rejection via _all_dbs?verbose=true so admins can see why the db
+			// failed to load instead of it silently disappearing from the listing.
+			sc._handleInvalidDatabaseConfig(ctx, *cnf.Bucket, cnf, db.NewDatabaseError(db.DatabaseClusterCompatVersionError))
+			return false, err
 		}
 	}
 
@@ -2152,18 +2139,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
-
-	// TODO: CBG-5266 - Remove after clusterCompatVersion downgrade checks in place
-	err = sc.BootstrapContext.SetSGVersion(ctx, *cnf.Bucket, nodeSGVersion)
-	if err != nil {
-		return false, nil
-	}
-
-	// Register this node in the bucket's registry now that we know SG is serving a
-	// database here. Registration is lazy — we never touch buckets SG is not serving.
-	if sc.ClusterCompat != nil {
-		sc.ClusterCompat.RegisterBucket(ctx, *cnf.Bucket)
-	}
 
 	// Prevent database from being unsuspended when it is suspended
 	if sc._isDatabaseSuspended(cnf.Name) {
@@ -2251,7 +2226,7 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc._databases))
 	for _, dbContext := range sc._databases {
-		if uuid, err := dbContext.Bucket.UUID(); err == nil {
+		if uuid, err := dbContext.Bucket.UUID(ctx); err == nil {
 			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
 	}

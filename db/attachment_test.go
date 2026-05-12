@@ -247,7 +247,7 @@ func TestAttachments(t *testing.T) {
 	}, atts)
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
+	err = collection.dataStore.Delete(ctx, oldRevisionKey("doc1", rev1id))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
@@ -273,7 +273,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
-	_, _, err = db.Bucket.DefaultDataStore().GetRaw(base.AttPrefix + "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	_, _, err = db.Bucket.DefaultDataStore(ctx).GetRaw(ctx, base.AttPrefix+"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
 	require.Error(t, err, "Expected error when attempting to retrieve attachment document after doc is rejected.")
 }
 
@@ -323,11 +323,10 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
 func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	var db *Database
 	var enableCallback bool
 	var rev1ID string
-	var ctx context.Context
-
 	writeUpdateCallback := func(key string) {
 		if enableCallback {
 			enableCallback = false
@@ -387,11 +386,10 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	var db *Database
 	var enableCallback bool
 	var rev1ID string
-	var ctx context.Context
-
 	writeUpdateCallback := func(key string) {
 		if enableCallback {
 			enableCallback = false
@@ -467,14 +465,14 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	docID := "foo"
 	existingDigests := make(map[string]string)
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err := collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err := collection.ForEachStubAttachment(ctx, body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc = `{"_attachments": {"image1.jpeg": "", "image2.jpeg": ""}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -483,7 +481,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	existingDigests["image.jpg"] = "e1a1"
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":2, "digest":"e1a1"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 2, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 2, docID, existingDigests, callback)
 	assert.NoError(t, err, "It should not throw any error")
 	assert.Equal(t, 0, callbackCount)
 
@@ -491,20 +489,20 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	callbackCount = 0
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":2, "digest":"e1a2"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 2, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 2, docID, existingDigests, callback)
 	assert.NoError(t, err, "It should not throw any error")
 	assert.Equal(t, 1, callbackCount)
 
 	// Check whether the attachment iteration is getting skipped if there is no revpos.
 	doc = `{"_attachments": {"image.jpg": {"stub":true,"digest":"e1a1"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 2, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 2, docID, existingDigests, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Should throw invalid attachment error is the digest is not valid string or empty.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw 400 Invalid attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -512,7 +510,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// document error and invoke the callback function.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 1, docID, existingDigests, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
@@ -521,15 +519,15 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	callback = func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
-	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err = collection.ForEachStubAttachment(ctx, body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw the actual error")
 	assert.Contains(t, err.Error(), "Can't work with this digest value!")
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
 
-	attData := []byte(`hello world`)
 	ctx := base.TestCtx(t)
+	attData := []byte(`hello world`)
 	nonce, proof1, err := GenerateProofOfAttachment(ctx, attData)
 	require.NoError(t, err)
 	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
@@ -595,7 +593,7 @@ func TestSetAttachment(t *testing.T) {
 	key := Sha1DigestKey([]byte(att))
 	err := collection.setAttachment(ctx, key, []byte(att))
 	assert.NoError(t, err, "Attachment should be saved in db and key should be returned")
-	attBytes, err := collection.GetAttachment(key)
+	attBytes, err := collection.GetAttachment(ctx, key)
 	assert.NoError(t, err, "Attachment should be retrieved from the database")
 	assert.Equal(t, att, string(attBytes))
 }

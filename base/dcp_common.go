@@ -13,6 +13,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"errors"
 	"expvar"
 	"fmt"
 	"sync"
@@ -20,6 +21,18 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
+)
+
+// DCPFeedMode describes the types of DCP feed that can be run.
+type DCPFeedMode string
+
+const (
+	// DCPFeedGocb represents a single node DCP feed for a Couchbase Server bucket.
+	DCPFeedGocb DCPFeedMode = "gocb"
+	// DCPFeedRosmar represents a DCP feed for a rosmar bucket.
+	DCPFeedRosmar DCPFeedMode = "rosmar"
+	// DCPFeedSharded represents a cbgt-based DCP feed for a Couchbase Server bucket.
+	DCPFeedSharded DCPFeedMode = "cbgt"
 )
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
@@ -161,7 +174,7 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //     sequences in a checkpoint on startup
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	rawValue, _, err := c.metaStore.GetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
+	rawValue, _, err := c.metaStore.GetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsDocNotFoundError(err) {
@@ -201,7 +214,7 @@ func (c *DCPCommon) InitVbMeta(vbNo uint16) {
 //	  - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.metaStore.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
+	return c.metaStore.SetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition
@@ -281,4 +294,40 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 		return "", fmt.Errorf("Generated DCP feed name is too long: %d characters.  Max length is 200 characters.  Generated name: %s", len(feedName), feedName)
 	}
 	return feedName, nil
+}
+
+// PurgeDCPCheckpoints will purge all DCP metadata from a previous run in a bucket. If the checkpoints are not present, this
+// is not an error.
+func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPrefix string, feedMode DCPFeedMode) error {
+	numVbuckets, err := datastore.GetMaxVbno(ctx)
+	if err != nil {
+		return err
+	}
+	switch feedMode {
+	case DCPFeedRosmar:
+		err := datastore.Delete(ctx, checkpointPrefix)
+		if err != nil && !IsDocNotFoundError(err) {
+			return err
+		}
+		return nil
+	case DCPFeedGocb:
+		metadata := NewDCPMetadataCS(ctx, datastore, numVbuckets, DefaultNumWorkers, checkpointPrefix)
+		metadata.Purge(ctx, DefaultNumWorkers)
+		return nil
+	case DCPFeedSharded:
+		var errs []error
+		for vbNo := range numVbuckets {
+			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
+			err := datastore.Delete(ctx, checkpointID)
+			if err != nil && !IsDocNotFoundError(err) {
+				errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
+			}
+		}
+		if errs != nil {
+			return errors.Join(errs...)
+		}
+		return nil
+	default:
+		return fmt.Errorf("Unrecognized dcp feed mode: %s", feedMode)
+	}
 }

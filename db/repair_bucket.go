@@ -193,7 +193,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 	   		key := realDocID(docid)
 	   		var backupOrDryRunDocId string
 
-	   		_, err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	   		_, err = r.Bucket.Update(key, 0, func(_ context.Context, currentValue []byte) ([]byte, *uint32, bool, error) {
 	   			// Be careful: this block can be invoked multiple times if there are races!
 	   			if currentValue == nil {
 	   				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!

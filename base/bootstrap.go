@@ -590,7 +590,7 @@ type mergoNilTransformer struct{}
 var _ mergo.Transformers = &mergoNilTransformer{}
 
 func (t *mergoNilTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		if typ.Elem().Kind() == reflect.Struct {
 			// skip nilTransformer for structs, to allow recursion
 			return nil

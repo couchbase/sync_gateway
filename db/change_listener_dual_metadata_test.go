@@ -26,7 +26,7 @@ func TestCachingFeedCollections_DualMetadataStore(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	primary := bucket.GetMobileSystemDataStore() // skips if backing store does not support system collections
-	fallback := bucket.DefaultDataStore()
+	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
 
 	got := cachingFeedCollections(ms, nil)
@@ -46,7 +46,7 @@ func TestCachingFeedCollections_SingleMetadataStore(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	metadataStore := bucket.DefaultDataStore()
+	metadataStore := bucket.DefaultDataStore(ctx)
 
 	got := cachingFeedCollections(metadataStore, nil)
 
@@ -64,7 +64,7 @@ func TestCachingFeedCollections_UserScopesIncluded(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	primary := bucket.GetMobileSystemDataStore()
-	fallback := bucket.DefaultDataStore()
+	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
 
 	scopes := map[string]Scope{

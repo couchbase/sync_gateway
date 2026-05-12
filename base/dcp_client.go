@@ -31,7 +31,7 @@ type DCPClient interface {
 
 	// PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
 	// will not alter the feed nor remove the checkpoint for the future.
-	PurgeCheckpoints() error
+	PurgeCheckpoints(ctx context.Context) error
 }
 
 // DCPClientOptions are options for creating a DCPClient.
@@ -125,7 +125,7 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 	}
 
 	if opts.FromLatestSequence {
-		metadata, err := getHighSeqMetadata(gocbBucket)
+		metadata, err := getHighSeqMetadata(ctx, gocbBucket)
 		if err != nil {
 			return nil, err
 		}

@@ -130,7 +130,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	metadataStore := tBucket.GetMetadataStore()
 
 	log.Printf("Initializing test %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq)
-	_, incrErr := metadataStore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), customSeq, customSeq, 0)
+	_, incrErr := metadataStore.Incr(ctx, base.DefaultMetadataKeys.SyncSeqKey(), customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -1936,6 +1936,7 @@ func TestUpdatePrincipal(t *testing.T) {
 }
 
 func TestUpdatePrincipalCASRetry(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyCRUD)
@@ -1974,11 +1975,11 @@ func TestUpdatePrincipalCASRetry(t *testing.T) {
 				casRetryCountInt = casRetryCount.Load()
 				t.Logf("foreceCASRetry %d/%d: Forcing CAS retry for key: %q", casRetryCountInt, totalCASRetriesInt, key)
 				var body []byte
-				originalCAS, err := tb.GetMetadataStore().Get(key, &body)
+				originalCAS, err := tb.GetMetadataStore().Get(ctx, key, &body)
 				require.NoError(t, err)
-				err = tb.GetMetadataStore().Set(key, 0, nil, body)
+				err = tb.GetMetadataStore().Set(ctx, key, 0, nil, body)
 				require.NoError(t, err)
-				newCAS, err := tb.GetMetadataStore().Get(key, &body)
+				newCAS, err := tb.GetMetadataStore().Get(ctx, key, &body)
 				require.NoError(t, err)
 				t.Logf("foreceCASRetry %d/%d: Doc %q CAS changed from %d to %d", casRetryCountInt, totalCASRetriesInt, key, originalCAS, newCAS)
 			}
@@ -2106,7 +2107,7 @@ func TestConflicts(t *testing.T) {
 
 	cacheWaiter.Add(2)
 
-	rawBody, _, _ := collection.dataStore.GetRaw("doc")
+	rawBody, _, _ := collection.dataStore.GetRaw(ctx, "doc")
 
 	log.Printf("got raw body: %s", rawBody)
 
@@ -2158,7 +2159,7 @@ func TestConflicts(t *testing.T) {
 	rev3, _, err := collection.DeleteDoc(ctx, "doc", DocVersion{RevTreeID: "2-b"})
 	assert.NoError(t, err, "delete 2-b")
 
-	rawBody, _, _ = collection.dataStore.GetRaw("doc")
+	rawBody, _, _ = collection.dataStore.GetRaw(ctx, "doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = collection.Get1xBody(ctx, "doc")
@@ -2624,7 +2625,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	// Validate retrieval of the design doc by admin
 	var result sgbucket.DesignDoc
-	result, err = db.GetDesignDoc("official")
+	result, err = db.GetDesignDoc(ctx, "official")
 	log.Printf("design doc: %+v", result)
 
 	assert.NoError(t, err, "retrieve design doc as admin")
@@ -3161,7 +3162,7 @@ func TestConcurrentImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	// Add doc to the underlying bucket:
-	_, err := collection.dataStore.Add("directWrite", 0, Body{"value": "hi"})
+	_, err := collection.dataStore.Add(ctx, "directWrite", 0, Body{"value": "hi"})
 	require.NoError(t, err)
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
@@ -3429,12 +3430,11 @@ func TestSyncFnMutateBody(t *testing.T) {
 // Multiple clients are attempting to push the same new revision concurrently; first writer should be successful,
 // subsequent writers should fail on CAS, and then identify that revision already exists on retry.
 func TestConcurrentPushSameNewRevision(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
 	var revId string
-	var ctx context.Context
-
 	writeUpdateCallback := func(key string) {
 		if enableCallback {
 			enableCallback = false
@@ -3472,10 +3472,10 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
 // update to a non-winning branch that leaves the branch still non-winning (i.e. shorter) than the active branch
 func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
-	ctx := base.TestCtx(t)
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -3530,10 +3530,10 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 // Multiple clients are attempting to push the same tombstone of the winning revision for a branched document
 // First writer should be successful, subsequent writers should fail on CAS, then identify rev already exists
 func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
-	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
@@ -3585,11 +3585,11 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 // Multiple clients are attempting to push conflicting non-winning revisions; multiple clients pushing different
 // updates to non-winning branches that leave the branch(es) non-winning.
 func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 	var db *Database
 	var enableCallback bool
 
-	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
@@ -3654,12 +3654,11 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 }
 
 func TestIncreasingRecentSequences(t *testing.T) {
+	ctx := base.TestCtx(t)
 	var db *Database
 	var enableCallback bool
 	var body Body
 	var revid string
-	var ctx context.Context
-
 	writeUpdateCallback := func(key string) {
 		if enableCallback {
 			enableCallback = false
@@ -3696,9 +3695,8 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	var db *Database
 	var body Body
 	var revid string
-	var ctx context.Context
 
-	db, ctx = setupTestDB(t)
+	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3724,16 +3722,16 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	// Update document directly in the bucket to scramble recent sequences
 	var rawBody Body
-	_, err = collection.dataStore.Get("doc1", &rawBody)
+	_, err = collection.dataStore.Get(ctx, "doc1", &rawBody)
 	require.NoError(t, err)
 	rawSyncData, ok := rawBody["_sync"].(map[string]any)
 	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
-	assert.NoError(t, collection.dataStore.Set("doc1", 0, nil, rawBody))
+	assert.NoError(t, collection.dataStore.Set(ctx, "doc1", 0, nil, rawBody))
 
 	// Validate non-ordered
 	var rawBodyCheck Body
-	_, err = collection.dataStore.Get("doc1", &rawBodyCheck)
+	_, err = collection.dataStore.Get(ctx, "doc1", &rawBodyCheck)
 	require.NoError(t, err)
 	log.Printf("raw body check %v", rawBodyCheck)
 	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]any)
@@ -3764,7 +3762,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// Ensure empty doc is imported correctly
-	added, err := collection.dataStore.Add("doc1", 0, map[string]any{})
+	added, err := collection.dataStore.Add(ctx, "doc1", 0, map[string]any{})
 	assert.NoError(t, err)
 	assert.True(t, added)
 
@@ -4017,7 +4015,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		err = auth.Save(user)
 		assert.NoError(t, err)
 	}
-	endSeq, err := db.sequences.getSequence()
+	endSeq, err := db.sequences.getSequence(ctx)
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
@@ -4045,14 +4043,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := range 1 {
-			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
+			raw, _, err := db.MetadataStore.GetRaw(ctx, db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			require.NoError(t, json.Unmarshal(raw, &invalPrinc))
 			fmt.Printf("raw=%s invalPrinc: %#+v\n", raw, invalPrinc)
 			assert.Equal(t, int(endSeq), int(invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq))
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
+			raw, _, err = db.MetadataStore.GetRaw(ctx, db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			require.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -4069,14 +4067,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := range 1 {
-			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
+			raw, _, err := db.MetadataStore.GetRaw(ctx, db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
+			raw, _, err = db.MetadataStore.GetRaw(ctx, db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -4194,11 +4192,11 @@ func Test_getUpdatedDocument(t *testing.T) {
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
-		added, err := db.Bucket.DefaultDataStore().AddRaw(docID, 0, []byte(body))
+		added, err := db.Bucket.DefaultDataStore(ctx).AddRaw(ctx, docID, 0, []byte(body))
 		require.NoError(t, err)
 		assert.True(t, added)
 
-		raw, _, err := db.Bucket.DefaultDataStore().GetRaw(docID)
+		raw, _, err := db.Bucket.DefaultDataStore(ctx).GetRaw(ctx, docID)
 		require.NoError(t, err)
 		doc, err := unmarshalDocument(docID, raw)
 		require.NoError(t, err)
@@ -4420,6 +4418,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 
 func TestUpdateCalculatedStatsPanic(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	var dbc *DatabaseContext
 
 	defer func() {
@@ -4430,7 +4429,6 @@ func TestUpdateCalculatedStatsPanic(t *testing.T) {
 	}()
 
 	// nil DatabaseContext check
-	ctx := base.TestCtx(t)
 	dbc.UpdateCalculatedStats(ctx)
 
 	// non-nil DatabaseContext, nil stats
@@ -4660,12 +4658,12 @@ func TestSettingSyncInfo(t *testing.T) {
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
 
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
-	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1"))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID"))
 
 	// assert that after above operations meta version is preserved after setting of metadataID
 	var syncInfo base.SyncInfo
-	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	_, err := ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "1",
@@ -4673,14 +4671,14 @@ func TestSettingSyncInfo(t *testing.T) {
 	}, syncInfo)
 
 	// remove sync info to test another permutation
-	require.NoError(t, ds.Delete(base.SGSyncInfo))
+	require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
 
-	require.NoError(t, base.SetSyncInfoMetadataID(ds, "someID"))
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "1"))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID"))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1"))
 
 	// assert that after above operations metadataID is preserved after setting of metaVersion
 	syncInfo = base.SyncInfo{}
-	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	_, err = ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "1",
@@ -4688,16 +4686,16 @@ func TestSettingSyncInfo(t *testing.T) {
 	}, syncInfo)
 
 	// test updating each element in sync info now both elements are defined
-	require.NoError(t, base.SetSyncInfoMetaVersion(ds, "4"))
-	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "4"))
+	_, err = ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "4",
 		MetadataID:      base.Ptr("someID"),
 	}, syncInfo)
 
-	require.NoError(t, base.SetSyncInfoMetadataID(ds, "test"))
-	_, err = ds.Get(base.SGSyncInfo, &syncInfo)
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "test"))
+	_, err = ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "4",
@@ -4706,6 +4704,7 @@ func TestSettingSyncInfo(t *testing.T) {
 }
 
 func TestInitSyncInfo(t *testing.T) {
+	ctx := base.TestCtx(t)
 	type testCase struct {
 		name             string
 		initialMetaID    string
@@ -4751,17 +4750,17 @@ func TestInitSyncInfo(t *testing.T) {
 			requireMigration: true,
 		},
 	}
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 	ds := tb.GetSingleDataStore()
 	for _, testcase := range testCases {
 		t.Run(testcase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			if testcase.initialMetaID != "" {
-				require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.initialMetaID))
+				require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.initialMetaID))
 			}
 			if testcase.metaVersion != "" {
-				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion))
 			}
 
 			requireResync, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
@@ -4778,7 +4777,7 @@ func TestInitSyncInfo(t *testing.T) {
 			}
 
 			// cleanup bucket
-			require.NoError(t, ds.Delete(base.SGSyncInfo))
+			require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
 		})
 	}
 }
@@ -4799,7 +4798,7 @@ func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
 	assert.True(t, requireMigration)
 
 	// delete the doc, test no sync info in bucket returns requireMigration
-	require.NoError(t, ds.Delete(base.SGSyncInfo))
+	require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
 	_, requireMigration, err = base.InitSyncInfo(ctx, ds, "")
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
@@ -4809,6 +4808,7 @@ func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
 //   - Test requireMigration is true for metaVersion == 4.0.0 and > 4.0.0
 //   - Test requireMigration is true for non-existent metaVersion
 func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
+	ctx := base.TestCtx(t)
 	type testCase struct {
 		name        string
 		metadataID  string
@@ -4840,27 +4840,27 @@ func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
 			metaVersion: "5.0.0",
 		},
 	}
-	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 	ds := tb.GetSingleDataStore()
 	for _, testcase := range testCases {
 		t.Run(testcase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			// set sync info with no metaversion
-			require.NoError(t, base.SetSyncInfoMetadataID(ds, testcase.metadataID))
+			require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.metadataID))
 
 			if testcase.metaVersion == "" {
 				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
 				require.NoError(t, err)
 				assert.True(t, requireMigration)
 			} else {
-				require.NoError(t, base.SetSyncInfoMetaVersion(ds, testcase.metaVersion))
+				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion))
 				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
 				require.NoError(t, err)
 				assert.False(t, requireMigration)
 			}
 			// cleanup bucket
-			require.NoError(t, ds.Delete(base.SGSyncInfo))
+			require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
 		})
 	}
 }

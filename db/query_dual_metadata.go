@@ -58,7 +58,7 @@ func dualMetadataN1QLQuery[T identifiableRow](ctx context.Context, ms *base.Meta
 
 	fallbackIter, err := N1QLQueryWithStats(ctx, ms.Fallback(), queryName, storeStatement, params, consistency, adhoc, dbStats, slowQueryWarningThreshold)
 	if err != nil {
-		_ = primaryIter.Close()
+		_ = primaryIter.Close(ctx)
 		return nil, fmt.Errorf("dual metadata fallback N1QL query: %w", err)
 	}
 
@@ -165,7 +165,7 @@ func (m *dualMetadataStorePrincipalDedupIterator[T]) peekFallback(ctx context.Co
 
 // NextBytes is a no-op stub that satisfies the sgbucket.QueryResultIterator interface. Callers
 // should use Next instead, which performs the merge-sort and returns typed rows.
-func (m *dualMetadataStorePrincipalDedupIterator[T]) NextBytes() []byte {
+func (m *dualMetadataStorePrincipalDedupIterator[T]) NextBytes(_ context.Context) []byte {
 	return nil
 }
 
@@ -245,7 +245,7 @@ func (m *dualMetadataStorePrincipalDedupIterator[T]) Next(ctx context.Context, v
 // Returns sgbucket.ErrNoRows when no rows are available.
 func (m *dualMetadataStorePrincipalDedupIterator[T]) One(ctx context.Context, valuePtr any) error {
 	defer func() {
-		_ = m.Close()
+		_ = m.Close(ctx)
 	}()
 	if !m.Next(ctx, valuePtr) {
 		return sgbucket.ErrNoRows
@@ -254,9 +254,9 @@ func (m *dualMetadataStorePrincipalDedupIterator[T]) One(ctx context.Context, va
 }
 
 // Close closes both the primary and fallback iterators.
-func (m *dualMetadataStorePrincipalDedupIterator[T]) Close() error {
-	primaryErr := m.primary.Close()
-	fallbackErr := m.fallback.Close()
+func (m *dualMetadataStorePrincipalDedupIterator[T]) Close(ctx context.Context) error {
+	primaryErr := m.primary.Close(ctx)
+	fallbackErr := m.fallback.Close(ctx)
 	if primaryErr != nil {
 		return primaryErr
 	}

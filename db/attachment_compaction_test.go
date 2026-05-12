@@ -53,7 +53,7 @@ func TestAttachmentMark(t *testing.T) {
 		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, databaseCollection, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	err := dataStore.SetRaw("testDocx", 0, nil, []byte("{}"))
+	err := dataStore.SetRaw(ctx, "testDocx", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), databaseCollection))
@@ -89,11 +89,11 @@ func TestAttachmentSweep(t *testing.T) {
 
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
-	dataStore := testDb.Bucket.DefaultDataStore()
+	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDb.DatabaseContext).GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
 			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
@@ -102,7 +102,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -143,7 +143,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
 			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
@@ -152,7 +152,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	makeMultiMarkedDoc := func(docid string, compactIDs map[string]any) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
@@ -260,7 +260,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	dataStore := collection.dataStore
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		_, err = dataStore.SetXattrs(ctx, docid, map[string][]byte{
 			getCompactionIDSubDocPath(compactID): []byte(strconv.Itoa(int(time.Now().Unix())))},
@@ -287,7 +287,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 		t.Name(),
 		base.NewCollectionNameSet(dataStore),
 		CleanupPhase,
-		func(event sgbucket.FeedEvent) bool {
+		func(_ sgbucket.FeedEvent) bool {
 			require.FailNow(t, "DCP callback function should not be called for this test")
 			return false
 		},
@@ -338,7 +338,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
-	dataStore := testDb.Bucket.DefaultDataStore()
+	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()
 	attKeys := make([]string, 0, 15)
@@ -352,7 +352,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(ctx, docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		attKeys = append(attKeys, docid)
 	}
@@ -376,7 +376,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 
 	for _, attDocKey := range attKeys {
 		var back any
-		_, err = dataStore.Get(attDocKey, &back)
+		_, err = dataStore.Get(ctx, attDocKey, &back)
 		if strings.Contains(attDocKey, "unmarked") {
 			assert.Error(t, err)
 		} else {
@@ -397,7 +397,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 
 	for _, attDocKey := range attKeys {
 		var back any
-		_, err = dataStore.Get(attDocKey, &back)
+		_, err = dataStore.Get(ctx, attDocKey, &back)
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
 			_, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName + "." + CompactionIDKey})
@@ -416,7 +416,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
-	db1DataStore := testDB1.Bucket.DefaultDataStore()
+	db1DataStore := testDB1.Bucket.DefaultDataStore(ctx1)
 
 	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
@@ -562,7 +562,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 
 	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
-	db1DataStore := testDB1.Bucket.DefaultDataStore()
+	db1DataStore := testDB1.Bucket.DefaultDataStore(ctx1)
 
 	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
@@ -701,7 +701,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
-	dataStore := testDB.Bucket.DefaultDataStore()
+	dataStore := testDB.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDB.DatabaseContext).GetCollectionID()
 
 	// Run mark phase as usual
@@ -746,7 +746,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	attDigest := Sha1DigestKey(attBody)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err := db.dataStore.AddRaw(attDocID, 0, attBody)
+	_, err := db.dataStore.AddRaw(ctx, attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	var unmarshalledBody Body
@@ -756,7 +756,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
+	_, err = db.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil, func(doc []byte, xattrs map[string][]byte, _ uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 		attachmentSyncData := map[string]any{
 			attID: map[string]any{
 				"content_type": "application/json",
@@ -789,6 +789,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 }
 
 func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string, attID string, attBody []byte, db *DatabaseCollectionWithUser) string {
+	ctx := base.TestCtx(t)
 	attDigest := Sha1DigestKey(attBody)
 	attLength := len(attBody)
 
@@ -833,13 +834,14 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(ctx, attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	return attDocID
 }
 
 func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string, attID string, attBody []byte, db *DatabaseCollectionWithUser) string {
+	ctx := base.TestCtx(t)
 	attDigest := Sha1DigestKey(attBody)
 
 	syncData := `{
@@ -885,7 +887,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(ctx, attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	backupKey := "_sync:rb:PVLZc9dMcSQWX9uiA9tvlMDcs/PXoFIowRvfjcSurvU="
@@ -901,7 +903,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	  "testval": "val"
 	}`
 
-	err = db.dataStore.SetRaw(backupKey, 0, nil, []byte(bodyBackup))
+	err = db.dataStore.SetRaw(ctx, backupKey, 0, nil, []byte(bodyBackup))
 	assert.NoError(t, err)
 
 	return attDocID
@@ -917,10 +919,10 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 
 	attDigest := Sha1DigestKey(attBody)
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(ctx, attDocID, 0, attBody)
 	require.NoError(t, err)
 
-	_, err = db.dataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = db.dataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		attachmentSyncData := map[string]any{
 			attID: map[string]any{
 				"content_type": "application/json",
@@ -946,6 +948,7 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 
 		return updated, base.Ptr(uint32(0)), false, nil
 	})
+
 	require.NoError(t, err)
 
 	return attDocID
@@ -962,7 +965,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
-	dataStore := testDb.Bucket.DefaultDataStore()
+	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
 	collectionID := collection.GetCollectionID()

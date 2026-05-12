@@ -87,7 +87,7 @@ func TestRoleQuery(t *testing.T) {
 					}
 					require.NoError(t, queryErr, "Query error")
 					defer func() {
-						require.NoError(t, results.Close())
+						require.NoError(t, results.Close(ctx))
 					}()
 					var row map[string]any
 					rowCount := 0
@@ -400,7 +400,6 @@ func testGetIndexesMeta(t *testing.T, database *db.Database, indexInitOptions db
 	dataStore, ok := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionDatastore().(base.N1QLStore)
 	require.True(t, ok, "Expected N1QLStore")
 	ctx := base.TestCtx(t)
-
 	// check existing and non existing indexes
 	indexes, err := base.GetIndexesMeta(ctx, dataStore, []string{accessIndexName, roleAccessIndexName, nonExistentIndexName})
 	require.NoError(t, err)

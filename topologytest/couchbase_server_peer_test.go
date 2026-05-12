@@ -102,7 +102,7 @@ func (p *CouchbaseServerPeer) Context() context.Context {
 }
 
 func (p *CouchbaseServerPeer) getCollection(dsName sgbucket.DataStoreName) sgbucket.DataStore {
-	collection, err := p.bucket.NamedDataStore(dsName)
+	collection, err := p.bucket.NamedDataStore(base.TestCtx(p.TB()), dsName)
 	require.NoError(p.TB(), err)
 	return collection
 }

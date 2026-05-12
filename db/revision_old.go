@@ -49,7 +49,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSONPtr(ctx context.Context,
 	ptrKey := oldRevisionKey(doc.ID, doc.GetRevTreeID())
 	revHash := base.Crc32cHashString([]byte(doc.HLV.GetCurrentVersionString()))
 	ptrBytes := withNonJSONPrefix(nonJSONPrefixKindRevPtr, []byte(revHash))
-	err := db.dataStore.SetRaw(ptrKey, expiry, nil, ptrBytes)
+	err := db.dataStore.SetRaw(ctx, ptrKey, expiry, nil, ptrBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body legacy RevTree ID pointer %q -> %q/%q (%d bytes, ttl:%d)", doc.GetRevTreeID(), base.UD(doc.ID), revHash, len(ptrBytes), db.deltaSyncRevMaxAgeSeconds())
 	} else {

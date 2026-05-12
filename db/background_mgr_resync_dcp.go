@@ -105,6 +105,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		return nil
 	}
 
+	if statusDoc.ResyncID != "" {
+		err := r.purgeCheckpoints(ctx, db, statusDoc.ResyncID)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to delete checkpoints for previous resync ID %q: %v, these will be abandoned and unused", statusDoc.ResyncID, err)
+		}
+	}
+
 	newID, err := uuid.NewRandom()
 	if err != nil {
 		return err
@@ -112,6 +119,16 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	r.ResyncID = newID.String()
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
 	return nil
+}
+
+// purgeCheckpoints removes checkpoints for a given resync run.
+func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, resyncID string) error {
+	return base.PurgeDCPCheckpoints(
+		ctx,
+		db.MetadataStore,
+		GetResyncDCPCheckpointPrefix(db.DatabaseContext, resyncID, r.Distributed),
+		db.distributedDCPFeedMode(),
+	)
 }
 
 // SetVBUUIDs updates vbuuids in the manager.
@@ -284,7 +301,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		defer resyncCbgtContext.Stop(ctx)
 	} else {
 
-		clientOptions := getResyncDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
+		clientOptions := r.getDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
 		var err error
 		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
 		if err != nil {
@@ -334,7 +351,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 
 		if r.DocsChanged() > 0 {
-			endSeq, err := db.sequences.getSequence()
+			endSeq, err := db.sequences.getSequence(ctx)
 			if err != nil {
 				return err
 			}
@@ -358,7 +375,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 				if !ok {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
 				}
-				if err := base.SetSyncInfoMetadataID(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
+				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
 				}
 				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
@@ -571,7 +588,7 @@ func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
 // represent Couchbase Server collection IDs. prefix represents the prefixed name of the checkpoint documents
 // used to store DCP checkpoints.
-func getResyncDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, distributed bool) base.DCPClientOptions {
+func (r *ResyncManagerDCP) getDCPClientOptions(db *DatabaseContext, resyncID string, collectionNames base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, distributed bool) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("resync:%v", resyncID),
 		OneShot:           true,

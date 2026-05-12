@@ -284,7 +284,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	ds, ok := AsLeakyDataStore(NewLeakyBucket(bucket, LeakyBucketConfig{}).DefaultDataStore())
+	ds, ok := AsLeakyDataStore(NewLeakyBucket(bucket, LeakyBucketConfig{}).DefaultDataStore(ctx))
 	require.True(t, ok, "expected leaky bucket to return a leaky data store")
 
 	shouldFailAdd := atomic.Bool{}
@@ -327,7 +327,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			addCallback: func(docID string) (bool, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{MetadataID: Ptr(expectedMetadataID)}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -345,7 +345,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					newSyncInfo := &SyncInfo{
 						MetadataID: Ptr("another metadataID"),
 					}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -364,7 +364,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 						MetadataID:      Ptr(expectedMetadataID),
 						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
 					}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -383,7 +383,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 						MetadataID:      Ptr("another metadataID"),
 						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
 					}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -402,7 +402,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 						MetadataID:      Ptr(expectedMetadataID),
 						MetaDataVersion: "3.0.0",
 					}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -421,7 +421,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 						MetadataID:      Ptr("another metadataID"),
 						MetaDataVersion: "3.0.0",
 					}
-					added, err := ds.Add(docID, 0, newSyncInfo)
+					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
 					return false, sgbucket.CasMismatchErr{}
@@ -434,7 +434,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			defer func() {
-				err := ds.Delete(SGSyncInfo)
+				err := ds.Delete(ctx, SGSyncInfo)
 				if err != nil {
 					RequireDocNotFoundError(t, err)
 					return

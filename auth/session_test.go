@@ -105,7 +105,7 @@ func TestDeleteSession(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 	const noSessionExpiry = 0
-	assert.NoError(t, dataStore.Set(auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
+	assert.NoError(t, dataStore.Set(ctx, auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(ctx, mockSession.ID, ""))
 
 	session, _, err := auth.GetSession(mockSession.ID)
@@ -298,7 +298,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, auth.Save(user))
 
 	var rawUser map[string]any
-	_, err = auth.datastore.Get(user.DocID(), &rawUser)
+	_, err = auth.datastore.Get(ctx, user.DocID(), &rawUser)
 	require.NoError(t, err)
 
 	sessionUUIDKey := "session_uuid"
@@ -306,7 +306,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.True(t, exists)
 	delete(rawUser, sessionUUIDKey)
 
-	err = auth.datastore.Set(user.DocID(), 0, nil, rawUser)
+	err = auth.datastore.Set(ctx, user.DocID(), 0, nil, rawUser)
 	require.NoError(t, err)
 
 	user, err = auth.GetUser(username)

@@ -162,7 +162,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	if err != nil {
 		return err
 	}
-	dcpOptions := getMigrationDCPClientOptions(db, a.MigrationID, scopes, callback)
+	dcpOptions := a.getDCPClientOptions(a.MigrationID, scopes, callback)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
 
@@ -197,7 +197,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 		// set sync info metadata version
 		for _, collectionID := range currCollectionIDs {
 			dbc := db.CollectionByID[collectionID]
-			if err := base.SetSyncInfoMetaVersion(dbc.dataStore, MetaVersionValue); err != nil {
+			if err := base.SetSyncInfoMetaVersion(ctx, dbc.dataStore, MetaVersionValue); err != nil {
 				base.WarnfCtx(ctx, "[%s] Completed attachment migration, but unable to update syncInfo for collection %s: %v", migrationLoggingID, dbc.Name, err)
 				return err
 			}
@@ -290,21 +290,26 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 	return statusJSON, metaJSON, err
 }
 
+// getCheckpointPrefix returns the checkpoint prefix for attachment migration checkpoints.
+func (a *AttachmentMigrationManager) getCheckpointPrefix(migrationID string) string {
+	return fmt.Sprintf("%s:sg-%v:att_migration:%v",
+		a.databaseCtx.MetadataKeys.DCPCheckpointPrefix(a.databaseCtx.Options.GroupID),
+		base.ProductAPIVersion,
+		migrationID,
+	)
+}
+
 // getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
 // CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
-func getMigrationDCPClientOptions(db *DatabaseContext, migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+func (a *AttachmentMigrationManager) getDCPClientOptions(migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),
 		OneShot:           true,
 		FailOnRollback:    false,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		CollectionNames:   scopes,
-		CheckpointPrefix: fmt.Sprintf("%s:sg-%v:att_migration:%v",
-			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
-			base.ProductAPIVersion,
-			migrationID,
-		),
-		Callback: callback,
+		CheckpointPrefix:  a.getCheckpointPrefix(migrationID),
+		Callback:          callback,
 	}
 }
 
@@ -325,6 +330,16 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
+// purgeCheckpoints will remove the checkpoints for a specific migration ID.
+func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *DatabaseContext, migrationID string) error {
+	return base.PurgeDCPCheckpoints(
+		ctx,
+		db.MetadataStore,
+		a.getCheckpointPrefix(migrationID),
+		db.dcpFeedMode(),
+	)
+}
+
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
 func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
 	// if we are on our first run, no collections will be defined on the manager yet
@@ -333,7 +348,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	}
 	if len(a.CollectionIDs) != len(collectionIDs) {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
+		err := a.purgeCheckpoints(ctx, database, a.MigrationID)
 		if err != nil {
 			return err
 		}
@@ -344,10 +359,7 @@ func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Contex
 	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
 	if purgeNeeded != 0 {
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := PurgeDCPCheckpoints(ctx, database, metadataKeyPrefix, a.MigrationID)
-		if err != nil {
-			return err
-		}
+		return a.purgeCheckpoints(ctx, database, a.MigrationID)
 	}
 	return nil
 }

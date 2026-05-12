@@ -29,6 +29,7 @@ func init() {
 
 type SGDest interface {
 	cbgt.Dest
+	cbgt.DestEx
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a

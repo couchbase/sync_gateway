@@ -386,7 +386,7 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 	}
 
 	syncFunctionDocID := base.CollectionSyncFunctionKeyWithGroupID(c.dbCtx.Options.GroupID, c.ScopeName, c.Name)
-	_, err = c.dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	_, err = c.dbCtx.MetadataStore.Update(ctx, syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)

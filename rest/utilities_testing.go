@@ -74,7 +74,7 @@ type RestTesterConfig struct {
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
-	syncGatewayVersion              *base.ComparableBuildVersion // alternate version of Sync Gateway to use on startup
+	nodeClusterCompatVersion        *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
 	allowDbConfigEnvVars            *bool
 	maxConcurrentRevs               *int
 	UseXattrConfig                  bool
@@ -320,8 +320,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
-	if rt.RestTesterConfig.syncGatewayVersion != nil {
-		rt.RestTesterServerContext.BootstrapContext.sgVersion = *rt.RestTesterConfig.syncGatewayVersion
+	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
+		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
 	ctx := rt.Context()
 
@@ -416,7 +416,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			metadataKeys := base.DefaultMetadataKeys
 			syncSeqKey := metadataKeys.SyncSeqKey()
 			base.InfofCtx(ctx, base.KeySGTest, "Initializing %s to %d", syncSeqKey, rt.InitSyncSeq)
-			_, err := rt.TestBucket.GetMetadataStore().Incr(syncSeqKey, 0, rt.InitSyncSeq, 0)
+			_, err := rt.TestBucket.GetMetadataStore().Incr(ctx, syncSeqKey, 0, rt.InitSyncSeq, 0)
 			require.NoError(rt.TB(), err)
 		}
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -507,7 +507,7 @@ func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
 	if rt.LeakyBucketConfig == nil {
 		rt.TB().Fatalf("Cannot get leaky bucket when LeakyBucketConfig was not set on RestTester initialisation")
 	}
-	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
 	if !ok {
 		rt.TB().Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
 	}
@@ -603,7 +603,7 @@ func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() (*db.DatabaseCol
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection, _ := rt.GetSingleTestDatabaseCollection()
-	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
+	ds, err := rt.GetDatabase().Bucket.NamedDataStore(rt.Context(), base.ScopeAndCollectionName{
 		Scope:      collection.ScopeName,
 		Collection: collection.Name,
 	})

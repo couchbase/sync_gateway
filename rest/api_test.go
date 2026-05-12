@@ -2006,6 +2006,7 @@ func TestGetRawDocumentErrors(t *testing.T) {
 
 func TestWebhookProperties(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	wg := sync.WaitGroup{}
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
@@ -2048,7 +2049,7 @@ func TestWebhookProperties(t *testing.T) {
 		wg.Add(1)
 		body := make(map[string]any)
 		body["foo"] = "bar"
-		added, err := rt.GetSingleDataStore().Add("doc2", 0, body)
+		added, err := rt.GetSingleDataStore().Add(ctx, "doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
 	}
@@ -2429,6 +2430,7 @@ func TestHideProductInfo(t *testing.T) {
 }
 
 func TestDeleteNonExistentDoc(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2439,7 +2441,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var body map[string]any
-	_, err := rt.GetSingleDataStore().Get("fake", &body)
+	_, err := rt.GetSingleDataStore().Get(ctx, "fake", &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2452,6 +2454,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 
 // CBG-1153
 func TestDeleteEmptyBodyDoc(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2468,7 +2471,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]any
-	_, err := rt.GetSingleDataStore().Get("doc1", &doc)
+	_, err := rt.GetSingleDataStore().Get(ctx, "doc1", &doc)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2501,6 +2504,7 @@ func TestPutEmptyDoc(t *testing.T) {
 }
 
 func TestTombstonedBulkDocs(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2508,7 +2512,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]any
-	_, err := rt.GetSingleDataStore().Get(t.Name(), &body)
+	_, err := rt.GetSingleDataStore().Get(ctx, t.Name(), &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2520,6 +2524,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 }
 
 func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2540,7 +2545,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	}
 
 	dataStore := rt.GetSingleDataStore()
-	_, err := dataStore.Add(t.Name(), 0, map[string]any{"val": "val"})
+	_, err := dataStore.Add(ctx, t.Name(), 0, map[string]any{"val": "val"})
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"`+t.Name()+`": ["*"]}`)
@@ -2550,7 +2555,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]any
-	_, err = dataStore.Get(t.Name(), &body)
+	_, err = dataStore.Get(ctx, t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -2559,6 +2564,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 }
 
 func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2581,18 +2587,18 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	// Create the document to trigger cas failure
 	value := make(map[string]any)
 	value["foo"] = "bar"
-	insCas, err := bucket.DefaultDataStore().WriteCas(t.Name(), 0, 0, value, 0)
+	insCas, err := bucket.DefaultDataStore(ctx).WriteCas(ctx, t.Name(), 0, 0, value, 0)
 	require.NoError(t, err)
 
 	// Delete document
-	_, err = bucket.DefaultDataStore().Remove(t.Name(), insCas)
+	_, err = bucket.DefaultDataStore(ctx).Remove(ctx, t.Name(), insCas)
 	require.NoError(t, err)
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]any
-	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
+	_, err = rt.GetDatabase().Bucket.DefaultDataStore(ctx).Get(ctx, t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -2665,6 +2671,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 }
 
 func TestChannelHistoryLegacyDoc(t *testing.T) {
+	ctx := base.TestCtx(t)
 	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
@@ -2704,7 +2711,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(docData))
+	err := rt.GetSingleDataStore().Set(ctx, "doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body
@@ -2736,6 +2743,7 @@ type ChannelsTemp struct {
 }
 
 func TestMetricsHandler(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.RequireNumTestBuckets(t, 2)
 
 	base.SkipPrometheusStatsRegistration = false
@@ -2745,7 +2753,6 @@ func TestMetricsHandler(t *testing.T) {
 
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
-	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
 	context, err := db.NewDatabaseContext(ctx, "db", tBucket, false, db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, tBucket, 1)})
 	require.NoError(t, err)
@@ -2825,6 +2832,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 }
 
 func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2844,7 +2852,6 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 	defer rt.Close()
 
 	docID := t.Name() + "_doc1"
-	ctx := base.TestCtx(t)
 
 	docVrs := rt.PutDoc(docID, `{"test": "value"}`)
 
@@ -3056,6 +3063,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 //   - Update that doc and assert HLV has also been updated
 //   - Delete the doc and assert that the HLV has been updated in deletion event
 func TestPutDocUpdateVersionVector(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -3065,7 +3073,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	collection, _ := rt.GetSingleTestDatabaseCollection()
-	doc, err := collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
+	doc, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
@@ -3076,7 +3084,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev="+doc.SyncData.GetRevTreeID(), `{"key1": "value1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	doc, err = collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
+	doc, err = collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
@@ -3087,7 +3095,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+doc.SyncData.GetRevTreeID(), "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	doc, err = collection.GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalSync)
+	doc, err = collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
@@ -3256,13 +3264,13 @@ func TestAllDbs(t *testing.T) {
 
 // TestBufferFlush will test for http.ResponseWriter implements Flusher interface
 func TestBufferFlush(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	})
 	defer rt.Close()
-	ctx := base.TestCtx(t)
 
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 

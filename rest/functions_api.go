@@ -113,7 +113,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 	// Use iterator to write results one at a time to the response:
 	defer func() {
 		if rows != nil {
-			_ = rows.Close()
+			_ = rows.Close(h.ctx())
 		}
 	}()
 
@@ -141,7 +141,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 			return err
 		}
 	}
-	err = rows.Close()
+	err = rows.Close(h.ctx())
 	rows = nil // prevent 'defer' from closing again
 	if err != nil {
 		return err

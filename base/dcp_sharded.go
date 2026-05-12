@@ -22,9 +22,10 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -231,9 +232,9 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 		return err
 	}
 
-	vbNo, err := opts.Bucket.GetMaxVbno()
+	vbNo, err := opts.Bucket.GetMaxVbno(ctx)
 	if err != nil {
-		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(opts.Bucket.GetName()).Redact())
+		return RedactErrorf("Unable to retrieve maxVbNo for bucket %s: %w", MD(opts.Bucket.GetName()), err)
 	}
 
 	numPartitions := opts.NumPartitions
@@ -308,7 +309,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 
 	_, indexDefsMap, err := manager.GetIndexDefs(true)
 	if err != nil {
-		return "", errors.Wrapf(err, "Error calling CBGT GetIndexDefs() on index: %s", indexName)
+		return "", fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
 	}
 
 	indexDef, ok := indexDefsMap[indexName]
@@ -418,7 +419,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		options)
 	eventHandlers.manager = mgr
 
-	bucketUUID, err := bucket.UUID()
+	bucketUUID, err := bucket.UUID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
 	}
@@ -644,7 +645,7 @@ func (p *cfgNodePoller) Register(key string) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	cas, err := p.datastore.Get(key, nil)
+	cas, err := p.datastore.Get(p.ctx, key, nil)
 	if err != nil && !IsDocNotFoundError(err) {
 		return err
 	}
@@ -809,7 +810,7 @@ func (l *shardedDCPHeartbeatListener) reloadNodes() (localNodePresent bool, err 
 }
 
 // GetNodes returns a copy of the in-memory node set
-func (l *shardedDCPHeartbeatListener) GetNodes() ([]string, error) {
+func (l *shardedDCPHeartbeatListener) GetNodes(_ context.Context) ([]string, error) {
 
 	l.lock.RLock()
 	nodeIDsCopy := make([]string, len(l.nodeIDs))

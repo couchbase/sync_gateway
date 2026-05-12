@@ -60,7 +60,7 @@ type CouchbaseBucketStore interface {
 	MaxTTL(context.Context) (int, error)
 	HttpClient(context.Context) *http.Client
 	GetSpec() BucketSpec
-	GetMaxVbno() (uint16, error)
+	GetMaxVbno(ctx context.Context) (uint16, error)
 	GetCCVSettings(ctx context.Context) (ccvEnabled bool, maxCAS map[VBNo]uint64, err error)
 
 	// GetStatsVbSeqno retrieves the high sequence number for all vbuckets and returns
@@ -323,8 +323,8 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 
 // GetCounter returns a uint64 result for the given counter key.
 // If the given key is not found in the bucket, this function returns a result of zero.
-func GetCounter(datastore DataStore, k string) (result uint64, err error) {
-	_, err = datastore.Get(k, &result)
+func GetCounter(ctx context.Context, datastore DataStore, k string) (result uint64, err error) {
+	_, err = datastore.Get(ctx, k, &result)
 	if IsDocNotFoundError(err) {
 		return 0, nil
 	}
@@ -480,7 +480,7 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 func WaitUntilDataStoreReady(ctx context.Context, ds DataStore) error {
 	return WaitForNoError(ctx, func() error {
 		// don't care whether the doc actually exists or not, just that we could perform the operation successfully
-		_, err := ds.Exists("WaitUntilDataStoreReady")
+		_, err := ds.Exists(ctx, "WaitUntilDataStoreReady")
 		return err
 	})
 }
@@ -488,14 +488,14 @@ func WaitUntilDataStoreReady(ctx context.Context, ds DataStore) error {
 // GetDataStoreWithRetry will attempt to get a named DataStore from the given bucket, retrying until it can succeed, if failFast is false.
 func GetDataStoreWithRetry(ctx context.Context, bucket Bucket, scName ScopeAndCollectionName, failFast bool) (DataStore, error) {
 	if failFast {
-		return bucket.NamedDataStore(scName)
+		return bucket.NamedDataStore(ctx, scName)
 	}
 
 	err, dataStore := RetryLoop(
 		ctx,
 		fmt.Sprintf("waiting for %s.%s.%s to exist", MD(bucket.GetName()), MD(scName.ScopeName()), MD(scName.CollectionName())),
 		func() (bool, error, any) {
-			dataStore, err := bucket.NamedDataStore(scName)
+			dataStore, err := bucket.NamedDataStore(ctx, scName)
 			return err != nil, err, dataStore
 		},
 		CreateMaxDoublingSleeperFunc(30, 10, 1000))
@@ -540,7 +540,7 @@ func RequireNoBucketTTL(ctx context.Context, b Bucket) error {
 
 // GetSourceID returns the source ID for a bucket.
 func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
-	bucketUUID, err := bucket.UUID()
+	bucketUUID, err := bucket.UUID(ctx)
 	if err != nil {
 		return "", err
 	}

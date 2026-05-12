@@ -84,7 +84,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
-	casOut, err := c.datastore.Get(bucketKey, &value)
+	casOut, err := c.datastore.Get(c.loggingCtx, bucketKey, &value)
 	if err != nil && !IsDocNotFoundError(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
@@ -106,7 +106,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 	}
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	casOut, err := c.datastore.WriteCas(bucketKey, 0, cas, val, 0)
+	casOut, err := c.datastore.WriteCas(c.loggingCtx, bucketKey, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
@@ -123,7 +123,7 @@ func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	_, err := c.datastore.Remove(bucketKey, cas)
+	_, err := c.datastore.Remove(c.loggingCtx, bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
 	} else if err != nil && !IsDocNotFoundError(err) {

@@ -161,7 +161,7 @@ func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 		return lastSeq, nil
 	}
 	s.dbStats.SequenceGetCount.Add(1)
-	last, err := s.getSequence()
+	last, err := s.getSequence(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("Couldn't get sequence from bucket: %w", err)
 	}
@@ -247,7 +247,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 	}
 	releasedSequenceCount += numReleasedBatch
 
-	syncSeq, err := s.getSequence()
+	syncSeq, err := s.getSequence(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to fetch current sequence during nextSequenceGreaterThan for existing sequence %d. Error:%v", existingSequence, err)
 		s.mutex.Unlock()
@@ -293,7 +293,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 		return 0, 0, base.ErrMaxSequenceReleasedExceeded
 	}
 
-	allocatedToSeq, err := s._incrementSequence(incrVal)
+	allocatedToSeq, err := s._incrementSequence(ctx, incrVal)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from _incrementSequence in nextSequenceGreaterThan(%d): %v", existingSequence, err)
 		s.mutex.Unlock()
@@ -351,7 +351,7 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
 
-	max, err := s._incrementSequence(s.sequenceBatchSize)
+	max, err := s._incrementSequence(ctx, s.sequenceBatchSize)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
@@ -377,14 +377,14 @@ func (s *sequenceAllocator) _reserveSequenceBatch(ctx context.Context) error {
 }
 
 // Gets the _sync:seq document value.  Retry handling provided by bucket.Get.
-func (s *sequenceAllocator) getSequence() (max uint64, err error) {
-	return base.GetCounter(s.datastore, s.metaKeys.SyncSeqKey())
+func (s *sequenceAllocator) getSequence(ctx context.Context) (max uint64, err error) {
+	return base.GetCounter(ctx, s.datastore, s.metaKeys.SyncSeqKey())
 }
 
 // Increments the _sync:seq document.  Retry handling provided by bucket.Incr.
 // Expects sequenceAllocator.mutex to be held to ensure consistent LastSequenceReservedValue updates.
-func (s *sequenceAllocator) _incrementSequence(numToReserve uint64) (uint64, error) {
-	value, err := s.datastore.Incr(s.metaKeys.SyncSeqKey(), numToReserve, numToReserve, 0)
+func (s *sequenceAllocator) _incrementSequence(ctx context.Context, numToReserve uint64) (uint64, error) {
+	value, err := s.datastore.Incr(ctx, s.metaKeys.SyncSeqKey(), numToReserve, numToReserve, 0)
 	if err != nil {
 		return value, err
 	}
@@ -400,7 +400,7 @@ func (s *sequenceAllocator) releaseSequence(ctx context.Context, sequence uint64
 	key := fmt.Sprintf("%s%d", s.metaKeys.UnusedSeqPrefix(), sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
-	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
+	_, err := s.datastore.AddRaw(ctx, key, UnusedSequenceTTL, body)
 	if err != nil {
 		return err
 	}
@@ -423,7 +423,7 @@ func (s *sequenceAllocator) releaseSequenceRange(ctx context.Context, fromSequen
 	body := make([]byte, 16)
 	binary.LittleEndian.PutUint64(body[:8], fromSequence)
 	binary.LittleEndian.PutUint64(body[8:16], toSequence)
-	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
+	_, err := s.datastore.AddRaw(ctx, key, UnusedSequenceTTL, body)
 	if err != nil {
 		return 0, err
 	}
@@ -455,14 +455,14 @@ func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, prevAllocTo
 	worker := func() (bool, error, any) {
 		// grab _sync:seq value + its current cas value
 		var result uint64
-		cas, err := s.datastore.Get(s.metaKeys.SyncSeqKey(), &result)
+		cas, err := s.datastore.Get(ctx, s.metaKeys.SyncSeqKey(), &result)
 		if err != nil {
 			return false, err, 0
 		}
 		// set the value to _sync:seq current value + incr value if result above is below that value
 		setVal := result + correctionIncrValue
 		if result < setVal {
-			_, err = s.datastore.WriteCas(s.metaKeys.SyncSeqKey(), 0, cas, setVal, 0)
+			_, err = s.datastore.WriteCas(ctx, s.metaKeys.SyncSeqKey(), 0, cas, setVal, 0)
 			if base.IsCasMismatch(err) {
 				// retry on cas error
 				return true, err, nil
@@ -486,7 +486,7 @@ func (s *sequenceAllocator) _fixSyncSeqRollback(ctx context.Context, prevAllocTo
 
 	base.DebugfCtx(ctx, base.KeyCRUD, "_sync:seq value successfully corrected, entering normal sequence batch processing for this node")
 	// if _sync:seq has been fixed successfully just increment by batch size to get new unique batch for this node
-	allocatedToSeq, err = s._incrementSequence(s.sequenceBatchSize)
+	allocatedToSeq, err = s._incrementSequence(ctx, s.sequenceBatchSize)
 	if err != nil {
 		return 0, err
 	}

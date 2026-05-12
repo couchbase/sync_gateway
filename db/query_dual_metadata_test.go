@@ -32,7 +32,7 @@ func newMockIterator(rows [][]byte) *mockQueryResultIterator {
 	return &mockQueryResultIterator{rows: rows}
 }
 
-func (m *mockQueryResultIterator) NextBytes() []byte {
+func (m *mockQueryResultIterator) NextBytes(_ context.Context) []byte {
 	if m.pos >= len(m.rows) {
 		return nil
 	}
@@ -41,8 +41,8 @@ func (m *mockQueryResultIterator) NextBytes() []byte {
 	return raw
 }
 
-func (m *mockQueryResultIterator) Next(_ context.Context, valuePtr any) bool {
-	raw := m.NextBytes()
+func (m *mockQueryResultIterator) Next(ctx context.Context, valuePtr any) bool {
+	raw := m.NextBytes(ctx)
 	if raw == nil {
 		return false
 	}
@@ -53,10 +53,10 @@ func (m *mockQueryResultIterator) One(ctx context.Context, valuePtr any) error {
 	if !m.Next(ctx, valuePtr) {
 		return fmt.Errorf("no rows")
 	}
-	return m.Close()
+	return m.Close(ctx)
 }
 
-func (m *mockQueryResultIterator) Close() error {
+func (m *mockQueryResultIterator) Close(_ context.Context) error {
 	m.closed = true
 	return m.closeErr
 }
@@ -89,7 +89,7 @@ func TestMergedDedupIteratorPrimaryOnly(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 2)
 	assert.Equal(t, "_sync:user:alice", rows[0].Id)
 	assert.Equal(t, "_sync:user:bob", rows[1].Id)
@@ -114,7 +114,7 @@ func TestMergedDedupIteratorFallbackOnly(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 2)
 	assert.Equal(t, "_sync:user:carol", rows[0].Id)
 	assert.Equal(t, "_sync:role:editor", rows[1].Id)
@@ -122,10 +122,11 @@ func TestMergedDedupIteratorFallbackOnly(t *testing.T) {
 
 // TestMergedDedupIteratorEmpty verifies that empty iterators are handled cleanly.
 func TestMergedDedupIteratorEmpty(t *testing.T) {
+	ctx := base.TestCtx(t)
 	iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](newMockIterator(nil), newMockIterator(nil), 0)
 	var row PrincipalRow
-	assert.False(t, iter.Next(context.Background(), &row))
-	require.NoError(t, iter.Close())
+	assert.False(t, iter.Next(ctx, &row))
+	require.NoError(t, iter.Close(ctx))
 }
 
 // TestMergedDedupIteratorDeduplicatesPrimaryPreferred verifies that when the same ID
@@ -153,7 +154,7 @@ func TestMergedDedupIteratorDeduplicatesPrimaryPreferred(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 
 	require.Len(t, rows, 3)
 	assert.Equal(t, "_sync:user:alice", rows[0].Id)
@@ -185,7 +186,7 @@ func TestMergedDedupIteratorAllDuplicates(t *testing.T) {
 		}
 		result = append(result, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, result, 2)
 	assert.Equal(t, "_sync:user:alice", result[0].Id)
 	assert.Equal(t, "_sync:user:bob", result[1].Id)
@@ -217,7 +218,7 @@ func TestMergedDedupIteratorMergeSortOrder(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B", "C", "D", "E", "F"}, ids)
 }
 
@@ -237,7 +238,7 @@ func TestMergedDedupIteratorClosesProperly(t *testing.T) {
 	iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](mockPrimary, mockFallback, 0)
 	var row PrincipalRow
 	require.True(t, iter.Next(ctx, &row))
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.True(t, mockPrimary.closed, "primary iterator should be closed")
 	assert.True(t, mockFallback.closed, "fallback iterator should be closed")
 }
@@ -286,7 +287,7 @@ func TestMergedDedupIteratorSafeBoundary(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B", "C"}, ids, "E should be suppressed by safe boundary at C")
 }
 
@@ -313,7 +314,7 @@ func TestMergedDedupIteratorSafeBoundaryPrimaryExhausts(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B"}, ids, "C and D should be suppressed by safe boundary at B")
 }
 
@@ -343,7 +344,7 @@ func TestMergedDedupIteratorNoBoundaryWhenBelowLimit(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B", "C", "D", "E"}, ids, "all rows should be emitted when below limit")
 }
 
@@ -375,7 +376,7 @@ func TestMergedDedupIteratorBoundaryWithDuplicates(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 3)
 	assert.Equal(t, "A", rows[0].Id)
 	assert.Equal(t, "a-primary", rows[0].Name, "primary preferred for duplicate")
@@ -405,7 +406,7 @@ func TestMergedDedupIteratorUnlimited(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B", "C", "E"}, ids, "all rows emitted when unlimited")
 }
 
@@ -430,13 +431,14 @@ func TestMergedDeduplicateWithDuplicate(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "C", "D"}, ids)
 }
 
 // TestMergedDedupIteratorPaginationSimulation simulates the pagination loop used by GetUsers
 // to verify that no IDs are missed across multiple pages when the stores have interleaved IDs.
 func TestMergedDedupIteratorPaginationSimulation(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// Full dataset:
 	//   primary: [A, D, G, J]
 	//   fallback: [B, C, E, F, H, I]
@@ -475,7 +477,6 @@ func TestMergedDedupIteratorPaginationSimulation(t *testing.T) {
 		fallback := newMockIterator(filterAndLimit(data.fallback))
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](primary, fallback, limit)
 
-		ctx := base.TestCtx(t)
 		resultCount := 0
 		for {
 			var row PrincipalRow
@@ -491,7 +492,7 @@ func TestMergedDedupIteratorPaginationSimulation(t *testing.T) {
 			resultCount++
 			allCollected = append(allCollected, row.Id)
 		}
-		_ = iter.Close()
+		_ = iter.Close(ctx)
 
 		if resultCount < limit {
 			break
@@ -531,7 +532,7 @@ func TestMergedDedupIteratorBothExhaustAtLimit(t *testing.T) {
 		}
 		ids = append(ids, row.Id)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	assert.Equal(t, []string{"A", "B", "C"}, ids,
 		"first-to-exhaust sets boundary; D beyond boundary C should be suppressed")
 }
@@ -565,7 +566,7 @@ func TestMergedDedupIteratorBoundaryIsExclusive(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 3)
 	assert.Equal(t, "A", rows[0].Id)
 	assert.Equal(t, "B", rows[1].Id)
@@ -577,6 +578,7 @@ func TestMergedDedupIteratorBoundaryIsExclusive(t *testing.T) {
 // loop when both stores contain overlapping IDs. This verifies that duplicates are correctly
 // handled across page boundaries and no IDs are missed or emitted twice.
 func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// Full dataset:
 	//   primary:  [A, B, D, F, G]
 	//   fallback: [B, C, D, E, G, H]
@@ -614,7 +616,6 @@ func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
 		fallback := newMockIterator(filterAndLimit(data.fallback))
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](primary, fallback, limit)
 
-		ctx := base.TestCtx(t)
 		resultCount := 0
 		for {
 			var row PrincipalRow
@@ -629,7 +630,7 @@ func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
 			resultCount++
 			allCollected = append(allCollected, row.Id)
 		}
-		_ = iter.Close()
+		_ = iter.Close(ctx)
 
 		if resultCount < limit {
 			break
@@ -645,6 +646,7 @@ func TestMergedDedupIteratorPaginationSimulationWithDuplicates(t *testing.T) {
 // has many more rows than the other, verifying that the boundary mechanism handles asymmetric
 // distributions without skipping IDs.
 func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// primary: [A, Z]  (only 2 rows, big gap)
 	// fallback: [B, C, D, E, F, G, H, I, J]  (9 rows, dense)
 	// Global sorted unique: [A, B, C, D, E, F, G, H, I, J, Z]
@@ -681,7 +683,6 @@ func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
 		fallback := newMockIterator(filterAndLimit(data.fallback))
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](primary, fallback, limit)
 
-		ctx := base.TestCtx(t)
 		resultCount := 0
 		for {
 			var row PrincipalRow
@@ -696,7 +697,7 @@ func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
 			resultCount++
 			allCollected = append(allCollected, row.Id)
 		}
-		_ = iter.Close()
+		_ = iter.Close(ctx)
 
 		if resultCount < limit {
 			break
@@ -713,13 +714,14 @@ func TestMergedDedupIteratorPaginationSimulationHeavySkew(t *testing.T) {
 // only the fallback fails.
 func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
 	t.Run("both_errors_returns_primary", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		mockPrimary := newMockIterator(nil)
 		mockPrimary.closeErr = fmt.Errorf("primary close error")
 		mockFallback := newMockIterator(nil)
 		mockFallback.closeErr = fmt.Errorf("fallback close error")
 
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](mockPrimary, mockFallback, 0)
-		err := iter.Close()
+		err := iter.Close(ctx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "primary close error",
 			"primary error should take precedence")
@@ -728,22 +730,24 @@ func TestMergedDedupIteratorCloseErrorPropagation(t *testing.T) {
 	})
 
 	t.Run("only_fallback_error", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		mockPrimary := newMockIterator(nil)
 		mockFallback := newMockIterator(nil)
 		mockFallback.closeErr = fmt.Errorf("fallback close error")
 
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](mockPrimary, mockFallback, 0)
-		err := iter.Close()
+		err := iter.Close(ctx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fallback close error")
 	})
 
 	t.Run("no_errors", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		mockPrimary := newMockIterator(nil)
 		mockFallback := newMockIterator(nil)
 
 		iter := newDualMetadataStorePrincipalDedupIterator[PrincipalRow](mockPrimary, mockFallback, 0)
-		require.NoError(t, iter.Close())
+		require.NoError(t, iter.Close(ctx))
 	})
 }
 
@@ -812,7 +816,7 @@ func TestMergedDedupIteratorBoundaryWithDiscardedDuplicates(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 3)
 	assert.Equal(t, "A", rows[0].Id)
 	assert.Equal(t, "a-primary", rows[0].Name, "primary preferred")
@@ -825,9 +829,9 @@ func TestMergedDedupIteratorBoundaryWithDiscardedDuplicates(t *testing.T) {
 // TestMergedDedupIteratorNextBytesWithBoundary verifies that the safe boundary works correctly
 // when consuming via the NextBytes path (raw JSON bytes).
 func TestMergedDedupIteratorNextBytesWithBoundary(t *testing.T) {
+	ctx := base.TestCtx(t)
 	// LIMIT 2. primary: [A, E], fallback: [B, C].
 	// Boundary set by fallback at C. E > C → suppressed.
-	ctx := base.TestCtx(t)
 	primary := newMockIterator([][]byte{
 		marshalRow("A", "a"),
 		marshalRow("E", "e"),
@@ -846,7 +850,7 @@ func TestMergedDedupIteratorNextBytesWithBoundary(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 3, "E should be suppressed by boundary at C")
 	assert.Equal(t, "A", rows[0].Id)
 	assert.Equal(t, "B", rows[1].Id)
@@ -875,7 +879,7 @@ func TestMergeDeudupIteratorBoundryIsDuplicate(t *testing.T) {
 		}
 		rows = append(rows, row)
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 	require.Len(t, rows, 3)
 	assert.Equal(t, "A", rows[0].Id)
 	assert.Equal(t, "B", rows[1].Id)

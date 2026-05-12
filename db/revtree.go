@@ -415,7 +415,7 @@ func (tree RevTree) addRevision(docid string, info RevInfo) error {
 	return nil
 }
 
-func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
+func (tree RevTree) getRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) ([]byte, bool) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
@@ -429,7 +429,7 @@ func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 	if info.Body == nil && info.BodyKey != "" {
 		if info.BodyKey != "" {
 			var err error
-			info.Body, err = loader(info.BodyKey)
+			info.Body, err = loader(ctx, info.BodyKey)
 			if err != nil {
 				return nil, false
 			}

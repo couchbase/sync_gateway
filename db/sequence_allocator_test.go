@@ -190,7 +190,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(ctx, bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
+	a, err = newSequenceAllocator(ctx, bucket.DefaultDataStore(ctx), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -431,7 +431,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	assert.Equal(t, uint64(1), nxtSeq)
 
 	// alter _sync:seq in bucket to 5
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
@@ -444,7 +444,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	assert.Equal(t, uint64(530), a.max)
 
 	// alter _sync:seq in bucket to end seq in prev batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 10)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
@@ -456,7 +456,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	assert.Equal(t, uint64(1050), a.max)
 
 	// alter _sync:seq in bucket to start seq in batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 521)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 521)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
@@ -469,7 +469,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	assert.Equal(t, uint64(1570), a.max)
 
 	// rollback _sync:seq in bucket to start seq to seq outside of batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
@@ -513,7 +513,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	assert.Equal(t, uint64(1), nxtSeq)
 
 	// alter _sync:seq in bucket to 5
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	// alter s.last to mock sequences being allocated
@@ -529,7 +529,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	assert.Equal(t, 530, int(a.max))
 
 	// alter _sync:seq in bucket to end seq in prev batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 10)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 10)
 	require.NoError(t, err)
 
 	// nextSequenceGreaterThan fetches current _sync:seq, detects rollback and adjusts by
@@ -541,7 +541,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	assert.Equal(t, uint64(1050), a.max)
 
 	// alter _sync:seq in bucket to start seq in prev batch
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 1041)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 1041)
 	require.NoError(t, err)
 
 	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1055)
@@ -551,7 +551,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	assert.Equal(t, 1570, int(a.max))
 
 	// alter _sync:seq in bucket to prev batch value
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	nxtSeq, _, err = a.nextSequenceGreaterThan(ctx, 1575)
@@ -610,7 +610,7 @@ func TestSyncSeqRollbackMultiNode(t *testing.T) {
 	assert.Equal(t, uint64(11), nextSequence)
 
 	// alter _sync:seq in bucket to prev value
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 2)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 2)
 	require.NoError(t, err)
 
 	// set a.last on this allocator to 5 (mock some sequences being allocated)
@@ -645,7 +645,7 @@ func TestSyncSeqRollbackMultiNode(t *testing.T) {
 	}
 
 	// grab sync seq value from bucket
-	syncSeqVal, err := a.getSequence()
+	syncSeqVal, err := a.getSequence(ctx)
 	require.NoError(t, err)
 	// get max batch value
 	maxBatchSeq := math.Max(float64(a.max), float64(b.max))
@@ -735,7 +735,7 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 	assert.Equal(t, uint64(41), nextSequence)
 
 	// alter _sync:seq in bucket to rolled back value
-	err = ds.Set(a.metaKeys.SyncSeqKey(), 0, nil, 5)
+	err = ds.Set(ctx, a.metaKeys.SyncSeqKey(), 0, nil, 5)
 	require.NoError(t, err)
 
 	// mock node c getting to end of batch
@@ -845,7 +845,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	}
 
 	log.Printf("Total sequences released + assigned: %v", numReleased+numAssigned)
-	actualSequence, err := importFeedAllocator.getSequence()
+	actualSequence, err := importFeedAllocator.getSequence(ctx)
 	log.Printf("actual sequence (getSequence): %v", actualSequence)
 	require.NoError(t, err)
 }

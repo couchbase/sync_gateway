@@ -208,7 +208,7 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 // marshaller will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
+func (c *DatabaseCollection) loadAttachmentsData(ctx context.Context, attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
 	newAttachments = attachments.ShallowCopy()
 
 	for attachmentName, value := range newAttachments {
@@ -228,7 +228,7 @@ func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, mi
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v, revpos: %v and digest: %v due to unexpected version value: %v", base.UD(docid), base.UD(attachmentName), revpos, digest, version)
 			}
 			attachmentKey := MakeAttachmentKey(version, docid, digestStr)
-			data, err := c.GetAttachment(attachmentKey)
+			data, err := c.GetAttachment(ctx, attachmentKey)
 			if err != nil {
 				return nil, err
 			}
@@ -249,14 +249,14 @@ func DeleteAttachmentVersion(attachments AttachmentsMeta) {
 }
 
 // GetAttachment retrieves an attachment given its key.
-func (c *DatabaseCollection) GetAttachment(key string) ([]byte, error) {
-	v, _, err := c.dataStore.GetRaw(key)
+func (c *DatabaseCollection) GetAttachment(ctx context.Context, key string) ([]byte, error) {
+	v, _, err := c.dataStore.GetRaw(ctx, key)
 	return v, err
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *DatabaseCollectionWithUser) setAttachment(ctx context.Context, key string, value []byte) error {
-	_, err := db.dataStore.AddRaw(key, 0, value)
+	_, err := db.dataStore.AddRaw(ctx, key, 0, value)
 	if err == nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 	}
@@ -269,7 +269,7 @@ func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attach
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
 			return ErrAttachmentTooLarge
 		}
-		_, err := db.dataStore.AddRaw(key, 0, attachment.body)
+		_, err := db.dataStore.AddRaw(ctx, key, 0, attachment.body)
 		if err == nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.dbStats().CBLReplicationPush().AttachmentPushCount.Add(1)
@@ -288,7 +288,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
+func (c *DatabaseCollection) ForEachStubAttachment(ctx context.Context, body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
@@ -316,7 +316,7 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 
 			// Assumes the attachment is always AttVersion2 while checking whether it has already been uploaded.
 			attachmentKey := MakeAttachmentKey(AttVersion2, docID, digest)
-			data, err := c.GetAttachment(attachmentKey)
+			data, err := c.GetAttachment(ctx, attachmentKey)
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}

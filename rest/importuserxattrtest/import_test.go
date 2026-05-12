@@ -50,7 +50,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	ctx := rt.Context()
-	cas, err := dataStore.Get(docKey, nil)
+	cas, err := dataStore.Get(ctx, docKey, nil)
 
 	require.NoError(t, err)
 	// Add xattr to doc
@@ -96,7 +96,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 
 	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
-	err = dataStore.Set(docKey, 0, nil, map[string]any{})
+	err = dataStore.Set(ctx, docKey, 0, nil, map[string]any{})
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -117,7 +117,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Update body and ensure import occurs
 	updateVal := []byte(`{"prop":"val"}`)
-	err = dataStore.Set(docKey, 0, nil, updateVal)
+	err = dataStore.Set(ctx, docKey, 0, nil, updateVal)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -139,6 +139,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "myXattr"
 	channelName := "testChan"
@@ -162,7 +163,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 
 	// Add doc with SDK
-	err := dataStore.Set(docKey, 0, nil, []byte(`{}`))
+	err := dataStore.Set(ctx, docKey, 0, nil, []byte(`{}`))
 	assert.NoError(t, err)
 
 	// GET to trigger import
@@ -178,10 +179,9 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	// Ensure sync function has been ran on import
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	cas, err := dataStore.Get(docKey, nil)
+	cas, err := dataStore.Get(ctx, docKey, nil)
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	// Write user xattr
 	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 	require.NoError(t, err)
@@ -231,6 +231,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	docKey := t.Name()
 	xattrKey := "myXattr"
 	channelName := "testChan"
@@ -258,7 +259,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// SDK PUT
-	err := dataStore.Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err := dataStore.Set(ctx, docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	// Trigger Import
@@ -273,10 +274,9 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-	cas, err := dataStore.Get(docKey, nil)
+	cas, err := dataStore.Get(ctx, docKey, nil)
 	require.NoError(t, err)
 
-	ctx := base.TestCtx(t)
 	// Write user xattr
 	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 	require.NoError(t, err)

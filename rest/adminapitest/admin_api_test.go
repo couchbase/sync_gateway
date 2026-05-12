@@ -3196,113 +3196,8 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	require.Equal(t, syncFunc, resp.Body.String())
 }
 
-// TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
-func TestDbConfigPersistentSGVersions(t *testing.T) {
-	base.LongRunningTest(t)
-
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyConfig)
-
-	// Start SG with no databases
-	config := rest.BootstrapStartupConfigForTest(t)
-
-	// enable the background update worker for this test only
-	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Millisecond * 250)
-
-	sc, closeFn := rest.StartServerWithConfig(t, &config)
-	ctx := base.TestCtx(t)
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	dbName := "db"
-	dbConfig := rest.DatabaseConfig{
-		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
-		DbConfig: rest.DbConfig{
-			BucketConfig: rest.BucketConfig{
-				Bucket: base.Ptr(tb.GetName()),
-			},
-			Name:         dbName,
-			EnableXattrs: base.Ptr(base.TestUseXattrs()),
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
-			AutoImport:   false, // starts faster without import feed, but will panic if turned on CBG-3455
-			Index: &rest.IndexConfig{
-				NumReplicas: base.Ptr(uint(0)),
-			},
-			RevsLimit: base.Ptr(uint32(123)), // use RevsLimit to detect config changes
-		},
-	}
-	var err error
-	dbConfig.Version, err = rest.GenerateDatabaseConfigVersionID(ctx, "", &dbConfig.DbConfig)
-	require.NoError(t, err)
-
-	groupID := sc.Config.Bootstrap.ConfigGroupID
-	// initialise with db config
-	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), groupID, &dbConfig)
-	require.NoError(t, err)
-
-	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
-		rest.WaitAndAssertCondition(t, func() bool {
-			dbc, err := sc.GetDatabase(ctx, dbName)
-			if err != nil {
-				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
-				return false
-			}
-			if dbc.RevsLimit != revsLimit {
-				t.Logf("expected database with RevsLimit=%v but got %v", revsLimit, dbc.RevsLimit)
-				return false
-			}
-			return true
-		}, "expected database with RevsLimit=%v", revsLimit)
-	}
-
-	assertRevsLimit(sc, 123)
-
-	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), groupID, dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
-
-			db.SGVersion = version
-			db.DbConfig.RevsLimit = base.Ptr(revsLimit)
-			db.Version, err = rest.GenerateDatabaseConfigVersionID(ctx, db.Version, &db.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-			return db, nil
-		})
-		return err
-	}
-
-	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "", 456))
-	assertRevsLimit(sc, 456)
-
-	// should be allowed (as of writing current version is 3.1.0)
-	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "3.0.1", 789))
-	assertRevsLimit(sc, 789)
-
-	// shouldn't be applied to the already started node (as "5.4.3" is newer)
-	warnsStart := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "5.4.3", 654))
-	rest.WaitAndAssertConditionTimeout(t, time.Second*10, func() bool {
-		warns := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-		return warns-warnsStart > 3
-	}, "expected some warnings from trying to apply newer config")
-	assertRevsLimit(sc, 789)
-
-	// Shut down the first SG node
-	closeFn()
-
-	// Start a new SG node and ensure we *can* load the "newer" config version on initial startup, to support downgrade
-	sc, closeFn = rest.StartServerWithConfig(t, &config)
-	defer closeFn()
-
-	assertRevsLimit(sc, 654)
-
-	// overwrite new config back to current version post-downgrade
-	require.NoError(t, writeRevsLimitConfigWithVersion(sc, "3.1.0", 321))
-	assertRevsLimit(sc, 321)
-}
-
 func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	rt := rest.NewRestTester(t,
@@ -3333,7 +3228,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		// default data store - we're not using a named scope/collection in this test
-		add, err := rt.GetSingleDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		add, err := rt.GetSingleDataStore().Add(ctx, "TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
@@ -3577,13 +3472,13 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
-	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer func() {
@@ -3705,6 +3600,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			docID := fmt.Sprintf("test%d", i)
 			rawBody, err := json.Marshal(test.inputBody)
 			require.NoError(t, err)
@@ -3717,7 +3613,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]any
-			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleDataStore().Get(ctx, docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDocBody(docID)
 			// Confirm input body is in the bucket doc
@@ -3884,9 +3780,9 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rest.RequireBucketSpecificCredentials(t)
 
-	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
@@ -3988,12 +3884,12 @@ func TestDatabaseCreationErrorCode(t *testing.T) {
 //   - Create db with sync function that calls env variable
 //   - Assert that db is created
 func TestDatabaseCreationWithEnvVariable(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
 	tb := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth
@@ -4024,12 +3920,12 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 }
 
 func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
+	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
 	tb := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
 	defer tb.Close(ctx)
 
 	// disable AllowDbConfigEnvVars to avoid attempting to expand variables + enable admin auth

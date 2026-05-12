@@ -2808,7 +2808,7 @@ func TestInvalidateRoles(t *testing.T) {
 	defer testBucket.Close(ctx)
 
 	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
-	leakyDataStore, ok := base.AsLeakyDataStore(leakyBucket.DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(leakyBucket.DefaultDataStore(ctx))
 	require.True(t, ok)
 
 	auth := NewTestAuthenticator(t, leakyDataStore, nil, DefaultAuthenticatorOptions(ctx))
@@ -2839,7 +2839,7 @@ func TestInvalidateRoles(t *testing.T) {
 
 	// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
 	var userOut userImpl
-	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(ctx, auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 
 	var expectedValue uint64
@@ -2855,7 +2855,7 @@ func TestInvalidateRoles(t *testing.T) {
 	err = auth.InvalidateRoles("user", 20)
 	assert.NoError(t, err)
 
-	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(ctx, auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
 }
@@ -2882,7 +2882,7 @@ func TestInvalidateChannels(t *testing.T) {
 			defer bucket.Close(ctx)
 
 			leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{})
-			leakyDataStore, ok := base.AsLeakyDataStore(leakyBucket.DefaultDataStore())
+			leakyDataStore, ok := base.AsLeakyDataStore(leakyBucket.DefaultDataStore(ctx))
 			require.True(t, ok)
 
 			auth := NewTestAuthenticator(t, leakyDataStore, nil, DefaultAuthenticatorOptions(ctx))
@@ -2942,7 +2942,7 @@ func TestInvalidateChannels(t *testing.T) {
 					docID: docID,
 				}
 			}
-			_, err = leakyDataStore.Get(docID, &princCheck)
+			_, err = leakyDataStore.Get(ctx, docID, &princCheck)
 			assert.NoError(t, err)
 
 			expectedValue := uint64(5)
@@ -2952,7 +2952,7 @@ func TestInvalidateChannels(t *testing.T) {
 			err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 20)
 			assert.NoError(t, err)
 
-			_, err = leakyDataStore.Get(docID, &princCheck)
+			_, err = leakyDataStore.Get(ctx, docID, &princCheck)
 			assert.NoError(t, err)
 			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 		})

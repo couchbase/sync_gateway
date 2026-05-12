@@ -110,7 +110,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	//
 	// This may not be true if a user migrated/XDCR'd an existing _default collection into a named collection,
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
-	dataStore := database.Bucket.DefaultDataStore()
+	dataStore := database.Bucket.DefaultDataStore(ctx)
 	collectionID := base.DefaultCollectionID
 
 	persistClusterStatus := func() {
@@ -190,13 +190,23 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	return nil
 }
 
+// purgeCheckpoints removes the checkpoints for a specific checkpointPrefix and feed name.
+func (*AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, database *Database, checkpointPrefix string) error {
+	return base.PurgeDCPCheckpoints(
+		ctx,
+		database.MetadataStore,
+		checkpointPrefix,
+		database.dcpFeedMode(),
+	)
+}
+
 func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options map[string]any, dataStore base.DataStore, database *Database, err error, phase attachmentCompactionPhase, keyPrefix string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.CompactID)
-		err = PurgeDCPCheckpoints(ctx, database.DatabaseContext, keyPrefix, a.CompactID)
+		err = a.purgeCheckpoints(ctx, database, keyPrefix)
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err

@@ -611,7 +611,7 @@
             "trigger_blackduck": true
         },
         "manifest/3.2.xml": {
-            "go_version": "1.25.9",
+            "go_version": "1.25.10",
             "interval": 120,
             "production": true,
             "release": "3.2.8",
@@ -729,7 +729,7 @@
             "trigger_blackduck": true
         },
         "manifest/3.3.xml": {
-            "go_version": "1.25.9",
+            "go_version": "1.25.10",
             "interval": 120,
             "production": true,
             "release": "3.3.5",
@@ -828,7 +828,7 @@
             "trigger_blackduck": true
         },
         "manifest/4.0.xml": {
-            "go_version": "1.25.9",
+            "go_version": "1.25.10",
             "interval": 120,
             "production": true,
             "release": "4.0.5",
@@ -918,7 +918,7 @@
         },
 
         "manifest/default.xml": {
-            "go_version": "1.26.2",
+            "go_version": "1.26.3",
             "interval": 30,
             "production": true,
             "release": "4.1.0",

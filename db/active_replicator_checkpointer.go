@@ -514,7 +514,7 @@ func (c *Checkpointer) _setCheckpoints(seq *SequenceID) (err error) {
 func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
-	checkpointBytes, err := getSpecialBytes(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, c.localDocExpirySecs)
+	checkpointBytes, err := getSpecialBytes(c.ctx, c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, c.localDocExpirySecs)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			return &replicationCheckpoint{}, err
@@ -528,7 +528,7 @@ func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, 
 }
 
 func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
-	newRev, _, err = putSpecial(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody(), c.localDocExpirySecs)
+	newRev, _, err = putSpecial(c.ctx, c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody(), c.localDocExpirySecs)
 	if err != nil {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "Error setting local checkpoint(%v): %v", checkpoint, err)
 		return "", err
@@ -546,9 +546,9 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckp
 }
 
 // resetLocalCheckpoint removes the local checkpoint to roll back the replication.
-func resetLocalCheckpoint(dataStore base.DataStore, checkpointID string) error {
+func resetLocalCheckpoint(ctx context.Context, dataStore base.DataStore, checkpointID string) error {
 	key := RealSpecialDocID(DocTypeLocal, CheckpointDocIDPrefix+checkpointID)
-	if err := dataStore.Delete(key); err != nil && !base.IsDocNotFoundError(err) {
+	if err := dataStore.Delete(ctx, key); err != nil && !base.IsDocNotFoundError(err) {
 		return err
 	}
 	return nil

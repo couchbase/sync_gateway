@@ -198,7 +198,7 @@ func (h *handler) handleChanges() error {
 		useRequestPlus, _ := h.getOptBoolQuery("request_plus", h.db.Options.ChangesRequestPlus)
 		if useRequestPlus && feed != feedTypeContinuous {
 			var seqErr error
-			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence()
+			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence(h.ctx())
 			if seqErr != nil {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve requestPlus sequence")
 			}
@@ -663,7 +663,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		}
 		if useRequestPlus {
 			var seqErr error
-			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence()
+			options.RequestPlusSeq, seqErr = h.db.GetRequestPlusSequence(h.ctx())
 			if seqErr != nil {
 				err = base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve requestPlus sequence: %v", seqErr)
 				return

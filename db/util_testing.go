@@ -183,14 +183,14 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	var purgeErrors *base.MultiError
 
-	dataStores, err := bucket.ListDataStores()
+	dataStores, err := bucket.ListDataStores(ctx)
 	if err != nil {
 		return err
 	}
 	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
 	collectionNames := base.NewCollectionNameSet()
 	for _, dataStoreName := range dataStores {
-		collection, err := bucket.NamedDataStore(dataStoreName)
+		collection, err := bucket.NamedDataStore(ctx, dataStoreName)
 		if err != nil {
 			return err
 		}
@@ -244,14 +244,14 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		purgeErr := dataStore.DeleteWithXattrs(ctx, docID, xattrs)
 		if base.IsDocNotFoundError(purgeErr) { // doc is a tombstone
 			// If key no longer exists, need to add and and remove to remove a Sync Gateway tombstone.
-			_, addErr := dataStore.Add(docID, 0, purgeBody)
+			_, addErr := dataStore.Add(ctx, docID, 0, purgeBody)
 			if addErr != nil {
 				purgeErrors = purgeErrors.Append(addErr)
 				tbp.Logf(ctx, "Error adding docID %s to force deletion. %v", docID, addErr)
 				return false
 			}
 
-			if delErr := dataStore.Delete(docID); delErr != nil {
+			if delErr := dataStore.Delete(ctx, docID); delErr != nil {
 				purgeErrors = purgeErrors.Append(delErr)
 				tbp.Logf(ctx, "Error deleting docID %s.  %v", docID, delErr)
 			}
@@ -307,7 +307,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			return err
 		}
 		// Exit early if we're not using GSI.
-		return viewBucketReadier(ctx, b.DefaultDataStore(), tbp)
+		return viewBucketReadier(ctx, b.DefaultDataStore(ctx), tbp)
 	}
 
 	tbp.Logf(ctx, "emptying bucket via DCP purge")
@@ -320,12 +320,12 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 	if err != nil {
 		return err
 	}
-	dataStores, err := b.ListDataStores()
+	dataStores, err := b.ListDataStores(ctx)
 	if err != nil {
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(dataStoreName)
+		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
 		if err != nil {
 			return err
 		}
@@ -354,7 +354,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	tbp.Logf(ctx, "Starting bucket init function")
 
 	if !skipGSI {
-		mobileSystemDataStore, err := b.NamedDataStore(base.MobileSystemScopeAndCollectionName())
+		mobileSystemDataStore, err := b.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
 		if err != nil {
 			return err
 		}
@@ -376,14 +376,14 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		}
 	}
 
-	dataStores, err := b.ListDataStores()
+	dataStores, err := b.ListDataStores(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, dataStoreName := range dataStores {
 		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
-		dataStore, err := b.NamedDataStore(dataStoreName)
+		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
 		if err != nil {
 			return err
 		}
@@ -434,14 +434,14 @@ func viewBucketReadier(ctx context.Context, dataStore base.DataStore, tbp *base.
 	if !ok {
 		return fmt.Errorf("dataStore %T was not a View store", dataStore)
 	}
-	ddocs, err := viewStore.GetDDocs()
+	ddocs, err := viewStore.GetDDocs(ctx)
 	if err != nil {
 		return err
 	}
 
 	for ddocName := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
-		if err := viewStore.DeleteDDoc(ddocName); err != nil {
+		if err := viewStore.DeleteDDoc(ctx, ddocName); err != nil {
 			return err
 		}
 	}
@@ -692,10 +692,10 @@ func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *Data
 }
 
 // AllocateTestSequence allocates a sequence via the sequenceAllocator.  For use by non-db tests
-func AllocateTestSequence(database *DatabaseContext) (uint64, error) {
+func AllocateTestSequence(ctx context.Context, database *DatabaseContext) (uint64, error) {
 	database.sequences.mutex.Lock()
 	defer database.sequences.mutex.Unlock()
-	return database.sequences._incrementSequence(1)
+	return database.sequences._incrementSequence(ctx, 1)
 }
 
 // ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
@@ -776,7 +776,7 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
 		require.NoError(t, err)
 	} else {
-		_, err := collection.dataStore.Add(key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
+		_, err := collection.dataStore.Add(base.TestCtx(t), key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
 		require.NoError(t, err)
 	}
 }
@@ -935,9 +935,9 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	newSync, err := base.JSONMarshal(docSync)
 	require.NoError(t, err)
 
-	_, cas, err := dataStore.GetRaw(docID)
-	require.NoError(t, err)
 	ctx := base.TestCtx(t)
+	_, cas, err := dataStore.GetRaw(ctx, docID)
+	require.NoError(t, err)
 	_, err = dataStore.WriteWithXattrs(ctx, docID, 0, cas, value, map[string][]byte{base.SyncXattrName: newSync}, []string{base.GlobalXattrName}, opts)
 	require.NoError(t, err)
 }
@@ -952,8 +952,9 @@ func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundMa
 		return
 	}
 
+	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(mgr.clusterAwareOptions.HeartbeatDocID())
+		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(ctx, mgr.clusterAwareOptions.HeartbeatDocID())
 		require.NoError(t, ok)
 		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
 	}, 10*time.Second, 10*time.Millisecond)
@@ -986,7 +987,7 @@ func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expStat
 // AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
 func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 	var syncInfo base.SyncInfo
-	_, err := ds.Get(base.SGSyncInfo, &syncInfo)
+	_, err := ds.Get(base.TestCtx(t), base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	assert.Equal(t, "4.0.0", syncInfo.MetaDataVersion)
 }

@@ -1697,7 +1697,7 @@ func (l *ReplicationHeartbeatListener) reloadNodes() (localNodePresent bool, err
 }
 
 // GetNodes returns a copy of the in-memory node set
-func (l *ReplicationHeartbeatListener) GetNodes() ([]string, error) {
+func (l *ReplicationHeartbeatListener) GetNodes(_ context.Context) ([]string, error) {
 
 	l.lock.RLock()
 	nodeIDsCopy := make([]string, len(l.nodeIDs))

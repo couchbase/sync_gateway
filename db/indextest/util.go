@@ -55,7 +55,7 @@ func setupIndexes(t *testing.T, bucket base.Bucket, createOpts testIndexCreation
 		options.MetadataIndexes = db.IndexesMetadataOnly
 	}
 	ctx := base.TestCtx(t)
-	initializeCollectionIndexes(ctx, t, testBucket, bucket.DefaultDataStore(), options)
+	initializeCollectionIndexes(ctx, t, testBucket, bucket.DefaultDataStore(ctx), options)
 	if hasOnlyDefaultDataStore {
 		return
 	}

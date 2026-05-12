@@ -1621,6 +1621,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				}
 				remoteDoc, _, _, err := rt2Collection.PutExistingCurrentVersion(rt2Ctx, opts)
 				require.NoError(t, err)
+				rt2.WaitForPendingChanges()
 
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)

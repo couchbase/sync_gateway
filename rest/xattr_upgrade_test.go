@@ -87,7 +87,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 	nonMobileKey := "TestUpgradeNoXattr"
 	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
+	_, err = dataStore.Add(ctx, nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the non-mobile via Sync Gateway.  Should return 404.
@@ -169,7 +169,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	nonMobileKey := "TestUpgradeNoXattr"
 	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
+	_, err = dataStore.Add(ctx, nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to update the non-mobile document via Sync Gateway.  Should return
@@ -238,7 +238,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	nonMobileBody := make(map[string]any)
 	nonMobileBody["channels"] = "ABC"
 
-	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
+	_, err = dataStore.Add(ctx, nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.

@@ -511,6 +511,7 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
 	bucket := base.GetTestBucket(t)
@@ -519,9 +520,9 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 	SyncFn := `function(doc) {channel(doc.channel);}`
 	// add single named collection
 	newCollection := base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: "sg_test_0"}
-	require.NoError(t, bucket.CreateDataStore(base.TestCtx(t), newCollection))
+	require.NoError(t, bucket.CreateDataStore(ctx, newCollection))
 	defer func() {
-		require.NoError(t, rt.TestBucket.DropDataStore(newCollection))
+		require.NoError(t, rt.TestBucket.DropDataStore(ctx, newCollection))
 	}()
 
 	dbConfig := rt.NewDbConfig()

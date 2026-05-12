@@ -119,6 +119,7 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 // TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
 // named collections in the default scope. Verifies that metadata documents are still accessible.
 func TestUpgradeDatabasePreHelium(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.TestRequiresCollections(t)
@@ -134,8 +135,8 @@ func TestUpgradeDatabasePreHelium(t *testing.T) {
 	dbName := "db"
 
 	// set legacy docs
-	metadataStore := rt.Bucket().DefaultDataStore()
-	err := metadataStore.Set(base.DefaultMetadataKeys.SyncSeqKey(), 0, nil, 0)
+	metadataStore := rt.Bucket().DefaultDataStore(ctx)
+	err := metadataStore.Set(ctx, base.DefaultMetadataKeys.SyncSeqKey(), 0, nil, 0)
 	require.NoError(t, err)
 
 	dbConfig := rt.NewDbConfig()
@@ -298,9 +299,9 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 }
 
 func requireBobUserLocation(rt *rest.RestTester, docName string) {
-	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore()
+	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore(base.TestCtx(rt.TB()))
 
-	_, _, err := metadataStore.GetRaw(docName)
+	_, _, err := metadataStore.GetRaw(base.TestCtx(rt.TB()), docName)
 	require.NoError(rt.TB(), err)
 
 }

@@ -106,7 +106,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, cas, getErr := c.dataStore.GetRaw(key)
+		rawDoc, cas, getErr := c.dataStore.GetRaw(ctx, key)
 		if getErr != nil {
 			return nil, nil, getErr
 		}
@@ -193,13 +193,18 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
+			// importDoc swallows ErrImportCancelled (e.g. SG purge race), returning
+			// (nil, nil). Treat that the same as not found.
+			if doc == nil {
+				return emptySyncData, base.ErrNotFound
+			}
 		}
 
 		return doc.SyncData, nil
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := c.dataStore.GetRaw(key)
+		rawDocBytes, _, err := c.dataStore.GetRaw(ctx, key)
 		if err != nil {
 			return emptySyncData, err
 		}
@@ -2653,7 +2658,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(col.dataStore)
+	err = doc.persistModifiedRevisionBodies(ctx, col.dataStore)
 	if err != nil {
 		return
 	}
@@ -2752,7 +2757,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			// update the mutate in options based on the above logic
 			updatedDoc.Spec = doc.HLV.computeMacroExpansions()
 
-			updatedDoc.Spec = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
+			updatedDoc.Spec, err = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
+			if err != nil {
+				return
+			}
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 			if doc.MetadataOnlyUpdate != nil {
@@ -2921,13 +2929,17 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// only insert to revision cache on write if configured to do so
 		if db.dbCtx.Options.RevisionCacheOptions != nil && db.dbCtx.Options.RevisionCacheOptions.InsertOnWrite {
 			if updateRevCache {
+				var insertErr error
 				if createNewRevIDSkipped {
 					// remove revisionID entry if it exists
 					db.revisionCache.Remove(ctx, documentRevision.DocID, documentRevision.RevID)
 					// upsert entry to the cache, this will upsert using CV as key
-					db.revisionCache.Upsert(ctx, documentRevision)
+					insertErr = db.revisionCache.Upsert(ctx, documentRevision)
 				} else {
-					db.revisionCache.Put(ctx, documentRevision)
+					insertErr = db.revisionCache.Put(ctx, documentRevision)
+				}
+				if insertErr != nil {
+					base.WarnfCtx(ctx, "error adding document %q to revision cache: %v", base.UD(documentRevision.DocID), insertErr)
 				}
 			}
 		}
@@ -2965,7 +2977,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		var obsoleteAttachments []string
 		for previousAttachmentID, previousAttachmentName := range previousAttachments {
 			if _, found := leafAttachments[previousAttachmentID]; !found {
-				err = db.dataStore.Delete(previousAttachmentID)
+				err = db.dataStore.Delete(ctx, previousAttachmentID)
 				if err != nil {
 					base.ErrorfCtx(ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", previousAttachmentID, base.UD(doc.ID), err)
 				} else {
@@ -3156,6 +3168,8 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 		user, err := db.Authenticator(ctx).GetUser(db.user.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)
+		} else if user == nil {
+			base.WarnfCtx(ctx, "Active db.user[%s] no longer exists; security information will not be recalculated until next authentication", base.UD(db.user.Name()))
 		} else {
 			db.user = user
 		}
@@ -3207,7 +3221,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 	}
 
 	for attachmentID, attachmentNames := range attachments {
-		err = db.dataStore.Delete(attachmentID)
+		err = db.dataStore.Delete(ctx, attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
@@ -3233,7 +3247,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 			return err
 		}
 	} else {
-		err := db.dataStore.Delete(key)
+		err := db.dataStore.Delete(ctx, key)
 		if err != nil {
 			return err
 		}
@@ -3411,7 +3425,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 		channelSet.Add(accessRow.Value)
 	}
 
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	if closeErr != nil {
 		return nil, closeErr
 	}
@@ -3448,7 +3462,7 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	for results.Next(ctx, &roleAccessRow) {
 		roleChannelSet.Add(roleAccessRow.Value)
 	}
-	closeErr := results.Close()
+	closeErr := results.Close(ctx)
 	if closeErr != nil {
 		return nil, closeErr
 	}
@@ -3832,6 +3846,9 @@ const (
 
 	expandMacroCASValueUint64 = math.MaxUint64 // static value that indicates that a CAS macro expansion should be applied to a property
 	expandMacroCASValueString = "expand"
+
+	// cbsSubdocPathMaxLength is the maximum number of bytes allowed in a Couchbase Server subdocument path.
+	cbsSubdocPathMaxLength = 1024
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -3868,6 +3885,20 @@ func xattrCurrentVersionCASPath(xattrKey string) string {
 	return xattrKey + "." + versionVectorCVCASMacro
 }
 
-func xattrRevokedChannelVersionPath(xattrKey string, channelName string) string {
-	return xattrKey + ".channels." + channelName + "." + xattrMacroCurrentRevVersion
+func xattrRevokedChannelVersionPath(xattrKey string, channelName string) (string, error) {
+	path := xattrKey + ".channels." + escapeSubdocPathComponent(channelName) + "." + xattrMacroCurrentRevVersion
+	if len(path) > cbsSubdocPathMaxLength {
+		return "", base.RedactErrorf("subdoc path for channel %s exceeds maximum length of %d bytes", base.UD(channelName), cbsSubdocPathMaxLength)
+	}
+	return path, nil
+}
+
+// escapeSubdocPathComponent wraps a Couchbase subdocument path component in backticks when it
+// contains characters that are special in subdoc paths: dots (path separator) or square brackets
+// (array index syntax). Any backticks within the component are doubled to escape them.
+func escapeSubdocPathComponent(component string) string {
+	if !strings.ContainsAny(component, ".[]`") {
+		return component
+	}
+	return "`" + strings.ReplaceAll(component, "`", "``") + "`"
 }

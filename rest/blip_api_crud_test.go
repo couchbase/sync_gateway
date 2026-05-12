@@ -1711,6 +1711,7 @@ func TestPutRevV4(t *testing.T) {
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 func TestGetRemovedDoc(t *testing.T) {
 
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	const (
@@ -1767,7 +1768,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
+	err = rt.GetSingleDataStore().Delete(ctx, tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that there's a norev - modern clients will receive a replacement rev instead
@@ -2448,6 +2449,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 }
 
 func TestBlipInternalPropertiesHandling(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -2591,7 +2593,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 
 				var bucketDoc map[string]any
-				_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
+				_, err = rt.GetSingleDataStore().Get(ctx, docID, &bucketDoc)
 				assert.NoError(t, err)
 				body := rt.GetDocBody(docID)
 				// Confirm input body is in the bucket doc
@@ -2748,7 +2750,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				)
 				defer rt.Close()
 
-				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
+				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
 				require.True(t, ok)
 
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
@@ -2850,6 +2852,7 @@ func TestUnsubChanges(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the replication.
 func TestRequestPlusPull(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
@@ -2881,7 +2884,7 @@ func TestRequestPlusPull(t *testing.T) {
 		RequireStatus(t, response, 201)
 
 		// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-		slowSequence, seqErr := db.AllocateTestSequence(database)
+		slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 		require.NoError(t, seqErr)
 
 		// Write a document granting user 'bernard' access to PBS
@@ -2908,6 +2911,7 @@ func TestRequestPlusPull(t *testing.T) {
 
 // TestRequestPlusPull tests that a one-shot pull replication waits for pending changes when request plus is set on the db config.
 func TestRequestPlusPullDbConfig(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP, base.KeyChanges, base.KeyHTTP)
@@ -2945,7 +2949,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		RequireStatus(t, response, 201)
 
 		// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
-		slowSequence, seqErr := db.AllocateTestSequence(database)
+		slowSequence, seqErr := db.AllocateTestSequence(ctx, database)
 		require.NoError(t, seqErr)
 
 		// Write a document granting user 'bernard' access to PBS
@@ -3068,12 +3072,12 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		rt.GetDatabase().FlushRevisionCacheForTest()
 
 		// alter sync data to be invalid
-		cas, err := collection.GetCollectionDatastore().Get(docID, nil)
+		cas, err := collection.GetCollectionDatastore().Get(ctx, docID, nil)
 		require.NoError(t, err)
 		_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"foo" : "bar"}`), map[string][]byte{base.SyncXattrName: []byte(`{"rev": "1-cd809becc169215072fd567eebd8b8de","sequence": 1,"recent_sequences": [1],"attachments": {}, "history": {},"cas": "","time_saved": "2017-11-29T12:46:13.456631-08:00"}`)}, nil, nil)
 		require.NoError(t, err)
 		// add a doc with invalid inline sync data
-		err = collection.GetCollectionDatastore().SetRaw(docID2, 0, nil, []byte(`{"some":"data", "_sync": {}}`))
+		err = collection.GetCollectionDatastore().SetRaw(ctx, docID2, 0, nil, []byte(`{"some":"data", "_sync": {}}`))
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
@@ -3094,6 +3098,7 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 //     then SGW will detect the document needs to be imported when the rev is requested.  Should triggers norev handling
 //     in the case where the import was unsuccessful
 func TestOnDemandImportBlipFailure(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
 	if !base.TestUseXattrs() {
@@ -3186,7 +3191,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 				changes := rt.PostChangesAdmin("/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels="+testCase.channel, "{}")
 				require.Len(t, changes.Results, 1)
 
-				err := rt.GetSingleDataStore().SetRaw(docID, 0, nil, testCase.updatedBody)
+				err := rt.GetSingleDataStore().SetRaw(ctx, docID, 0, nil, testCase.updatedBody)
 				require.NoError(t, err)
 
 				rt.WaitForPendingChanges()
@@ -3613,6 +3618,7 @@ func TestTombstoneCount(t *testing.T) {
 }
 
 func TestBlipNoRevOnCorruptHistory(t *testing.T) {
+	ctx := base.TestCtx(t)
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
@@ -3626,7 +3632,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		})
 		defer btc.Close()
 
-		ctx := rt.Context()
+		ctx = rt.Context()
 		seq, err := rt.GetDatabase().NextSequence(ctx)
 		require.NoError(t, err)
 		// document contains an invalid revtree
@@ -3818,7 +3824,7 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 		btcRunner.StartPull(client.ID())
 		btcRunner.StartPush(client.ID())
 
-		err := col.Set(docID, 0, &sgbucket.UpsertOptions{}, docBody)
+		err := col.Set(ctx, docID, 0, &sgbucket.UpsertOptions{}, docBody)
 		require.NoError(t, err)
 
 		rt.WaitForDoc(docID)
@@ -3833,5 +3839,169 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 		mou, _ := rawDoc.Xattrs.RawDocXattrsOthers[base.MouXattrName]
 		assert.Nil(t, mou)
 
+	})
+}
+
+func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		// Sync function assigns each doc to "chan<doc.chan>" and grants alice access
+		// via a per-doc "test.<docID>" channel, so the channels under test exercise
+		// subdoc-path backtick escaping for special characters such as dots and/or
+		// square brackets.
+		rtConfig := RestTesterConfig{
+			SyncFn: `function (doc, oldDoc) {
+  var testChannel = "test." + doc._id;
+  access("alice", testChannel);
+
+  if (doc.chan && doc.chan.length > 0) {
+    var testChannel2 = "chan" + doc.chan;
+    channel(testChannel2);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		// assertChannelRemoval pushes two revisions of a document so that the first
+		// channel is revoked, then checks that the removal version is recorded correctly.
+		assertChannelRemoval := func(docID, rev1, initialChan, rev2, updatedChan, expectedRemovedChannel string) {
+			t.Helper()
+			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, initialChan)))
+			rt.WaitForVersion(docID, v)
+
+			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, []byte(fmt.Sprintf(`{"chan": %q}`, updatedChan)))
+			rt.WaitForVersion(docID, v)
+
+			xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName})
+			require.NoError(t, err)
+
+			var syncData db.SyncData
+			syncXattr, ok := xattrs[base.SyncXattrName]
+			require.True(t, ok, "missing _sync xattr")
+			require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))
+
+			var hlv db.HybridLogicalVector
+			vvXattr, ok := xattrs[base.VvXattrName]
+			require.True(t, ok, "missing _vv xattr")
+			require.NoError(t, base.JSONUnmarshal(vvXattr, &hlv))
+
+			removalData, ok := syncData.Channels[expectedRemovedChannel]
+			require.True(t, ok, "channel %q not found in sync data", expectedRemovedChannel)
+
+			assert.Equal(t, hlv.Version, base.HexCasToUint64(removalData.Rev.CurrentVersion))
+			assert.Equal(t, hlv.SourceID, removalData.Rev.CurrentSource)
+			assert.Equal(t, syncData.RevAndVersion.RevTreeID, removalData.Rev.RevTreeID)
+		}
+
+		// Dots in channel name — path component must be backtick-escaped.
+		assertChannelRemoval(
+			"38839af8-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "channel.test1",
+			"2-abc", "channel.test2",
+			"chanchannel.test1",
+		)
+		// Brackets with an index — e.g. "example[10]ChannelName". Brackets are CBS
+		// array-index syntax in subdoc paths; the dot prefix means the component is
+		// backtick-wrapped so the brackets are treated as literals.
+		assertChannelRemoval(
+			"bracket-index-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "example[10]ChannelName",
+			"2-abc", "example[11]ChannelName",
+			"chanexample[10]ChannelName",
+		)
+		// Empty brackets — same escaping concern as above.
+		assertChannelRemoval(
+			"bracket-empty-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "literal[]bracketchannel",
+			"2-abc", "literalbothchannels",
+			"chanliteral[]bracketchannel",
+		)
+		// Brackets with index at end of name — CBS would interpret this as an array
+		// index operator if not escaped; the dot prefix ensures backtick-wrapping.
+		assertChannelRemoval(
+			"bracket-suffix-7874-4e28-b369-51b265d7e6ce",
+			"1-abc", "exampleChannelName[10]",
+			"2-abc", "exampleChannelName[11]",
+			"chanexampleChannelName[10]",
+		)
+	})
+}
+
+func TestChannelRemovalWithLongChannelName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.Run(func(t *testing.T) {
+		// Use the channel name directly (no prefix) so the test controls the exact length.
+		rtConfig := RestTesterConfig{
+			SyncFn: `function (doc, oldDoc) {
+  access("alice", "test." + doc._id);
+  if (doc.chan && doc.chan.length > 0) {
+    channel(doc.chan);
+  }}`,
+		}
+		rt := NewRestTester(t, &rtConfig)
+		defer rt.Close()
+
+		const username = "alice"
+		rt.CreateUser(username, nil)
+
+		opts := &BlipTesterClientOpts{Username: username}
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
+		defer client.Close()
+
+		btcRunner.StartPush(client.id)
+
+		longChannelName := strings.Repeat("a", 1025)
+		const docID = "long-channel-name-doc"
+
+		// Rev 1: assign the doc to the long channel. No channel is revoked on a new
+		// document, so no macro expansion path is built and the write succeeds.
+		v := btcRunner.AddRevTreeRev(client.id, docID, "1-abc", EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, longChannelName)))
+		rt.WaitForVersion(docID, v)
+
+		// Rev 2: move the doc to a short channel, revoking the long channel. Building
+		// the subdoc macro expansion path for the revoked channel exceeds the CBS
+		// 1024-byte limit, so the write must fail. We construct the rev message manually
+		// so we can inspect the error response directly rather than via WaitForVersion.
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "2-abc"
+		revRequest.Properties[db.RevMessageHistory] = v.RevTreeID
+		revRequest.SetBody([]byte(`{"chan": "shortchannel"}`))
+		btcRunner.SingleCollection(client.id).sendPushMsg(revRequest)
+
+		revResp := revRequest.Response()
+		if btcRunner.SingleCollection(client.id).UseHLV() {
+			// HLV replication does not use subdoc macro expansion for revoked channels,
+			// so the write succeeds.
+			require.NotEqual(t, blip.ErrorType, revResp.Type())
+			require.NotContains(t, revResp.Properties, "Error-Code")
+		} else {
+			// RevTree replication builds a subdoc macro expansion path for revoked
+			// channels; a 1025-char channel name exceeds the CBS 1024-byte path limit.
+			require.Equal(t, blip.ErrorType, revResp.Type())
+			require.Equal(t, strconv.Itoa(http.StatusInternalServerError), revResp.Properties["Error-Code"])
+		}
 	})
 }

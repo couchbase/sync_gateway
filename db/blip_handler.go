@@ -221,7 +221,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return nil
 	}
 
-	value, err := bh.collection.GetSpecial(DocTypeLocal, CheckpointDocIDPrefix+client)
+	value, err := bh.collection.GetSpecial(bh.loggingCtx, DocTypeLocal, CheckpointDocIDPrefix+client)
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, _, err := bh.collection.PutSpecial(DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
+	revID, _, err := bh.collection.PutSpecial(bh.loggingCtx, DocTypeLocal, CheckpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	if continuous == false {
 		useRequestPlus := subChangesParams.requestPlus()
 		if useRequestPlus {
-			seq, requestPlusErr := bh.db.GetRequestPlusSequence()
+			seq, requestPlusErr := bh.db.GetRequestPlusSequence(bh.loggingCtx)
 			if requestPlusErr != nil {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve current sequence for requestPlus=true: %v", requestPlusErr)
 			}
@@ -1445,7 +1445,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 
 	allowedAttachment := bh.allowedAttachment(digest)
 	attachmentKey := MakeAttachmentKey(allowedAttachment.version, allowedAttachment.docID, digest)
-	attData, err := bh.collection.GetAttachment(attachmentKey)
+	attData, err := bh.collection.GetAttachment(bh.loggingCtx, attachmentKey)
 	if err != nil {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
@@ -1498,7 +1498,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	}
 
 	attachmentKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
-	attachment, err := bh.collection.GetAttachment(attachmentKey)
+	attachment, err := bh.collection.GetAttachment(bh.loggingCtx, attachmentKey)
 	if err != nil {
 		return err
 
@@ -1632,7 +1632,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
-	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests, func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
+	return bh.collection.ForEachStubAttachment(bh.loggingCtx, body, minRevpos, docID, currentDigests, func(name string, digest string, knownData []byte, meta map[string]any) ([]byte, error) {
 		// Request attachment if we don't have it
 		if knownData == nil {
 			return bh.sendGetAttachment(sender, docID, name, digest, meta)

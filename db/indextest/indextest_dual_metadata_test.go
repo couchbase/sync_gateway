@@ -34,7 +34,7 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 
 	// GetMobileSystemDataStore skips if the backing store does not support system collections.
 	primaryStore := bucket.GetMobileSystemDataStore()
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 
 	ms := base.NewMetadataStore(primaryStore, fallbackStore)
 
@@ -107,7 +107,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 
 	// GetMobileSystemDataStore skips if the backing store does not support system collections.
 	primaryStore := bucket.GetMobileSystemDataStore()
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primaryStore, fallbackStore)
 
 	// Initialise data indexes on the default collection (used as the CBL sync data scope).
@@ -146,7 +146,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		t.Helper()
 		body, marshalErr := base.JSONMarshal(map[string]string{"name": name})
 		require.NoError(t, marshalErr)
-		added, setErr := store.AddRaw(docKey, 0, body)
+		added, setErr := store.AddRaw(ctx, docKey, 0, body)
 		require.NoError(t, setErr)
 		require.True(t, added, "expected document %s to be added (not already present)", docKey)
 	}
@@ -161,6 +161,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 	writeUser(t, fallbackStore, carolKey, "carol")      // carol: fallback only
 
 	t.Run("QueryPrincipals", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		iter, err := database.QueryPrincipals(dbCtx, "", 0)
 		require.NoError(t, err)
 
@@ -170,7 +171,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 			results[row.Id] = row
 			row = db.PrincipalRow{}
 		}
-		require.NoError(t, iter.Close())
+		require.NoError(t, iter.Close(ctx))
 
 		require.Len(t, results, 3, "expected exactly 3 unique principals after deduplication")
 		require.Contains(t, results, aliceKey, "alice should be present")
@@ -183,6 +184,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 	})
 
 	t.Run("QueryUsers", func(t *testing.T) {
+		ctx := base.TestCtx(t)
 		iter, err := database.QueryUsers(dbCtx, "", 0)
 		require.NoError(t, err)
 
@@ -192,7 +194,7 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 			results[row.ID] = row
 			row = db.QueryUsersRow{}
 		}
-		require.NoError(t, iter.Close())
+		require.NoError(t, iter.Close(ctx))
 
 		require.Len(t, results, 3, "expected exactly 3 unique users after deduplication")
 		require.Contains(t, results, aliceKey)
@@ -227,7 +229,7 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 
 	// GetMobileSystemDataStore skips if the backing store does not support system collections.
 	primaryStore := bucket.GetMobileSystemDataStore()
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primaryStore, fallbackStore)
 
 	// Initialise data indexes on the default collection (used as the CBL sync data scope).
@@ -294,7 +296,7 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 		results[row.Name] = row
 		row = db.QueryUsersRow{} // reset for next iteration
 	}
-	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Close(ctx))
 
 	require.Len(t, results, 3, "expected exactly 3 unique users after deduplication across both datastores")
 	require.Contains(t, results, "alice", "alice (primary store only) should be present")
@@ -321,7 +323,7 @@ func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
 	t.Cleanup(func() { bucket.Close(ctx) })
 
 	primaryStore := bucket.GetMobileSystemDataStore()
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primaryStore, fallbackStore)
 
 	// Initialise data indexes on the default collection.
@@ -445,7 +447,7 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 	t.Cleanup(func() { bucket.Close(ctx) })
 
 	primaryStore := bucket.GetMobileSystemDataStore()
-	fallbackStore := bucket.DefaultDataStore()
+	fallbackStore := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primaryStore, fallbackStore)
 
 	setupIndexes(t, bucket, testIndexCreationOptions{
@@ -500,7 +502,7 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 			results[row.Id] = row
 			row = db.PrincipalRow{}
 		}
-		require.NoError(t, iter.Close())
+		require.NoError(t, iter.Close(ctx))
 		return results
 	}
 

@@ -55,7 +55,7 @@ func TestResyncRollback(t *testing.T) {
 
 	// alter persisted dcp metadata from the first run to force a rollback
 	checkpointPrefix := db.GetResyncDCPCheckpointPrefix(rt.GetDatabase(), status.ResyncID, false)
-	meta := base.NewDCPMetadataCS(rt.Context(), rt.Bucket().DefaultDataStore(), 1024, 8, checkpointPrefix)
+	meta := base.NewDCPMetadataCS(rt.Context(), rt.Bucket().DefaultDataStore(rt.Context()), 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	var garbageVBUUID gocbcore.VbUUID = 1234
 	vbMeta.VbUUID = garbageVBUUID
@@ -332,7 +332,7 @@ func TestResyncDoesNotWriteDocBody(t *testing.T) {
 	ds := collection.GetCollectionDatastore()
 
 	specBody := []byte(`{"test":"<>"}`) // use a special character that is currently escaped to ensure it is not modified by the import process
-	_, err := ds.WriteCas(docID, 0, 0, specBody, 0)
+	_, err := ds.WriteCas(ctx, docID, 0, 0, specBody, 0)
 	require.NoError(t, err)
 
 	// trigger import
@@ -359,7 +359,7 @@ function sync(doc, oldDoc){
 	// ensure doc body remains unchanged after resync
 	collection, _ = rt.GetSingleTestDatabaseCollectionWithUser()
 	ds = collection.GetCollectionDatastore()
-	bodyGet, _, err := ds.GetRaw(docID)
+	bodyGet, _, err := ds.GetRaw(ctx, docID)
 	require.NoError(t, err)
 	assert.Equal(t, string(bodyGet), string(specBody))
 }

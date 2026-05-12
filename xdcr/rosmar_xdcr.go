@@ -229,16 +229,16 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 	// set up replication to target all existing collections, and map to other collections
 	scopes := make(map[string][]string)
 	collections := base.NewCollectionNameSet()
-	fromDataStores, err := r.fromBucket.ListDataStores()
+	fromDataStores, err := r.fromBucket.ListDataStores(ctx)
 	if err != nil {
 		return fmt.Errorf("Could not list data stores: %w", err)
 	}
-	toDataStores, err := r.toBucket.ListDataStores()
+	toDataStores, err := r.toBucket.ListDataStores(ctx)
 	if err != nil {
 		return fmt.Errorf("Could not list toBucket data stores: %w", err)
 	}
 	for _, fromName := range fromDataStores {
-		fromDataStore, err := r.fromBucket.NamedDataStore(fromName)
+		fromDataStore, err := r.fromBucket.NamedDataStore(ctx, fromName)
 		if err != nil {
 			return fmt.Errorf("Could not get data store %s: %w when starting XDCR", fromName, err)
 		}
@@ -247,7 +247,7 @@ func (r *rosmarManager) Start(ctx context.Context) error {
 			if fromName.ScopeName() != toName.ScopeName() || fromName.CollectionName() != toName.CollectionName() {
 				continue
 			}
-			toDataStore, err := r.toBucket.NamedDataStore(toName)
+			toDataStore, err := r.toBucket.NamedDataStore(ctx, toName)
 			if err != nil {
 				return fmt.Errorf("There is not a matching datastore name in the toBucket for the fromBucket %s", toName)
 			}

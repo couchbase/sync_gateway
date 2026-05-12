@@ -21,8 +21,6 @@ import (
 
 // Tests behaviour of CBG-2257 to poll only buckets in BucketCredentials that don't currently have a database
 func TestServerlessPollBuckets(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-
 	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb1 := base.GetTestBucket(t)
@@ -280,8 +278,6 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 }
 
 func TestServerlessSuspendDatabase(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-
 	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
@@ -356,7 +352,6 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 // Confirms that when the database config is not in sc.dbConfigs, the fetch callback is check if the config is in a bucket
 func TestServerlessUnsuspendFetchFallback(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -400,8 +395,6 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 // Confirms that ServerContext.fetchConfigsWithTTL works correctly
 func TestServerlessFetchConfigsLimited(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -482,7 +475,6 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 // Checks what happens to a suspended database when the config is modified by another node and the periodic fetchAndLoadConfigs gets called.
 // Currently, it will be unsuspended however that behaviour may be changed in the future
 func TestServerlessUpdateSuspendedDb(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -530,7 +522,6 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 // Tests scenarios a database is and is not allowed to suspend
 func TestSuspendingFlags(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	testCases := []struct {
 		name             string
 		serverlessMode   bool
@@ -611,7 +602,6 @@ func TestSuspendingFlags(t *testing.T) {
 
 // Tests the public API unsuspending a database automatically
 func TestServerlessUnsuspendAPI(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
 	ctx := base.TestCtx(t)
 	// Get test bucket
 	tb := base.GetTestBucket(t)
@@ -690,13 +680,6 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 }
 
 func TestImportPartitionsServerless(t *testing.T) {
-	RequireBucketSpecificCredentials(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test requires cbgt")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("tests import which is not available without xattrs")
-	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16

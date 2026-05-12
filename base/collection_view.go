@@ -31,7 +31,7 @@ type viewMetadata struct {
 	TotalRows int `json:"total_rows,omitempty"`
 }
 
-func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
+func (c *Collection) GetDDoc(ctx context.Context, docname string) (ddoc sgbucket.DesignDoc, err error) {
 	if !c.IsDefaultScopeCollection() {
 		return ddoc, fmt.Errorf("views not supported for non-default collection")
 	}
@@ -54,7 +54,7 @@ func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error
 	return ddoc, err
 }
 
-func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error) {
+func (c *Collection) GetDDocs(ctx context.Context) (ddocs map[string]sgbucket.DesignDoc, err error) {
 	if !c.IsDefaultScopeCollection() {
 		return nil, fmt.Errorf("views not supported for non-default collection")
 	}
@@ -181,7 +181,7 @@ func (b *GocbV2Bucket) putDDocForTombstones(ctx context.Context, ddoc *gocb.Desi
 
 }
 
-func (c *Collection) DeleteDDoc(docname string) error {
+func (c *Collection) DeleteDDoc(ctx context.Context, docname string) error {
 	if !c.IsDefaultScopeCollection() {
 		return fmt.Errorf("views not supported for non-default collection")
 	}
@@ -224,7 +224,7 @@ func (c *Collection) View(ctx context.Context, ddoc, name string, params map[str
 		} else {
 			viewResult.TotalRows = viewMeta.TotalRows
 		}
-		_ = viewResultIterator.Close()
+		_ = viewResultIterator.Close(ctx)
 
 	}
 

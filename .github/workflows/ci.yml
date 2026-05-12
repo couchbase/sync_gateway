@@ -35,7 +35,7 @@ env:
   ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v6
   ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@v6
   ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@v4.0.0
-  GO_VERSION: &go_version 1.26.2
+  GO_VERSION: &go_version 1.26.3
   GOTESTSUM_VERSION: 1.13.0
   GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.9.0
 
@@ -72,7 +72,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.4
+          version: v2.12.2
           args: --config=.golangci-strict.yml
 
   test:
@@ -112,6 +112,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
 
   test-race:
     runs-on: ubuntu-latest
@@ -136,6 +148,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
 
   test-default-collection:
     runs-on: ubuntu-latest
@@ -161,6 +185,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
   test-benchmark-compile:
     runs-on: ubuntu-latest
     env:
@@ -184,6 +220,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
 
 
   test-disable-rev-cache:
@@ -210,6 +258,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
 
   python-format:
     runs-on: ubuntu-latest
@@ -266,6 +326,18 @@ jobs:
         uses: *go_test_annotations_version
         with:
           test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool

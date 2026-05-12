@@ -30,7 +30,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 	// Add some design docs in the old format
 	// This uses the default data store because Couchbase Server views aren't supported in named collections.
-	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore(ctx))
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
@@ -103,7 +103,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
-	viewStore, ok := base.AsViewStore(bucket.Bucket.DefaultDataStore())
+	viewStore, ok := base.AsViewStore(bucket.Bucket.DefaultDataStore(ctx))
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{
@@ -169,7 +169,7 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
-	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore(ctx))
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(ctx, DesignDocSyncGatewayPrefix+"_test", &sgbucket.DesignDoc{
@@ -191,7 +191,7 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix+"_test"),
 	)
 
-	leakyDataStore, ok := base.AsLeakyDataStore(bucket.DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(bucket.DefaultDataStore(ctx))
 	require.Truef(t, ok, "bucket is not a leaky bucket")
 	leakyDataStore.SetDDocGetErrorCount(1)
 	leakyDataStore.SetDDocDeleteErrorCount(1)

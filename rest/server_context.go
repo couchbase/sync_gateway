@@ -120,11 +120,12 @@ type ActiveReplicationsCounter struct {
 const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 
 type bootstrapContext struct {
-	Connection         base.BootstrapConnection
-	configRetryTimeout time.Duration               // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{}               // Used to stop the goroutine handling the bootstrap polling
-	doneChan           chan struct{}               // doneChan is closed when the bootstrap polling goroutine finishes.
-	sgVersion          base.ComparableBuildVersion // version of Sync Gateway
+	Connection           base.BootstrapConnection
+	configRetryTimeout   time.Duration               // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator           chan struct{}               // Used to stop the goroutine handling the bootstrap polling
+	doneChan             chan struct{}               // doneChan is closed when the bootstrap polling goroutine finishes.
+	sgVersion            base.ComparableBuildVersion // version of Sync Gateway
+	clusterCompatVersion base.ClusterCompatVersion   // major.minor cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion; tests may override.
 }
 
 type getOrAddDatabaseConfigOptions struct {
@@ -180,7 +181,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		DatabaseInitManager: &DatabaseInitManager{},
 		HTTPClient:          http.DefaultClient,
 		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
-		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion},
+		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion, clusterCompatVersion: base.NodeClusterCompatVersion},
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
 		SGCollect:           newSGCollect(ctx),
@@ -788,7 +789,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// - it simplifies RBAC in terms of not having to create a metadata collection
 	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
 	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
-	contextOptions.MetadataStore = bucket.DefaultDataStore()
+	contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
 	if err != nil {
 		if options.loadFromBucket {
@@ -848,7 +849,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	// no scopes, or the set of collections didn't include `_default` and we'll need to initialize it for metadata.
 	if !hasDefaultCollection {
-		ds := bucket.DefaultDataStore()
+		ds := bucket.DefaultDataStore(ctx)
 		// No explicitly defined scopes means we'll initialize this as a usable default collection, otherwise it's for metadata only
 		if len(config.Scopes) == 0 {
 			scName := base.DefaultScopeAndCollectionName()

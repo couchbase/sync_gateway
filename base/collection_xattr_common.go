@@ -399,7 +399,7 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 			callback(k, xattrKeys)
 		}
 		// ErrXattrNotFound indicates there is no XATTR.  Try to delete only the body.
-		return store.Delete(k)
+		return store.Delete(ctx, k)
 	} else {
 		// return error
 		return mutateErr

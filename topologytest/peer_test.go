@@ -600,7 +600,7 @@ func TestPeerImplementation(t *testing.T) {
 
 			ctx := peer.Context()
 			if peer.Type() != PeerTypeCouchbaseLite {
-				collection, err := peer.GetBackingBucket().NamedDataStore(collectionName)
+				collection, err := peer.GetBackingBucket().NamedDataStore(ctx, collectionName)
 				require.NoError(t, err)
 				xattrs, _, err := collection.GetXattrs(ctx, docID, metadataXattrNames)
 				require.NoError(t, err)

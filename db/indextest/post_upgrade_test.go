@@ -232,11 +232,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 					defer func() {
 						viewStore, ok := base.AsViewStore(collection)
 						assert.True(t, ok)
-						ddocs, err := viewStore.GetDDocs()
+						ddocs, err := viewStore.GetDDocs(ctx)
 						assert.NoError(t, err)
 
 						for ddocName := range ddocs {
-							assert.NoError(t, viewStore.DeleteDDoc(ddocName))
+							assert.NoError(t, viewStore.DeleteDDoc(ctx, ddocName))
 						}
 					}()
 
@@ -322,7 +322,6 @@ func TestRemoveUnusedIndexOnError(t *testing.T) {
 			testIndexes[db.IndexChannels] = channelIndex
 
 			ctx := base.TestCtx(t)
-
 			inUseIndexes := database.GetInUseIndexesFromDefs(testIndexes)
 			removedIndexes, removeErr := db.RemoveUnusedIndexes(ctx, database.Bucket, inUseIndexes, true)
 			require.NoError(t, removeErr)

@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -39,13 +40,13 @@ func TestOneShotDCP(t *testing.T) {
 	body := map[string]any{"foo": "bar"}
 	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, body)
+		err := dataStore.Set(ctx, key, 0, nil, body)
 		require.NoError(t, err)
 	}
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -76,7 +77,7 @@ func TestOneShotDCP(t *testing.T) {
 		updatedBody := map[string]any{"foo": "bar"}
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
-			err := dataStore.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 			require.NoError(t, err)
 		}
 	}()
@@ -106,7 +107,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
+	counterCallback := func(_ sgbucket.FeedEvent) bool {
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -133,7 +134,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := dataStore.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 	}()
@@ -209,7 +210,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			updatedBody := map[string]any{"foo": "bar"}
 			for i := range 10000 {
 				key := fmt.Sprintf("%s_%d", t.Name(), i)
-				err := dataStore.Set(key, 0, nil, updatedBody)
+				err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
 			collection, ok := dataStore.(*Collection)
@@ -364,7 +365,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	updatedBody := map[string]any{"foo": "bar"}
 	for i := range numDocs {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -449,7 +450,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	updatedBody := map[string]any{"foo": "bar"}
 	for i := range 10000 {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := dataStore.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -461,14 +462,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient, err := NewDCPClient(ctx, bucket, dcpClientOpts)
-	require.NoError(t, err)
-
-	if !UnitTestUrlIsWalrus() {
-		dc, ok := dcpClient.(*GoCBDCPClient)
-		require.True(t, ok)
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
-	}
+	dcpClient = newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
 	doneChan, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
@@ -502,14 +496,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
-	dcpClient2, err := NewDCPClient(ctx, bucket, dcpClientOpts)
-	require.NoError(t, err)
-
-	if !UnitTestUrlIsWalrus() {
-		dc, ok := dcpClient2.(*GoCBDCPClient)
-		require.True(t, ok)
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second) // disable periodic checkpointing for test
-	}
+	dcpClient2 := newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
 	doneChan2, startErr2 := dcpClient2.Start()
 	require.NoError(t, startErr2)
@@ -540,7 +527,7 @@ func TestBadAgentPriority(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	panicCallback := func(event sgbucket.FeedEvent) bool {
+	panicCallback := func(_ sgbucket.FeedEvent) bool {
 		t.Error(t, "Should not hit this callback")
 		return false
 	}
@@ -701,7 +688,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		t.Fatalf("timeout waiting for doc mutation")
 	}
 
-	deleteMutationCas, err := collection.Remove(docID, writeMutationCas)
+	deleteMutationCas, err := collection.Remove(ctx, docID, writeMutationCas)
 	require.NoError(t, err)
 
 	select {
@@ -735,8 +722,6 @@ func TestDCPFeedEventTypes(t *testing.T) {
 // Both backfill (docs written before feed starts) and live streaming (continuous,
 // docs written after feed starts) scenarios are tested.
 func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
-	ctx := TestCtx(t)
-
 	feedContentModes := []struct {
 		name        string
 		feedContent sgbucket.FeedContent
@@ -753,6 +738,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					name = "live"
 				}
 				t.Run(name, func(t *testing.T) {
+					ctx := TestCtx(t)
 					bucket := GetTestBucket(t)
 					defer bucket.Close(ctx)
 
@@ -766,7 +752,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					writeTestDocs := func() {
 						// Body-only JSON doc via WriteCas (Insert, cas=0) - same path as auth.Save() for _sync:user:*
 						body := map[string]any{"type": "user", "name": "testuser", "channels": []string{"a", "b"}}
-						_, err := dataStore.WriteCas(bodyOnlyKey, 0, 0, body, 0)
+						_, err := dataStore.WriteCas(ctx, bodyOnlyKey, 0, 0, body, 0)
 						require.NoError(t, err)
 
 						// Xattr+body doc - same as application documents
@@ -774,7 +760,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 						require.NoError(t, err)
 
 						// Counter doc via Incr - same path as _sync:seq
-						_, err = dataStore.Incr(counterKey, 1, 0, 0)
+						_, err = dataStore.Incr(ctx, counterKey, 1, 0, 0)
 						require.NoError(t, err)
 					}
 
@@ -920,6 +906,7 @@ func TestDCPClientAgentConfig(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := TestCtx(t)
 			require.NotContains(t, gocbv2Bucket.Spec.Server, "?", "expected no query parameters for connection string to start")
 			oldBucketSpecServer := gocbv2Bucket.Spec.Server
 			defer func() { gocbv2Bucket.Spec.Server = oldBucketSpecServer }()
@@ -938,5 +925,231 @@ func TestDCPClientAgentConfig(t *testing.T) {
 
 			require.Equal(t, tc.networkType, config.IoConfig.NetworkType)
 		})
+	}
+}
+
+func TestDCPCheckpointCleanup(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	allDataStoreNames, err := bucket.ListDataStores(ctx)
+	require.NoError(t, err)
+
+	var dataStores []sgbucket.DataStore
+	for _, dsName := range allDataStoreNames {
+		ds, err := bucket.NamedDataStore(ctx, dsName)
+		require.NoError(t, err)
+		dataStores = append(dataStores, ds)
+	}
+
+	var mutationCount atomic.Uint64
+	foundDocs := make(chan string, len(dataStores))
+	callback := func(event sgbucket.FeedEvent) bool {
+		if strings.HasSuffix(string(event.Key), "_doc") {
+			mutationCount.Add(1)
+			if mutationCount.Load() == uint64(len(dataStores)) {
+				close(foundDocs)
+			}
+		}
+		return true // request checkpoint persistence
+	}
+
+	checkpointPrefix := DefaultMetadataKeys.DCPCheckpointPrefix(t.Name())
+	dcpOptions := DCPClientOptions{
+		FeedID:            "testfeed",
+		CollectionNames:   NewCollectionNameSet(allDataStoreNames...),
+		OneShot:           false,
+		CheckpointPrefix:  checkpointPrefix,
+		Callback:          callback,
+		MetadataStoreType: DCPMetadataStoreCS,
+	}
+
+	dcpClient := newDCPClientWithFastCheckpointing(t, bucket, dcpOptions)
+
+	doneChan, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+
+	defer func() {
+		_ = dcpClient.Close()
+		RequireChanClosed(t, doneChan)
+	}()
+
+	// write document to each collection
+	for _, ds := range dataStores {
+		docID := fmt.Sprintf("%s_%s_%s_doc", t.Name(), ds.ScopeName(), ds.CollectionName())
+		body := map[string]any{"foo": "bar"}
+		err = ds.Set(ctx, docID, 0, nil, body)
+		require.NoError(t, err)
+	}
+
+	RequireChanClosed(t, foundDocs)
+
+	// Verify the name of the checkpoint prefix matches
+	actualPrefix := dcpClient.GetMetadataKeyPrefix()
+	require.Equal(t, checkpointPrefix, actualPrefix)
+
+	// Close feed
+	err = dcpClient.Close()
+	require.NoError(t, err)
+	RequireChanClosed(t, doneChan)
+
+	// Verify that checkpoint documents were created in the bucket
+	var foundCheckpoints []string
+
+	metadataStore := bucket.Bucket.DefaultDataStore(ctx)
+	if !UnitTestUrlIsWalrus() {
+		// Try to find at least one worker's checkpoint
+		for i := 0; i < DefaultNumWorkers; i++ {
+			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, i)
+			_, _, err := metadataStore.GetRaw(ctx, checkpointID)
+			if err == nil {
+				foundCheckpoints = append(foundCheckpoints, checkpointID)
+			}
+		}
+		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
+	} else {
+		_, _, err := metadataStore.GetRaw(ctx, checkpointPrefix)
+		require.NoError(t, err, "Checkpoint document not found  %q", checkpointPrefix)
+		foundCheckpoints = append(foundCheckpoints, checkpointPrefix)
+	}
+
+	// Purge checkpoints and verify they are deleted
+	err = dcpClient.PurgeCheckpoints(ctx)
+	require.NoError(t, err)
+
+	for _, cp := range foundCheckpoints {
+		_, _, err := metadataStore.GetRaw(ctx, cp)
+		require.Error(t, err, "Expected checkpoint document %s to be deleted", cp)
+		RequireDocNotFoundError(t, err)
+	}
+}
+
+// newDCPClientWithFastCheckpointing is a helper function to create a DCP client which will serialize checkpoints on
+// every mutation.
+func newDCPClientWithFastCheckpointing(t *testing.T, bucket *TestBucket, dcpOptions DCPClientOptions) DCPClient {
+	ctx := TestCtx(t)
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
+	require.NoError(t, err)
+
+	if dc, ok := dcpClient.(*GoCBDCPClient); ok {
+		dc.checkpointPersistFrequency = Ptr(0 * time.Second)
+	}
+	return dcpClient
+}
+
+func TestDCPDataType(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+
+	payloads := []struct {
+		name    string
+		payload []byte
+	}{
+		{"Binary", []byte("random_binary_string_\x00\x01\x02")},
+		{"QuotedString", []byte(`"hello"`)},
+		{"Integer", []byte("123")},
+		{"EmptyObject", []byte(`{}`)},
+		{"Array", []byte(`[1, 2, 3]`)},
+		{"Boolean", []byte("true")},
+		{"Null", []byte("null")},
+	}
+
+	writeMethods := []struct {
+		name string
+		fn   func(key string, payload []byte) error
+	}{
+		{"WriteCas", func(key string, payload []byte) error {
+			_, err := dataStore.WriteCas(ctx, key, 0, 0, payload, sgbucket.Raw)
+			return err
+		}},
+		{"SetRaw", func(key string, payload []byte) error {
+			return dataStore.SetRaw(ctx, key, 0, nil, payload)
+		}},
+		{"AddRaw", func(key string, payload []byte) error {
+			_, err := dataStore.AddRaw(ctx, key, 0, payload)
+			return err
+		}},
+	}
+
+	expectedEvents := make(map[string][]byte)
+	testName := t.Name()
+
+	// Write all documents
+	for _, wm := range writeMethods {
+		for _, pl := range payloads {
+			key := fmt.Sprintf("%s_%s_%s", testName, wm.name, pl.name)
+			err := wm.fn(key, pl.payload)
+			require.NoError(t, err)
+			expectedEvents[key] = pl.payload
+		}
+	}
+
+	// Setup DCP feed to pick up these mutations
+	receivedEvents := make(map[string]sgbucket.FeedEvent)
+	var receivedEventsMu sync.Mutex
+	done := make(chan struct{})
+	var doneOnce sync.Once
+
+	callback := func(e sgbucket.FeedEvent) bool {
+		if _, isExpected := expectedEvents[string(e.Key)]; isExpected {
+			receivedEventsMu.Lock()
+			defer receivedEventsMu.Unlock()
+			receivedEvents[string(e.Key)] = e
+			if len(receivedEvents) == len(expectedEvents) {
+				doneOnce.Do(func() { close(done) })
+				return true
+			}
+		}
+
+		return false
+	}
+
+	dcpOptions := DCPClientOptions{
+		CollectionNames:  NewCollectionNameSet(dataStore),
+		OneShot:          true,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		Callback:         callback,
+	}
+
+	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
+	require.NoError(t, err)
+
+	_, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+	defer func() { assert.NoError(t, dcpClient.Close()) }()
+
+	select {
+	case <-done:
+		// Verify all received events
+		for _, wm := range writeMethods {
+			for _, pl := range payloads {
+				t.Run(fmt.Sprintf("%s_%s", wm.name, pl.name), func(t *testing.T) {
+					key := fmt.Sprintf("%s_%s_%s", testName, wm.name, pl.name)
+
+					receivedEventsMu.Lock()
+					event, ok := receivedEvents[key]
+					receivedEventsMu.Unlock()
+
+					require.True(t, ok, "Did not receive DCP event for key %s", key)
+
+					expectedDataType := MemcachedDataTypeRaw
+					if pl.name != "Binary" {
+						expectedDataType = MemcachedDataTypeJSON
+					}
+
+					assert.Equal(t, expectedDataType, int(event.DataType), "Expected datatype did not match")
+					assert.Equal(t, pl.payload, event.Value)
+				})
+			}
+		}
+	case <-time.After(30 * time.Second):
+		receivedEventsMu.Lock()
+		gotCount := len(receivedEvents)
+		receivedEventsMu.Unlock()
+		t.Fatalf("Timeout waiting for DCP events. Got %d out of %d", gotCount, len(expectedEvents))
 	}
 }

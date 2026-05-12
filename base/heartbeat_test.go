@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -80,7 +81,7 @@ func (th *TestHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 	atomic.AddUint32(&th.staleDetectCount, 1)
 }
 
-func (th *TestHeartbeatListener) GetNodes() (nodeUUIDs []string, err error) {
+func (th *TestHeartbeatListener) GetNodes(_ context.Context) (nodeUUIDs []string, err error) {
 	nodeSet := th.nodeStore.GetNodes()
 	return nodeSet, nil
 }
@@ -162,7 +163,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
 
 	// Validate current node list
-	activeNodes, err := listeners[0].GetNodes()
+	activeNodes, err := listeners[0].GetNodes(ctx)
 	require.NoError(t, err, "Error getting node list")
 	require.Len(t, activeNodes, 2)
 	assert.NotContains(t, activeNodes, "node0")
@@ -259,7 +260,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
 
 	// Validate current node list for import with one of the import listeners
-	activeImportNodes, err := importListeners[1].GetNodes()
+	activeImportNodes, err := importListeners[1].GetNodes(ctx)
 	log.Printf("import listener nodes: %+v", activeImportNodes)
 	require.NoError(t, err, "Error getting node list")
 	require.Len(t, activeImportNodes, 2)
@@ -268,7 +269,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	assert.Contains(t, activeImportNodes, "node2")
 
 	// Validate current node list for sgr with one of the sgr listeners
-	activeReplicateNodes, err := sgrListeners[1].GetNodes()
+	activeReplicateNodes, err := sgrListeners[1].GetNodes(ctx)
 	log.Printf("replicate listener nodes: %+v", activeReplicateNodes)
 	require.NoError(t, err, "Error getting node list")
 	require.Len(t, activeReplicateNodes, 1)
@@ -385,14 +386,14 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
-		nodeSet, err := listener2.GetNodes()
+		nodeSet, err := listener2.GetNodes(ctx)
 		require.NoError(t, err)
 		return len(nodeSet) < 3
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
 
 	// Validate current node list
-	activeNodes, err := listener2.GetNodes()
+	activeNodes, err := listener2.GetNodes(ctx)
 	require.NoError(t, err, "Error getting node list")
 	require.Len(t, activeNodes, 2)
 	assert.NotContains(t, activeNodes, "node1")

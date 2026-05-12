@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -20,10 +21,10 @@ const (
 	LocalDocPrefix = "_local/"
 )
 
-func (c *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, error) {
+func (c *DatabaseCollection) GetSpecial(ctx context.Context, doctype string, docid string) (Body, error) {
 
 	body := Body{}
-	bytes, err := c.GetSpecialBytes(doctype, docid)
+	bytes, err := c.GetSpecialBytes(ctx, doctype, docid)
 	if err != nil {
 		return nil, err
 	}
@@ -34,18 +35,18 @@ func (c *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, err
 	return body, err
 }
 
-func (c *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
-	return getSpecialBytes(c.dataStore, doctype, docid, int(c.localDocExpirySecs()))
+func (c *DatabaseCollection) GetSpecialBytes(ctx context.Context, doctype string, docid string) ([]byte, error) {
+	return getSpecialBytes(ctx, c.dataStore, doctype, docid, int(c.localDocExpirySecs()))
 }
 
-func getWithTouch(dataStore base.DataStore, docID string, expirySecs int) ([]byte, error) {
+func getWithTouch(ctx context.Context, dataStore base.DataStore, docID string, expirySecs int) ([]byte, error) {
 	var rawDocBytes []byte
 	var err error
 	if expirySecs > 0 {
 		expiry := base.SecondsToCbsExpiry(expirySecs)
-		rawDocBytes, _, err = dataStore.GetAndTouchRaw(docID, expiry)
+		rawDocBytes, _, err = dataStore.GetAndTouchRaw(ctx, docID, expiry)
 	} else {
-		rawDocBytes, _, err = dataStore.GetRaw(docID)
+		rawDocBytes, _, err = dataStore.GetRaw(ctx, docID)
 	}
 	if err != nil {
 		return nil, err
@@ -53,7 +54,7 @@ func getWithTouch(dataStore base.DataStore, docID string, expirySecs int) ([]byt
 	return rawDocBytes, nil
 }
 
-func getSpecialBytes(dataStore base.DataStore, doctype string, docID string, localDocExpirySecs int) ([]byte, error) {
+func getSpecialBytes(ctx context.Context, dataStore base.DataStore, doctype string, docID string, localDocExpirySecs int) ([]byte, error) {
 	key := RealSpecialDocID(doctype, docID)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -62,11 +63,11 @@ func getSpecialBytes(dataStore base.DataStore, doctype string, docID string, loc
 	if doctype != DocTypeLocal {
 		localDocExpirySecs = 0
 	}
-	return getWithTouch(dataStore, key, localDocExpirySecs)
+	return getWithTouch(ctx, dataStore, key, localDocExpirySecs)
 }
 
 // Updates or deletes a document with BodyRev-based version control.
-func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string, body Body, expirySecs int) (newRevID string, isNewDoc bool, err error) {
+func putDocWithRevision(ctx context.Context, dataStore base.DataStore, docID string, matchRev string, body Body, expirySecs int) (newRevID string, isNewDoc bool, err error) {
 	var revid string
 
 	var expiry uint32
@@ -77,7 +78,7 @@ func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string,
 	// isNewDoc is set to false if the update is being applied on top of an existing document.
 	isNewDoc = true
 
-	_, err = dataStore.Update(docID, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
+	_, err = dataStore.Update(ctx, docID, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, false, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
@@ -94,7 +95,7 @@ func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string,
 		}
 
 		if body != nil {
-			// Updating:
+
 			var generation uint
 			if matchRev != "" {
 				_, _ = fmt.Sscanf(matchRev, "0-%d", &generation)
@@ -104,7 +105,7 @@ func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string,
 			bodyBytes, marshalErr := base.JSONMarshal(body)
 			return bodyBytes, nil, false, marshalErr
 		} else {
-			// Deleting:
+
 			return nil, nil, true, nil
 		}
 	})
@@ -112,7 +113,7 @@ func putDocWithRevision(dataStore base.DataStore, docID string, matchRev string,
 	return revid, isNewDoc, err
 }
 
-func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev string, body Body, localDocExpirySecs int) (revID string, isNewDoc bool, err error) {
+func putSpecial(ctx context.Context, dataStore base.DataStore, doctype string, docid string, matchRev string, body Body, localDocExpirySecs int) (revID string, isNewDoc bool, err error) {
 	key := RealSpecialDocID(doctype, docid)
 	if key == "" {
 		return "", false, base.HTTPErrorf(400, "Invalid doc ID")
@@ -121,22 +122,22 @@ func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev
 	if doctype != DocTypeLocal {
 		localDocExpirySecs = 0
 	}
-	return putDocWithRevision(dataStore, key, matchRev, body, localDocExpirySecs)
+	return putDocWithRevision(ctx, dataStore, key, matchRev, body, localDocExpirySecs)
 }
 
 // Updates or deletes a special document.
-func (c *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (revID string, isNewDoc bool, err error) {
-	return putSpecial(c.dataStore, doctype, docid, matchRev, body, int(c.localDocExpirySecs()))
+func (c *DatabaseCollection) putSpecial(ctx context.Context, doctype string, docid string, matchRev string, body Body) (revID string, isNewDoc bool, err error) {
+	return putSpecial(ctx, c.dataStore, doctype, docid, matchRev, body, int(c.localDocExpirySecs()))
 }
 
-func (c *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (revID string, isNewDoc bool, err error) {
+func (c *DatabaseCollection) PutSpecial(ctx context.Context, doctype string, docid string, body Body) (revID string, isNewDoc bool, err error) {
 	matchRev, _ := body[BodyRev].(string)
 	body, _ = stripAllSpecialProperties(body)
-	return c.putSpecial(doctype, docid, matchRev, body)
+	return c.putSpecial(ctx, doctype, docid, matchRev, body)
 }
 
-func (c *DatabaseCollection) DeleteSpecial(doctype string, docid string, revid string) error {
-	_, _, err := c.putSpecial(doctype, docid, revid, nil)
+func (c *DatabaseCollection) DeleteSpecial(ctx context.Context, doctype string, docid string, revid string) error {
+	_, _, err := c.putSpecial(ctx, doctype, docid, revid, nil)
 	return err
 }
 

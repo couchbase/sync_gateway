@@ -165,7 +165,7 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	cas, err := auth.datastore.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	cas, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
@@ -392,7 +392,7 @@ func (auth *Authenticator) RebuildRoles(user User) error {
 // Looks up a User by email address.
 func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
-	_, err := auth.datastore.Get(auth.MetaKeys.UserEmailKey(email), &info)
+	_, err := auth.datastore.Get(auth.LogCtx, auth.MetaKeys.UserEmailKey(email), &info)
 	if base.IsDocNotFoundError(err) {
 		return nil, nil
 	} else if err != nil {
@@ -408,7 +408,7 @@ func (auth *Authenticator) Save(p Principal) error {
 		return err
 	}
 
-	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}
@@ -417,7 +417,7 @@ func (auth *Authenticator) Save(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}
-			if err := auth.datastore.Set(auth.MetaKeys.UserEmailKey(user.Email()), 0, nil, info); err != nil {
+			if err := auth.datastore.Set(auth.LogCtx, auth.MetaKeys.UserEmailKey(user.Email()), 0, nil, info); err != nil {
 				return err
 			}
 			// FIX: Fail if email address is already registered to another user
@@ -431,7 +431,7 @@ func (auth *Authenticator) Save(p Principal) error {
 // Used for resync
 func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	p.SetSequence(seq)
-	casOut, writeErr := auth.datastore.WriteCas(p.DocID(), 0, p.Cas(), p, 0)
+	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
 	}
@@ -484,7 +484,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 		}
 	}
 
-	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -533,7 +533,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 		return nil
 	}
 
-	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -569,7 +569,7 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 	docID := auth.DocIDForUser(username)
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate computed role and channel access of %q for collections %v", base.UD(username), collections)
 
-	_, err := auth.datastore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err := auth.datastore.Update(auth.LogCtx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
 			return nil, nil, false, base.ErrUpdateCancel
@@ -719,6 +719,9 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 		if err != nil {
 			return fmt.Errorf("Error reloading principal after CAS failure: %w", err)
 		}
+		if p == nil {
+			return base.ErrNotFound
+		}
 	}
 	base.InfofCtx(auth.LogCtx, base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
 	return err
@@ -726,16 +729,16 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 
 func (auth *Authenticator) DeleteUser(user User) error {
 	if user.Email() != "" {
-		if err := auth.datastore.Delete(auth.MetaKeys.UserEmailKey(user.Email())); err != nil {
+		if err := auth.datastore.Delete(auth.LogCtx, auth.MetaKeys.UserEmailKey(user.Email())); err != nil {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
-	return auth.datastore.Delete(user.DocID())
+	return auth.datastore.Delete(auth.LogCtx, user.DocID())
 }
 
 func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) error {
 	if purge {
-		return auth.datastore.Delete(role.DocID())
+		return auth.datastore.Delete(auth.LogCtx, role.DocID())
 	}
 	return auth.casUpdatePrincipal(role, func(p Principal) (updatedPrincipal Principal, err error) {
 		if p == nil || p.IsDeleted() {
@@ -929,7 +932,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	if common.Register {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		user, err := auth.RegisterNewUser(username, identity.Email)
-		if err != nil && !base.IsCasMismatch(err) {
+		if err != nil {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
@@ -941,8 +944,8 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 }
 
 // Registers a new user account based on the given verified username and optional email address.
-// Password will be random. The user will have access to no channels.  If the user already exists,
-// returns the existing user along with the cas failure error
+// Password will be random. The user will have access to no channels.  If the user already exists
+// (race with a concurrent registration), returns the existing user with a nil error.
 func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
 	secret, err := base.GenerateRandomSecret()
 	if err != nil {
@@ -964,7 +967,14 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 	err = auth.Save(user)
 	if base.IsCasMismatch(err) {
-		return auth.GetUser(username)
+		existing, getErr := auth.GetUser(username)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if existing == nil {
+			return nil, err
+		}
+		return existing, nil
 	} else if err != nil {
 		return nil, err
 	}

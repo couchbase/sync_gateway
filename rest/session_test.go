@@ -387,6 +387,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 // Check whether the session is getting extended or refreshed if 10% or more of the current
 // expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
@@ -410,7 +411,7 @@ func TestSessionExtension(t *testing.T) {
 		SessionUUID: user.GetSessionUUID(),
 	}
 
-	assert.NoError(t, rt.MetadataStore().Set(authenticator.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
+	assert.NoError(t, rt.MetadataStore().Set(ctx, authenticator.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
 	reqHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
@@ -429,7 +430,7 @@ func TestSessionExtension(t *testing.T) {
 	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
 	// Server to nuke the expired document based on TTL. Couchbase Server periodically
 	// removes all items with expiration times that have passed.
-	assert.NoError(t, rt.MetadataStore().Delete(authenticator.DocIDForSession(fakeSession.ID)))
+	assert.NoError(t, rt.MetadataStore().Delete(ctx, authenticator.DocIDForSession(fakeSession.ID)))
 
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
@@ -663,6 +664,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 // TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
 func TestUserWithoutSessionUUID(t *testing.T) {
+	ctx := base.TestCtx(t)
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -675,7 +677,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	var rawUser map[string]any
-	_, err = rt.MetadataStore().Get(authenticator.DocIDForUser(user.Name()), &rawUser)
+	_, err = rt.MetadataStore().Get(ctx, authenticator.DocIDForUser(user.Name()), &rawUser)
 	require.NoError(t, err)
 
 	sessionUUIDKey := "session_uuid"
@@ -683,7 +685,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.True(t, exists)
 	delete(rawUser, sessionUUIDKey)
 
-	err = rt.MetadataStore().Set(authenticator.DocIDForUser(user.Name()), 0, nil, rawUser)
+	err = rt.MetadataStore().Set(ctx, authenticator.DocIDForUser(user.Name()), 0, nil, rawUser)
 	require.NoError(t, err)
 
 	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)

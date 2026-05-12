@@ -608,6 +608,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 }
 
 func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
+	ctx := base.TestCtx(t)
 
 	branchSpecs := []BranchSpec{
 		{
@@ -622,9 +623,9 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(base.TestCtx(t), 3, 7, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(ctx, 3, 7, branchSpecs)
 
-	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch(base.TestCtx(t))
+	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch(ctx)
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs

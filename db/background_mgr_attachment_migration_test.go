@@ -40,7 +40,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 	// Move some subset of the documents attachment metadata from global sync to sync data
 	for j := range 5 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
-		value, _, err := collection.dataStore.GetRaw(key)
+		value, _, err := collection.dataStore.GetRaw(ctx, key)
 		require.NoError(t, err)
 
 		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
@@ -119,7 +119,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 
 	// assert that the sync info metadata version is not present
 	var syncInfo base.SyncInfo
-	_, err = collection.dataStore.Get(base.SGSyncInfo, &syncInfo)
+	_, err = collection.dataStore.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.Error(t, err)
 
 	// Resume process
@@ -150,7 +150,7 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 
 	// add new doc with no sync data (SDK write, no import)
 	key = fmt.Sprintf("%s_%d", t.Name(), 2)
-	_, err = collection.dataStore.Add(key, 0, []byte(`{"test":"doc"}`))
+	_, err = collection.dataStore.Add(ctx, key, 0, []byte(`{"test":"doc"}`))
 	require.NoError(t, err)
 
 	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
@@ -283,6 +283,7 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			autoImport := false
 			db, err := NewDatabaseContext(
 				ctx,
@@ -296,8 +297,9 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			)
 			require.NoError(t, err)
 			defer db.Close(ctx)
-			clientOptions := getMigrationDCPClientOptions(
-				db,
+
+			mgr := NewAttachmentMigrationManager(db)
+			clientOptions := mgr.Process.(*AttachmentMigrationManager).getDCPClientOptions(
 				migrationID,
 				db.collectionNameSet(),
 				func(sgbucket.FeedEvent) bool {
