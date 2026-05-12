@@ -3851,8 +3851,9 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 
 	btcRunner.Run(func(t *testing.T) {
 		// Sync function assigns each doc to "chan<doc.chan>" and grants alice access
-		// via a per-doc "test.<docID>" channel, ensuring every channel under test has
-		// a dot (triggering backtick-escaping of the subdoc path component).
+		// via a per-doc "test.<docID>" channel, so the channels under test exercise
+		// subdoc-path backtick escaping for special characters such as dots and/or
+		// square brackets.
 		rtConfig := RestTesterConfig{
 			SyncFn: `function (doc, oldDoc) {
   var testChannel = "test." + doc._id;

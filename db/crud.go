@@ -3895,7 +3895,7 @@ func xattrRevokedChannelVersionPath(xattrKey string, channelName string) (string
 // contains characters that are special in subdoc paths: dots (path separator) or square brackets
 // (array index syntax). Any backticks within the component are doubled to escape them.
 func escapeSubdocPathComponent(component string) string {
-	if !strings.ContainsAny(component, ".[]") {
+	if !strings.ContainsAny(component, ".[]`") {
 		return component
 	}
 	return "`" + strings.ReplaceAll(component, "`", "``") + "`"

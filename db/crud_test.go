@@ -2722,6 +2722,11 @@ func TestXattrRevokedChannelVersionPath(t *testing.T) {
 			expected:    "_sync.channels.`example[10].ChannelName`.rev.ver",
 		},
 		{
+			name:        "channel name with backtick",
+			channelName: "foo`bar",
+			expected:    "_sync.channels.`foo``bar`.rev.ver",
+		},
+		{
 			// Scaffold "_sync.channels." (15) + ".rev.ver" (8) = 23 chars; a name of 1002 chars
 			// produces a path of 1025 bytes, exceeding the CBS subdoc path limit of 1024.
 			name:        "channel name exceeding subdoc path limit",
