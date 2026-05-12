@@ -445,7 +445,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				headers := map[string]string{
 					"Authorization": GetBasicAuthHeader(t, base.TestClusterUsername(), base.TestClusterPassword()),
 				}
-				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusOK)
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/metrics", "", headers), http.StatusOK)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDSyncGatewayStats: {
@@ -459,7 +459,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				if !rt.AdminInterfaceAuthentication {
 					t.Skip("Skipping subtest that requires admin auth to be enabled")
 				}
-				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", nil), http.StatusUnauthorized)
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/metrics", "", nil), http.StatusUnauthorized)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticationFailed: {
@@ -476,7 +476,7 @@ func TestAuditLoggingFields(t *testing.T) {
 				headers := map[string]string{
 					"Authorization": GetBasicAuthHeader(t, "notauser", base.TestClusterPassword()),
 				}
-				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/_metrics", "", headers), http.StatusUnauthorized)
+				RequireStatus(t, rt.SendMetricsRequestWithHeaders(http.MethodGet, "/metrics", "", headers), http.StatusUnauthorized)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
 				base.AuditIDAdminUserAuthenticationFailed: {

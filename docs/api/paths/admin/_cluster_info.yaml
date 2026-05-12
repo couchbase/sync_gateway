@@ -1,4 +1,3 @@
-#
 # Copyright 2022-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
@@ -7,21 +6,22 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 get:
-  summary: Get all Sync Gateway statistics in JSON format
+  summary: Get the cluster information
   description: |-
-    This returns a snapshot of all metrics in Sync Gateway for debugging and monitoring purposes.
-
-    This includes per database stats, replication stats, and server stats.
-
-    For details, see [JSON Metrics](../manage/stats-monitoring-json.html).
+    This will retrieve information about the Sync Gateway cluster's buckets.
 
     Required Sync Gateway RBAC roles:
 
-    * Sync Gateway Architect
     * Sync Gateway Dev Ops
-    * External Stats Reader
-  tags:
-    - JSON
   responses:
-    $ref: ../../components/responses.yaml#/expvar_reponses
-  operationId: get__expvar
+    '200':
+      description: Returned the cluster information successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/ClusterInfo
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+    - Server
+  operationId: get__cluster_info
