@@ -742,7 +742,13 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		}
 		// Ratchet ClusterCompatVersionHWM up to the current cluster compat version (min over
 		// all registered nodes). Never decreases — if a lower-version node joins, HWM stays.
+		// While a freeze is in effect, the freeze version is a ceiling on advancement: HWM
+		// must not climb past it, otherwise the downgrade gate above would later block rolling
+		// any node back to the frozen version (the freeze's whole purpose).
 		ccv := minRegistryNodeClusterCompatVersion(registry.Nodes)
+		if registry.Frozen != nil && ccv.GreaterThan(registry.Frozen.Version) {
+			ccv = registry.Frozen.Version
+		}
 		hwmBumped := ccv.GreaterThan(registry.ClusterCompatVersionHWM)
 		previousHWM := registry.ClusterCompatVersionHWM
 		if hwmBumped {

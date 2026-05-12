@@ -1297,6 +1297,43 @@ func TestClusterCompatFreezePinsAcrossNodeAdvances(t *testing.T) {
 	assert.Equal(t, frozenVersion, *got, "while frozen, reported version should stay at the frozen value")
 }
 
+// TestClusterCompatFreezePreventsHWMAdvance verifies the rollback-preservation contract of
+// the freeze: while a freeze is in effect, a subsequent RegisterNodeVersion at a higher
+// version (e.g. a node that has been upgraded past the frozen version) must not ratchet
+// ClusterCompatVersionHWM past the freeze. If HWM advances, the downgrade gate would later
+// refuse rolling that node back to the frozen version — defeating the freeze's purpose.
+func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
+	lowVersion := base.NewClusterCompatVersion(1, 0)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig:         true,
+		nodeClusterCompatVersion: &lowVersion,
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.Equal(t, lowVersion, freeze.Version)
+
+	// Simulate a node upgrade by re-registering self at a higher version. Without the
+	// freeze ceiling, RegisterNodeVersion would ratchet HWM up to this higher value.
+	higher := base.NewClusterCompatVersion(2, 0)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, rt.ServerContext().NodeUID, higher, time.Hour)
+	require.NoError(t, err)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Equal(t, lowVersion, registry.ClusterCompatVersionHWM, "HWM must not advance past the frozen version")
+}
+
 // TestClusterCompatFreezeBeforeVersion verifies the manager refuses to freeze when no
 // cluster compat version has been observed yet (e.g. before RegisterBucket has run).
 func TestClusterCompatFreezeBeforeVersion(t *testing.T) {
@@ -1305,10 +1342,71 @@ func TestClusterCompatFreezeBeforeVersion(t *testing.T) {
 
 	// Construct a fresh manager that has never refreshed — its cachedVersion is nil.
 	freshManager := &clusterCompatManager{sc: rt.ServerContext()}
-	freshManager.Start(base.TestCtx(t))
+	ctx := base.TestCtx(t)
+	freshManager.Start(ctx)
+	defer freshManager.Stop(ctx)
 
-	_, err := freshManager.Freeze(base.TestCtx(t))
+	_, err := freshManager.Freeze(ctx)
 	assert.ErrorIs(t, err, ErrFreezeNoVersion)
+}
+
+// corruptGatewayRegistry overwrites the registry doc on the given bucket with a non-object
+// JSON value so that getGatewayRegistry's unmarshal fails. This simulates a bucket whose
+// registry has become inaccessible — used to drive the partial-failure branch of Unfreeze.
+func corruptGatewayRegistry(t *testing.T, rt *RestTester, bucketName string) {
+	t.Helper()
+	ctx := base.TestCtx(t)
+	conn := rt.ServerContext().BootstrapContext.Connection
+	var existing map[string]any
+	cas, err := conn.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, &existing)
+	require.NoError(t, err)
+	_, err = conn.WriteMetadataDocument(ctx, bucketName, base.SGRegistryKey, cas, "corrupted-registry-for-test")
+	require.NoError(t, err)
+}
+
+// TestClusterCompatUnfreezePartialFailure verifies that when ClearRegistryFreeze fails on a
+// tracked bucket, Unfreeze returns ErrUnfreezePartial. The bucket's registry is overwritten
+// with an unparseable value so getGatewayRegistry fails — which propagates through
+// ClearRegistryFreeze and the residual re-read, hitting the clearFailed > 0 branch.
+func TestClusterCompatUnfreezePartialFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	_, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	_, err = ccm.Unfreeze(ctx)
+	assert.ErrorIs(t, err, ErrUnfreezePartial)
+}
+
+// TestClusterCompatUnfreezePartialFailureREST verifies the REST handler returns 503 with a
+// ClusterCompatVersionState body when Unfreeze partially fails.
+func TestClusterCompatUnfreezePartialFailureREST(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/unfreeze", "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	var state ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
 }
 
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
