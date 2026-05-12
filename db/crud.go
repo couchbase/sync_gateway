@@ -2369,6 +2369,8 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 		user, err := db.Authenticator(ctx).GetUser(db.user.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)
+		} else if user == nil {
+			base.WarnfCtx(ctx, "Active db.user[%s] no longer exists; security information will not be recalculated until next authentication", base.UD(db.user.Name()))
 		} else {
 			db.user = user
 		}
