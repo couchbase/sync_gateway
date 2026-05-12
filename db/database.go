@@ -1717,10 +1717,13 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 
 	authr := c.Authenticator(ctx)
 
-	for _, role := range roles {
-		role, err := authr.GetRole(role)
+	for _, roleName := range roles {
+		role, err := authr.GetRole(roleName)
 		if err != nil {
 			return err
+		}
+		if role == nil {
+			continue
 		}
 		err = c.regeneratePrincipalSequences(ctx, authr, role)
 		if err != nil {
@@ -1728,10 +1731,13 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		}
 	}
 
-	for _, user := range users {
-		user, err := authr.GetUser(user)
+	for _, userName := range users {
+		user, err := authr.GetUser(userName)
 		if err != nil {
 			return err
+		}
+		if user == nil {
+			continue
 		}
 		err = c.regeneratePrincipalSequences(ctx, authr, user)
 		if err != nil {

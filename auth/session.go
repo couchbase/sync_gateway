@@ -72,8 +72,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	if err != nil {
 		return nil, err
 	}
-
-	if session.SessionUUID != user.GetSessionUUID() {
+	if user == nil || session.SessionUUID != user.GetSessionUUID() {
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}

@@ -521,10 +521,13 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return fmt.Errorf("failed to revoke stale OIDC roles/channels: %w", err)
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
-			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
+			user, err := dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
 			if err != nil {
 				return err
+			} else if user == nil {
+				return ErrInvalidLogin
 			}
+			h.user = user
 		}
 	}
 
@@ -981,7 +984,13 @@ func (h *handler) setUserForPublicAuth(dbCtx *db.DatabaseContext) (base.AuditFie
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the newly updated principal
 			if updates.Name != nil {
-				h.user, err = dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+				user, err := dbCtx.Authenticator(h.ctx()).GetUser(*updates.Name)
+				if err != nil {
+					return auditFields, err
+				} else if user == nil {
+					return auditFields, ErrInvalidLogin
+				}
+				h.user = user
 			}
 			return auditFields, err
 		}
