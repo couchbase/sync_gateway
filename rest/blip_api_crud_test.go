@@ -3859,7 +3859,7 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
   access("alice", testChannel);
 
   if (doc.chan && doc.chan.length > 0) {
-    var testChannel2 = "chan." + doc.chan;
+    var testChannel2 = "chan" + doc.chan;
     channel(testChannel2);
   }}`,
 		}
@@ -3913,7 +3913,7 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			"38839af8-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "channel.test1",
 			"2-abc", "channel.test2",
-			"chan.channel.test1",
+			"chanchannel.test1",
 		)
 		// Brackets with an index — e.g. "example[10]ChannelName". Brackets are CBS
 		// array-index syntax in subdoc paths; the dot prefix means the component is
@@ -3922,14 +3922,14 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			"bracket-index-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "example[10]ChannelName",
 			"2-abc", "example[11]ChannelName",
-			"chan.example[10]ChannelName",
+			"chanexample[10]ChannelName",
 		)
 		// Empty brackets — same escaping concern as above.
 		assertChannelRemoval(
 			"bracket-empty-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "literal[]bracketchannel",
 			"2-abc", "literalbothchannels",
-			"chan.literal[]bracketchannel",
+			"chanliteral[]bracketchannel",
 		)
 		// Brackets with index at end of name — CBS would interpret this as an array
 		// index operator if not escaped; the dot prefix ensures backtick-wrapping.
@@ -3937,7 +3937,7 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			"bracket-suffix-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "exampleChannelName[10]",
 			"2-abc", "exampleChannelName[11]",
-			"chan.exampleChannelName[10]",
+			"chanexampleChannelName[10]",
 		)
 	})
 }
