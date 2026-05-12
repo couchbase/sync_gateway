@@ -45,8 +45,6 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *Databa
 		CAS:             atomic.Uint64{},
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
-		terminator:      make(chan struct{}),
-		done:            make(chan struct{}),
 	}
 }
 
@@ -100,6 +98,8 @@ func (dbMgr *DatabaseStateMgr) SetResyncFunc(resyncFunc ResyncHandler) {
 // The goroutine exits when StopPolling is called (via the terminator). SetResyncFunc must be called before
 // StartPolling so that state change notifications have a registered handler.
 func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
+	dbMgr.terminator = make(chan struct{})
+	dbMgr.done = make(chan struct{})
 	ticker := time.NewTicker(dbMgr.pollingInterval)
 	go func() {
 		defer base.FatalPanicHandler(ctx)
@@ -141,9 +141,8 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.
 func (dbMgr *DatabaseStateMgr) StopPolling(ctx context.Context) {
-	close(dbMgr.terminator)
 	err := base.TerminateAndWaitForClose(dbMgr.terminator, dbMgr.done, BGTCompletionMaxWait)
 	if err != nil {
-		base.AssertfCtx(ctx, "couldn't stop background database state polling: %v", err)
+		base.WarnfCtx(ctx, "couldn't stop background database state polling: %v", err)
 	}
 }
