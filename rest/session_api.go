@@ -194,9 +194,8 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 		}
 
 		// Create a User with the given username, email address, and a random password.
-		// CAS mismatch indicates the user has been created by another request underneath us, can continue with session creation
 		user, err = h.db.Authenticator(h.ctx()).RegisterNewUser(username, email)
-		if err != nil && !base.IsCasMismatch(err) {
+		if err != nil {
 			return err
 		}
 	}

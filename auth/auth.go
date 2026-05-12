@@ -719,6 +719,9 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 		if err != nil {
 			return fmt.Errorf("Error reloading principal after CAS failure: %w", err)
 		}
+		if p == nil {
+			return base.ErrNotFound
+		}
 	}
 	base.InfofCtx(auth.LogCtx, base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
 	return err
@@ -929,7 +932,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	if common.Register {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		user, err := auth.RegisterNewUser(username, identity.Email)
-		if err != nil && !base.IsCasMismatch(err) {
+		if err != nil {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Error registering new user: %v", err)
 			return nil, PrincipalConfig{}, time.Time{}, err
 		}
@@ -941,8 +944,8 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 }
 
 // Registers a new user account based on the given verified username and optional email address.
-// Password will be random. The user will have access to no channels.  If the user already exists,
-// returns the existing user along with the cas failure error
+// Password will be random. The user will have access to no channels.  If the user already exists
+// (race with a concurrent registration), returns the existing user with a nil error.
 func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
 	secret, err := base.GenerateRandomSecret()
 	if err != nil {
@@ -964,7 +967,14 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 	err = auth.Save(user)
 	if base.IsCasMismatch(err) {
-		return auth.GetUser(username)
+		existing, getErr := auth.GetUser(username)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if existing == nil {
+			return nil, err
+		}
+		return existing, nil
 	} else if err != nil {
 		return nil, err
 	}
