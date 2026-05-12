@@ -194,9 +194,10 @@ func getHistoricRoleChanEntryOverlap(roleEntries []auth.GrantHistorySequencePair
 
 func (h *handler) handleGetAllChannels() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	name := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(name)
 	if err != nil {
-		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
+		return fmt.Errorf("could not get user %s: %w", name, err)
 	}
 	if user == nil {
 		return kNotFoundError
@@ -218,9 +219,10 @@ func (h *handler) handleGetAllChannels() error {
 
 func (h *handler) handleGetUserDocAccessSpan() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator(h.ctx()).GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	name := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(name)
 	if err != nil {
-		return fmt.Errorf("could not get user %s: %w", user.Name(), err)
+		return fmt.Errorf("could not get user %s: %w", name, err)
 	}
 	if user == nil {
 		return kNotFoundError
