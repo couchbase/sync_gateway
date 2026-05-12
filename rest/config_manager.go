@@ -720,8 +720,15 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // heartbeatExpiry must be positive; the validator enforces this for user-supplied configs and
 // the runtime fallback ensures a sane default (see clusterCompatManager.heartbeatExpiry).
 //
+// ratchetHWM controls whether this call is allowed to advance ClusterCompatVersionHWM. Pass
+// false for the first registration during database load (e.g. the RegisterBucket call from
+// _applyConfig) — HWM is monotonic and a ratchet committed off transient startup state can
+// never be rolled back. Pass true once the database has stabilized (end of
+// StartOnlineProcesses, periodic Refresh). Node heartbeat refresh and stale pruning happen
+// in either case.
+//
 // Uses CAS retry on conflict. Returns the registry as written.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration) (*GatewayRegistry, error) {
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration, ratchetHWM bool) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -745,14 +752,21 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		// While a freeze is in effect, the freeze version is a ceiling on advancement: HWM
 		// must not climb past it, otherwise the downgrade gate above would later block rolling
 		// any node back to the frozen version (the freeze's whole purpose).
-		ccv := minRegistryNodeClusterCompatVersion(registry.Nodes)
-		if registry.Frozen != nil && ccv.GreaterThan(registry.Frozen.Version) {
-			ccv = registry.Frozen.Version
-		}
-		hwmBumped := ccv.GreaterThan(registry.ClusterCompatVersionHWM)
-		previousHWM := registry.ClusterCompatVersionHWM
-		if hwmBumped {
-			registry.ClusterCompatVersionHWM = ccv
+		//
+		// Gated on ratchetHWM so startup-window registrations can refresh node heartbeat
+		// without committing HWM off transient state.
+		var hwmBumped bool
+		var previousHWM, ccv base.ClusterCompatVersion
+		if ratchetHWM {
+			ccv = minRegistryNodeClusterCompatVersion(registry.Nodes)
+			if registry.Frozen != nil && ccv.GreaterThan(registry.Frozen.Version) {
+				ccv = registry.Frozen.Version
+			}
+			hwmBumped = ccv.GreaterThan(registry.ClusterCompatVersionHWM)
+			previousHWM = registry.ClusterCompatVersionHWM
+			if hwmBumped {
+				registry.ClusterCompatVersionHWM = ccv
+			}
 		}
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {

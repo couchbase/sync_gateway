@@ -215,7 +215,12 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	if !m.claimBucket(bucket) {
 		return nil
 	}
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry())
+	// ratchetHWM=false here: HWM is monotonic and cannot be rolled back, so an advance
+	// committed off transient startup state would lock the cluster at a too-high value
+	// forever. The HWM ratchet happens later via RatchetClusterCompatHWMForBucket (end of
+	// StartOnlineProcesses) and the periodic Refresh — both run after the database has
+	// stabilized.
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), false)
 	if err != nil {
 		m.releaseBucket(bucket)
 		return err
@@ -231,6 +236,37 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
 	}
 	return nil
+}
+
+// RatchetClusterCompatHWMForBucket asks the registry to ratchet ClusterCompatVersionHWM up to
+// the current cluster compat version (min over Nodes, capped by any freeze). Intended to run
+// once the database has finished StartOnlineProcesses — HWM is monotonic, so it should only
+// advance off stable steady state, never off transient startup observations.
+//
+// No-op when the bucket isn't tracked (RegisterBucket failed or hasn't run). Errors from the
+// underlying registry write are returned; callers can treat them as advisory — the next
+// periodic Refresh will retry.
+func (m *clusterCompatManager) RatchetClusterCompatHWMForBucket(ctx context.Context, bucket string) error {
+	if !m.isBucketTracked(bucket) {
+		return nil
+	}
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.BootstrapContext.clusterCompatVersion, m.heartbeatExpiry(), true)
+	if err != nil {
+		return err
+	}
+	oldVersion, newVersion := m.mergeRegistryIntoCache(registry.Nodes, registry.Frozen)
+	if !clusterCompatVersionEqual(oldVersion, newVersion) {
+		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
+	}
+	return nil
+}
+
+// isBucketTracked reports whether RegisterBucket has previously succeeded for this bucket.
+func (m *clusterCompatManager) isBucketTracked(bucket string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.trackedBuckets[bucket]
+	return ok
 }
 
 // claimBucket atomically marks the bucket as tracked and reports whether this call was the
@@ -370,7 +406,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	var aggregateFreeze *base.RegistryFreeze
 	succeeded := 0
 	for _, bucket := range buckets {
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, true)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
