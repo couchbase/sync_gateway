@@ -3850,7 +3850,7 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
-		// Sync function assigns each doc to "chan.<doc.chan>" and grants alice access
+		// Sync function assigns each doc to "chan<doc.chan>" and grants alice access
 		// via a per-doc "test.<docID>" channel, ensuring every channel under test has
 		// a dot (triggering backtick-escaping of the subdoc path component).
 		rtConfig := RestTesterConfig{
