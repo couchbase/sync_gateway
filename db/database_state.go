@@ -30,12 +30,12 @@ func TempResyncHandler(resume bool) {
 type DatabaseStateMgr struct {
 	CAS             atomic.Uint64
 	dbStateID       string
-	terminator      *base.SafeTerminator
 	metadataStore   base.DataStore
 	pollingInterval time.Duration
 	resyncHandler   ResyncHandler
 	lock            sync.Mutex
-	done            chan bool
+	terminator      chan struct{}
+	done            chan struct{}
 }
 
 // NewDatabaseStateMgr creates an OfflineDatabaseStateMgr for the given database.
@@ -43,10 +43,10 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *Databa
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
 		CAS:             atomic.Uint64{},
-		terminator:      base.NewSafeTerminator(),
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
-		done:            make(chan bool),
+		terminator:      make(chan struct{}),
+		done:            make(chan struct{}),
 	}
 }
 
@@ -106,7 +106,7 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 		defer close(dbMgr.done)
 		for {
 			select {
-			case <-dbMgr.terminator.Done():
+			case <-dbMgr.terminator:
 				ticker.Stop()
 				return
 			case <-ticker.C:
@@ -140,7 +140,10 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.
-func (dbMgr *DatabaseStateMgr) StopPolling() {
-	dbMgr.terminator.Close()
-	<-dbMgr.done
+func (dbMgr *DatabaseStateMgr) StopPolling(ctx context.Context) {
+	close(dbMgr.terminator)
+	err := base.TerminateAndWaitForClose(dbMgr.terminator, dbMgr.done, BGTCompletionMaxWait)
+	if err != nil {
+		base.AssertfCtx(ctx, "couldn't stop background database state polling: %v", err)
+	}
 }

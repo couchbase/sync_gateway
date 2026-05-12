@@ -672,7 +672,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
 
-	context.DBStateManager.StopPolling()
+	context.DBStateManager.StopPolling(ctx)
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 

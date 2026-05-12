@@ -101,7 +101,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
-		defer mgr.StopPolling()
+		defer mgr.StopPolling(ctx)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			assert.Equal(c, int32(1), callCount.Load())
@@ -123,7 +123,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			resumeVal.Store(resume)
 		})
 		mgr.StartPolling(ctx)
-		defer mgr.StopPolling()
+		defer mgr.StopPolling(ctx)
 
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			assert.Equal(c, int32(1), callCount.Load())
@@ -142,7 +142,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr.StartPolling(ctx)
 
 		time.Sleep(50 * time.Millisecond)
-		mgr.StopPolling()
+		mgr.StopPolling(ctx)
 		require.Equal(t, int32(0), callCount.Load())
 	})
 
@@ -183,7 +183,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback before stopping")
 
 		// Stop the polling goroutine.
-		mgr.StopPolling()
+		mgr.StopPolling(ctx)
 
 		// Write a new state change directly to the store. If the goroutine were still
 		// running it would detect the CAS mismatch and fire the callback again.
