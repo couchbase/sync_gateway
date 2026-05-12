@@ -403,17 +403,24 @@ func TestClusterCompatDowngradeAllowedSameOrOlderPeers(t *testing.T) {
 }
 
 // TestClusterCompatDowngradeEmptyRegistry verifies that creating a database against a fresh
-// (empty) bucket succeeds and ratchets ClusterCompatVersionHWM up to the node's compat version.
+// (empty) bucket succeeds and ratchets ClusterCompatVersionHWM up to the node's compat
+// version. The ratchet is performed by Refresh once the database is online — drive it
+// explicitly here rather than waiting for the periodic ticker.
 func TestClusterCompatDowngradeEmptyRegistry(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
+	ctx := base.TestCtx(t)
 	bucketName := rt.Bucket().GetName()
 	bc := rt.ServerContext().BootstrapContext
 
-	registry, err := bc.getGatewayRegistry(base.TestCtx(t), bucketName)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first apply")
+	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first refresh")
 }
 
 // TestClusterCompatDowngradeBlockedByPersistentHWM verifies the persistent floor: a bucket
@@ -462,6 +469,10 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
 
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
@@ -491,7 +502,11 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
 
-	// After auto-create db, HWM == self version (only node).
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	// After auto-create db + first refresh, HWM == self version (only node).
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)

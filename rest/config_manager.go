@@ -723,9 +723,9 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // ratchetHWM controls whether this call is allowed to advance ClusterCompatVersionHWM. Pass
 // false for the first registration during database load (e.g. the RegisterBucket call from
 // _applyConfig) — HWM is monotonic and a ratchet committed off transient startup state can
-// never be rolled back. Pass true once the database has stabilized (end of
-// StartOnlineProcesses, periodic Refresh). Node heartbeat refresh and stale pruning happen
-// in either case.
+// never be rolled back. The periodic Refresh passes true only for buckets where at least
+// one database has reached DBOnline (see clusterCompatManager.isBucketRatchetEligible).
+// Node heartbeat refresh and stale pruning happen in either case.
 //
 // Uses CAS retry on conflict. Returns the registry as written.
 func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration, ratchetHWM bool) (*GatewayRegistry, error) {

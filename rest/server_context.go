@@ -1131,13 +1131,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "offline", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 			return nil, err
 		}
-		// Database has stabilized — ratchet HWM. Errors are advisory: the periodic Refresh
-		// will retry, and the cached CCV remains correct regardless.
-		if sc.ClusterCompat != nil {
-			if ratchetErr := sc.ClusterCompat.RatchetClusterCompatHWMForBucket(ctx, dbcontext.Bucket.GetName()); ratchetErr != nil {
-				base.WarnfCtx(ctx, "Failed to ratchet cluster compat HWM for bucket %s after online transition: %v", base.MD(dbcontext.Bucket.GetName()), ratchetErr)
-			}
-		}
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(ctx, dbName, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
 		return dbcontext, nil
@@ -1183,14 +1176,6 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 		base.ErrorfCtx(ctx, "Error starting online processes after async initialization: %v", err)
 		atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOffline)
 		return
-	}
-
-	// Database has stabilized — ratchet HWM. Errors are advisory: the periodic Refresh will
-	// retry, and the cached CCV remains correct.
-	if sc.ClusterCompat != nil {
-		if ratchetErr := sc.ClusterCompat.RatchetClusterCompatHWMForBucket(ctx, dbc.Bucket.GetName()); ratchetErr != nil {
-			base.WarnfCtx(ctx, "Failed to ratchet cluster compat HWM for bucket %s after async online transition: %v", base.MD(dbc.Bucket.GetName()), ratchetErr)
-		}
 	}
 
 	if !atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOnline) {

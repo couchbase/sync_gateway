@@ -13,9 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 // ErrFreezeNoVersion is returned by clusterCompatManager.Freeze when no cluster compatibility
@@ -217,9 +219,8 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	}
 	// ratchetHWM=false here: HWM is monotonic and cannot be rolled back, so an advance
 	// committed off transient startup state would lock the cluster at a too-high value
-	// forever. The HWM ratchet happens later via RatchetClusterCompatHWMForBucket (end of
-	// StartOnlineProcesses) and the periodic Refresh — both run after the database has
-	// stabilized.
+	// forever. The HWM ratchet happens later via the periodic Refresh, gated per-bucket on
+	// at least one database having reached DBOnline (see isBucketRatchetEligible).
 	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), false)
 	if err != nil {
 		m.releaseBucket(bucket)
@@ -238,35 +239,26 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	return nil
 }
 
-// RatchetClusterCompatHWMForBucket asks the registry to ratchet ClusterCompatVersionHWM up to
-// the current cluster compat version (min over Nodes, capped by any freeze). Intended to run
-// once the database has finished StartOnlineProcesses — HWM is monotonic, so it should only
-// advance off stable steady state, never off transient startup observations.
+// isBucketRatchetEligible reports whether at least one database on this bucket has reached
+// DBOnline. Used by Refresh to gate the HWM ratchet on per-bucket online state: ratcheting
+// requires inputs (e.g. legacy-node detection via ISGR/cbgt) that are only available once
+// the database is fully online. Returning false leaves the bucket heartbeat-only until the
+// next refresh tick.
 //
-// No-op when the bucket isn't tracked (RegisterBucket failed or hasn't run). Errors from the
-// underlying registry write are returned; callers can treat them as advisory — the next
-// periodic Refresh will retry.
-func (m *clusterCompatManager) RatchetClusterCompatHWMForBucket(ctx context.Context, bucket string) error {
-	if !m.isBucketTracked(bucket) {
-		return nil
+// Reads the database state directly from ServerContext rather than maintaining a shadow set
+// — the DB state is authoritative and follows offline transitions automatically.
+func (m *clusterCompatManager) isBucketRatchetEligible(bucket string) bool {
+	m.sc._databasesLock.RLock()
+	defer m.sc._databasesLock.RUnlock()
+	for _, dbContext := range m.sc._databases {
+		if dbContext.Bucket.GetName() != bucket {
+			continue
+		}
+		if atomic.LoadUint32(&dbContext.State) == db.DBOnline {
+			return true
+		}
 	}
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.BootstrapContext.clusterCompatVersion, m.heartbeatExpiry(), true)
-	if err != nil {
-		return err
-	}
-	oldVersion, newVersion := m.mergeRegistryIntoCache(registry.Nodes, registry.Frozen)
-	if !clusterCompatVersionEqual(oldVersion, newVersion) {
-		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
-	}
-	return nil
-}
-
-// isBucketTracked reports whether RegisterBucket has previously succeeded for this bucket.
-func (m *clusterCompatManager) isBucketTracked(bucket string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, ok := m.trackedBuckets[bucket]
-	return ok
+	return false
 }
 
 // claimBucket atomically marks the bucket as tracked and reports whether this call was the
@@ -406,7 +398,11 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	var aggregateFreeze *base.RegistryFreeze
 	succeeded := 0
 	for _, bucket := range buckets {
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, true)
+		// Gate HWM ratchet on per-bucket online state — see isBucketRatchetEligible. Heartbeat
+		// refresh happens unconditionally so the node entry stays fresh even for buckets whose
+		// databases haven't come online yet.
+		ratchet := m.isBucketRatchetEligible(bucket)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, ratchet)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
