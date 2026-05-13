@@ -4011,7 +4011,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		docSeq := rt.GetDocumentSequence("doc4")
 
 		version = rt.UpdateDoc("doc4", version, `{"channels": ["b"]}`)
-		version = rt.UpdateDoc("doc4", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc4", version, `{"channels": []}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
@@ -4057,7 +4057,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		docSeq := rt.GetDocumentSequence("doc7")
 
-		version = rt.UpdateDoc("doc7", version, `{"channels": ["a", "c"]}`)
+		_ = rt.UpdateDoc("doc7", version, `{"channels": ["a", "c"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
@@ -4091,7 +4091,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		// Verify CAS is updated and no reimport happens
 		version := rt.PutDoc("doc10", `{"channels": ["test"]}`)
 		version = rt.UpdateDoc("doc10", version, `{"channels": []}`)
-		version = rt.UpdateDoc("doc10", version, `{"channels": ["test", "test2"]}`)
+		_ = rt.UpdateDoc("doc10", version, `{"channels": ["test", "test2"]}`)
 
 		// After compaction, document should still be accessible
 		err := collection.CompactDocChannelHistory(ctx, "doc10", 2)
@@ -4133,7 +4133,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	version = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":[]}`)
 
 	// Update again to add new channels (more history)
-	version = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":["test_channel","new_channel"]}`)
+	_ = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":["test_channel","new_channel"]}`)
 
 	// Verify document has channel history
 	syncDataBefore, err := collection.GetDocSyncData(ctx, nonImportedDocID)
