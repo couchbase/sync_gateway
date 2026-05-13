@@ -377,7 +377,6 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	// Create a named collection in _default scope to mirror the customer's setup
 	const namedCollectionName = "sg_test_0"
 	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
 	defer func() {
