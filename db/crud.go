@@ -253,6 +253,10 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		if importErr != nil {
 			return importErr
 		}
+		if doc == nil {
+			return fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+		}
+		cas = doc.Cas
 	}
 
 	// Store lengths before compaction to detect if any changes occur

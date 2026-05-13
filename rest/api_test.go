@@ -4103,3 +4103,84 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.NotNil(t, syncData)
 	})
 }
+
+// TestCompactNonImportedDocWithAutoImport verifies that when CompactDocChannelHistory is called
+// on a non-imported document, it automatically imports the document first before performing compaction.
+func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("CompactDocChannelHistory requires XATTR-based metadata")
+	}
+
+	// Create RestTester with AutoImport disabled to allow non-imported documents
+	rtConfig := RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig)
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	// Step 1-6: Use REST API to create document with channel history
+	nonImportedDocID := "non_imported_doc"
+
+	// Create initial document with a channel
+	version := rt.PutDoc(nonImportedDocID, `{"type":"test","channels":["test_channel"]}`)
+
+	// Update to remove channel (creates history)
+	version = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":[]}`)
+
+	// Update again to add new channels (more history)
+	version = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":["test_channel","new_channel"]}`)
+
+	// Verify document has channel history
+	syncDataBefore, err := collection.GetDocSyncData(ctx, nonImportedDocID)
+	require.NoError(t, err)
+	require.Greater(t, len(syncDataBefore.ChannelSetHistory), 0, "document should have channel history")
+
+	// Step 6: Get document sequence for compaction point
+	docSeq := rt.GetDocumentSequence(nonImportedDocID)
+
+	// Step 7: Update the document body directly in the datastore to simulate external modification
+	// Read current document body
+	docBytesRaw, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
+	require.NoError(t, err)
+	var docBody map[string]any
+	err = json.Unmarshal(docBytesRaw, &docBody)
+	require.NoError(t, err)
+
+	// Modify document body with external changes
+	docBody["modified"] = true
+	docBody["updatedAt"] = "external_update"
+	docBody["externalVersion"] = 2
+	modifiedDocBytes, err := json.Marshal(docBody)
+	require.NoError(t, err)
+
+	// Write modified body back to datastore
+	err = rt.GetSingleDataStore().SetRaw(ctx, nonImportedDocID, 0, nil, modifiedDocBytes)
+	require.NoError(t, err)
+
+	// Step 8: Call CompactDocChannelHistory - this will trigger the auto-import check
+	// which verifies the document is imported (has valid _sync xattr) before compacting
+	err = collection.CompactDocChannelHistory(ctx, nonImportedDocID, docSeq-1)
+	require.NoError(t, err)
+
+	// Step 9: Verify compaction succeeded and history was removed
+	syncData, err := collection.GetDocSyncData(ctx, nonImportedDocID)
+	require.NoError(t, err)
+	// History should be compacted
+	assert.Less(t, len(syncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
+
+	// Step 10: Verify document is still accessible and intact
+	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
+	require.NoError(t, err)
+	require.NotNil(t, docFromBucket)
+
+	// Verify the document body is intact after compaction
+	var finalBody map[string]any
+	err = json.Unmarshal(docFromBucket, &finalBody)
+	require.NoError(t, err)
+	assert.Equal(t, "test", finalBody["type"])
+}
