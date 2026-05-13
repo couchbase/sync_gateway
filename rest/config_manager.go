@@ -47,7 +47,7 @@ const configFetchMaxRetryAttempts = 5  // Maximum number of retries due to regis
 // at once — the budget is a multiple of configUpdateMaxRetryAttempts to absorb that race.
 const nodeVersionUpdateMaxRetryAttempts = configUpdateMaxRetryAttempts * 5
 
-const defaultMetadataID = "_default"
+const defaultMetadataID = base.DefaultMetadataID
 
 // GetConfig fetches a database name for a given bucket and config group ID.
 func (b *bootstrapContext) GetConfigName(ctx context.Context, bucketName, groupID, dbName string, configName *dbConfigNameOnly) (cas uint64, err error) {

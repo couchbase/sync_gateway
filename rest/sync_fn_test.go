@@ -437,7 +437,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	RequireStatus(t, response, http.StatusBadRequest)
@@ -449,7 +449,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
@@ -482,11 +482,11 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped, "")
 
 	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 	assert.Less(t, syncFnCount, 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
@@ -573,7 +573,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
 
 	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
@@ -644,9 +644,9 @@ func TestResyncPersistence(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
-	rt1Status := rt1.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	rt1Status := rt1.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
 
-	rt2Status := rt2.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	rt2Status := rt2.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
 	require.Equal(t, rt1Status, rt2Status)
 }
 
