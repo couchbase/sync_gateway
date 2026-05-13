@@ -49,7 +49,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
 
-	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	require.Equal(t, int64(1), resyncStatus.DocsChanged)
 

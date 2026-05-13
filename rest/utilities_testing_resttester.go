@@ -414,11 +414,20 @@ func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
 	rt.TakeDbOffline()
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
-	return rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	return rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
 // WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
-func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
+	return rt.waitForResyncDCPStatus(status, "{{.db}}")
+}
+
+// WaitForResyncDCPStatusForDB waits for the resync status for a specific database name to reach the expected status.
+func (rt *RestTester) WaitForResyncDCPStatusForDB(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+	return rt.waitForResyncDCPStatus(status, dbName)
+}
+
+func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
 	timeout := 10 * time.Second
 	pollInterval := 10 * time.Millisecond
 	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
@@ -427,12 +436,7 @@ func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState, d
 	}
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		var response *TestResponse
-		if dbName == "" {
-			response = rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
-		} else {
-			response = rt.SendAdminRequest("GET", "/"+dbName+"/_resync", "")
-		}
+		response := rt.SendAdminRequest("GET", "/"+dbName+"/_resync", "")
 		RequireStatus(rt.TB(), response, http.StatusOK)
 		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &resyncStatus))
 

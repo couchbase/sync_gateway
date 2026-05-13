@@ -624,7 +624,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	// offline call above resets stats to 0, so sync function count will only include resync run started above
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
@@ -676,10 +676,10 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
 				rest.RequireStatus(t, resp, http.StatusOK)
 			}
-			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 
-			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 		})
 	}
@@ -729,7 +729,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 			if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
@@ -775,14 +775,14 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 	resyncID := resyncManagerStatus.ResyncID
 
 	// stop resync before it completes, assert it has been aborted
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped, "")
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
 	// reset the resync process through the endpoint
 	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
@@ -790,10 +790,10 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// grab new resync status from rest run, assert the resync if is not the same as the first
 	// run and that the docs processed is equal to number of docs we have created
-	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
 
-	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
 		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
 		// test.
@@ -855,7 +855,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 		}`, dataStore1.ScopeName(), dataStore1.CollectionName())
 	resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
 	rest.RequireStatus(t, resp, http.StatusOK)
-	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
 
@@ -865,7 +865,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
 }
@@ -912,7 +912,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
@@ -926,7 +926,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
 // TestCorruptDbConfigHandling:
@@ -1427,12 +1427,12 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped, "")
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
 	// make sure resync stopped before it completed
 	require.Less(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), numOfDocs*2)

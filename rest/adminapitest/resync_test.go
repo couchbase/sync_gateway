@@ -44,12 +44,12 @@ func TestResyncRollback(t *testing.T) {
 	// we need to wait for the resync to start and not finish so we get a partial completion
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 
 	// immediately stop the resync process (we just need the status data to be persisted to the bucket), we are looking for partial completion
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped, "")
+	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 	// make sure this hasn't accidentally completed
 	require.Equal(t, db.BackgroundProcessStateStopped, status.State)
 
@@ -64,7 +64,7 @@ func TestResyncRollback(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	status = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	status = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
 func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
@@ -111,9 +111,9 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	// we need to wait for the resync to start and not finish
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start&regenerate_sequences=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning, "")
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	doc, _, err := collection.GetDocWithXattrs(ctx, "doc0", db.DocUnmarshalSync)
@@ -203,7 +203,7 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 				body = fmt.Sprintf(`{"scopes": %s}`, base.MustJSONMarshal(t, collectionsToResync))
 			}
 			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start&regenerate_sequences=true", body), http.StatusOK)
-			_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+			_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 			// validate if user doc has changed sequence
 			user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
@@ -295,7 +295,7 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 
 	// Run resync
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	// validate user channels and roles have been updated
 	user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
@@ -353,7 +353,7 @@ function sync(doc, oldDoc){
 
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, "")
+	status := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(1), status.DocsChanged)
 
 	// ensure doc body remains unchanged after resync
@@ -451,7 +451,7 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted, db2Name)
+	rt.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateCompleted, db2Name)
 
 	// Verify in-memory RequireResync is cleared — this passes because Run() updated db.RequireResync
 	dbRoot = rt.GetDatabaseRoot(db2Name)
