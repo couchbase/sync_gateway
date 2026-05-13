@@ -3946,7 +3946,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.Len(t, syncData.ChannelSetHistory, 0)
 
 		// Add multiple channels - generates history for the previously removed channel
-		version = rt.UpdateDoc("doc1", version, `{"channels": ["test", "test2"]}`)
+		_ = rt.UpdateDoc("doc1", version, `{"channels": ["test", "test2"]}`)
 		syncData, err = collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
 
@@ -3968,7 +3968,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		// Compact with seq=0 should keep all entries
 		version := rt.PutDoc("doc2", `{"channels": ["test"]}`)
 		version = rt.UpdateDoc("doc2", version, `{"channels": []}`)
-		version = rt.UpdateDoc("doc2", version, `{"channels": ["test", "test2"]}`)
+		_ = rt.UpdateDoc("doc2", version, `{"channels": ["test", "test2"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc2")
 		require.NoError(t, err)
@@ -3987,7 +3987,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		// Compact with very high seq removes all history
 		version := rt.PutDoc("doc3", `{"channels": ["test"]}`)
 		version = rt.UpdateDoc("doc3", version, `{"channels": []}`)
-		version = rt.UpdateDoc("doc3", version, `{"channels": ["test", "test2"]}`)
+		_ = rt.UpdateDoc("doc3", version, `{"channels": ["test", "test2"]}`)
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc3")
 		require.NoError(t, err)
