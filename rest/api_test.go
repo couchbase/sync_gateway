@@ -3957,8 +3957,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.Equal(t, db.ChannelSetEntry{Name: "test", Start: 1, End: 2}, syncData.ChannelSetHistory[0])
 
 		// Compact history at sequence 2 and verify history is cleared
-		err = collection.CompactDocChannelHistory(ctx, "doc1", 2)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc1", 2)
 		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
 		syncData, err = collection.GetDocSyncData(ctx, "doc1")
 		assert.NoError(t, err)
 		assert.Zero(t, len(syncData.ChannelSetHistory))
@@ -3975,8 +3976,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		historyLenBefore := len(syncDataBefore.ChannelSetHistory)
 		require.Greater(t, historyLenBefore, 0)
 
-		err = collection.CompactDocChannelHistory(ctx, "doc2", 0)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc2", 0)
 		require.NoError(t, err)
+		assert.Equal(t, []string{}, compactedChannels)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc2")
 		require.NoError(t, err)
@@ -3993,8 +3995,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		require.NoError(t, err)
 
 		// Compact with very high seq number
-		err = collection.CompactDocChannelHistory(ctx, "doc3", 999999)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc3", 999999)
 		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc3")
 		require.NoError(t, err)
@@ -4018,8 +4021,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		channelSetLenBefore := len(syncDataBefore.ChannelSet)
 		channelLenBefore := len(syncDataBefore.Channels)
 
-		err = collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
 		require.NoError(t, err)
+		assert.Equal(t, []string{"a", "a"}, compactedChannels)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
@@ -4039,14 +4043,14 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 	t.Run("invalid doc id", func(t *testing.T) {
 		// Empty doc ID should return 400 error
-		err := collection.CompactDocChannelHistory(ctx, "", 1)
+		_, err := collection.CompactDocChannelHistory(ctx, "", 1)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Invalid doc ID")
 	})
 
 	t.Run("nonexistent document", func(t *testing.T) {
 		// Compacting nonexistent doc should return not found error
-		err := collection.CompactDocChannelHistory(ctx, "nonexistent", 1)
+		_, err := collection.CompactDocChannelHistory(ctx, "nonexistent", 1)
 		assert.Error(t, err)
 	})
 
@@ -4061,8 +4065,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
-		err = collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
 		require.NoError(t, err)
+		assert.Equal(t, []string{"b", "b"}, compactedChannels)
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
@@ -4079,8 +4084,9 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, syncDataBefore.ChannelSetHistory, 0)
 
-		err = collection.CompactDocChannelHistory(ctx, "doc8", 1)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc8", 1)
 		require.NoError(t, err)
+		assert.Equal(t, []string{}, compactedChannels)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc8")
 		require.NoError(t, err)
@@ -4092,10 +4098,12 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		version := rt.PutDoc("doc10", `{"channels": ["test"]}`)
 		version = rt.UpdateDoc("doc10", version, `{"channels": []}`)
 		_ = rt.UpdateDoc("doc10", version, `{"channels": ["test", "test2"]}`)
+		seq := rt.GetDocumentSequence("doc10")
 
 		// After compaction, document should still be accessible
-		err := collection.CompactDocChannelHistory(ctx, "doc10", 2)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc10", seq)
 		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
 
 		// Verify doc is still accessible with correct data
 		syncData, err := collection.GetDocSyncData(ctx, "doc10")
@@ -4164,8 +4172,9 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 
 	// Step 8: Call CompactDocChannelHistory - this will trigger the auto-import check
 	// which verifies the document is imported (has valid _sync xattr) before compacting
-	err = collection.CompactDocChannelHistory(ctx, nonImportedDocID, docSeq-1)
+	compactedChannels, err := collection.CompactDocChannelHistory(ctx, nonImportedDocID, docSeq-1)
 	require.NoError(t, err)
+	assert.Equal(t, []string{"test_channel"}, compactedChannels)
 
 	// Step 9: Verify compaction succeeded and history was removed
 	syncData, err := collection.GetDocSyncData(ctx, nonImportedDocID)

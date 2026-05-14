@@ -224,21 +224,21 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
 // This is used to truncate stale channel assignment history to reduce storage overhead.
-func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) error {
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
 	key := realDocID(docid)
 	if key == "" {
-		return base.HTTPErrorf(400, "Invalid doc ID")
+		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	xattrKeys := []string{base.SyncXattrName, base.VirtualXattrRevSeqNo, base.MouXattrName}
 	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	doc, err := c.unmarshalDocumentWithXattrs(ctx, key, nil, xattrs, cas, DocUnmarshalSync)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
@@ -251,56 +251,60 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 
 		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
 		if importErr != nil {
-			return importErr
+			return nil, importErr
 		}
 		if doc == nil {
-			return fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+			return nil, fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
 		}
 		cas = doc.Cas
 	}
 
-	// Store lengths before compaction to detect if any changes occur
-	historyLenBefore := len(doc.SyncData.ChannelSetHistory)
-	channelSetLenBefore := len(doc.SyncData.ChannelSet)
-	channelsLenBefore := len(doc.SyncData.Channels)
+	compactedChannels := make([]string, 0)
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
-		return channel.End <= seq
+		del := channel.End <= seq
+		if del {
+			compactedChannels = append(compactedChannels, channel.Name)
+		}
+		return del
 	})
 
 	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
-		return channel.End != 0 && channel.End <= seq
+		del := channel.End != 0 && channel.End <= seq
+		if del {
+			compactedChannels = append(compactedChannels, channel.Name)
+		}
+		return del
 	})
 
 	for chanName, chanEntry := range doc.SyncData.Channels {
 		if chanEntry != nil && chanEntry.Seq <= seq {
+			compactedChannels = append(compactedChannels, chanName)
 			delete(doc.SyncData.Channels, chanName)
 		}
 	}
 
 	// Exit early if no compaction occurred
-	if len(doc.SyncData.ChannelSetHistory) == historyLenBefore &&
-		len(doc.SyncData.ChannelSet) == channelSetLenBefore &&
-		len(doc.SyncData.Channels) == channelsLenBefore {
-		return nil
+	if len(compactedChannels) == 0 {
+		return []string{}, nil
 	}
 
 	rawSyncXattr, err := base.JSONMarshal(doc.SyncData)
 	if err != nil {
-		return base.RedactErrorf("failed to marshal sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
+		return nil, base.RedactErrorf("failed to marshal sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
 	}
 
 	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
 	if err != nil {
 		base.WarnfCtx(ctx, `Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
-		return base.RedactErrorf(`Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
+		return nil, base.RedactErrorf(`Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
 	}
 
 	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, revSeqNo, doc.MetadataOnlyUpdate)
 
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
-		return base.RedactErrorf("failed to marshal _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
+		return nil, base.RedactErrorf("failed to marshal _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
 	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
@@ -317,7 +321,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		base.MouXattrName:  rawMouXattr,
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
-	return err
+	return compactedChannels, err
 }
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
