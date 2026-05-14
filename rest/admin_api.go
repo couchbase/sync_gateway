@@ -1677,6 +1677,7 @@ func (h *handler) handleGetStatus() error {
 	var status = Status{
 		Databases: make(map[string]DatabaseStatus),
 		Vendor:    vendor{Name: base.ProductNameString},
+		Runtime:   h.server.RuntimeStatus,
 	}
 
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
@@ -1684,7 +1685,6 @@ func (h *handler) handleGetStatus() error {
 		status.Version = base.LongVersionString
 		status.Vendor.Version = base.ProductAPIVersion
 		status.NodeUID = h.server.NodeUID
-		status.Runtime = h.server.RuntimeStatus
 		if h.server.ClusterCompat != nil {
 			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
 				status.ClusterCompatVersion = v.String()
