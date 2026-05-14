@@ -20,6 +20,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strconv"
@@ -105,6 +107,7 @@ type ServerContext struct {
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect            // singleton instance for this server's sgcollect_info process
 	NodeUID                       string                // Stable identifier for this SG node, derived deterministically from host fingerprint
+	RuntimeStatus                 *RuntimeStatus        // Cached runtime environment info (GOMEMLIMIT, GOMAXPROCS, cgroup), computed once at startup
 	ClusterCompat                 *clusterCompatManager // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn       // supply a custom function for buckets, used for testing only
 }
@@ -215,6 +218,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 			sc.statsContext.heapProfileEnabled = false
 		}
 	}
+
+	sc.RuntimeStatus = getRuntimeStatus()
 
 	sc.startStatsLogger(ctx)
 
@@ -2303,6 +2308,21 @@ func (sc *ServerContext) SetContextLogID(parent context.Context, id string) cont
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent
+}
+
+// getRuntimeStatus returns runtime memory and CPU information, computed once at startup and cached on ServerContext.
+func getRuntimeStatus() *RuntimeStatus {
+	rs := &RuntimeStatus{
+		GoMemlimitBytes: debug.SetMemoryLimit(-1),
+		GoMaxprocs:      runtime.GOMAXPROCS(0),
+	}
+
+	cgroupLimit, err := memlimit.FromCgroup()
+	if err == nil {
+		rs.CgroupMemoryLimitBytes = &cgroupLimit
+	}
+
+	return rs
 }
 
 // getTotalMemory returns the total memory available on the system. If a cgroup is detected, it will use the cgroup memory max.

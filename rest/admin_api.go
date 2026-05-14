@@ -1657,10 +1657,17 @@ type DatabaseStatus struct {
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
 
+type RuntimeStatus struct {
+	GoMemlimitBytes        int64   `json:"go_memlimit_bytes"`
+	GoMaxprocs             int     `json:"go_maxprocs"`
+	CgroupMemoryLimitBytes *uint64 `json:"cgroup_memory_limit_bytes,omitempty"`
+}
+
 type Status struct {
 	Databases            map[string]DatabaseStatus `json:"databases"`
 	Version              string                    `json:"version"`
 	Vendor               vendor                    `json:"vendor"`
+	Runtime              *RuntimeStatus            `json:"runtime,omitempty"`
 	NodeUID              string                    `json:"node_uid,omitempty"`
 	ClusterCompatVersion string                    `json:"cluster_compat_version,omitempty"`
 }
@@ -1670,6 +1677,7 @@ func (h *handler) handleGetStatus() error {
 	var status = Status{
 		Databases: make(map[string]DatabaseStatus),
 		Vendor:    vendor{Name: base.ProductNameString},
+		Runtime:   h.server.RuntimeStatus,
 	}
 
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.

@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -360,6 +362,24 @@ func TestGetStatus(t *testing.T) {
 	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
 	rest.RequireStatus(t, response, 204)
 	assert.Equal(t, "GET", response.Header().Get("Allow"))
+}
+
+func TestGetStatusRuntimeInfo(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("GET", "/_status", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	var responseBody rest.Status
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
+
+	require.NotNil(t, responseBody.Runtime)
+	assert.Greater(t, responseBody.Runtime.GoMaxprocs, 0)
+	assert.NotZero(t, responseBody.Runtime.GoMemlimitBytes)
+
+	assert.Equal(t, runtime.GOMAXPROCS(0), responseBody.Runtime.GoMaxprocs)
+	assert.Equal(t, debug.SetMemoryLimit(-1), responseBody.Runtime.GoMemlimitBytes)
 }
 
 func TestFlush(t *testing.T) {

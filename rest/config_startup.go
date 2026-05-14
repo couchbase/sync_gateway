@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"math"
 	"os"
 	"runtime"
 	"time"
@@ -287,6 +288,34 @@ func setGlobalConfig(ctx context.Context, sc *StartupConfig) error {
 	}
 
 	return nil
+}
+
+// logRuntimeEnvironment logs Go runtime and system memory configuration at startup.
+// Logs both environment variable values and effective runtime values for diagnostics.
+func logRuntimeEnvironment(ctx context.Context, rs *RuntimeStatus) {
+	gomaxprocsEnv := os.Getenv("GOMAXPROCS")
+	if gomaxprocsEnv != "" {
+		base.InfofCtx(ctx, base.KeyAll, "GOMAXPROCS: env=%s, effective=%d", gomaxprocsEnv, rs.GoMaxprocs)
+	} else {
+		base.InfofCtx(ctx, base.KeyAll, "GOMAXPROCS: effective=%d (env not set)", rs.GoMaxprocs)
+	}
+
+	gomemlimitEnv := os.Getenv("GOMEMLIMIT")
+	if rs.GoMemlimitBytes == math.MaxInt64 {
+		if gomemlimitEnv != "" {
+			base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: env=%s, effective=no limit", gomemlimitEnv)
+		} else {
+			base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: no limit set")
+		}
+	} else if gomemlimitEnv != "" {
+		base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: env=%s, effective=%d bytes", gomemlimitEnv, rs.GoMemlimitBytes)
+	} else {
+		base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: effective=%d bytes (env not set)", rs.GoMemlimitBytes)
+	}
+
+	if rs.CgroupMemoryLimitBytes != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Cgroup memory limit: %d bytes", *rs.CgroupMemoryLimitBytes)
+	}
 }
 
 // Merge applies non-empty fields from new onto non-empty fields on sc
