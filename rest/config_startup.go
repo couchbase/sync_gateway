@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"math"
 	"os"
 	"runtime"
 	"time"
@@ -300,7 +301,13 @@ func logRuntimeEnvironment(ctx context.Context, rs *RuntimeStatus) {
 	}
 
 	gomemlimitEnv := os.Getenv("GOMEMLIMIT")
-	if gomemlimitEnv != "" {
+	if rs.GoMemlimitBytes == math.MaxInt64 {
+		if gomemlimitEnv != "" {
+			base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: env=%s, effective=no limit", gomemlimitEnv)
+		} else {
+			base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: no limit set")
+		}
+	} else if gomemlimitEnv != "" {
 		base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: env=%s, effective=%d bytes", gomemlimitEnv, rs.GoMemlimitBytes)
 	} else {
 		base.InfofCtx(ctx, base.KeyAll, "GOMEMLIMIT: effective=%d bytes (env not set)", rs.GoMemlimitBytes)

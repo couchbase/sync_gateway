@@ -2989,7 +2989,7 @@ Status:
     runtime:
       description: |-
         Runtime environment information for this Sync Gateway node. Includes Go runtime
-        settings and container memory limits. Omitted if `api.hide_product_version=true`.
+        settings and container memory limits.
       type: object
       properties:
         go_memlimit_bytes:
@@ -3016,7 +3016,7 @@ Status:
     node_uid:
       description: |-
         Stable identifier for this Sync Gateway node, derived deterministically from host
-        fingerprint. Omitted if `api.hide_product_version=true`.
+        fingerprint.
       type: string
     cluster_compat_version:
       description: |-
@@ -3055,13 +3055,12 @@ NodeInfo:
     node_uid:
       description: |-
         Stable identifier for this Sync Gateway node, derived deterministically from host
-        fingerprint. Omitted if `api.hide_product_version=true`.
+        fingerprint.
       type: string
     cluster_compat_version:
       description: |-
         The minimum cluster compatibility version (`"major.minor"`) across all nodes in the
-        cluster. Omitted if `api.hide_product_version=true`, or when no version has been
-        computed yet (e.g. first startup before nodes have registered).
+        cluster.
       type: string
       example: '4.1'
   required:
