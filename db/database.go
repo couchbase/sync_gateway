@@ -1675,13 +1675,13 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
-	users, roles, err := c.allPrincipalIDs(ctx)
+func (db *Database) updateAllPrincipalsSequences(ctx context.Context) error {
+	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
 	}
 
-	authr := c.Authenticator(ctx)
+	authr := db.Authenticator(ctx)
 
 	for _, roleName := range roles {
 		role, err := authr.GetRole(roleName)
@@ -1691,7 +1691,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if role == nil {
 			continue
 		}
-		err = c.regeneratePrincipalSequences(ctx, authr, role)
+		err = db.regeneratePrincipalSequences(ctx, authr, role)
 		if err != nil {
 			return err
 		}
@@ -1705,7 +1705,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if user == nil {
 			continue
 		}
-		err = c.regeneratePrincipalSequences(ctx, authr, user)
+		err = db.regeneratePrincipalSequences(ctx, authr, user)
 		if err != nil {
 			return err
 		}
@@ -1713,8 +1713,8 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 	return nil
 }
 
-func (c *DatabaseCollection) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
-	nextSeq, err := c.sequences().nextSequence(ctx)
+func (db *Database) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}

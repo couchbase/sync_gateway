@@ -336,15 +336,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			}
 		}
 		if regenerateSequences && resyncCollections == nil {
-			var multiError *base.MultiError
-			for _, databaseCollection := range db.CollectionByID {
-				if updateErr := databaseCollection.updateAllPrincipalsSequences(ctx); updateErr != nil {
-					multiError = multiError.Append(updateErr)
-				}
-			}
+			err := db.updateAllPrincipalsSequences(ctx)
 
-			if multiError.Len() > 0 {
-				return fmt.Errorf("Error updating principal sequences: %s", multiError.Error())
+			if err != nil {
+				return fmt.Errorf("Error updating principal sequences: %w", err)
 			}
 		}
 

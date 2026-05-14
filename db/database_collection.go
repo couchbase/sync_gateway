@@ -139,11 +139,6 @@ func (c *DatabaseCollection) GetCollectionDatastore() base.DataStore {
 	return c.dataStore
 }
 
-// allPrincipalIDs returns the IDs of all users and roles, including deleted Roles
-func (c *DatabaseCollection) allPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
-	return c.dbCtx.AllPrincipalIDs(ctx)
-}
-
 // Authenticator returns authentication options associated with the collection's database.
 func (c *DatabaseCollection) Authenticator(ctx context.Context) *auth.Authenticator {
 	return c.dbCtx.Authenticator(ctx)
