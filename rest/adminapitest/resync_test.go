@@ -375,6 +375,9 @@ function sync(doc, oldDoc){
 // Delete db1, update db2 to include _default.sg_test_0. Because db2 includes _default._default,
 // it gets metadataID="_default". Assert that after resync regenerate sequences, db2 comes online successfully.
 func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
@@ -385,7 +388,7 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 	const namedCollectionName = "sg_test_0"
 	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
 	defer func() {
-		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
+		assert.NoError(t, tb.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
 	}()
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{

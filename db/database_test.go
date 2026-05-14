@@ -4736,7 +4736,7 @@ func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
 
 	// Simulate a collection previously owned by a different database, including metadata_version for realism
 	oldSyncInfo := &base.SyncInfo{MetadataID: base.Ptr("previous_database"), MetaDataVersion: MetaVersionValue}
-	require.NoError(t, ds.Set(ctx, base.SGSyncInfo, 0, nil, oldSyncInfo))
+	require.NoError(t, ds.Set(base.SGSyncInfo, 0, nil, oldSyncInfo))
 
 	// InitSyncInfo should detect the mismatch and require resync
 	requiresResync, _, err := base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)
@@ -4744,7 +4744,7 @@ func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
 	require.True(t, requiresResync)
 
 	// SetSyncInfoMetadataID with the same Options.MetadataID should update the syncInfo document
-	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, db.DatabaseContext.Options.MetadataID))
+	require.NoError(t, base.SetSyncInfoMetadataID(ds, db.DatabaseContext.Options.MetadataID))
 
 	// Subsequent InitSyncInfo should find a match and not require resync
 	requiresResync, _, err = base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)

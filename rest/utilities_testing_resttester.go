@@ -411,7 +411,7 @@ func (rt *RestTester) WaitForResyncDCPStatusForDB(status db.BackgroundProcessSta
 	return rt.waitForResyncDCPStatus(status, dbName)
 }
 
-// WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
+// waitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
