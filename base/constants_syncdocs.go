@@ -22,6 +22,8 @@ const MetadataIdPrefix = "m_"                                  // Prefix for met
 const SyncDocMetadataPrefix = SyncDocPrefix + MetadataIdPrefix // Prefix for all namespaced Sync Gateway metadata documents
 const DCPCheckpointPrefix = "dcp_ck:"
 
+const DefaultMetadataID = "_default" // MetadataID assigned to databases that include _default._default, signalling legacy (unprefixed) metadata key format.
+
 const minimumAttachmentMigrationMetadataVersion = "4.0.0" // minimum metadata version that needs to be defined for metadata migration.
 
 // Sync Gateway Metadata document types
@@ -138,10 +140,11 @@ var DefaultMetadataKeys = &MetadataKeys{
 	sessionPrefix:             formatDefaultMetadataKey(MetaKeySessionPrefix),
 }
 
-// NewMetadataKeys returns MetadataKeys for the specified MetadataID  If metadataID is empty string, returns the default (legacy) metadata keys.
+// NewMetadataKeys returns MetadataKeys for the specified MetadataID. If metadataID is empty string or DefaultMetadataID,
+// returns the default (legacy) metadata keys with no prefix.
 // Key and prefix formatting is done in this constructor to minimize the work done per retrieval.
 func NewMetadataKeys(metadataID string) *MetadataKeys {
-	if metadataID == "" {
+	if metadataID == "" || metadataID == DefaultMetadataID {
 		return DefaultMetadataKeys
 	} else {
 		return &MetadataKeys{
