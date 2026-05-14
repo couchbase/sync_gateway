@@ -3795,7 +3795,7 @@ func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
 
 	require.Equal(t, base.DefaultMetadataID, db.DatabaseContext.Options.MetadataID)
 
-	// Simulate a collection previously owned by a different database, including metadata_version for realism
+	// Simulate a collection previously owned by a different database
 	oldSyncInfo := &base.SyncInfo{MetadataID: "previous_database"}
 	require.NoError(t, ds.Set(base.SGSyncInfo, 0, nil, oldSyncInfo))
 
