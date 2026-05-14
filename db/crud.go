@@ -222,6 +222,49 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+type ChannelHistoryResp map[string]map[uint64]bool
+
+func (ch ChannelHistoryResp) AddChannelHistoryEntry(name string, seq uint64) {
+	if _, ok := ch[name]; !ok {
+		ch[name] = make(map[uint64]bool)
+	}
+	if _, ok := ch[name][seq]; !ok {
+		ch[name][seq] = true
+	}
+}
+func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string][]uint64, error) {
+
+	chanHistory := make(ChannelHistoryResp)
+	syncData, err := c.GetDocSyncData(ctx, docid)
+	if err != nil {
+		return nil, err
+	}
+	for chanName, chanVal := range syncData.Channels {
+		if chanVal != nil {
+			chanHistory.AddChannelHistoryEntry(chanName, chanVal.Seq)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSet {
+		if chanSetEntry.End != 0 {
+			chanHistory.AddChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSetHistory {
+		if chanSetEntry.End != 0 {
+			chanHistory.AddChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+
+	result := make(map[string][]uint64)
+	for chanName, chanEntry := range chanHistory {
+		result[chanName] = make([]uint64, 0)
+		for seq, _ := range chanEntry {
+			result[chanName] = append(result[chanName], seq)
+		}
+	}
+	return result, nil
+}
+
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
 // This is used to prune stale channel assignment history to reduce storage overhead.
 func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {

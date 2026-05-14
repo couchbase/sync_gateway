@@ -927,3 +927,37 @@ func (h *handler) isReadOnlyGuest() bool {
 	}
 	return false
 }
+
+func (h *handler) handleGetDocChannelHistory() error {
+	h.assertAdminOnly()
+	docid := h.PathVar("docid")
+
+	chanHistory, err := h.collection.GetDocChannelHistory(h.ctx(), docid)
+	if err != nil {
+		return err
+	}
+
+	h.writeJSON(chanHistory)
+	return nil
+}
+
+type CompactDocChannelHistoryRequest struct {
+	DocIds []string `json:"doc_ids"`
+	Seq    uint64   `json:"seq"`
+}
+
+func (h *handler) handleCompactDocChannelHistory() error {
+	h.assertAdminOnly()
+
+	var req CompactDocChannelHistoryRequest
+	err := h.readJSONInto(&req)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
+	}
+
+	//for _, id := range req.DocIds {
+	//	h.collection.CompactDocChannelHistory(h.ctx(), id, seq)
+	//}
+
+	return nil
+}
