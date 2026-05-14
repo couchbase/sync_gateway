@@ -230,8 +230,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	xattrKeys := []string{base.SyncXattrName, base.VirtualXattrRevSeqNo, base.MouXattrName}
-	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
+	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +253,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 			return nil, importErr
 		}
 		if doc == nil {
-			return nil, fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+			return nil, base.ErrNotFound
 		}
 		cas = doc.Cas
 	}
