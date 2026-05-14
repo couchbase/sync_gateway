@@ -168,6 +168,7 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 
 	b := sdkdashboard.NewDashboardBuilder(config.dashboardTitle).
 		Uid(config.dashboardUID).
+		Version(1).
 		Tags([]string{"Sync Gateway"}).
 		Tooltip(sdkdashboard.DashboardCursorSyncCrosshair).
 		Time("now-7d", "now").
@@ -278,6 +279,6 @@ func writeGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig, wr
 	}
 
 	encoder := json.NewEncoder(writer)
-	encoder.SetIndent("", "\t")
+	encoder.SetIndent("", "  ")
 	return encoder.Encode(dashboard)
 }
