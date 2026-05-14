@@ -3776,3 +3776,39 @@ func TestDatabaseCloseIdempotent(t *testing.T) {
 	defer db.BucketLock.Unlock()
 	db._stopOnlineProcesses(ctx)
 }
+
+// TestSetSyncInfoDefaultMetadataID verifies that a database created with the default collection gets
+// MetadataID="_default" on its DatabaseContextOptions, and that this value correctly updates the syncInfo
+// document via SetSyncInfoMetadataID so that subsequent InitSyncInfo calls do not require resync.
+func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions: &cacheOptions,
+		MetadataID:   base.DefaultMetadataID,
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	ds := collection.GetCollectionDatastore()
+
+	require.Equal(t, base.DefaultMetadataID, db.DatabaseContext.Options.MetadataID)
+
+	// Simulate a collection previously owned by a different database
+	oldSyncInfo := &base.SyncInfo{MetadataID: "previous_database"}
+	require.NoError(t, ds.Set(base.SGSyncInfo, 0, nil, oldSyncInfo))
+
+	// InitSyncInfo should detect the mismatch and require resync
+	requiresResync, err := base.InitSyncInfo(ds, db.DatabaseContext.Options.MetadataID)
+	require.NoError(t, err)
+	require.True(t, requiresResync)
+
+	// SetSyncInfoMetadataID with the same Options.MetadataID should update the syncInfo document
+	require.NoError(t, base.SetSyncInfo(ds, db.DatabaseContext.Options.MetadataID))
+
+	// Subsequent InitSyncInfo should find a match and not require resync
+	requiresResync, err = base.InitSyncInfo(ds, db.DatabaseContext.Options.MetadataID)
+	require.NoError(t, err)
+	assert.False(t, requiresResync)
+}
