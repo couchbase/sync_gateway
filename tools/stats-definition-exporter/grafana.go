@@ -279,6 +279,6 @@ func writeGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig, wr
 	}
 
 	encoder := json.NewEncoder(writer)
-	encoder.SetIndent("", "\t")
+	encoder.SetIndent("", "  ")
 	return encoder.Encode(dashboard)
 }
