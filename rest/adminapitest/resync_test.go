@@ -369,3 +369,104 @@ function sync(doc, oldDoc){
 	require.NoError(t, err)
 	assert.Equal(t, string(bodyGet), string(specBody))
 }
+
+// TestResyncRequireResyncDefaultMetadataID
+//
+// Setup: db1 owns _default.sg_test_0 (gets non-default metadataID). db2 owns _default._default (default metadata id).
+// Delete db1, update db2 to include _default.sg_test_0. Because db2 includes _default._default,
+// it gets metadataID="_default". Assert that after resync regenerate sequences, db2 comes online successfully.
+func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollectionName = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollectionName}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	db1Name := "db1"
+	db2Name := "db2"
+
+	// Create db1 with _default scope and sg_test_0 collection only — gets metadataID="db1"
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				namedCollectionName: {},
+			},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(db1Name, db1Cfg), http.StatusCreated)
+
+	// Write a doc to the sg_test_0 collection in db1
+	keyspace := db1Name + "._default." + namedCollectionName
+	resp := rt.SendAdminRequest("PUT", "/"+keyspace+"/testDoc1", `{"foo":"bar"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Create db2 with _default scope and _default collection only — gets metadataID="_default"
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				base.DefaultCollection: {},
+			},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(db2Name, db2Cfg), http.StatusCreated)
+
+	// Delete db1 to free the sg_test_0 collection
+	resp = rt.SendAdminRequest("DELETE", "/"+db1Name+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Update db2 to include both _default._default AND _default.sg_test_0.
+	// db2 keeps metadataID="_default" because it includes _default._default.
+	// The sg_test_0 collection's syncInfo still has db1's non-default metadataID — requires resync.
+	db2Cfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				base.DefaultCollection: {},
+				namedCollectionName:    {},
+			},
+		},
+	}
+	rest.RequireStatus(t, rt.UpsertDbConfig(db2Name, db2Cfg), http.StatusCreated)
+
+	// db2 should now require resync for the sg_test_0 collection and be offline
+	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOffline])
+
+	dbRoot := rt.GetDatabaseRoot(db2Name)
+	expectedResyncCollection := base.DefaultScope + "." + namedCollectionName
+	require.Contains(t, dbRoot.RequireResync, expectedResyncCollection,
+		"sg_test_0 collection should require resync after moving from db1 to db2")
+
+	// Run resync with regenerate_sequences=true on the sg_test_0 collection only
+	resyncBody := fmt.Sprintf(`{"scopes": {"_default": ["%s"]}}`, namedCollectionName)
+	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", resyncBody)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Wait for resync to complete
+	rt.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateCompleted, db2Name)
+
+	// Verify in-memory RequireResync is cleared — this passes because Run() updated db.RequireResync
+	dbRoot = rt.GetDatabaseRoot(db2Name)
+	assert.Empty(t, dbRoot.RequireResync, "RequireResync should be empty after resync completed")
+
+	// Bring db2 online via POST /_config with offline:false.
+	// TakeDbOnline calls ReloadDatabase which re-runs InitSyncInfo for every collection.
+	// Requires resync should evaluate to false so syncInfo should be updated with the new metadataID and the database should come online successfully.
+	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_config", `{"offline":false}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
+}

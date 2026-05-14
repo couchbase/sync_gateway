@@ -901,10 +901,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}
 
-	// If identified as default database, use metadataID of "" so legacy non namespaced docs are used
-	if config.MetadataID != defaultMetadataID {
-		contextOptions.MetadataID = config.MetadataID
-	}
+	// NewMetadataKeys handles the "_default" -> legacy (unprefixed) key mapping, so we can pass config.MetadataID through directly.
+	contextOptions.MetadataID = config.MetadataID
 
 	contextOptions.BlipStatsReportingInterval = defaultBytesStatsReportingInterval.Milliseconds()
 	contextOptions.ImportVersion = config.ImportVersion

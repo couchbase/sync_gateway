@@ -46,7 +46,7 @@ var _ ConfigManager = &bootstrapContext{}
 const configUpdateMaxRetryAttempts = 5 // Maximum number of retries due to conflicting updates or rollback
 const configFetchMaxRetryAttempts = 5  // Maximum number of retries due to registry rollback
 
-const defaultMetadataID = "_default"
+const defaultMetadataID = base.DefaultMetadataID
 
 // GetConfig fetches a database name for a given bucket and config group ID.
 func (b *bootstrapContext) GetConfigName(ctx context.Context, bucketName, groupID, dbName string, configName *dbConfigNameOnly) (cas uint64, err error) {
