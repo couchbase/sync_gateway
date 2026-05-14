@@ -168,6 +168,7 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 
 	b := sdkdashboard.NewDashboardBuilder(config.dashboardTitle).
 		Uid(config.dashboardUID).
+		Version(1).
 		Tags([]string{"Sync Gateway"}).
 		Tooltip(sdkdashboard.DashboardCursorSyncCrosshair).
 		Time("now-7d", "now").
