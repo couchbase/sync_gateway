@@ -941,6 +941,10 @@ func (h *handler) handleGetDocChannelHistory() error {
 		return err
 	}
 
+	base.Audit(h.ctx(), base.AuditIDDocumentChannelHistory, base.AuditFields{
+		base.AuditFieldDocID: docid,
+	})
+
 	h.writeJSON(chanHistory)
 	return nil
 }
@@ -975,7 +979,10 @@ func (h *handler) handleCompactDocChannelHistory() error {
 	}
 	res := map[string][]string{
 		"compacted_channels": channels,
-	}
+		}
+	base.Audit(h.ctx(), base.AuditIDDocumentChannelHistoryCompact, base.AuditFields{
+		base.AuditFieldDocID: docid,
+	})
 
 	h.writeJSON(res)
 	return nil

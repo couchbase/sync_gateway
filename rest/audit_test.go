@@ -2031,6 +2031,124 @@ func TestAuditUserAccessHistoryCompact(t *testing.T) {
 	assert.Equal(t, map[string]any{base.DefaultScope: map[string]any{base.DefaultCollection: []any{"A", "B"}}}, event[base.AuditFieldChannels])
 }
 
+func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDDocumentChannelHistoryCompact),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	testCases := []struct {
+		name   string
+		docIDs []string
+	}{
+		{
+			name:   "single doc",
+			docIDs: []string{"single_doc"},
+		},
+		{
+			name:   "multiple docs",
+			docIDs: []string{"multi_doc_1", "multi_doc_2", "multi_doc_3"},
+		},
+	}
+
+	for _, tc := range testCases {
+		rt.Run(tc.name, func(t *testing.T) {
+			for _, docID := range tc.docIDs {
+				rt.CreateTestDoc(docID)
+			}
+
+			body := string(base.MustJSONMarshal(t, CompactDocChannelHistoryRequest{
+				DocIds: tc.docIDs,
+				Seq:    1,
+			}))
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_channel_history/_compact", body), http.StatusOK)
+			})
+
+			for _, docID := range tc.docIDs {
+				requireChannelHistoryCompactAuditEvent(t, output, docID)
+			}
+		})
+	}
+}
+
+func TestDocumentChannelHistoryAudit(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDDocumentChannelHistory),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	testCases := []struct {
+		name  string
+		docID string
+	}{
+		{
+			name:  "existing doc",
+			docID: "existing_doc",
+		},
+	}
+
+	for _, tc := range testCases {
+		rt.Run(tc.name, func(t *testing.T) {
+			rt.CreateTestDoc(tc.docID)
+
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_channel_history/"+tc.docID, ""), http.StatusOK)
+			})
+
+			requireChannelHistoryAuditEvent(t, output, tc.docID)
+		})
+	}
+}
+
+// requireChannelHistoryCompactAuditEvent asserts that exactly one AuditIDDocumentChannelHistoryCompact event
+// was logged for the given docID.
+func requireChannelHistoryCompactAuditEvent(t testing.TB, output []byte, docID string) {
+	t.Helper()
+	requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID)
+}
+
+// requireChannelHistoryAuditEvent asserts that exactly one AuditIDDocumentChannelHistory event
+// was logged for the given docID.
+func requireChannelHistoryAuditEvent(t testing.TB, output []byte, docID string) {
+	t.Helper()
+	requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistory, docID)
+}
+
+func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID string) {
+	t.Helper()
+	events := jsonLines(t, output)
+	countFound := 0
+	for _, event := range events {
+		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
+			continue
+		}
+		if event[base.AuditFieldDocID] == docID {
+			countFound++
+		}
+	}
+	require.Equal(t, 1, countFound, "expected exactly 1 %s event for doc %q, got %d",
+		base.AuditEvents[eventID].Name, docID, countFound)
+}
+
 // getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129
 func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 	return base.LoggingConfig{
@@ -2060,3 +2178,4 @@ func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 		},
 	}
 }
+

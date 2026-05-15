@@ -118,14 +118,17 @@ const (
 	AuditIDISGRAllRead   AuditID = 54421
 
 	// Documents events
-	AuditIDDocumentCreate       AuditID = 55000
-	AuditIDDocumentRead         AuditID = 55001
-	AuditIDDocumentUpdate       AuditID = 55002
-	AuditIDDocumentDelete       AuditID = 55003
-	AuditIDDocumentMetadataRead AuditID = 55004
-	AuditIDDocumentImport       AuditID = 55005
-	AuditIDDocumentResync       AuditID = 55006
-	AuditIDDocumentRevoke       AuditID = 55007
+	AuditIDDocumentCreate                AuditID = 55000
+	AuditIDDocumentRead                  AuditID = 55001
+	AuditIDDocumentUpdate                AuditID = 55002
+	AuditIDDocumentDelete                AuditID = 55003
+	AuditIDDocumentMetadataRead          AuditID = 55004
+	AuditIDDocumentImport                AuditID = 55005
+	AuditIDDocumentResync                AuditID = 55006
+	AuditIDDocumentRevoke                AuditID = 55007
+	AuditIDDocumentChannelHistory        AuditID = 55008
+	AuditIDDocumentChannelHistoryCompact AuditID = 55009
+
 	// Document attachments events
 	AuditIDAttachmentCreate AuditID = 55010
 	AuditIDAttachmentRead   AuditID = 55011
@@ -1214,6 +1217,40 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupKeyspace,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentChannelHistory: {
+		Name:        "Document Channel history",
+		Description: "A document channel history was sent to a client",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID: "document id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupAuthenticated,
+			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentChannelHistoryCompact: {
+		Name:        "Document Channel history compact",
+		Description: "A document channel history was compacted by a client",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID: "document id",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupAuthenticated,
+			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
