@@ -7,59 +7,45 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
 get:
   summary: Get Channel History of Document
   description: |-
-    Retrieves all inactive channels in the channel history before a particular sequence number.
+    Returns the channel revocation history for the specified document as a map of channel
+    names to the sequences at which the document was removed from each channel. Only channels
+    that have been revoked at least once are included; channels the document is currently
+    assigned to are excluded.
 
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Application
     * Sync Gateway Application Read Only
-  parameters:
-    - name: doc_id
-      in: query
-      description: The document ID whose channel history should be retrieved.
-      required: true
-      schema:
-        type: string
-      example: doc1
-    - name: seq
-      in: query
-      description: |-
-        The sequence number threshold. All inactive channels with history entries for sequences before this number
-        (sequences at which the document left the channel) will be returned.
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-      example: 12345
   responses:
     '200':
       description: |-
-        Successfully retrieved inactive channel history for the specified document.
-        Returns the list of inactive channels that have history before the sequence number for the requested document.
+        Successfully retrieved the channel revocation history for the specified document.
+        Returns a JSON object mapping each channel name to an array of sequences at which
+        the document was removed from that channel.
       content:
         application/json:
           schema:
             type: object
-            required:
-              - channels
-            properties:
-              channels:
-                type: array
-                items:
-                  type: string
-                description: |-
-                  Array of inactive channel names that have history entries before the specified sequence number.
-            description: |-
-              Inactive channel history for the requested document.
+            additionalProperties:
+              type: array
+              items:
+                type: integer
+                format: int64
+                minimum: 0
+              description: Sequences at which the document was removed from this channel.
+            description: Map of channel names to their revocation sequences.
             example:
-              channels:
-                - channel1
-                - channel2
-    '400':
-      description: 'Bad request. This could be due to missing or invalid query parameters such as missing doc_id or invalid seq value.'
+              channel1:
+                - 3
+                - 7
+              channel2:
+                - 5
+    '404':
+      description: Document not found.
       content:
         application/json:
           schema:
@@ -69,4 +55,4 @@ get:
 
   tags:
     - Document
-  operationId: get_keyspace-_history
+  operationId: get_keyspace-_channel_history

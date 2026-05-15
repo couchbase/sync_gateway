@@ -928,6 +928,9 @@ func (h *handler) isReadOnlyGuest() bool {
 	return false
 }
 
+// handleGetDocChannelHistory handles GET /{keyspace}/_channel_history/{docid}.
+// It returns the channel revocation history for the document as a JSON object mapping
+// channel names to the sequences at which the document was removed from each channel.
 func (h *handler) handleGetDocChannelHistory() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
@@ -946,6 +949,10 @@ type CompactDocChannelHistoryRequest struct {
 	Seq    uint64   `json:"seq"`
 }
 
+// handleCompactDocChannelHistory handles POST /{keyspace}/_compact_channel_history.
+// It accepts a JSON body with a list of doc IDs and a sequence number, and removes channel
+// history entries that ended at or before that sequence for each document, returning the
+// list of compacted channel names per doc ID.
 func (h *handler) handleCompactDocChannelHistory() error {
 	h.assertAdminOnly()
 

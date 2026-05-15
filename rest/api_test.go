@@ -4243,6 +4243,11 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	assert.Equal(t, "test", finalBody["type"])
 }
 
+// TestGetDocChannelHistory tests the GetDocChannelHistory function and the
+// GET /{keyspace}/_channel_history/{docid} REST endpoint. It verifies that
+// the channel revocation history is correctly collected from the Channels map,
+// ChannelSet, and ChannelSetHistory, and that the REST endpoint returns the
+// same result serialised as JSON.
 func TestGetDocChannelHistory(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 

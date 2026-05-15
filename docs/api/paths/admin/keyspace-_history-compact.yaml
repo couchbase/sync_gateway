@@ -50,7 +50,7 @@ post:
         Successfully compacted channel history from the specified documents.
         Returns a mapping of document IDs to the list of channels that were compacted.
 
-        If a document ID has an empty array, it means no channels were pruned for that document.
+        If a document ID has an empty array, it means either no channels were compacted for that document or the document was not found.
 
       content:
         application/json:
