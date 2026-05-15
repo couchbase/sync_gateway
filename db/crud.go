@@ -301,12 +301,12 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		cas = doc.Cas
 	}
 
-	compactedChannels := make([]string, 0)
+	compactedChannels := make(base.Set)
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
 		del := channel.End <= seq
 		if del {
-			compactedChannels = append(compactedChannels, channel.Name)
+			compactedChannels.Add(channel.Name)
 		}
 		return del
 	})
@@ -314,14 +314,14 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
 		del := channel.End != 0 && channel.End <= seq
 		if del {
-			compactedChannels = append(compactedChannels, channel.Name)
+			compactedChannels.Add(channel.Name)
 		}
 		return del
 	})
 
 	for chanName, chanEntry := range doc.SyncData.Channels {
 		if chanEntry != nil && chanEntry.Seq <= seq {
-			compactedChannels = append(compactedChannels, chanName)
+			compactedChannels.Add(chanName)
 			delete(doc.SyncData.Channels, chanName)
 		}
 	}
@@ -363,7 +363,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		base.MouXattrName:  rawMouXattr,
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
-	return compactedChannels, err
+	return compactedChannels.ToArray(), err
 }
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map

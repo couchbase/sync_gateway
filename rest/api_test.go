@@ -4023,7 +4023,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"a", "a"}, compactedChannels)
+		assert.Equal(t, []string{"a"}, compactedChannels)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
@@ -4067,7 +4067,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		require.NoError(t, err)
 		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"b", "b"}, compactedChannels)
+		assert.Equal(t, []string{"b"}, compactedChannels)
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
@@ -4109,6 +4109,37 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		syncData, err := collection.GetDocSyncData(ctx, "doc10")
 		require.NoError(t, err)
 		assert.NotNil(t, syncData)
+	})
+
+	t.Run("test rest api endpoint", func(t *testing.T) {
+
+		version := rt.PutDoc("doc11", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc11", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc11", version, `{"channels": ["test", "test2"]}`)
+
+		version = rt.PutDoc("doc12", `{"channels": ["a", "b"]}`)
+		version = rt.UpdateDoc("doc12", version, `{"channels": ["a"]}`)
+		_ = rt.UpdateDoc("doc12", version, `{"channels": ["a", "c"]}`)
+		req := CompactDocChannelHistoryRequest{
+			DocIds: []string{"doc11", "doc12"},
+			Seq:    999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/_compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusOK)
+
+		var chanOutput map[string][]string
+		err = base.JSONUnmarshal(resp.Body.Bytes(), &chanOutput)
+		require.NoError(t, err)
+
+		expectedOutput := map[string][]string{
+			"doc11": []string{"test"},
+			"doc12": []string{"b"},
+		}
+
+		assert.Equal(t, expectedOutput, chanOutput)
 	})
 }
 

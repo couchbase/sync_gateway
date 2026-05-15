@@ -955,9 +955,15 @@ func (h *handler) handleCompactDocChannelHistory() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
 	}
 
-	//for _, id := range req.DocIds {
-	//	h.collection.CompactDocChannelHistory(h.ctx(), id, seq)
-	//}
+	res := make(map[string][]string)
+	for _, id := range req.DocIds {
+		channels, err := h.collection.CompactDocChannelHistory(h.ctx(), id, req.Seq)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return err
+		}
+		res[id] = channels
+	}
 
+	h.writeJSON(res)
 	return nil
 }
