@@ -1622,16 +1622,19 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 
 }
 
-// TestDisabledUser ensures that a disabled (non-guest) user cannot authenticate to make requests.
+// TestGetUserChannelHistory tests the GET /_user/{name}/_channel_history admin endpoint,
+// which returns the revoked channel history for a user across all scopes and collections.
 func TestGetUserChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	// Returns 404 when the requested user does not exist.
 	t.Run("UserNotFound", func(t *testing.T) {
 		response := rt.SendAdminRequest(http.MethodGet, "/db/_user/ghost/_channel_history", "")
 		RequireStatus(t, response, http.StatusNotFound)
 	})
 
+	// Returns empty history when the user has active channels but none have ever been revoked.
 	t.Run("UserWithNoChannelHistory", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user1",
@@ -1650,6 +1653,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		assert.Empty(t, channelHistory[scope][collection])
 	})
 
+	// Returns all channels that have been revoked from the user.
 	t.Run("UserWithChannelHistory", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user2",
@@ -1673,6 +1677,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
 	})
 
+	// Returns only revoked channels; active channels do not appear in the history.
 	t.Run("UserWithPartialChannelHistory", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user3",
@@ -1696,6 +1701,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
 	})
 
+	// Revocation history is preserved even after a previously revoked channel is re-granted.
 	t.Run("ChannelHistoryAfterReGrant", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user4",
@@ -1725,10 +1731,13 @@ func TestGetUserChannelHistory(t *testing.T) {
 	})
 }
 
+// TestCompactUserChannelHistory tests the POST /_user/{name}/_channel_history admin endpoint,
+// which removes specified channels from a user's revocation history and returns those that were found and removed.
 func TestCompactUserChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	// Returns 404 when the requested user does not exist.
 	t.Run("UserNotFound", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		scope := ds.ScopeName()
@@ -1738,6 +1747,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		RequireStatus(t, response, http.StatusNotFound)
 	})
 
+	// Returns 400 when the request body is not valid JSON.
 	t.Run("InvalidBody", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user1",
@@ -1748,6 +1758,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		RequireStatus(t, response, http.StatusBadRequest)
 	})
 
+	// Removes specified channels from history and returns them; subsequent GET shows empty history.
 	t.Run("CompactsExistingChannels", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		scope := ds.ScopeName()
@@ -1786,6 +1797,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		assert.Empty(t, afterResult.Channels[scope][collection])
 	})
 
+	// Returns empty for a collection when none of the requested channels exist in history; existing history is untouched.
 	t.Run("NonExistentChannelReturnsEmpty", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		scope := ds.ScopeName()
@@ -1824,6 +1836,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, afterResult.Channels[scope][collection])
 	})
 
+	// Only channels present in history are removed and returned; unknown channels are silently ignored.
 	t.Run("MixOfExistingAndNonExistingChannels", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
 		scope := ds.ScopeName()
@@ -1863,6 +1876,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 	})
 }
 
+// TestDisabledUser ensures that a disabled (non-guest) user cannot authenticate to make requests.
 func TestDisabledUser(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
