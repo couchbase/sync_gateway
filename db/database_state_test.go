@@ -29,19 +29,19 @@ func TestDatabaseStateUpdate(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
-		require.NotZero(t, mgr.CAS.Load())
+		require.NotZero(t, mgr.CAS)
 
 		var storedState DatabaseState
 		storeCAS, err := metadataStore.Get(ctx, docID, &storedState)
 		require.NoError(t, err)
-		require.Equal(t, mgr.CAS.Load(), storeCAS)
+		require.Equal(t, mgr.CAS, storeCAS)
 	})
 
 	t.Run("returns no error on stale CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
-		mgr.CAS.Store(0) // force stale CAS
+		mgr.CAS = 0 // force stale CAS
 		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
 	})
 }
@@ -84,37 +84,12 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 	defer tBucket.Close(ctx)
 	metadataStore := tBucket.GetMetadataStore()
 
-	t.Run("callback invoked with false when doc not found", func(t *testing.T) {
-		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
-		mgr := NewDatabaseStateMgr(metadataStore, docID)
-		mgr.pollingInterval = 10 * time.Millisecond
-
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
-		_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
-			return nil, nil, true, nil
-		})
-		require.NoError(t, err)
-		var callCount atomic.Int32
-		var resumeVal atomic.Bool
-		mgr.SetResyncFunc(func(resume bool) {
-			callCount.Add(1)
-			resumeVal.Store(resume)
-		})
-		mgr.StartPolling(ctx)
-		defer mgr.StopPolling(ctx)
-
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int32(1), callCount.Load())
-			assert.False(c, resumeVal.Load())
-		}, 2*time.Second, 10*time.Millisecond)
-	})
-
 	t.Run("callback invoked with true when doc exists and CAS changed", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID)
 		mgr.pollingInterval = 10 * time.Millisecond
 		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
-		mgr.CAS.Store(0) // simulate stale CAS so the poller sees a change
+		mgr.CAS = 0 // simulate stale CAS so the poller sees a change
 
 		var callCount atomic.Int32
 		var resumeVal atomic.Bool

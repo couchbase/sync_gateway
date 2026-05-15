@@ -11,7 +11,6 @@ package db
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -28,7 +27,7 @@ func TempResyncHandler(resume bool) {
 }
 
 type DatabaseStateMgr struct {
-	CAS             atomic.Uint64
+	CAS             uint64
 	dbStateID       string
 	metadataStore   base.DataStore
 	pollingInterval time.Duration
@@ -42,7 +41,7 @@ type DatabaseStateMgr struct {
 func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
-		CAS:             atomic.Uint64{},
+		CAS:             0,
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
 	}
@@ -73,12 +72,13 @@ func (dbMgr *DatabaseStateMgr) UpdateState(ctx context.Context, newState Databas
 	if err != nil {
 		return err
 	}
-	dbMgr.CAS.Store(cas)
+	dbMgr.CAS = cas
 	return nil
 }
 
 // GetState reads the current DatabaseState document from the metadata store. Returns the state and its CAS value.
-// A doc-not-found error is treated as a zero-value state.
+// All errors, including doc-not-found, are returned to the caller; callers must check base.IsDocNotFoundError
+// to distinguish a missing document from a real store failure.
 func (dbMgr *DatabaseStateMgr) GetState(ctx context.Context) (*DatabaseState, uint64, error) {
 	var state DatabaseState
 	cas, err := dbMgr.metadataStore.Get(ctx, dbMgr.dbStateID, &state)
@@ -116,27 +116,39 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	}()
 }
 
-// poll reads the offline state document from the metadata store and invokes the resumeFunc if the CAS has
-// changed. If the document is not found it calls resumeFunc(false) to signal that resync is no longer
-// running. CAS changes that match the locally held CAS are ignored to avoid redundant callbacks.
+// poll checks whether the resync handler should be invoked and, if so, calls it with the current
+// ResyncRunning value. It delegates the state-change decision to ShouldRunResyncHandler.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	state, cas, err := dbMgr.GetState(ctx)
-	if err != nil {
-		if base.IsDocNotFoundError(err) {
-			if cas != dbMgr.CAS.Load() {
-				dbMgr.resyncHandler(false)
-				dbMgr.CAS.Store(cas)
-			}
-			return
+	if ok, state := dbMgr.ShouldRunResyncHandler(ctx); ok{
+		if state.ResyncRunning != nil {
+			dbMgr.resyncHandler(*state.ResyncRunning)
 		}
-		base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
-		return
 	}
-	if cas == dbMgr.CAS.Load() {
-		return
+}
+
+// ShouldRunResyncHandler reads the current state document and determines whether the resync handler
+// should be invoked. It returns (true, state) when the store CAS differs from the locally held CAS
+// and ResyncRunning is non-nil. It returns (false, nil) when the CAS is unchanged, the document is
+// not found, or ResyncRunning is nil. On any other store error it logs a warning and returns (false, nil).
+// When a CAS change is detected the locally held CAS is updated regardless of whether the handler fires.
+func (dbMgr *DatabaseStateMgr) ShouldRunResyncHandler(ctx context.Context) (bool, *DatabaseState) {
+	state, cas, err := dbMgr.GetState(ctx)
+	dbMgr.lock.Lock()
+	defer dbMgr.lock.Unlock()
+	if err != nil {
+		if !base.IsDocNotFoundError(err){
+			base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
+		}
+		return false, nil
 	}
-	dbMgr.resyncHandler(*state.ResyncRunning)
-	dbMgr.CAS.Store(cas)
+	if cas == dbMgr.CAS {
+		return false, nil
+	}
+	dbMgr.CAS = cas
+	if state.ResyncRunning == nil {
+		return false, nil
+	}
+	return true, state
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.
