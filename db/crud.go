@@ -232,6 +232,7 @@ func (ch ChannelHistoryResp) AddChannelHistoryEntry(name string, seq uint64) {
 		ch[name][seq] = true
 	}
 }
+
 // GetDocChannelHistory returns the channel revocation history for the given document as a map
 // from channel name to the sequences at which the document was removed from that channel.
 // It collects revocation sequences from the active Channels map, the ChannelSet, and the
