@@ -4141,6 +4141,28 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		assert.Equal(t, expectedOutput, chanOutput)
 	})
+
+	t.Run("empty doc_ids returns 400", func(t *testing.T) {
+		req := CompactDocChannelHistoryRequest{
+			DocIds: []string{},
+			Seq:    1,
+		}
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/_compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusBadRequest)
+	})
+
+	t.Run("seq zero returns 400", func(t *testing.T) {
+		req := CompactDocChannelHistoryRequest{
+			DocIds: []string{"doc1"},
+			Seq:    0,
+		}
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/_compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusBadRequest)
+	})
 }
 
 // TestCompactNonImportedDocWithAutoImport verifies that when CompactDocChannelHistory is called

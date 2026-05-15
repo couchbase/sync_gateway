@@ -949,7 +949,7 @@ type CompactDocChannelHistoryRequest struct {
 	Seq    uint64   `json:"seq"`
 }
 
-// handleCompactDocChannelHistory handles POST /{keyspace}/_compact_channel_history.
+// handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/_compact.
 // It accepts a JSON body with a list of doc IDs and a sequence number, and removes channel
 // history entries that ended at or before that sequence for each document, returning the
 // list of compacted channel names per doc ID.
@@ -962,13 +962,23 @@ func (h *handler) handleCompactDocChannelHistory() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
 	}
 
+	if len(req.DocIds) == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "missing doc ids")
+	}
+
+	if req.Seq == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "missing seq")
+	}
+
 	res := make(map[string][]string)
 	for _, id := range req.DocIds {
 		channels, err := h.collection.CompactDocChannelHistory(h.ctx(), id, req.Seq)
 		if err != nil && !base.IsDocNotFoundError(err) {
 			return err
 		}
-		res[id] = channels
+		if _, ok := res[id]; !ok {
+			res[id] = channels
+		}
 	}
 
 	h.writeJSON(res)

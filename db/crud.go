@@ -237,7 +237,8 @@ func (ch ChannelHistoryResp) AddChannelHistoryEntry(name string, seq uint64) {
 // from channel name to the sequences at which the document was removed from that channel.
 // It collects revocation sequences from the active Channels map, the ChannelSet, and the
 // ChannelSetHistory (overflow). Only channels that have been revoked at least once appear in
-// the result; channels the document is currently assigned to are excluded.
+// the result; active memberships with no revocation history are omitted, even though a currently
+// assigned channel can still appear if it was revoked and later re-added.
 func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string][]uint64, error) {
 
 	chanHistory := make(ChannelHistoryResp)
