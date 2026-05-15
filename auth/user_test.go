@@ -604,6 +604,31 @@ func TestCompactCollectionChannelHistory(t *testing.T) {
 		assert.Nil(t, history, "non-existent collection should return nil history")
 	})
 
+	t.Run("NilHistoryForExistingCollection", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		// Grant explicit channels so the CollectionAccess entry exists, but no history is set.
+		// This mirrors a user who has active channels but has never had any revoked.
+		user.SetCollectionExplicitChannels(scope, collection, channels.AtSequence(channels.BaseSetOf(t, "ch1"), 1), 0)
+
+		// CollectionChannelHistory returns nil via cc.ChannelHistory_ (collection exists, history does not),
+		// which is distinct from the NonExistentCollectionReturnsEmpty case where getCollectionAccess
+		// returns false entirely.
+		require.Nil(t, u.CollectionChannelHistory(scope, collection))
+
+		// CompactChannelHistory must handle nil history gracefully and return empty.
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch99"})
+		assert.Empty(t, compacted)
+
+		// Explicit channels must be untouched by the compaction.
+		cc, ok := u.getCollectionAccess(scope, collection)
+		require.True(t, ok)
+		assert.True(t, cc.ExplicitChannels_.Contains("ch1"))
+	})
+
 	t.Run("MixOfExistingAndNonExistingChannels", func(t *testing.T) {
 		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 		user, err := auth.NewUser("user", "password", base.Set{})
