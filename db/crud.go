@@ -223,7 +223,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
-// This is used to truncate stale channel assignment history to reduce storage overhead.
+// This is used to prune stale channel assignment history to reduce storage overhead.
 func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
 	key := realDocID(docid)
 	if key == "" {
@@ -243,19 +243,6 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
 	if crc32Match {
 		c.dbStats().Database().Crc32MatchCount.Add(1)
-	}
-
-	if !isSgWrite {
-		var importErr error
-
-		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
-		if importErr != nil {
-			return nil, importErr
-		}
-		if doc == nil {
-			return nil, base.ErrNotFound
-		}
-		cas = doc.Cas
 	}
 
 	compactedChannels := make([]string, 0)
@@ -309,8 +296,10 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
 	spec := []sgbucket.MacroExpansionSpec{
-		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
 		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+	}
+	if isSgWrite {
+		spec = append(spec, sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas))
 	}
 	opts.MacroExpansion = spec
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
