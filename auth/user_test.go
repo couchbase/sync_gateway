@@ -473,6 +473,236 @@ func TestUserKeysHash(t *testing.T) {
 	}
 }
 
+func TestCompactCollectionChannelHistory(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
+
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+
+	const (
+		scope      = "scope1"
+		collection = "collection1"
+	)
+
+	// Helper to create fresh history state for each subtest
+	newHistory := func() TimedSetHistory {
+		return TimedSetHistory{
+			"ch1": GrantHistory{
+				UpdatedAt: 1000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 1, EndSeq: 10}},
+			},
+			"ch2": GrantHistory{
+				UpdatedAt: 2000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 11, EndSeq: 20}},
+			},
+			"ch3": GrantHistory{
+				UpdatedAt: 3000,
+				Entries:   []GrantHistorySequencePair{{StartSeq: 21, EndSeq: 30}},
+			},
+		}
+	}
+
+	t.Run("CompactsExistingChannels", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch2"})
+
+		require.ElementsMatch(t, []string{"ch1", "ch2"}, compacted)
+
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
+		assert.False(t, ch1Present, "ch1 should have been removed from channel history")
+		assert.False(t, ch2Present, "ch2 should have been removed from channel history")
+
+		ch3Entry, ch3Present := afterHistory["ch3"]
+		require.True(t, ch3Present, "ch3 should remain in channel history")
+		assert.Equal(t, int64(3000), ch3Entry.UpdatedAt)
+		require.Len(t, ch3Entry.Entries, 1)
+		assert.Equal(t, GrantHistorySequencePair{StartSeq: 21, EndSeq: 30}, ch3Entry.Entries[0])
+	})
+
+	t.Run("NonExistentChannelReturnsEmpty", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
+		compacted := u.CompactChannelHistory(scope, collection, []string{"doesNotExist"})
+		assert.Empty(t, compacted)
+
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		require.Len(t, afterHistory, 3, "all three channels should remain in history")
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
+		_, ch3Present := afterHistory["ch3"]
+		assert.True(t, ch1Present)
+		assert.True(t, ch2Present)
+		assert.True(t, ch3Present)
+	})
+
+	t.Run("MultipleCollectionsIsolated", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		const (
+			scope2      = "scope2"
+			collection2 = "collection2"
+		)
+
+		// Set up history in both collections
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+		u.SetCollectionChannelHistory(scope2, collection2, newHistory())
+
+		// Compact channels in the first collection only
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1"})
+		require.ElementsMatch(t, []string{"ch1"}, compacted)
+
+		// Verify first collection is modified
+		history1 := u.CollectionChannelHistory(scope, collection)
+		_, ch1Present := history1["ch1"]
+		assert.False(t, ch1Present, "ch1 should be removed from first collection")
+		require.Len(t, history1, 2, "first collection should have 2 channels left")
+
+		// Verify second collection is untouched
+		history2 := u.CollectionChannelHistory(scope2, collection2)
+		require.Len(t, history2, 3, "second collection should still have all 3 channels")
+		_, ch1PresentInSecond := history2["ch1"]
+		assert.True(t, ch1PresentInSecond, "ch1 should still be in second collection")
+	})
+
+	t.Run("NonExistentCollectionReturnsEmpty", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		const (
+			nonExistentScope      = "nonexistent"
+			nonExistentCollection = "nothere"
+		)
+
+		// Try to compact a scope/collection that was never set up
+		compacted := u.CompactChannelHistory(nonExistentScope, nonExistentCollection, []string{"ch1", "ch2"})
+		assert.Empty(t, compacted, "compacting non-existent collection should return empty slice")
+
+		// Verify the operation doesn't create an entry
+		history := u.CollectionChannelHistory(nonExistentScope, nonExistentCollection)
+		assert.Nil(t, history, "non-existent collection should return nil history")
+	})
+
+	t.Run("NilHistoryForExistingCollection", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		// Grant explicit channels so the CollectionAccess entry exists, but no history is set.
+		// This mirrors a user who has active channels but has never had any revoked.
+		user.SetCollectionExplicitChannels(scope, collection, channels.AtSequence(channels.BaseSetOf(t, "ch1"), 1), 0)
+
+		// CollectionChannelHistory returns nil via cc.ChannelHistory_ (collection exists, history does not),
+		// which is distinct from the NonExistentCollectionReturnsEmpty case where getCollectionAccess
+		// returns false entirely.
+		require.Nil(t, u.CollectionChannelHistory(scope, collection))
+
+		// CompactChannelHistory must handle nil history gracefully and return empty.
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch99"})
+		assert.Empty(t, compacted)
+
+		// Explicit channels must be untouched by the compaction.
+		cc, ok := u.getCollectionAccess(scope, collection)
+		require.True(t, ok)
+		assert.True(t, cc.ExplicitChannels_.Contains("ch1"))
+	})
+
+	t.Run("MixOfExistingAndNonExistingChannels", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
+		// Compact a mix: ch1 exists, ch2 exists, ch99 doesn't, ch3 exists
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch99", "ch2", "ch3"})
+
+		// Only the ones that existed should be returned
+		require.ElementsMatch(t, []string{"ch1", "ch2", "ch3"}, compacted)
+
+		// All three should be removed
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		assert.Len(t, afterHistory, 0, "all channels should have been removed")
+	})
+
+	t.Run("DuplicateChannelNamesInInput", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		u.SetCollectionChannelHistory(scope, collection, newHistory())
+
+		// Pass duplicate channel names: ch1 twice, ch2 once
+		compacted := u.CompactChannelHistory(scope, collection, []string{"ch1", "ch1", "ch2"})
+
+		// First ch1 succeeds (returns true), second ch1 fails (already deleted, returns false in the map check)
+		// So we get ch1 and ch2 in the result. The function returns duplicates if passed duplicates.
+		require.ElementsMatch(t, []string{"ch1", "ch2"}, compacted)
+
+		// Verify ch1 and ch2 are removed (only once, idempotently)
+		afterHistory := u.CollectionChannelHistory(scope, collection)
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
+		assert.False(t, ch1Present)
+		assert.False(t, ch2Present)
+
+		// ch3 should remain
+		_, ch3Present := afterHistory["ch3"]
+		require.True(t, ch3Present)
+		require.Len(t, afterHistory, 1)
+	})
+
+	t.Run("DefaultCollection", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+		user, err := auth.NewUser("user", "password", base.Set{})
+		require.NoError(t, err)
+		u := user.(*userImpl)
+
+		// Set up history for the default collection
+		u.SetCollectionChannelHistory(base.DefaultScope, base.DefaultCollection, newHistory())
+
+		// Verify history is accessible via default collection
+		history := u.CollectionChannelHistory(base.DefaultScope, base.DefaultCollection)
+		require.Len(t, history, 3)
+
+		// Compact channels in default collection
+		compacted := u.CompactChannelHistory(base.DefaultScope, base.DefaultCollection, []string{"ch1", "ch3"})
+		require.ElementsMatch(t, []string{"ch1", "ch3"}, compacted)
+
+		// Verify removal
+		afterHistory := u.CollectionChannelHistory(base.DefaultScope, base.DefaultCollection)
+		_, ch1Present := afterHistory["ch1"]
+		_, ch2Present := afterHistory["ch2"]
+		_, ch3Present := afterHistory["ch3"]
+		assert.False(t, ch1Present)
+		assert.True(t, ch2Present, "ch2 should remain")
+		assert.False(t, ch3Present)
+		require.Len(t, afterHistory, 1)
+	})
+}
+
 func docExists(t *testing.T, dataStore base.DataStore, key string) {
 	_, _, err := dataStore.GetRaw(key)
 	require.Nil(t, err, "doc %s should exist in datastore", key)

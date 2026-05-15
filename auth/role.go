@@ -53,6 +53,17 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 	return prunedChannelHistory
 }
 
+func (timedSet TimedSetHistory) PruneHistoryByKey(keys []string) []string {
+	removedKeys := make([]string, 0)
+	for _, key := range keys {
+		if _, ok := timedSet[key]; ok {
+			delete(timedSet, key)
+			removedKeys = append(removedKeys, key)
+		}
+	}
+	return removedKeys
+}
+
 type GrantHistory struct {
 	UpdatedAt int64                      `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
 	Entries   []GrantHistorySequencePair `json:"entries"`    // Entry for a specific grant period
