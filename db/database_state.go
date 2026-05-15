@@ -119,7 +119,7 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // poll checks whether the resync handler should be invoked and, if so, calls it with the current
 // ResyncRunning value. It delegates the state-change decision to ShouldRunResyncHandler.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	if ok, state := dbMgr.ShouldRunResyncHandler(ctx); ok{
+	if ok, state := dbMgr.ShouldRunResyncHandler(ctx); ok {
 		if state.ResyncRunning != nil {
 			dbMgr.resyncHandler(*state.ResyncRunning)
 		}
