@@ -154,6 +154,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
 	defer func() {
+		stateErr := db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(false)})
+		if stateErr != nil {
+			base.WarnfCtx(ctx, "failed to update the database state: %v", stateErr)
+		}
 		if err != nil {
 			cancelResync(err)
 		} else {

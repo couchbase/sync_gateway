@@ -165,6 +165,7 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+	DBStateManager               *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -608,7 +609,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
-	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
+
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
 
 	return dbContext, nil
 }
@@ -668,6 +671,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context._stopOnlineProcesses(ctx)
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
+
+	context.DBStateManager.StopPolling(ctx)
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
@@ -2592,4 +2597,14 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 		return base.DCPFeedSharded
 	}
 	return base.DCPFeedGocb
+}
+
+// InitializeOfflineMode starts polling the database state when the database transitions to offline mode.
+// This enables the database to detect state changes (such as resync requests) from other nodes in the cluster
+// while it is offline. The polling mechanism watches the metadata store for updates to the database state
+// document and invokes registered handlers when changes are detected.
+func (db *DatabaseContext) InitializeOfflineMode() {
+	// TODO: Add the appropriate handler function to handle this - CBG-5183
+	db.DBStateManager.SetResyncFunc(TempResyncHandler)
+	db.DBStateManager.StartPolling(db.CancelContext)
 }
