@@ -136,7 +136,7 @@ func (dbMgr *DatabaseStateMgr) ShouldRunResyncHandler(ctx context.Context) (bool
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
 	if err != nil {
-		if !base.IsDocNotFoundError(err){
+		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
 		}
 		return false, nil
