@@ -137,6 +137,8 @@ type User interface {
 
 	InitializeRoles() error
 
+	CompactChannelHistory(scope string, col string, channels []string) []string
+
 	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) (RevokedChannels, error)
 
 	// Obtains the period over which the user had access to the given channel. Either directly or via a role.

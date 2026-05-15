@@ -16,7 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -2508,6 +2510,80 @@ func (h *handler) handleGetClusterInfo() error {
 
 	base.Audit(h.ctx(), base.AuditIDClusterInfoRead, nil)
 	h.writeJSON(clusterInfo)
+	return nil
+}
+
+type ColAccessHistoryMap map[string]map[string][]string
+
+type UserChannelHistory struct {
+	Channels ColAccessHistoryMap `json:"channels"`
+}
+
+func (h *handler) getUserChannelHistory() error {
+	h.assertAdminOnly()
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
+	if user == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+	colAccess := user.GetCollectionsAccess()
+
+	colAccessHistoryMap := make(map[string]map[string][]string)
+	for scope, _ := range colAccess {
+		colAccessHistoryMap[scope] = make(map[string][]string)
+		for col, _ := range colAccess[scope] {
+			colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colAccess[scope][col].ChannelHistory_))
+		}
+	}
+
+	userChannelHistory := UserChannelHistory{
+		Channels: colAccessHistoryMap,
+	}
+
+	h.writeJSON(userChannelHistory)
+
+	return err
+}
+
+func (h *handler) compactUserChannelHistory() error {
+	h.assertAdminOnly()
+	var reqUserChannelHistory UserChannelHistory
+	err := h.readJSONInto(&reqUserChannelHistory)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Failed to read user channel history: %v", err)
+	}
+
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	authenticator := h.db.Authenticator(h.ctx())
+	user, err := authenticator.GetUser(username)
+	if user == nil {
+		if err == nil {
+			err = kNotFoundError
+		}
+		return err
+	}
+
+	colAccessHistoryMap := make(map[string]map[string][]string)
+	for scope, _ := range reqUserChannelHistory.Channels {
+		colAccessHistoryMap[scope] = make(map[string][]string)
+		for col, _ := range reqUserChannelHistory.Channels[scope] {
+			colAccessHistoryMap[scope][col] = user.CompactChannelHistory(scope, col, reqUserChannelHistory.Channels[scope][col])
+		}
+	}
+
+	userCompactedChannelHistory := UserChannelHistory{
+		Channels: colAccessHistoryMap,
+	}
+
+	err = authenticator.Save(user)
+	if err != nil {
+		return err
+	}
+
+	h.writeJSON(userCompactedChannelHistory)
 	return nil
 }
 

@@ -1623,6 +1623,170 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 }
 
 // TestDisabledUser ensures that a disabled (non-guest) user cannot authenticate to make requests.
+func TestGetUserChannelHistory(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	t.Run("UserNotFound", func(t *testing.T) {
+		response := rt.SendAdminRequest(http.MethodGet, "/db/_user/ghost/_channel_history", "")
+		RequireStatus(t, response, http.StatusNotFound)
+	})
+
+	t.Run("UserWithNoChannelHistory", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user1",
+			GetUserPayload(t, "user1", "letmein", "", ds, []string{"chan1", "chan2"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user1/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+
+		var result map[string]ColAccessHistoryMap
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+
+		channelHistory := result["channels"]
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+		assert.Empty(t, channelHistory[scope][collection])
+	})
+
+	t.Run("UserWithChannelHistory", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user2",
+			GetUserPayload(t, "user2", "letmein", "", ds, []string{"chan1", "chan2"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		// Revoke both channels by updating user with empty channel list
+		response = rt.SendAdminRequest(http.MethodPut, "/db/_user/user2",
+			GetUserPayload(t, "user2", "letmein", "", ds, []string{}, nil))
+		RequireStatus(t, response, http.StatusOK)
+
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+
+		var result map[string]ColAccessHistoryMap
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+
+		channelHistory := result["channels"]
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
+	})
+
+	t.Run("UserWithPartialChannelHistory", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user3",
+			GetUserPayload(t, "user3", "letmein", "", ds, []string{"chan1", "chan2", "chan3"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		// Revoke chan1 and chan2, keep chan3
+		response = rt.SendAdminRequest(http.MethodPut, "/db/_user/user3",
+			GetUserPayload(t, "user3", "letmein", "", ds, []string{"chan3"}, nil))
+		RequireStatus(t, response, http.StatusOK)
+
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+
+		var result map[string]ColAccessHistoryMap
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+
+		channelHistory := result["channels"]
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
+	})
+
+	t.Run("ChannelHistoryAfterReGrant", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user4",
+			GetUserPayload(t, "user4", "letmein", "", ds, []string{"chan1", "chan2"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		// Revoke both channels
+		response = rt.SendAdminRequest(http.MethodPut, "/db/_user/user4",
+			GetUserPayload(t, "user4", "letmein", "", ds, []string{}, nil))
+		RequireStatus(t, response, http.StatusOK)
+
+		// Re-grant chan1
+		response = rt.SendAdminRequest(http.MethodPut, "/db/_user/user4",
+			GetUserPayload(t, "user4", "letmein", "", ds, []string{"chan1"}, nil))
+		RequireStatus(t, response, http.StatusOK)
+
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+
+		var result map[string]ColAccessHistoryMap
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+
+		channelHistory := result["channels"]
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
+	})
+}
+
+func TestCompactUserChannelHistory(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	t.Run("UserNotFound", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+		body := fmt.Sprintf(`{"channels":{%q:{%q:["chan1"]}}}`, scope, collection)
+		response := rt.SendAdminRequest(http.MethodPost, "/db/_user/ghost/_channel_history", body)
+		RequireStatus(t, response, http.StatusNotFound)
+	})
+
+	t.Run("InvalidBody", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user1",
+			GetUserPayload(t, "user1", "letmein", "", ds, []string{"chan1"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user1/_channel_history", `not-valid-json`)
+		RequireStatus(t, response, http.StatusBadRequest)
+	})
+
+	t.Run("CompactsExistingChannels", func(t *testing.T) {
+		ds := rt.GetSingleDataStore()
+		scope := ds.ScopeName()
+		collection := ds.CollectionName()
+
+		response := rt.SendAdminRequest(http.MethodPut, "/db/_user/user2",
+			GetUserPayload(t, "user2", "letmein", "", ds, []string{"chan1", "chan2"}, nil))
+		RequireStatus(t, response, http.StatusCreated)
+
+		// Revoke both channels to populate history
+		response = rt.SendAdminRequest(http.MethodPut, "/db/_user/user2",
+			GetUserPayload(t, "user2", "letmein", "", ds, []string{}, nil))
+		RequireStatus(t, response, http.StatusOK)
+
+		// Verify history is populated before compaction
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+		var beforeResult UserChannelHistory
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, beforeResult.Channels[scope][collection])
+
+		// Compact chan1 and chan2
+		body := fmt.Sprintf(`{"channels":{%q:{%q:["chan1","chan2"]}}}`, scope, collection)
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user2/_channel_history", body)
+		RequireStatus(t, response, http.StatusOK)
+
+		var result UserChannelHistory
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, result.Channels[scope][collection])
+
+		// GET confirms history is now empty
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		RequireStatus(t, response, http.StatusOK)
+		var afterResult UserChannelHistory
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
+		assert.Empty(t, afterResult.Channels[scope][collection])
+	})
+}
+
 func TestDisabledUser(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
