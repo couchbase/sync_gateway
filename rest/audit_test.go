@@ -2178,4 +2178,3 @@ func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 		},
 	}
 }
-

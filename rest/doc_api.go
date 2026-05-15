@@ -979,7 +979,7 @@ func (h *handler) handleCompactDocChannelHistory() error {
 	}
 	res := map[string][]string{
 		"compacted_channels": channels,
-		}
+	}
 	base.Audit(h.ctx(), base.AuditIDDocumentChannelHistoryCompact, base.AuditFields{
 		base.AuditFieldDocID: docid,
 	})
