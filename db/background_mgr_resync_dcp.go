@@ -282,10 +282,18 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
+		var partitionCount uint16
+		if db.Options.UnsupportedOptions.ResyncImportPartitions != nil && *db.Options.UnsupportedOptions.ResyncImportPartitions > 0 {
+			partitionCount = *db.Options.UnsupportedOptions.ResyncImportPartitions
+		} else {
+			partitionCount = db.Options.ImportOptions.ImportPartitions
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "Using %d partitions for resync", partitionCount)
+
 		opts := base.ShardedDCPOptions{
 			DBName:        db.Name,
 			UUID:          db.UUID,
-			NumPartitions: db.Options.ImportOptions.ImportPartitions,
+			NumPartitions: partitionCount,
 			Collections:   collectionNamesByScope,
 			Cfg:           resyncCfg,
 			Heartbeater:   resyncHB,

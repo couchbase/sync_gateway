@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
@@ -760,4 +761,67 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			require.Equal(t, test.expected, dcpClient.GetMetadataKeyPrefix())
 		})
 	}
+}
+
+// TestResyncImportPartitionsPassthrough verifies that ResyncImportPartitions from UnsupportedOptions
+// is passed through to StartShardedDCPFeed by inspecting the persisted CBGT plan pindexes
+// in the metadata store after a distributed resync runs.
+func TestResyncImportPartitionsPassthrough(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Distributed resync requires EE")
+	}
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Distributed resync not supported for rosmar")
+	}
+
+	// Must evenly divide 1024 vbuckets, otherwise CBGT creates an extra pindex for the remainder.
+	numPartitions := uint16(4)
+	dbcOptions := DatabaseContextOptions{
+		UnsupportedOptions: &UnsupportedOptions{
+			ResyncImportPartitions: &numPartitions,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	body := map[string]any{"foo": "bar"}
+	// have some work for resync to perform
+	for i := range 10 {
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		_, _, err := collection.Put(ctx, key, body)
+		require.NoError(t, err)
+	}
+
+	syncFn := `function sync(doc, oldDoc) { channel("resyncChannel"); }`
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
+
+	rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+	require.True(t, ok)
+	rs.Distributed = true
+
+	options := map[string]any{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         base.NewCollectionNames(),
+	}
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+
+	waitForResyncDocsChanged(t, db, int64(10))
+
+	// Read the persisted CBGT plan pindexes from the resync cfg in the metadata store.
+	resyncCfgPrefix := db.MetadataKeys.ResyncCfgPrefix()
+	cfgKey := resyncCfgPrefix + cbgt.PLAN_PINDEXES_KEY
+
+	var planPIndexesJSON []byte
+	_, err = db.MetadataStore.Get(ctx, cfgKey, &planPIndexesJSON)
+	require.NoError(t, err)
+
+	var planPIndexes cbgt.PlanPIndexes
+	require.NoError(t, base.JSONUnmarshal(planPIndexesJSON, &planPIndexes))
+	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions),
+		"expected %d pindexes matching ResyncImportPartitions", numPartitions)
+
+	require.NoError(t, db.ResyncManager.Stop(ctx))
 }
