@@ -48,6 +48,7 @@ type DCPClientOptions struct {
 	Terminator         chan bool                      // optional channel that can be closed to terminate the DCP feed, this will be replaced with a context option.
 	FromLatestSequence bool                           // If true, start at latest sequence.
 	FeedContent        sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
+	MetadataStore      DataStore
 }
 
 // NewDCPClient creates a new DCPClient to receive events from a bucket.
@@ -64,6 +65,8 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		return nil, fmt.Errorf("DCPClientOptions.CheckpointPrefix cannot be provided when MetadataStoreType is InMemory")
 	} else if opts.MetadataStoreType == DCPMetadataStoreCS && opts.CheckpointPrefix == "" {
 		return nil, fmt.Errorf("DCPClientOptions.CheckpointPrefix must be provided when MetadataStoreType is persistent")
+	} else if opts.MetadataStoreType == DCPMetadataStoreCS && opts.MetadataStore == nil {
+		return nil, fmt.Errorf("DCPClientOptions.MetadataStore must be provided when MetadataStoreType is CS")
 	}
 	underlyingBucket := GetBaseBucket(bucket)
 	if _, ok := underlyingBucket.(*rosmar.Bucket); ok {
@@ -122,6 +125,7 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		FailOnRollback:    opts.FailOnRollback,
 		InitialMetadata:   opts.InitialMetadata,
 		FeedContent:       opts.FeedContent,
+		MetadataStore:     opts.MetadataStore,
 	}
 
 	if opts.FromLatestSequence {

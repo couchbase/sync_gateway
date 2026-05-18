@@ -48,6 +48,7 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 		Scopes:           dc.opts.CollectionNames.ToCollectionNames(),
 		Backfill:         sgbucket.FeedResume,
 		FeedContent:      dc.opts.FeedContent,
+		MetadataStore:    dc.opts.MetadataStore,
 	}
 	if dc.opts.FromLatestSequence {
 		feedArgs.Backfill = sgbucket.FeedNoBackfill
@@ -90,12 +91,15 @@ func (dc *RosmarDCPClient) GetMetadataKeyPrefix() string {
 	return dc.opts.CheckpointPrefix
 }
 
-func (dc *RosmarDCPClient) metadataStore(ctx context.Context) sgbucket.DataStore {
+func (dc *RosmarDCPClient) getMetadataStore(ctx context.Context) sgbucket.DataStore {
+	if dc.opts.MetadataStore != nil {
+		return dc.opts.MetadataStore
+	}
 	return dc.bucket.DefaultDataStore(ctx)
 }
 
 // PurgeCheckpoints deletes the checkpoint document for the feed. Calling this function while the feed is running
 // will not alter the feed nor remove the checkpoint for the future.
 func (dc *RosmarDCPClient) PurgeCheckpoints(ctx context.Context) error {
-	return PurgeDCPCheckpoints(ctx, dc.metadataStore(ctx), dc.opts.CheckpointPrefix, DCPFeedRosmar)
+	return PurgeDCPCheckpoints(ctx, dc.getMetadataStore(ctx), dc.opts.CheckpointPrefix, DCPFeedRosmar)
 }

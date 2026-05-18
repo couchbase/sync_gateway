@@ -532,6 +532,7 @@ func (r *ResyncManagerDCP) getDCPClientOptions(db *DatabaseContext, resyncID str
 		CollectionNames:   collectionNames,
 		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID, distributed),
 		Callback:          callback,
+		MetadataStore:     db.MetadataStore,
 	}
 }
 

@@ -575,6 +575,7 @@ func getCompactionDCPClientOptions(db *Database, compactionID string, collection
 		Callback:          callback,
 		FeedID:            fmt.Sprintf("att_compaction:%v_%v", compactionID, phase),
 		CheckpointPrefix:  GetAttachmentCompactionDCPCheckpointPrefix(db.DatabaseContext, compactionID, phase),
+		MetadataStore:     db.MetadataStore,
 	}
 }
 

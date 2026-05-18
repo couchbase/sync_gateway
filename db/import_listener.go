@@ -86,6 +86,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			CollectionNames:   dbContext.collectionNameSet(),
 			Callback:          il.ProcessFeedEvent,
 			DBStats:           dbContext.DbStats.Database().ImportFeedMapStats.Map,
+			MetadataStore:     dbContext.MetadataStore,
 		}
 
 		_, err := base.StartDCPFeed(ctx, dbContext.Bucket, feedArgs)

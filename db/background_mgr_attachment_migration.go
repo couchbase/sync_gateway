@@ -162,7 +162,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 	if err != nil {
 		return err
 	}
-	dcpOptions := a.getDCPClientOptions(a.MigrationID, scopes, callback)
+	dcpOptions := a.getDCPClientOptions(a.MigrationID, scopes, callback, db.MetadataStore)
 
 	// check for mismatch in collection id's between current collections on the db and prev run
 
@@ -297,7 +297,7 @@ func (a *AttachmentMigrationManager) getCheckpointPrefix(migrationID string) str
 
 // getMigrationDCPClientOptions returns options for DCP client for attachment migration. CollectionIDs represent the Couchbase Server
 // CollectionIDs and prefix represents the checkpoint prefix for checkpoint documents.
-func (a *AttachmentMigrationManager) getDCPClientOptions(migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc) base.DCPClientOptions {
+func (a *AttachmentMigrationManager) getDCPClientOptions(migrationID string, scopes base.CollectionNameSet, callback sgbucket.FeedEventCallbackFunc, metadataStore base.DataStore) base.DCPClientOptions {
 	return base.DCPClientOptions{
 		FeedID:            fmt.Sprintf("att_migration:%v", migrationID),
 		OneShot:           true,
@@ -306,6 +306,7 @@ func (a *AttachmentMigrationManager) getDCPClientOptions(migrationID string, sco
 		CollectionNames:   scopes,
 		CheckpointPrefix:  a.getCheckpointPrefix(migrationID),
 		Callback:          callback,
+		MetadataStore:     metadataStore,
 	}
 }
 

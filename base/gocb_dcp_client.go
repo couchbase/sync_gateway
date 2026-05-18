@@ -84,6 +84,7 @@ type GoCBDCPClientOptions struct {
 	CheckpointPrefix           string
 	NumVBuckets                uint16               // NumVBuckets is used to set the number of vbuckets for the DCP feed, if not set, it will be determined from the bucket when creating the client
 	FeedContent                sgbucket.FeedContent // FeedContent specifies whether the DCP feed should include values, xattrs, or both
+	MetadataStore              DataStore            // MetadataStore is used for DCPMetadata persistence when MetadataStoreType is DCPMetadataStoreCS
 }
 
 // MemdDcpOpenFlag returns the memd.DcpOpenFlag to use for the given FeedContent option.
@@ -152,8 +153,6 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
 		feedContent:         options.FeedContent,
-		// TODO:: Change to metadataStore passed in for dual metadataStore
-		metadataStore: bucket.DefaultDataStore(ctx),
 	}
 
 	// Initialize active vbuckets
@@ -164,6 +163,8 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
+		// Metadata store is needed to persist metadata for the DCP feed
+		client.metadataStore = options.MetadataStore
 		client.metadata = NewDCPMetadataCS(ctx, client.metadataStore, numVbuckets, numWorkers, options.CheckpointPrefix)
 	case DCPMetadataStoreInMemory:
 		client.metadata = NewDCPMetadataMem(numVbuckets)
