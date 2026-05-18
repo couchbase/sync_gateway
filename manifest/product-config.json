@@ -832,7 +832,7 @@
             "go_version": "1.25.10",
             "interval": 1440,
             "production": true,
-            "release": "3.3.4",
+            "release": "3.3.5",
             "release_name": "Couchbase Sync Gateway 3.3.5",
             "start_build": 6,
             "trigger_blackduck": true
