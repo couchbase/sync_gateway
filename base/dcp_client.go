@@ -66,7 +66,7 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 	} else if opts.MetadataStoreType == DCPMetadataStoreCS && opts.CheckpointPrefix == "" {
 		return nil, fmt.Errorf("DCPClientOptions.CheckpointPrefix must be provided when MetadataStoreType is persistent")
 	} else if opts.MetadataStoreType == DCPMetadataStoreCS && opts.MetadataStore == nil {
-		return nil, fmt.Errorf("DCPClientOptions.MetadataStore must be provided when MetadataStoreType is CS")
+		return nil, fmt.Errorf("DCPClientOptions.MetadataStore must be provided when MetadataStoreType is persistent")
 	}
 	underlyingBucket := GetBaseBucket(bucket)
 	if _, ok := underlyingBucket.(*rosmar.Bucket); ok {

@@ -163,7 +163,12 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
-		// Metadata store is needed to persist metadata for the DCP feed
+		// Persistent DCP metadata requires a backing store. Validate here so direct
+		// callers get a regular constructor error instead of a nil dereference while
+		// loading checkpoints.
+		if options.MetadataStore == nil {
+			return nil, fmt.Errorf("MetadataStore must be provided when MetadataStoreType is persistent")
+		}
 		client.metadataStore = options.MetadataStore
 		client.metadata = NewDCPMetadataCS(ctx, client.metadataStore, numVbuckets, numWorkers, options.CheckpointPrefix)
 	case DCPMetadataStoreInMemory:
