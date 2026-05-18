@@ -299,14 +299,10 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			defer db.Close(ctx)
 
 			mgr := NewAttachmentMigrationManager(db)
-			clientOptions := mgr.Process.(*AttachmentMigrationManager).getDCPClientOptions(
-				migrationID,
-				db.collectionNameSet(),
-				func(sgbucket.FeedEvent) bool {
-					require.FailNow(t, "DCP callback should not be called")
-					return false
-				},
-			)
+			clientOptions := mgr.Process.(*AttachmentMigrationManager).getDCPClientOptions(migrationID, db.collectionNameSet(), func(sgbucket.FeedEvent) bool {
+				require.FailNow(t, "DCP callback should not be called")
+				return false
+			}, db.MetadataStore)
 
 			dcpClient, err := base.NewDCPClient(
 				ctx,
