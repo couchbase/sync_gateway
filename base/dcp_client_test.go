@@ -228,6 +228,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				FailOnRollback:   true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 
 			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
@@ -265,6 +266,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:          true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 			dcpClient2, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
@@ -283,6 +285,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:          true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 
 			dcpClient3, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
