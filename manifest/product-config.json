@@ -834,7 +834,7 @@
             "production": true,
             "release": "3.3.5",
             "release_name": "Couchbase Sync Gateway 3.3.5",
-            "start_build": 6,
+            "start_build": 8,
             "trigger_blackduck": true
         },
         "manifest/4.0.xml": {
@@ -933,7 +933,7 @@
             "production": true,
             "release": "4.0.5",
             "release_name": "Couchbase Sync Gateway 4.0.5",
-            "start_build": 9,
+            "start_build": 10,
             "trigger_blackduck": true
         },
 
