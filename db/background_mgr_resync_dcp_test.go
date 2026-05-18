@@ -807,6 +807,9 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 		"collections":         base.NewCollectionNames(),
 	}
 	require.NoError(t, db.ResyncManager.Start(ctx, options))
+	defer func() {
+		require.NoError(t, db.ResyncManager.Stop(ctx))
+	}()
 
 	waitForResyncDocsChanged(t, db, int64(10))
 
@@ -822,6 +825,4 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(planPIndexesJSON, &planPIndexes))
 	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions),
 		"expected %d pindexes matching ResyncImportPartitions", numPartitions)
-
-	require.NoError(t, db.ResyncManager.Stop(ctx))
 }

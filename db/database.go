@@ -283,7 +283,7 @@ type UnsupportedOptions struct {
 	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
 	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes if there are skipped sequences in the database
 	SameSiteCookie                   *string                  `json:"same_site_cookie,omitempty"`                     // Sets the SameSite attribute on session cookies.
-	ResyncImportPartitions           *uint16                  `json:"resync_import_partitions,omitempty"`             // Number of partitions to use for resync import, if query based resync manager is enabled
+	ResyncImportPartitions           *uint16                  `json:"resync_import_partitions,omitempty"`             // Number of partitions to use for distributed DCP resync
 }
 
 type WarningThresholds struct {
