@@ -207,14 +207,8 @@ func TestRangeScan(t *testing.T) {
 			BucketName: bucketName,
 		}
 
-		// RBAC user creation may take a moment to propagate to the KV service,
-		// so retry the connection a few times before giving up.
-		var rbacBucket *GocbV2Bucket
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			var connectErr error
-			rbacBucket, connectErr = GetGoCBv2Bucket(ctx, rbacSpec)
-			assert.NoError(c, connectErr, "Failed to open bucket with RBAC user %q (roles %v)", rbacUsername, roles)
-		}, 10*time.Second, 500*time.Millisecond)
+		rbacBucket, connectErr := GetGoCBv2Bucket(ctx, rbacSpec)
+		require.NoError(t, connectErr, "Failed to open bucket with RBAC user %q (roles %v)", rbacUsername, roles)
 		defer rbacBucket.Close(ctx)
 
 		rbacDataStore, err := rbacBucket.GetMatchingDataStore(ctx, adminDataStore)
