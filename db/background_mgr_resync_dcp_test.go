@@ -763,7 +763,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 	}
 }
 
-// TestResyncImportPartitionsPassthrough verifies that ResyncImportPartitions from UnsupportedOptions
+// TestResyncImportPartitionsPassthrough verifies that ResyncPartitions from UnsupportedOptions
 // is passed through to StartShardedDCPFeed by inspecting the persisted CBGT plan pindexes
 // in the metadata store after a distributed resync runs.
 func TestResyncImportPartitionsPassthrough(t *testing.T) {
@@ -778,7 +778,7 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	numPartitions := uint16(4)
 	dbcOptions := DatabaseContextOptions{
 		UnsupportedOptions: &UnsupportedOptions{
-			ResyncImportPartitions: &numPartitions,
+			ResyncPartitions: &numPartitions,
 		},
 	}
 	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
@@ -824,5 +824,39 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	var planPIndexes cbgt.PlanPIndexes
 	require.NoError(t, base.JSONUnmarshal(planPIndexesJSON, &planPIndexes))
 	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions),
-		"expected %d pindexes matching ResyncImportPartitions", numPartitions)
+		"expected %d pindexes matching ResyncPartitions", numPartitions)
+}
+
+// TestResyncPartitionsMaximumValidation verifies that Run returns an error when
+// ResyncPartitions exceeds the maximum allowed value of 1024.
+func TestResyncPartitionsMaximumValidation(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Distributed resync requires EE")
+	}
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Distributed resync not supported for rosmar")
+	}
+
+	numPartitions := uint16(1025)
+	dbcOptions := DatabaseContextOptions{
+		UnsupportedOptions: &UnsupportedOptions{
+			ResyncPartitions: &numPartitions,
+		},
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+
+	rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+	require.True(t, ok)
+	rs.Distributed = true
+
+	options := map[string]any{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         base.NewCollectionNames(),
+	}
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+
+	status := RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateError)
+	require.Contains(t, status.LastErrorMessage, "resync_partitions must be between 1 and 1024")
 }

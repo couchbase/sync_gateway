@@ -283,8 +283,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 		var partitionCount uint16
-		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncImportPartitions != nil && *db.Options.UnsupportedOptions.ResyncImportPartitions > 0 {
-			partitionCount = *db.Options.UnsupportedOptions.ResyncImportPartitions
+		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
+			partitionCount = *db.Options.UnsupportedOptions.ResyncPartitions
 			if partitionCount > 1024 {
 				return fmt.Errorf("resync_partitions must be between 1 and 1024, got %d", partitionCount)
 			}
