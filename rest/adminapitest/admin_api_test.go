@@ -2989,8 +2989,8 @@ func TestNotExistentDBRequest(t *testing.T) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	rest.MakeUser(t, httpClient, eps[0], "random", "password", nil)
-	defer rest.DeleteUser(t, httpClient, eps[0], "random")
+	base.MakeUser(t, httpClient, eps[0], "random", "password", nil)
+	defer base.DeleteUser(t, httpClient, eps[0], "random")
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
@@ -3927,8 +3927,8 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	// create a role to authenticate with in admin endpoint
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
-	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
+	base.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
 	cfg := rt.NewDbConfig()
 	input, err := base.JSONMarshal(&cfg)
@@ -3963,8 +3963,8 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	// create a role to authenticate with in admin endpoint
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
-	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
+	base.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
 	cfg := rt.NewDbConfig()
 	input, err := base.JSONMarshal(&cfg)
