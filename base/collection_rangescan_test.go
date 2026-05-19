@@ -226,7 +226,9 @@ func TestRangeScan(t *testing.T) {
 	})
 }
 
-func TestRangeScanPrefixSentinelBoundary(t *testing.T) {
+// Tests that a prefix-based range scan actually captures all valid doc IDs in the range.
+// Reproduces GOCBC-1821 when using gocb.MaximumTerm() or gocb.NewRangeScanForPrefix()
+func TestRangeScanPrefixBoundaries(t *testing.T) {
 	ctx := TestCtx(t)
 
 	bucket := GetTestBucket(t)
@@ -236,17 +238,19 @@ func TestRangeScanPrefixSentinelBoundary(t *testing.T) {
 	scanStore, ok := AsRangeScanStore(dataStore)
 	require.True(t, ok, "DataStore does not support range scan")
 
-	const prefix = "k"
-	// Bound = prefix + [0xF4, '8', 'f', 'b', 'f', 'b', 'f'], inclusive.
+	const prefix = "_sync"
 	type test struct {
 		key      string
 		included bool
 		why      string
 	}
 	cases := []test{
-		// Byte-level boundary cases
-		{"j", false, "different prefix, sorts before the requested prefix"},
+		// boundaries
+		{"_synb", false, "different prefix, sorts before the requested prefix"},
 		{prefix, true, "the prefix itself sorts before any extension"},
+		{"_synd", false, "different prefix, sorts after the bound"},
+
+		// within range
 		{prefix + "\xf3", true, "0xF3 < 0xF4 at byte after prefix"},
 		{prefix + "\xf4", true, "shorter than bound and is a byte-prefix of it"},
 		{prefix + "\xf4\x37", true, "byte 2: 0x37 < 0x38"},
@@ -257,8 +261,9 @@ func TestRangeScanPrefixSentinelBoundary(t *testing.T) {
 		{prefix + "\xf48fbfbg", true, "byte 7: 0x67 > 0x66 (final byte just above bound)"},
 		{prefix + "\xf48fbfc0", true, "byte 6: 0x63 > 0x62"},
 		{prefix + "\xf4\x39", true, "byte 2: 0x39 > 0x38"},
+
+		// out of range with prefix
 		{prefix + "\xf5", false, "0xF5 is start of invalid UTF-8"},
-		{"l", false, "different prefix, sorts after the bound"},
 
 		// Real-world UTF-8 cases
 		{prefix + "é", true, "U+00E9 (Latin-1, 0xC3 0xA9): leading byte 0xC3 < 0xF4"},
@@ -266,18 +271,16 @@ func TestRangeScanPrefixSentinelBoundary(t *testing.T) {
 		{prefix + "\U0001F600", true, "U+1F600 😀 (emoji, 0xF0 0x9F 0x98 0x80): leading byte 0xF0 < 0xF4"},
 		{prefix + "\U000FFFFF", true, "U+FFFFF (PUA-A end, 0xF3 0xBF 0xBF 0xBF): leading byte 0xF3 < 0xF4"},
 		//
-		// Where the filter gocb chose breaks down:
+		// Where the gocb.MaximumTerm() value breaks:
 		// U+100000–U+10FFFF (Supplementary Private Use Area-B)
 		//   leading byte 0xF4 followed by continuation bytes 0x80–0x8F, all > 0x38 (8 ASCII)
 		{prefix + "\U00100000", true, "U+100000 (PUA-B start, 0xF4 0x80 0x80 0x80): byte after 0xF4 is 0x80 > 0x38"},
 		{prefix + "\U0010FFFF", true, "U+10FFFF (highest valid Unicode, 0xF4 0x8F 0xBF 0xBF): byte after 0xF4 is 0x8F > 0x38"},
 	}
-	for _, c := range cases {
-		require.NoError(t, dataStore.SetRaw(ctx, c.key, 0, nil, []byte(`{}`)), "insert %q", c.key)
-	}
 
 	var expected []string
 	for _, c := range cases {
+		require.NoError(t, dataStore.SetRaw(ctx, c.key, 0, nil, []byte(`{}`)), "insert %q", c.key)
 		if c.included {
 			expected = append(expected, c.key)
 		}
