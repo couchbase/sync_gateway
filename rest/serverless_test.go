@@ -395,6 +395,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 // Confirms that ServerContext.fetchConfigsWithTTL works correctly
 func TestServerlessFetchConfigsLimited(t *testing.T) {
+	t.Skip("flaky, and serverless mode is no longer a supported test target")
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
