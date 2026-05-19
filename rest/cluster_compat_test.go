@@ -1405,6 +1405,39 @@ func TestClusterCompatFreezePartialFailureREST(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
 }
 
+// TestClusterCompatFreezePreservesCacheOnTotalFailure verifies that if Freeze fails on
+// every tracked bucket (succeeded==0), the previously-cached freeze is preserved rather
+// than wiped to nil. A transient bucket outage that prevents any SetRegistryFreeze from
+// succeeding must not erase a real, persistent freeze from the reporting endpoint — the
+// next periodic Refresh self-heals from the authoritative bucket registries.
+func TestClusterCompatFreezePreservesCacheOnTotalFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	preFreeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, preFreeze)
+	require.NotNil(t, ccm.getCachedFreeze(), "cache must have a freeze record after successful Freeze")
+
+	// Corrupt the registry so subsequent SetRegistryFreeze calls fail at the getRegistry
+	// step — driving the all-buckets-failed (succeeded==0, aggregate==nil) branch.
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	aggregate, err := ccm.Freeze(ctx)
+	assert.ErrorIs(t, err, ErrFreezePartial)
+	assert.Nil(t, aggregate, "no bucket accepted the freeze, so the aggregate must be nil")
+
+	cached := ccm.getCachedFreeze()
+	require.NotNil(t, cached, "cache must be preserved when no bucket accepted the freeze")
+	assert.Equal(t, preFreeze.Version, cached.Version, "cache should still reflect the pre-failure freeze")
+	assert.True(t, cached.FrozenAt.Equal(preFreeze.FrozenAt), "FrozenAt should not have shifted")
+}
+
 // corruptGatewayRegistry overwrites the registry doc on the given bucket with a non-object
 // JSON value so that getGatewayRegistry's unmarshal fails. This simulates a bucket whose
 // registry has become inaccessible — used to drive the partial-failure branch of Unfreeze.

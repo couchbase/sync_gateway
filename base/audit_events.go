@@ -489,7 +489,7 @@ var AuditEvents = events{
 	},
 	AuditIDClusterCompatVersionUnfreeze: {
 		Name:        "Sync Gateway cluster compatibility version unfrozen",
-		Description: "An admin cleared the Sync Gateway cluster compatibility version freeze",
+		Description: "An admin cleared the Sync Gateway cluster compatibility version freeze. The cluster_compat_version and frozen_at fields describe the freeze record that was lifted (when it was originally set), not the time of the unfreeze action.",
 		OptionalFields: AuditFields{
 			AuditFieldClusterCompatVersion: "4.1",
 			AuditFieldFrozenAt:             "2026-01-02T15:04:05Z",

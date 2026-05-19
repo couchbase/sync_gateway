@@ -479,8 +479,11 @@ func mergeFreeze(a, b *base.RegistryFreeze) *base.RegistryFreeze {
 //
 // On full success the manager's cached freeze and reported version are updated and the
 // returned record is the aggregate freeze now in effect across all tracked buckets. On
-// partial failure the cache is also updated to reflect what did take effect, and the
-// returned aggregate is the partial freeze (nil if no bucket accepted it).
+// partial failure the cache is updated to reflect what did take effect, and the returned
+// aggregate is the partial freeze. If *no* bucket accepted the freeze (succeeded==0) the
+// cache is deliberately left untouched: a transient outage that fails every bucket must
+// not erase a real, persistent freeze from the reporting endpoint — Refresh will
+// self-heal once the buckets come back.
 //
 // Locking: the cached cluster compat version is snapshotted under m.mu.RLock at the start
 // and the RLock is held across all bucket writes. This blocks concurrent Refresh from
@@ -526,10 +529,16 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 	}
 	m.mu.RUnlock()
 
-	m.mu.Lock()
-	m.cachedFreeze = aggregate
-	m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
-	m.mu.Unlock()
+	// Only mutate the cache when at least one bucket accepted the freeze. If every bucket
+	// failed, aggregate is nil and writing it would wipe any previously-cached freeze — a
+	// transient outage should not erase persistent state. Refresh self-heals from the
+	// authoritative bucket registries on its next tick.
+	if succeeded > 0 {
+		m.mu.Lock()
+		m.cachedFreeze = aggregate
+		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+		m.mu.Unlock()
+	}
 
 	if succeeded < len(buckets) {
 		base.WarnfCtx(ctx, "Cluster compatibility version freeze did not fully apply: %d/%d tracked buckets accepted the freeze", succeeded, len(buckets))
@@ -553,14 +562,16 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 //     untouched in this case — the pre-op snapshot is the most honest representation until
 //     the next periodic Refresh self-heals from authoritative bucket state.
 //
-// The first return value is the aggregate freeze that was in effect at the start of the
-// call (captured under lock before any mutation). Handlers can use it to populate audit
-// fields or error messages without a separate peek-then-clear that could race with Refresh.
-func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual *base.RegistryFreeze, err error) {
+// previousFreeze is the aggregate freeze that was in effect at the start of the call
+// (captured under lock before any mutation) — i.e. the freeze record that the unfreeze is
+// attempting to lift, not what got cleared. It is returned even on partial failure so
+// handlers can populate audit fields or error messages without a separate peek-then-clear
+// that could race with Refresh.
+func (m *clusterCompatManager) Unfreeze(ctx context.Context) (previousFreeze, residual *base.RegistryFreeze, err error) {
 	m.mu.RLock()
 	if m.cachedFreeze != nil {
 		cp := *m.cachedFreeze
-		cleared = &cp
+		previousFreeze = &cp
 	}
 	m.mu.RUnlock()
 
@@ -570,7 +581,7 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual 
 		m.cachedFreeze = nil
 		m.cachedVersion = computeCCV(m.cachedNodes, nil)
 		m.mu.Unlock()
-		return cleared, nil, nil
+		return previousFreeze, nil, nil
 	}
 	clearFailed := 0
 	for _, bucket := range buckets {
@@ -601,15 +612,15 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (cleared, residual 
 	}
 	if residual != nil {
 		base.WarnfCtx(ctx, "Cluster compatibility version unfreeze did not fully apply: %d/%d buckets failed; cluster still frozen at %v", clearFailed, len(buckets), &residual.Version)
-		return cleared, residual, ErrUnfreezePartial
+		return previousFreeze, residual, ErrUnfreezePartial
 	}
 	if clearFailed > 0 {
 		// Buckets failed and re-read couldn't verify residual state — return error anyway,
 		// since the admin asked for a guarantee and we can't make one. Cache is preserved.
-		return cleared, nil, ErrUnfreezePartial
+		return previousFreeze, nil, ErrUnfreezePartial
 	}
 	base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version freeze cleared on %d buckets", len(buckets))
-	return cleared, nil, nil
+	return previousFreeze, nil, nil
 }
 
 // clusterCompatVersionEqual compares two possibly-nil ClusterCompatVersion pointers.

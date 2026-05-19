@@ -89,7 +89,7 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 	if err != nil {
 		return err
 	}
-	cleared, residual, err := mgr.Unfreeze(h.ctx())
+	previousFreeze, residual, err := mgr.Unfreeze(h.ctx())
 	if err != nil {
 		if errors.Is(err, ErrUnfreezePartial) {
 			if residual != nil {
@@ -97,17 +97,18 @@ func (h *handler) handleUnfreezeClusterCompatVersion() error {
 				return nil
 			}
 			prevVersion := "unknown"
-			if cleared != nil {
-				prevVersion = cleared.Version.String()
+			if previousFreeze != nil {
+				prevVersion = previousFreeze.Version.String()
 			}
 			return base.HTTPErrorf(http.StatusServiceUnavailable, "unfreeze did not fully apply and the residual cluster compatibility version freeze state could not be verified; cluster was previously frozen at %s — retry once the underlying bucket issue is resolved", prevVersion)
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, "failed to clear cluster compatibility version freeze: %v", err)
 	}
+	// Audit fields describe the freeze record that was lifted, not the act of unfreezing.
 	auditFields := base.AuditFields{}
-	if cleared != nil {
-		auditFields[base.AuditFieldClusterCompatVersion] = cleared.Version.String()
-		auditFields[base.AuditFieldFrozenAt] = cleared.FrozenAt.Format(time.RFC3339)
+	if previousFreeze != nil {
+		auditFields[base.AuditFieldClusterCompatVersion] = previousFreeze.Version.String()
+		auditFields[base.AuditFieldFrozenAt] = previousFreeze.FrozenAt.Format(time.RFC3339)
 	}
 	base.Audit(h.ctx(), base.AuditIDClusterCompatVersionUnfreeze, auditFields)
 	state := buildClusterCompatVersionState(mgr)
