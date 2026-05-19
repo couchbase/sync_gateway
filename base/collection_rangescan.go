@@ -39,7 +39,7 @@ func (c *Collection) Scan(_ context.Context, scanType sgbucket.ScanType, opts sg
 		return nil, err
 	}
 
-	return &gocbScanResultIterator{result: result, idsOnly: opts.IDsOnly}, nil
+	return &gocbScanResultIterator{result: result}, nil
 }
 
 func toGocbScanType(scanType sgbucket.ScanType) (gocb.ScanType, error) {
@@ -59,9 +59,8 @@ func toGocbScanType(scanType sgbucket.ScanType) (gocb.ScanType, error) {
 }
 
 type gocbScanResultIterator struct {
-	result  *gocb.ScanResult
-	idsOnly bool
-	err     error
+	result *gocb.ScanResult
+	err    error
 }
 
 func (it *gocbScanResultIterator) Next(_ context.Context) *sgbucket.ScanResultItem {
@@ -76,7 +75,7 @@ func (it *gocbScanResultIterator) Next(_ context.Context) *sgbucket.ScanResultIt
 		ID:  item.ID(),
 		Cas: uint64(item.Cas()),
 	}
-	if !it.idsOnly {
+	if !item.IDOnly() {
 		if err := item.Content(&result.Body); err != nil {
 			it.err = fmt.Errorf("failed to decode scan result body for %s: %w", item.ID(), err)
 			return nil
