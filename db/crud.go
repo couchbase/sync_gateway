@@ -295,10 +295,10 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
-	spec := []sgbucket.MacroExpansionSpec{
-		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
-	}
+	spec := []sgbucket.MacroExpansionSpec{}
+	// Only update _sync.cas if the pre-compaction doc had already been imported by SGW
 	if isSgWrite {
+		spec = append(spec, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 		spec = append(spec, sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas))
 	}
 	opts.MacroExpansion = spec

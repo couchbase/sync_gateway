@@ -4147,6 +4147,8 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	syncDataBefore, err := collection.GetDocSyncData(ctx, nonImportedDocID)
 	require.NoError(t, err)
 	require.Greater(t, len(syncDataBefore.ChannelSetHistory), 0, "document should have channel history")
+	cvBeforeCompaction := syncDataBefore.CVOrRevTreeID()
+	require.NotEmpty(t, cvBeforeCompaction, "cv should be set before compaction")
 
 	// Step 6: Get document sequence for compaction point
 	docSeq := rt.GetDocumentSequence(nonImportedDocID)
@@ -4181,6 +4183,8 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	require.NoError(t, err)
 	// History should be compacted
 	assert.Less(t, len(syncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
+	// CV must be updated by the import triggered during compaction
+	assert.NotEqual(t, cvBeforeCompaction, syncData.CVOrRevTreeID(), "cv should be updated after compaction import")
 
 	// Step 10: Verify document is still accessible and intact
 	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
