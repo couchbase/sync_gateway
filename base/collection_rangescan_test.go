@@ -38,8 +38,10 @@ func collectScanIDs(t testing.TB, ctx context.Context, rss sgbucket.RangeScanSto
 }
 
 // rangeScanFixture seeds a fixed set of documents and waits for them to be visible to scan.
-// CBS range scan may not immediately reflect recent writes (requires persistence) so callers
-// should wait via the returned helper before running ordering-sensitive assertions.
+// KV range scan reads from a per-vBucket snapshot; we do not pass SnapshotRequirements on
+// CreateRangeScan, so a scan issued immediately after a write can miss it until the vBucket's
+// scan view catches up. The wait is independent of the on-disk storage engine (couchstore vs
+// magma) and is not about persistence to disk.
 func rangeScanFixture(t *testing.T, ctx context.Context, writeDataStore sgbucket.DataStore, scanStore sgbucket.RangeScanStore) []string {
 	t.Helper()
 	docs := map[string][]byte{
