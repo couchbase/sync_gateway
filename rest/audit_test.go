@@ -2075,62 +2075,10 @@ func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
 			})
 
 			for _, docID := range tc.docIDs {
-				requireChannelHistoryCompactAuditEvent(t, output, docID)
+				requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID)
 			}
 		})
 	}
-}
-
-func TestDocumentChannelHistoryAudit(t *testing.T) {
-	rt := createAuditLoggingRestTester(t)
-	defer rt.Close()
-
-	dbConfig := rt.NewDbConfig()
-	dbConfig.Logging = &DbLoggingConfig{
-		Audit: &DbAuditLoggingConfig{
-			Enabled: base.Ptr(true),
-			EnabledEvents: base.Ptr([]uint{
-				uint(base.AuditIDDocumentChannelHistory),
-			}),
-		},
-	}
-	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-
-	testCases := []struct {
-		name  string
-		docID string
-	}{
-		{
-			name:  "existing doc",
-			docID: "existing_doc",
-		},
-	}
-
-	for _, tc := range testCases {
-		rt.Run(tc.name, func(t *testing.T) {
-			rt.CreateTestDoc(tc.docID)
-
-			output := base.AuditLogContents(t, func(t testing.TB) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_channel_history/"+tc.docID, ""), http.StatusOK)
-			})
-
-			requireChannelHistoryAuditEvent(t, output, tc.docID)
-		})
-	}
-}
-
-// requireChannelHistoryCompactAuditEvent asserts that exactly one AuditIDDocumentChannelHistoryCompact event
-// was logged for the given docID.
-func requireChannelHistoryCompactAuditEvent(t testing.TB, output []byte, docID string) {
-	t.Helper()
-	requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID)
-}
-
-// requireChannelHistoryAuditEvent asserts that exactly one AuditIDDocumentChannelHistory event
-// was logged for the given docID.
-func requireChannelHistoryAuditEvent(t testing.TB, output []byte, docID string) {
-	t.Helper()
-	requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistory, docID)
 }
 
 func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID string) {

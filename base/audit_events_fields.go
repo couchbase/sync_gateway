@@ -90,4 +90,5 @@ const (
 	// Cluster compat version freeze events 53352, 53353
 	AuditFieldClusterCompatVersion = "cluster_compat_version"
 	AuditFieldFrozenAt             = "frozen_at"
+	AuditFieldSequence    = "seq"
 )
