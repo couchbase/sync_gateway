@@ -286,7 +286,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncImportPartitions != nil && *db.Options.UnsupportedOptions.ResyncImportPartitions > 0 {
 			partitionCount = *db.Options.UnsupportedOptions.ResyncImportPartitions
 			if partitionCount > 1024 {
-				return fmt.Errorf("resync_import_partitions must be between 1 and 1024, got %d", partitionCount)
+				return fmt.Errorf("resync_partitions must be between 1 and 1024, got %d", partitionCount)
 			}
 		} else {
 			partitionCount = db.Options.ImportOptions.ImportPartitions
