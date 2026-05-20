@@ -826,4 +826,3 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions),
 		"expected %d pindexes matching ResyncPartitions", numPartitions)
 }
-
