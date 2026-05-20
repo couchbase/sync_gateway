@@ -464,3 +464,22 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 
 	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
 }
+
+func TestResyncPartitionsMaximumValidation(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	numVBuckets, err := rt.TestBucket.GetMaxVbno(base.TestCtx(t))
+	require.NoError(t, err)
+	invalidPartitions := numVBuckets + 1
+	dbConfig.Unsupported = &db.UnsupportedOptions{
+		ResyncPartitions: &invalidPartitions,
+	}
+
+	resp := rt.CreateDatabase("db1", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+}

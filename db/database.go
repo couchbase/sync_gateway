@@ -283,6 +283,7 @@ type UnsupportedOptions struct {
 	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
 	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes if there are skipped sequences in the database
 	SameSiteCookie                   *string                  `json:"same_site_cookie,omitempty"`                     // Sets the SameSite attribute on session cookies.
+	ResyncPartitions                 *uint16                  `json:"resync_partitions,omitempty"`                    // Number of partitions to use for distributed DCP resync
 }
 
 type WarningThresholds struct {
@@ -2597,6 +2598,11 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 		return base.DCPFeedSharded
 	}
 	return base.DCPFeedGocb
+}
+
+// NumVBuckets return number of vBuckets on the databases bucket.
+func (db *DatabaseContext) NumVBuckets() uint16 {
+	return db.numVBuckets
 }
 
 // InitializeOfflineMode starts polling the database state when the database transitions to offline mode.
