@@ -399,7 +399,7 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 
 	// 2. Node A processes 10 docs.
 	for range 10 {
-		nodeA.docsProcessedSinceLastUpdate.Add(1)
+		nodeA.docsProcessedLocal.Add(1)
 	}
 	assert.Equal(t, int64(10), nodeA.DocsProcessed())
 
@@ -421,14 +421,14 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 
 	// Node A calls SetProcessStatus
 	nodeA.SetProcessStatus(ctx, nil, statusA)
-	assert.Equal(t, int64(10), nodeA.docsProcessedSerialized.Load())
-	assert.Equal(t, int64(0), nodeA.docsProcessedSinceLastUpdate.Load())
+	assert.Equal(t, int64(10), nodeA.docsProcessedLocalSerialized.Load())
+	assert.Equal(t, int64(10), nodeA.docsProcessedLocal.Load())
 	assert.Equal(t, int64(10), nodeA.DocsProcessed())
 
 	// 4. Node B processes 5 docs.
 	// Node B hasn't polled yet, so its serialized is 0.
-	for i := 0; i < 5; i++ {
-		nodeB.docsProcessedSinceLastUpdate.Add(1)
+	for range 5 {
+		nodeB.docsProcessedLocal.Add(1)
 	}
 	assert.Equal(t, int64(5), nodeB.DocsProcessed())
 

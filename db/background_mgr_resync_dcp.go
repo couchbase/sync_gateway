@@ -28,10 +28,12 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
-	docsProcessedSerialized      atomic.Int64
-	docsChangedSerialized        atomic.Int64
-	docsChangedSinceLastUpdate   atomic.Int64
-	docsProcessedSinceLastUpdate atomic.Int64
+	docsProcessedLocal           atomic.Int64 // number of documents processed locally on this node since the last start or resume of resync
+	docsChangedLocal             atomic.Int64 // number of documents changed locally on this node since the last start or resume of resync
+	docsProcessedLocalSerialized atomic.Int64 // number of documents processed locally on this node that have been serialized to the status document
+	docsChangedLocalSerialized   atomic.Int64 // number of documents changed locally on this node that have been serialized to the status document
+	docsProcessedCrossNode       atomic.Int64 // number of documents processed across all nodes, as reported by the status document
+	docsChangedCrossNode         atomic.Int64 // number of documents changed across all nodes, as reported by the status document
 	ResyncID                     string
 	VBUUIDs                      []uint64
 	useXattrs                    bool
@@ -196,7 +198,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return true
 		}
 
-		r.docsProcessedSinceLastUpdate.Add(1)
+		r.docsProcessedLocal.Add(1)
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
@@ -211,7 +213,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
 
 		if err == nil {
-			r.docsChangedSinceLastUpdate.Add(1)
+			r.docsChangedLocal.Add(1)
 			db.DbStats.Database().ResyncNumChanged.Add(1)
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
@@ -438,16 +440,18 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.docsProcessedSerialized.Store(0)
-	r.docsProcessedSinceLastUpdate.Store(0)
-	r.docsChangedSerialized.Store(0)
-	r.docsChangedSinceLastUpdate.Store(0)
+	r.docsProcessedLocalSerialized.Store(0)
+	r.docsProcessedLocal.Store(0)
+	r.docsProcessedCrossNode.Store(0)
+	r.docsChangedLocalSerialized.Store(0)
+	r.docsChangedLocal.Store(0)
+	r.docsChangedCrossNode.Store(0)
 	r.ResyncedCollections = nil
 }
 
 func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
-	r.docsChangedSerialized.Store(docChanged)
-	r.docsProcessedSerialized.Store(docProcessed)
+	r.docsChangedLocal.Store(docChanged)
+	r.docsProcessedLocal.Store(docProcessed)
 }
 
 // SetCollectionStatus sets the active collection names being resynced.
@@ -495,10 +499,10 @@ func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus 
 		}
 	}
 
-	r.docsProcessedSerialized.Store(newStats.DocsProcessed)
-	r.docsChangedSerialized.Store(newStats.DocsChanged)
-	r.docsProcessedSinceLastUpdate.Add(-(newStats.DocsProcessed - previousStats.DocsProcessed))
-	r.docsChangedSinceLastUpdate.Add(-(newStats.DocsChanged - previousStats.DocsChanged))
+	r.docsProcessedCrossNode.Store(newStats.DocsProcessed)
+	r.docsChangedCrossNode.Store(newStats.DocsChanged)
+	r.docsProcessedLocalSerialized.Add(newStats.DocsProcessed - previousStats.DocsProcessed)
+	r.docsChangedLocalSerialized.Add(newStats.DocsChanged - previousStats.DocsChanged)
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
@@ -517,8 +521,8 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		BackgroundManagerStatus: status,
 		ResyncID:                r.ResyncID,
 		resyncStats: resyncStats{
-			DocsChanged:   previousStats.DocsChanged + r.docsChangedSinceLastUpdate.Load(),
-			DocsProcessed: previousStats.DocsProcessed + r.docsProcessedSinceLastUpdate.Load(),
+			DocsChanged:   previousStats.DocsChanged + (r.docsChangedLocalSerialized.Load() - r.docsChangedLocal.Load()),
+			DocsProcessed: previousStats.DocsProcessed + (r.docsProcessedLocalSerialized.Load() + r.docsProcessedLocal.Load()),
 		},
 		CollectionsProcessing: r.ResyncedCollections,
 	}
@@ -549,13 +553,13 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 // DocsChanged returns the total number of documents changed for the entire resync process. This includes docs
 // changed by other nodes.
 func (r *ResyncManagerDCP) DocsChanged() int64 {
-	return r.docsChangedSerialized.Load() + r.docsChangedSinceLastUpdate.Load()
+	return r.docsChangedCrossNode.Load() + r.docsChangedLocal.Load() - r.docsChangedLocalSerialized.Load()
 }
 
 // DocsProcessed returns the total number of documents changed on the entire resync process. This includes docs
 // processed by other nodes.
 func (r *ResyncManagerDCP) DocsProcessed() int64 {
-	return r.docsProcessedSerialized.Load() + r.docsProcessedSinceLastUpdate.Load()
+	return r.docsProcessedCrossNode.Load() + r.docsProcessedLocal.Load() - r.docsProcessedLocalSerialized.Load()
 }
 
 type ResyncManagerMeta struct {
