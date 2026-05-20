@@ -827,36 +827,3 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 		"expected %d pindexes matching ResyncPartitions", numPartitions)
 }
 
-// TestResyncPartitionsMaximumValidation verifies that Run returns an error when
-// ResyncPartitions exceeds the maximum allowed value of 1024.
-func TestResyncPartitionsMaximumValidation(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("Distributed resync requires EE")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Distributed resync not supported for rosmar")
-	}
-
-	numPartitions := uint16(1025)
-	dbcOptions := DatabaseContextOptions{
-		UnsupportedOptions: &UnsupportedOptions{
-			ResyncPartitions: &numPartitions,
-		},
-	}
-	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
-	defer db.Close(ctx)
-
-	rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-	require.True(t, ok)
-	rs.Distributed = true
-
-	options := map[string]any{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
-	}
-	require.NoError(t, db.ResyncManager.Start(ctx, options))
-
-	status := RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateError)
-	require.Contains(t, status.LastErrorMessage, "resync_partitions must be between 1 and 1024")
-}

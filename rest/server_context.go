@@ -985,6 +985,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.RequireResync = collectionsRequiringResync
 	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
 
+	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidResyncPartitions))
+		}
+		return nil, fmt.Errorf("resync_partitions must be between 1 and %d, got %d", dbcontext.NumVBuckets(), *config.Unsupported.ResyncPartitions)
+	}
+
 	if config.CORS != nil {
 		dbcontext.CORS = config.DbConfig.CORS
 	} else {

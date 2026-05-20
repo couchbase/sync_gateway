@@ -2604,6 +2604,10 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 // This enables the database to detect state changes (such as resync requests) from other nodes in the cluster
 // while it is offline. The polling mechanism watches the metadata store for updates to the database state
 // document and invokes registered handlers when changes are detected.
+func (db *DatabaseContext) NumVBuckets() uint16 {
+	return db.numVBuckets
+}
+
 func (db *DatabaseContext) InitializeOfflineMode() {
 	// TODO: Add the appropriate handler function to handle this - CBG-5183
 	db.DBStateManager.SetResyncFunc(TempResyncHandler)

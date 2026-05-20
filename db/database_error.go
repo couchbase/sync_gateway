@@ -26,6 +26,7 @@ var DatabaseErrorMap = map[databaseErrorCode]string{
 	DatabaseAllowConflictsError:         "Allow conflicts is set to true",
 	DatabaseEnableStarChannelFalseError: "Enable star channel is set to false",
 	DatabaseClusterCompatVersionError:   "Bucket has metadata from a newer Sync Gateway cluster compat version",
+	DatabaseInvalidResyncPartitions:     "resync_partitions exceeds number of vBuckets",
 }
 
 type databaseErrorCode uint8
@@ -43,6 +44,7 @@ const (
 	DatabaseAllowConflictsError         databaseErrorCode = 9
 	DatabaseEnableStarChannelFalseError databaseErrorCode = 10
 	DatabaseClusterCompatVersionError   databaseErrorCode = 11
+	DatabaseInvalidResyncPartitions     databaseErrorCode = 12
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {
