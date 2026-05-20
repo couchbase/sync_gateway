@@ -211,7 +211,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	ctx := base.CorrelationIDLogCtx(
-		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtx().Ctx),
+		arc.config.ActiveDB.AddDatabaseLogContext(base.NewNonCancelCtxForDatabase(arc.ctx).Ctx),
 		arc.config.ID+idSuffix)
 	if arc.config.RunAs != "" {
 		ctx = base.UserLogCtx(ctx, arc.config.RunAs, base.UserDomainSyncGateway, nil)

@@ -42,7 +42,7 @@ const paramDeleted = "deleted"
 
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
-	contextNoCancel := base.NewNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
 	rawBytes, config, err := h.readSanitizeDbConfigJSON()
@@ -829,7 +829,7 @@ func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, db
 // handlePutDbConfig Upserts a new database config
 func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
-	contextNoCancel := base.NewNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 
 	var dbConfig *DbConfig
 
