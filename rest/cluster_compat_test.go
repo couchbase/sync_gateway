@@ -554,7 +554,7 @@ func TestClusterCompatAppliedDBVersionUpdatedByHandlePutDbConfig(t *testing.T) {
 	require.NotEmpty(t, versionAfterCreate, "version must be tracked after initial create")
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.NumIndexReplicas = base.Ptr(uint(0))
+	dbConfig.AutoImport = base.Ptr(false)
 	resp := rt.UpsertDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -937,7 +937,7 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 	versionV := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, versionV)
 
-	dbConfig.NumIndexReplicas = base.Ptr(uint(0))
+	dbConfig.AutoImport = base.Ptr(false)
 	resp = rtA.UpsertDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
@@ -1010,6 +1010,191 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	nodeB = registryAfter.Nodes["node-b"]
 	require.NotNil(t, nodeB, "node B should still be in registry")
 	assert.NotContains(t, nodeB.Databases, "db", "node B registry entry should no longer track version for deleted db")
+}
+
+// TestClusterCompatAppliedDBVersionUpdatedByMutateDbConfig verifies that mutating a database
+// config via POST /{db}/_config/audit (which calls mutateDbConfig) records the updated config
+// version in clusterCompatManager.
+func TestClusterCompatAppliedDBVersionUpdatedByMutateDbConfig(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	ccm := sc.ClusterCompat
+	require.NotNil(t, ccm)
+
+	bucketName := rt.Bucket().GetName()
+
+	versionAfterCreate := ccm.getAppliedDBVersionsForBucket(bucketName)["db"]
+	require.NotEmpty(t, versionAfterCreate, "version must be tracked after initial create")
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_config/audit", `{"enabled":true}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	versionAfterMutate := ccm.getAppliedDBVersionsForBucket(bucketName)["db"]
+	require.NotEmpty(t, versionAfterMutate, "version must be tracked after mutateDbConfig")
+	assert.NotEqual(t, versionAfterCreate, versionAfterMutate, "version should change after config mutation")
+}
+
+// TestClusterCompatMultipleDBsSameBucket creates two databases on the same bucket
+// (each using a different collection) and verifies that both database versions appear
+// in the node's Databases map in the registry after a Refresh.
+func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
+	base.TestRequiresCollections(t)
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	groupID := t.Name()
+	bucketName := tb.GetName()
+
+	twoCollectionScopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(twoCollectionScopesConfig)
+	scopeName := dataStoreNames[0].ScopeName()
+	collection1Name := dataStoreNames[0].CollectionName()
+	collection2Name := dataStoreNames[1].CollectionName()
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection2Name: {}}}}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
+		nodeUID:          "node-a",
+	})
+	defer rt.Close()
+
+	dbConfig1 := rt.NewDbConfig()
+	dbConfig1.Scopes = collection1ScopesConfig
+	resp := rt.CreateDatabase("db1", dbConfig1)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	dbConfig2 := rt.NewDbConfig()
+	dbConfig2.Scopes = collection2ScopesConfig
+	resp = rt.CreateDatabase("db2", dbConfig2)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	ccm := rt.ServerContext().ClusterCompat
+	tracked := ccm.getAppliedDBVersionsForBucket(bucketName)
+	require.Contains(t, tracked, "db1", "db1 version should be tracked")
+	require.Contains(t, tracked, "db2", "db2 version should be tracked")
+	assert.NotEmpty(t, tracked["db1"])
+	assert.NotEmpty(t, tracked["db2"])
+
+	registry := refreshAndGetRegistry(t, rt, bucketName)
+	node, ok := registry.Nodes["node-a"]
+	require.True(t, ok, "node should be in registry")
+	require.NotNil(t, node.Databases, "Databases map should be stamped after Refresh")
+	assert.Equal(t, tracked["db1"], node.Databases["db1"], "db1 version in registry should match tracked version")
+	assert.Equal(t, tracked["db2"], node.Databases["db2"], "db2 version in registry should match tracked version")
+}
+
+// TestClusterCompatApplyConfigsBatchVersions creates two databases, then forces a
+// config reload (simulating a poll cycle via _applyConfigs). Verifies that after
+// the reload and a Refresh, both database versions are correctly present in the
+// registry — exercising the path where _applyConfigs iterates multiple databases
+// and the first triggers RegisterBucket (with incomplete applied versions) while
+// the second skips via claimBucket.
+func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
+	base.TestRequiresCollections(t)
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	groupID := t.Name()
+	bucketName := tb.GetName()
+
+	twoCollectionScopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(twoCollectionScopesConfig)
+	scopeName := dataStoreNames[0].ScopeName()
+	collection1Name := dataStoreNames[0].CollectionName()
+	collection2Name := dataStoreNames[1].CollectionName()
+	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection1Name: {}}}}
+	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection2Name: {}}}}
+
+	rtA := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
+		nodeUID:          "node-a",
+	})
+	defer rtA.Close()
+
+	dbConfig1 := rtA.NewDbConfig()
+	dbConfig1.Scopes = collection1ScopesConfig
+	resp := rtA.CreateDatabase("db1", dbConfig1)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	dbConfig2 := rtA.NewDbConfig()
+	dbConfig2.Scopes = collection2ScopesConfig
+	resp = rtA.CreateDatabase("db2", dbConfig2)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	rtB := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
+		nodeUID:          "node-b",
+	})
+	defer rtB.Close()
+
+	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
+
+	ccmB := rtB.ServerContext().ClusterCompat
+	trackedB := ccmB.getAppliedDBVersionsForBucket(bucketName)
+	require.Contains(t, trackedB, "db1", "node B should have tracked db1 after poll")
+	require.Contains(t, trackedB, "db2", "node B should have tracked db2 after poll")
+
+	registry := refreshAndGetRegistry(t, rtB, bucketName)
+	nodeB, ok := registry.Nodes["node-b"]
+	require.True(t, ok, "node B should be in registry")
+	require.NotNil(t, nodeB.Databases)
+	assert.Equal(t, trackedB["db1"], nodeB.Databases["db1"], "db1 version in registry should match node B tracked version")
+	assert.Equal(t, trackedB["db2"], nodeB.Databases["db2"], "db2 version in registry should match node B tracked version")
+
+	ccmA := rtA.ServerContext().ClusterCompat
+	trackedA := ccmA.getAppliedDBVersionsForBucket(bucketName)
+	assert.Equal(t, trackedA["db1"], trackedB["db1"], "both nodes should agree on db1 version")
+	assert.Equal(t, trackedA["db2"], trackedB["db2"], "both nodes should agree on db2 version")
+}
+
+// TestIsConfigFullyAppliedNoEligibleAckersIntegration creates a database in group A,
+// then verifies that IsConfigFullyApplied returns ErrNoEligibleAckers when queried
+// for a config group that has no nodes registered in the bucket's registry.
+func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	groupA := t.Name() + "-A"
+	groupB := t.Name() + "-B"
+	bucketName := tb.GetName()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupA,
+		nodeUID:          "node-a",
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	resp := rt.CreateDatabase("db", dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	registry := refreshAndGetRegistry(t, rt, bucketName)
+
+	dbVersion := rt.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
+	require.NotEmpty(t, dbVersion)
+
+	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupA, "db", dbVersion)
+	require.NoError(t, err)
+	assert.True(t, acked, "group A node should have acked; missing: %v", missing)
+
+	acked, missing, err = registry.IsConfigFullyApplied(ctx, groupB, "db", dbVersion)
+	require.ErrorIs(t, err, ErrNoEligibleAckers, "group B has no nodes, should return ErrNoEligibleAckers")
+	assert.False(t, acked)
+	assert.Empty(t, missing)
 }
 
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
