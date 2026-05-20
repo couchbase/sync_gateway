@@ -1649,8 +1649,10 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 		base.DebugfCtx(ctx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
+	l.mgr.closeWg.Add(1)
 	go func() {
 		defer base.FatalPanicHandler(ctx)
+		defer l.mgr.closeWg.Done()
 		for {
 			select {
 			case <-cfgEvents:
