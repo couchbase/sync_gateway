@@ -10,6 +10,7 @@ package base
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -109,6 +110,37 @@ func TestRedactableError_IsAs(t *testing.T) {
 		assert.True(t, errors.As(re2, &target))
 		assert.Equal(t, err1, target) // errors.As returns the first one it finds
 	})
+	t.Run("Redactor interface survives Unwrap, multiple redactable errors", func(t *testing.T) {
+		inner := RedactErrorf("user %s", UD("Bob"))
+		outer := RedactErrorf("wrapped: %w", inner)
+
+		// Outer redacts correctly
+		assert.Contains(t, outer.Redact(), "user <ud>Bob</ud>")
+
+		// errors.As does not unextract inner
+		var target *RedactableError
+		require.True(t, errors.As(outer, &target))
+
+		// Unwrapped inner still redacts
+		var r Redactor = target
+		assert.Contains(t, r.Redact(), "user <ud>Bob</ud>")
+		assert.NotContains(t, r.Redact(), "user Bob")
+	})
+	t.Run("Redactor interface survives Unwrap", func(t *testing.T) {
+		inner := RedactErrorf("user %s", UD("Bob"))
+		outer := fmt.Errorf("wrapped: %w", inner)
+
+		// errors.As extracts inner, still satisfies Redactor
+		var target *RedactableError
+		require.True(t, errors.As(outer, &target))
+		require.NotSame(t, outer, target)
+
+		// Unwrapped inner still redacts
+		var r Redactor = target
+		assert.Contains(t, r.Redact(), "user <ud>Bob</ud>")
+		assert.NotContains(t, r.Redact(), "user Bob")
+	})
+
 }
 
 type customErr struct{ msg string }
