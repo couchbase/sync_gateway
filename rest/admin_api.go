@@ -42,9 +42,10 @@ const paramDeleted = "deleted"
 
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
-	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
+	dbctx := base.DatabaseLogCtx(h.ctx(), dbName, nil)
+	contextNoCancel := base.NewNonCancelCtxForDatabase(dbctx)
 	rawBytes, config, err := h.readSanitizeDbConfigJSON()
 	if err != nil {
 		return err
