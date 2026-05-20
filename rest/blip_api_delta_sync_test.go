@@ -804,35 +804,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 			t.Logf("unexpected deleted property for message %v in %v",
 				msg.SerialNumber(), client2.pullReplication.GetAllMessagesSummary())
 		}
-
-		var deltaCacheHitsEnd func() int64
-		var deltaCacheMissesEnd func() int64
-		var deltasRequestedEnd func() int64
-		var deltasSentEnd func() int64
-
-		if rt.GetDatabase().DbStats.DeltaSync() != nil {
-			deltaCacheHitsEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value
-			deltaCacheMissesEnd = rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value
-			deltasRequestedEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value
-			deltasSentEnd = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value
+		// delta stats do not exist for CE
+		if !base.IsEnterpriseEdition() {
+			return
 		}
 
-		sgCanUseDelta := base.IsEnterpriseEdition()
-		if sgCanUseDelta {
-			if !base.TestDisableRevCache() {
-				base.RequireWaitForStat(t, deltaCacheHitsEnd, deltaCacheHitsStart+1)
-				base.RequireWaitForStat(t, deltaCacheMissesEnd, deltaCacheMissesStart+1)
-			}
-			base.RequireWaitForStat(t, deltasRequestedEnd, deltasRequestedStart+2)
-			base.RequireWaitForStat(t, deltasSentEnd, deltasSentStart+2)
-		} else {
-			if !base.TestDisableRevCache() {
-				base.RequireWaitForStat(t, deltaCacheHitsEnd, deltaCacheHitsStart)
-				base.RequireWaitForStat(t, deltaCacheMissesEnd, deltaCacheMissesStart)
-			}
-			base.RequireWaitForStat(t, deltasRequestedEnd, deltasRequestedStart)
-			base.RequireWaitForStat(t, deltasSentEnd, deltasSentStart)
+		if !base.TestDisableRevCache() {
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltaCacheHit.Value, deltaCacheHitsStart+1)
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltaCacheMiss.Value, deltaCacheMissesStart+1)
 		}
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value, deltasRequestedStart+2)
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value, deltasSentStart+2)
 	})
 }
 
