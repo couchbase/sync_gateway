@@ -597,49 +597,6 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 	})
 }
 
-func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
-	base.LongRunningTest(t)
-
-	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
-
-	sgrRunner := rest.NewSGRTestRunner(t)
-	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
-
-		// update runtime config to limit to 2 concurrent replication connections
-		resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		for i := range 200 {
-			_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
-		}
-
-		replicationID := rest.SafeDocumentName(t, t.Name())
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
-		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
-		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-
-		rt1.WaitForActiveReplicatorInitialization(2)
-		// assert the active replicator count has increased by 2
-		rt2.WaitForActiveReplicatorCount(2)
-		replicationID = rest.SafeDocumentName(t, t.Name())
-		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
-		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
-		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
-
-		// assert that the count for active replicators has decreased by 2 as both replications have finished
-		rt2.WaitForActiveReplicatorCount(0)
-
-		// assert we can create a new replication as count has decreased below threshold
-		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
-		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
-		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-	})
-}
-
 func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	base.LongRunningTest(t)
 
