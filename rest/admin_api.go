@@ -794,9 +794,7 @@ func (h *handler) updateConfigAndReloadDatabase(ctx base.NonCancellableContext, 
 	if err := h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false); err != nil {
 		return err
 	}
-	if h.server.ClusterCompat != nil && updatedDbConfig.Version != "" {
-		h.server.ClusterCompat.RecordAppliedDatabaseVersion(bucket, dbName, updatedDbConfig.Version)
-	}
+	h.server.recordAppliedDBVersionIfTracking(bucket, dbName, updatedDbConfig.Version)
 	return nil
 }
 
@@ -1005,10 +1003,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 	h.server._databasesLock.Lock()
 	defer h.server._databasesLock.Unlock()
 	h.server._dbConfigs[dbName].cfgCas = cas
-	if h.server.ClusterCompat != nil && updatedDbConfig.Version != "" {
-		h.server.ClusterCompat.RecordAppliedDatabaseVersion(bucket, dbName, updatedDbConfig.Version)
-	}
-
+	h.server.recordAppliedDBVersionIfTracking(bucket, dbName, updatedDbConfig.Version)
+	
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 }

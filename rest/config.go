@@ -1735,7 +1735,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		if !found {
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
 			if sc.ClusterCompat != nil {
-				sc.ClusterCompat.RemoveAppliedDatabaseVersion(dbc.Bucket.GetName(), dbName)
+				sc.ClusterCompat.removeAppliedDatabaseVersion(dbc.Bucket.GetName(), dbName)
 			}
 			sc._removeDatabase(ctx, dbName)
 		}
@@ -2158,10 +2158,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
-
-	if sc.ClusterCompat != nil && appliedVersion != "" {
-		sc.ClusterCompat.RecordAppliedDatabaseVersion(*cnf.Bucket, cnf.Name, appliedVersion)
-	}
+	sc.recordAppliedDBVersionIfTracking(*cnf.Bucket, cnf.Name, appliedVersion)
 
 	return true, nil
 }
