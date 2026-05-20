@@ -1004,7 +1004,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	defer h.server._databasesLock.Unlock()
 	h.server._dbConfigs[dbName].cfgCas = cas
 	h.server.recordAppliedDBVersionIfTracking(bucket, dbName, updatedDbConfig.Version)
-	
+
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 }
