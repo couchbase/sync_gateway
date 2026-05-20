@@ -721,7 +721,7 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // the runtime fallback ensures a sane default (see clusterCompatManager.heartbeatExpiry).
 //
 // Uses CAS retry on conflict. Returns the registry as written.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID string, version base.ClusterCompatVersion, heartbeatExpiry time.Duration) (*GatewayRegistry, error) {
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -735,8 +735,10 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		}
 		pruned := pruneStaleNodes(registry.Nodes, nodeUID, heartbeatExpiry)
 		registry.Nodes[nodeUID] = &base.RegistryNode{
-			Version:     version,
-			HeartbeatAt: time.Now().UTC(),
+			Version:       version,
+			HeartbeatAt:   time.Now().UTC(),
+			ConfigGroupID: groupID,
+			Databases:     databases,
 		}
 		// Ratchet ClusterCompatVersionHWM up to the current cluster compat version (min over
 		// all registered nodes). Never decreases — if a lower-version node joins, HWM stays.

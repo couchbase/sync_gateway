@@ -92,8 +92,10 @@ func (v *ClusterCompatVersion) UnmarshalJSON(data []byte) error {
 // HeartbeatAt is rewritten on every register call; entries whose HeartbeatAt is older than
 // the configured node heartbeat expiry are pruned by RegisterNodeVersion.
 type RegistryNode struct {
-	Version     ClusterCompatVersion `json:"version"`
-	HeartbeatAt time.Time            `json:"heartbeat_at"`
+	Version       ClusterCompatVersion `json:"version"`
+	HeartbeatAt   time.Time            `json:"heartbeat_at"`
+	ConfigGroupID string               `json:"config_group_id,omitempty"`
+	Databases     map[string]string    `json:"databases,omitempty"`
 }
 
 // ParseClusterCompatVersion parses a "major.minor" string into a ClusterCompatVersion.

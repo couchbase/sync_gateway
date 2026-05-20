@@ -90,6 +90,9 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
+	if h.server.ClusterCompat != nil && updatedDbConfig.Version != "" {
+		h.server.ClusterCompat.RecordAppliedDatabaseVersion(bucket, dbName, updatedDbConfig.Version)
+	}
 	h.setEtag(updatedDbConfig.Version)
 	h.setStatus(http.StatusOK, "updated")
 	return nil

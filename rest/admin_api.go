@@ -791,7 +791,13 @@ func (h *handler) updateConfigAndReloadDatabase(ctx base.NonCancellableContext, 
 	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	return h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false)
+	if err := h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false); err != nil {
+		return err
+	}
+	if h.server.ClusterCompat != nil && updatedDbConfig.Version != "" {
+		h.server.ClusterCompat.RecordAppliedDatabaseVersion(bucket, dbName, updatedDbConfig.Version)
+	}
+	return nil
 }
 
 func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, dbName string, validateOIDC, validateConfigUpdate, mergeConfig bool, dbConfig *DbConfig) error {
@@ -999,6 +1005,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 	h.server._databasesLock.Lock()
 	defer h.server._databasesLock.Unlock()
 	h.server._dbConfigs[dbName].cfgCas = cas
+	if h.server.ClusterCompat != nil && updatedDbConfig.Version != "" {
+		h.server.ClusterCompat.RecordAppliedDatabaseVersion(bucket, dbName, updatedDbConfig.Version)
+	}
 
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")

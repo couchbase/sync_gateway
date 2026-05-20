@@ -1734,6 +1734,9 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 
 		if !found {
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
+			if sc.ClusterCompat != nil {
+				sc.ClusterCompat.RemoveAppliedDatabaseVersion(dbc.Bucket.GetName(), dbName)
+			}
 			sc._removeDatabase(ctx, dbName)
 		}
 	}
@@ -2137,6 +2140,10 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		}
 	}
 
+	// Capture the config version before stripping — used to record which version this
+	// node has applied in the cluster registry.
+	appliedVersion := cnf.Version
+
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""
@@ -2150,6 +2157,10 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, loadFromBucket); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
+	}
+
+	if sc.ClusterCompat != nil && appliedVersion != "" {
+		sc.ClusterCompat.RecordAppliedDatabaseVersion(*cnf.Bucket, cnf.Name, appliedVersion)
 	}
 
 	return true, nil
