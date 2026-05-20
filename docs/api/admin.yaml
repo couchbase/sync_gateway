@@ -127,7 +127,7 @@ paths:
     $ref: './paths/admin/keyspace-_purge.yaml'
   '/{keyspace}/_channel_history/{docid}':
     $ref: './paths/admin/keyspace-_history.yaml'
-  '/{keyspace}/_channel_history/{docid}/compact':
+  '/{keyspace}/_channel_history/compact':
     $ref: './paths/admin/keyspace-_history-compact.yaml'
   '/{db}/_flush':
     $ref: './paths/admin/db-_flush.yaml'
