@@ -654,7 +654,7 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 		rawStatus, _, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{})
 		require.NoError(c, err)
 		var stats ResyncManagerResponseDCP
-		require.NoError(t, base.JSONUnmarshal(rawStatus, &stats))
+		assert.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
 		assert.Greater(c, stats.DocsProcessed, count)
 	}, 1*time.Minute, 100*time.Millisecond)
 }
