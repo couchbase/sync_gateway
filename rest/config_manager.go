@@ -724,7 +724,7 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // false for the first registration during database load (e.g. the RegisterBucket call from
 // _applyConfig) — HWM is monotonic and a ratchet committed off transient startup state can
 // never be rolled back. The periodic Refresh passes true only for buckets where at least
-// one database has reached DBOnline (see clusterCompatManager.isBucketRatchetEligible).
+// one database has reached DBOnline (see clusterCompatManager.ratchetEligibleBuckets).
 // Node heartbeat refresh and stale pruning happen in either case.
 //
 // Uses CAS retry on conflict. Returns the registry as written.

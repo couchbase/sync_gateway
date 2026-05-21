@@ -220,7 +220,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// ratchetHWM=false here: HWM is monotonic and cannot be rolled back, so an advance
 	// committed off transient startup state would lock the cluster at a too-high value
 	// forever. The HWM ratchet happens later via the periodic Refresh, gated per-bucket on
-	// at least one database having reached DBOnline (see isBucketRatchetEligible).
+	// at least one database having reached DBOnline (see ratchetEligibleBuckets).
 	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), false)
 	if err != nil {
 		m.releaseBucket(bucket)
@@ -239,26 +239,27 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	return nil
 }
 
-// isBucketRatchetEligible reports whether at least one database on this bucket has reached
-// DBOnline. Used by Refresh to gate the HWM ratchet on per-bucket online state: ratcheting
-// requires inputs (e.g. legacy-node detection via ISGR/cbgt) that are only available once
-// the database is fully online. Returning false leaves the bucket heartbeat-only until the
-// next refresh tick.
+// ratchetEligibleBuckets returns the set of buckets with at least one DBOnline database.
+// Used by Refresh to gate the HWM ratchet on per-bucket online state: ratcheting requires
+// inputs (e.g. legacy-node detection via ISGR/cbgt) that are only available once the
+// database is fully online. Buckets absent from the returned set stay heartbeat-only until
+// the next refresh tick.
 //
 // Reads the database state directly from ServerContext rather than maintaining a shadow set
-// — the DB state is authoritative and follows offline transitions automatically.
-func (m *clusterCompatManager) isBucketRatchetEligible(bucket string) bool {
+// — the DB state is authoritative and follows offline transitions automatically. Computed
+// once per Refresh under a single _databasesLock acquisition so the per-bucket loop in
+// refreshNodeRegistrations doesn't re-take the lock and rescan _databases for every bucket.
+func (m *clusterCompatManager) ratchetEligibleBuckets() map[string]struct{} {
 	m.sc._databasesLock.RLock()
 	defer m.sc._databasesLock.RUnlock()
+	eligible := make(map[string]struct{})
 	for _, dbContext := range m.sc._databases {
-		if dbContext.Bucket.GetName() != bucket {
+		if atomic.LoadUint32(&dbContext.State) != db.DBOnline {
 			continue
 		}
-		if atomic.LoadUint32(&dbContext.State) == db.DBOnline {
-			return true
-		}
+		eligible[dbContext.Bucket.GetName()] = struct{}{}
 	}
-	return false
+	return eligible
 }
 
 // claimBucket atomically marks the bucket as tracked and reports whether this call was the
@@ -392,16 +393,18 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 
 	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
 	expiry := m.heartbeatExpiry()
+	// Gate HWM ratchet on per-bucket online state — see ratchetEligibleBuckets. Heartbeat
+	// refresh happens unconditionally so the node entry stays fresh even for buckets whose
+	// databases haven't come online yet. Compute eligibility once per Refresh so the loop
+	// body doesn't re-acquire _databasesLock for every tracked bucket.
+	eligibleBuckets := m.ratchetEligibleBuckets()
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
 	var aggregateFreeze *base.RegistryFreeze
 	succeeded := 0
 	for _, bucket := range buckets {
-		// Gate HWM ratchet on per-bucket online state — see isBucketRatchetEligible. Heartbeat
-		// refresh happens unconditionally so the node entry stays fresh even for buckets whose
-		// databases haven't come online yet.
-		ratchet := m.isBucketRatchetEligible(bucket)
+		_, ratchet := eligibleBuckets[bucket]
 		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, ratchet)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)

@@ -38,8 +38,9 @@ post:
       description: |-
         The unfreeze did not fully apply. The cluster compatibility version may still be held back
         and the request should be retried. The response body is either a `ClusterCompatVersionState`
-        showing the residual freeze, or an `HTTP-Error` if cluster compatibility version tracking is
-        not enabled on this node.
+        showing the residual freeze, or an `HTTP-Error` when cluster compatibility version tracking
+        is not enabled on this node, or when the unfreeze partially failed and the residual freeze
+        state could not be verified.
       content:
         application/json:
           schema:
