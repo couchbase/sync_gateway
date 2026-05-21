@@ -70,16 +70,17 @@ func getAttachmentMigrationStats(t *testing.T, db *Database) AttachmentMigration
 	return resp
 }
 
-// waitForAttachmentMigrationDocsProcessed waits until the resync manager has processed more than the specified count of documents.
+// waitForAttachmentMigrationDocsProcessed waits until the resync manager has processed at least the specified count of documents.
 func waitForAttachmentMigrationDocsProcessed(t testing.TB, db *Database, count int64) {
 	// this intentionally uses a very short poll interval to catch progress as quickly as possible
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		// to stop the document, poll the local status rather than the cluster status which is updated on a timer
+		// Poll the local status so the wait can stop as soon as the requested progress is observed,
+		// without waiting for the cluster status' periodic update.
 		rawStatus, _, err := db.AttachmentMigrationManager.Process.GetProcessStatus(BackgroundManagerStatus{})
 		require.NoError(c, err)
 		var stats AttachmentMigrationManagerResponse
-		require.NoError(t, base.JSONUnmarshal(rawStatus, &stats))
-		assert.Greater(c, stats.DocsProcessed, count)
+		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
+		assert.GreaterOrEqual(c, stats.DocsProcessed, count)
 		assert.GreaterOrEqual(c, stats.DocsChanged, int64(0))
 	}, 1*time.Minute, 10*time.Millisecond)
 }
