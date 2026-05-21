@@ -99,16 +99,16 @@ func TestAuditLoggingFields(t *testing.T) {
 		eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		require.NoError(t, err)
 
-		MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{
+		base.MakeUser(t, httpClient, eps[0], filteredAdminUsername, RestTesterDefaultUserPassword, []string{
 			fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
 		})
-		defer DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
-		MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+		defer base.DeleteUser(t, httpClient, eps[0], filteredAdminUsername)
+		base.MakeUser(t, httpClient, eps[0], filteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
 			fmt.Sprintf("%s[%s]", filteredAdminRoleName, rt.Bucket().GetName()),
 		})
-		defer DeleteUser(t, httpClient, eps[0], filteredAdminRoleUsername)
-		MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, RestTesterDefaultUserPassword, []string{})
-		defer DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
+		defer base.DeleteUser(t, httpClient, eps[0], filteredAdminRoleUsername)
+		base.MakeUser(t, httpClient, eps[0], unauthorizedAdminUsername, RestTesterDefaultUserPassword, []string{})
+		defer base.DeleteUser(t, httpClient, eps[0], unauthorizedAdminUsername)
 
 		// if we have another bucket available, use it to test cross-bucket role filtering (to ensure it doesn't)
 		if base.GTestBucketPool.NumUsableBuckets() >= 2 {
@@ -116,11 +116,11 @@ func TestAuditLoggingFields(t *testing.T) {
 			defer differentBucket.Close(ctx)
 			differentBucketName := differentBucket.GetName()
 
-			MakeUser(t, httpClient, eps[0], unfilteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
+			base.MakeUser(t, httpClient, eps[0], unfilteredAdminRoleUsername, RestTesterDefaultUserPassword, []string{
 				fmt.Sprintf("%s[%s]", filteredAdminRoleName, differentBucketName),
 				fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName()),
 			})
-			defer DeleteUser(t, httpClient, eps[0], unfilteredAdminRoleUsername)
+			defer base.DeleteUser(t, httpClient, eps[0], unfilteredAdminRoleUsername)
 		}
 	}
 

@@ -158,6 +158,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
 	defer func() {
+		stateErr := db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(false)})
+		if stateErr != nil {
+			base.WarnfCtx(ctx, "failed to update the database state: %v", stateErr)
+		}
 		if err != nil {
 			cancelResync(err)
 		} else {
@@ -282,10 +286,18 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
+		var partitionCount uint16
+		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
+			partitionCount = *db.Options.UnsupportedOptions.ResyncPartitions
+		} else {
+			partitionCount = db.Options.ImportOptions.ImportPartitions
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "Using %d partitions for resync", partitionCount)
+
 		opts := base.ShardedDCPOptions{
 			DBName:        db.Name,
 			UUID:          db.UUID,
-			NumPartitions: db.Options.ImportOptions.ImportPartitions,
+			NumPartitions: partitionCount,
 			Collections:   collectionNamesByScope,
 			Cfg:           resyncCfg,
 			Heartbeater:   resyncHB,
@@ -340,15 +352,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			}
 		}
 		if regenerateSequences && resyncCollections == nil {
-			var multiError *base.MultiError
-			for _, databaseCollection := range db.CollectionByID {
-				if updateErr := databaseCollection.updateAllPrincipalsSequences(ctx); updateErr != nil {
-					multiError = multiError.Append(updateErr)
-				}
-			}
+			err := db.updateAllPrincipalsSequences(ctx)
 
-			if multiError.Len() > 0 {
-				return fmt.Errorf("Error updating principal sequences: %s", multiError.Error())
+			if err != nil {
+				return fmt.Errorf("Error updating principal sequences: %w", err)
 			}
 		}
 
@@ -601,6 +608,7 @@ func (r *ResyncManagerDCP) getDCPClientOptions(db *DatabaseContext, resyncID str
 		CollectionNames:   collectionNames,
 		CheckpointPrefix:  GetResyncDCPCheckpointPrefix(db, resyncID, distributed),
 		Callback:          callback,
+		MetadataStore:     db.MetadataStore,
 	}
 }
 

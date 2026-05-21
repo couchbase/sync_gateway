@@ -1723,6 +1723,12 @@ Database:
         remote_config_tls_skip_verify:
           description: Enable self-signed certificates for external JavaScript load.
           type: boolean
+        resync_partitions:
+          description: |-
+            Number of partitions to use for distributed DCP resync. If not set, defaults to the import partitions value.
+          type: integer
+          minimum: 1
+          maximum: 1024
         same_site_cookie:
           description: |-
             Override the session cookie SameSite behavior. By default, a session cookie will have SameSite:None if CORS is enabled, and will have no SameSite attribute if CORS is not enabled.  Setting this property to`Default` will omit the SameSite attribute from the cookie.
@@ -2986,10 +2992,37 @@ Status:
     vendor:
       allOf:
         - $ref: '#/Vendor'
+    runtime:
+      description: |-
+        Runtime environment information for this Sync Gateway node. Includes Go runtime
+        settings and container memory limits.
+      type: object
+      properties:
+        go_memlimit_bytes:
+          description: |-
+            The effective Go memory limit (`GOMEMLIMIT`) in bytes. This is the soft memory
+            limit that the Go garbage collector targets. A value of `9223372036854775807`
+            (`math.MaxInt64`) indicates no limit is set.
+          type: integer
+          format: int64
+          example: 1073741824
+        go_maxprocs:
+          description: The effective number of OS threads (`GOMAXPROCS`) that can execute Go code simultaneously.
+          type: integer
+          minimum: 1
+          example: 4
+        cgroup_memory_limit_bytes:
+          description: |-
+            The cgroup memory hard limit in bytes, as reported by the container runtime
+            (cgroupv2 `memory.max` or cgroupv1 `memory.limit_in_bytes`). Only present when
+            running inside a cgroup with a memory limit configured.
+          type: integer
+          format: uint64
+          example: 2147483648
     node_uid:
       description: |-
         Stable identifier for this Sync Gateway node, derived deterministically from host
-        fingerprint. Omitted if `api.hide_product_version=true`.
+        fingerprint.
       type: string
     cluster_compat_version:
       description: |-
@@ -3028,13 +3061,12 @@ NodeInfo:
     node_uid:
       description: |-
         Stable identifier for this Sync Gateway node, derived deterministically from host
-        fingerprint. Omitted if `api.hide_product_version=true`.
+        fingerprint.
       type: string
     cluster_compat_version:
       description: |-
         The minimum cluster compatibility version (`"major.minor"`) across all nodes in the
-        cluster. Omitted if `api.hide_product_version=true`, or when no version has been
-        computed yet (e.g. first startup before nodes have registered).
+        cluster.
       type: string
       example: '4.1'
   required:

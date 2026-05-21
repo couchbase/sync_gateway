@@ -11,3 +11,5 @@ When performing a code review, ensure code comments explain the _intent_ or _rea
 When performing a code review, ensure `for` loops have sufficient exit conditions and are not prone to infinite loops. Prefer expressing the exit condition in the loop declaration itself, rather than relying on `break` statements within the loop body.
 
 When performing a code review, make sure context.WithCancelCause is used instead of context.WithCancel.
+
+When performing a code review, flag any new code that gates behavior on whether xattrs are enabled (e.g. `UseXattrs` checks, non-xattr write/read branches, or config plumbing that exposes xattr-mode as a choice). Since Sync Gateway 4.0, xattr mode is the only supported mode on `main`; new code must assume xattrs are enabled. The exception is read-side migration logic that handles pre-existing non-xattr documents already in a bucket — that gradual-migration path must still be preserved, but no new write paths or config surfaces should produce non-xattr data.

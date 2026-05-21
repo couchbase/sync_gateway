@@ -90,8 +90,8 @@ func TestRemoveCollection(t *testing.T) {
 	altBucket := base.GetTestBucket(t)
 	defer altBucket.Close(base.TestCtx(t))
 	const password = "password2"
-	rest.MakeUser(t, httpClient, eps[0], bucket2Role.RoleName, password, []string{fmt.Sprintf("%s[%s]", bucket2Role.RoleName, altBucket.GetName())})
-	defer rest.DeleteUser(t, httpClient, eps[0], bucket2Role.RoleName)
+	base.MakeUser(t, httpClient, eps[0], bucket2Role.RoleName, password, []string{fmt.Sprintf("%s[%s]", bucket2Role.RoleName, altBucket.GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], bucket2Role.RoleName)
 
 	delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
 

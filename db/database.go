@@ -165,6 +165,7 @@ type DatabaseContext struct {
 	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                  uint16                         // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
+	DBStateManager               *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -282,6 +283,7 @@ type UnsupportedOptions struct {
 	BlipSendDocsWithChannelRemoval   bool                     `json:"blip_send_docs_with_channel_removal,omitempty"`  // Enables sending docs with channel removals using channel filters
 	RejectWritesWithSkippedSequences bool                     `json:"reject_writes_with_skipped_sequences,omitempty"` // Reject writes if there are skipped sequences in the database
 	SameSiteCookie                   *string                  `json:"same_site_cookie,omitempty"`                     // Sets the SameSite attribute on session cookies.
+	ResyncPartitions                 *uint16                  `json:"resync_partitions,omitempty"`                    // Number of partitions to use for distributed DCP resync
 }
 
 type WarningThresholds struct {
@@ -608,7 +610,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
-	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(dbContext.MetadataStore, dbContext.MetadataKeys)
+	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
+
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
 
 	return dbContext, nil
 }
@@ -668,6 +672,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context._stopOnlineProcesses(ctx)
 	// Stop the channel cache and its background tasks.
 	context.channelCache.Stop(ctx)
+
+	context.DBStateManager.StopPolling(ctx)
 
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
@@ -1675,13 +1681,13 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
-	users, roles, err := c.allPrincipalIDs(ctx)
+func (db *Database) updateAllPrincipalsSequences(ctx context.Context) error {
+	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
 	}
 
-	authr := c.Authenticator(ctx)
+	authr := db.Authenticator(ctx)
 
 	for _, roleName := range roles {
 		role, err := authr.GetRole(roleName)
@@ -1691,7 +1697,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if role == nil {
 			continue
 		}
-		err = c.regeneratePrincipalSequences(ctx, authr, role)
+		err = db.regeneratePrincipalSequences(ctx, authr, role)
 		if err != nil {
 			return err
 		}
@@ -1705,7 +1711,7 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 		if user == nil {
 			continue
 		}
-		err = c.regeneratePrincipalSequences(ctx, authr, user)
+		err = db.regeneratePrincipalSequences(ctx, authr, user)
 		if err != nil {
 			return err
 		}
@@ -1713,8 +1719,8 @@ func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) e
 	return nil
 }
 
-func (c *DatabaseCollection) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
-	nextSeq, err := c.sequences().nextSequence(ctx)
+func (db *Database) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
@@ -2592,4 +2598,19 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 		return base.DCPFeedSharded
 	}
 	return base.DCPFeedGocb
+}
+
+// NumVBuckets return number of vBuckets on the databases bucket.
+func (db *DatabaseContext) NumVBuckets() uint16 {
+	return db.numVBuckets
+}
+
+// InitializeOfflineMode starts polling the database state when the database transitions to offline mode.
+// This enables the database to detect state changes (such as resync requests) from other nodes in the cluster
+// while it is offline. The polling mechanism watches the metadata store for updates to the database state
+// document and invokes registered handlers when changes are detected.
+func (db *DatabaseContext) InitializeOfflineMode() {
+	// TODO: Add the appropriate handler function to handle this - CBG-5183
+	db.DBStateManager.SetResyncFunc(TempResyncHandler)
+	db.DBStateManager.StartPolling(db.CancelContext)
 }

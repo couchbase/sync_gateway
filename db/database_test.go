@@ -3951,8 +3951,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
-
 	for i := range 5 {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		require.NoError(t, err)
@@ -3968,7 +3966,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 		require.NoError(t, err)
 		userSequences[i] = user.Sequence()
 	}
-	err := collection.updateAllPrincipalsSequences(ctx)
+	err := db.updateAllPrincipalsSequences(ctx)
 	require.NoError(t, err)
 
 	for i := range 5 {
@@ -4701,6 +4699,42 @@ func TestSettingSyncInfo(t *testing.T) {
 		MetaDataVersion: "4",
 		MetadataID:      base.Ptr("test"),
 	}, syncInfo)
+}
+
+// TestSetSyncInfoDefaultMetadataID verifies that a database created with the default collection gets
+// MetadataID="_default" on its DatabaseContextOptions, and that this value correctly updates the syncInfo
+// document via SetSyncInfoMetadataID so that subsequent InitSyncInfo calls do not require resync.
+func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions: &cacheOptions,
+		MetadataID:   base.DefaultMetadataID,
+	}
+	db, ctx := SetupTestDBWithOptions(t, dbcOptions)
+	defer db.Close(ctx)
+
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	ds := collection.GetCollectionDatastore()
+
+	require.Equal(t, base.DefaultMetadataID, db.DatabaseContext.Options.MetadataID)
+
+	// Simulate a collection previously owned by a different database, including metadata_version for realism
+	oldSyncInfo := &base.SyncInfo{MetadataID: base.Ptr("previous_database"), MetaDataVersion: MetaVersionValue}
+	require.NoError(t, ds.Set(ctx, base.SGSyncInfo, 0, nil, oldSyncInfo))
+
+	// InitSyncInfo should detect the mismatch and require resync
+	requiresResync, _, err := base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)
+	require.NoError(t, err)
+	require.True(t, requiresResync)
+
+	// SetSyncInfoMetadataID with the same Options.MetadataID should update the syncInfo document
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, db.DatabaseContext.Options.MetadataID))
+
+	// Subsequent InitSyncInfo should find a match and not require resync
+	requiresResync, _, err = base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)
+	require.NoError(t, err)
+	assert.False(t, requiresResync)
 }
 
 func TestInitSyncInfo(t *testing.T) {

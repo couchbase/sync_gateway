@@ -108,6 +108,20 @@ func TestGenerateDashboardEmptyStats(t *testing.T) {
 	assert.Equal(t, "sync-gateway-all", *d.Uid)
 }
 
+func TestGenerateDashboardVersionStamped(t *testing.T) {
+	// Terraform-based provisioning rejects dashboards whose top-level
+	// "version" field is null or omitted, so guard against a regression
+	// where the SDK builder stops emitting Version(1).
+	for _, cfg := range []grafanaFormatConfig{supportalConfig, capellaConfig} {
+		t.Run(cfg.dashboardUID, func(t *testing.T) {
+			d, err := generateGrafanaDashboard(statDefinitions{}, cfg)
+			require.NoError(t, err)
+			require.NotNil(t, d.Version)
+			assert.Equal(t, uint32(1), *d.Version)
+		})
+	}
+}
+
 func TestSubsystemGrouping(t *testing.T) {
 	stats := getTestStats(t)
 

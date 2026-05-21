@@ -56,6 +56,7 @@ func TestOneShotDCP(t *testing.T) {
 		OneShot:          true,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         counterCallback,
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
@@ -117,6 +118,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 		OneShot:          false,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         counterCallback,
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
@@ -226,6 +228,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				FailOnRollback:   true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 
 			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
@@ -263,6 +266,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:          true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 			dcpClient2, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
@@ -281,6 +285,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:          true,
 				CollectionIDs:    collectionIDs,
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+				MetadataStore:    bucket.GetMetadataStore(),
 			}
 
 			dcpClient3, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
@@ -460,6 +465,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		OneShot:          true,
 		FailOnRollback:   false,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 
 	dcpClient = newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
@@ -494,6 +500,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		Callback:         secondCallback,
 		CollectionNames:  NewCollectionNameSet(dataStore),
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 
 	dcpClient2 := newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
@@ -664,6 +671,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 		CollectionNames:  NewCollectionNameSet(collection),
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         callback,
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 	dcpClient, err := NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
@@ -814,6 +822,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 						CollectionNames:    NewCollectionNameSet(dataStore),
 						FeedContent:        mode.feedContent,
 						FromLatestSequence: live,
+						MetadataStore:      bucket.GetMetadataStore(),
 					}
 					dcpClient, err := NewDCPClient(ctx, bucket, feedArgs)
 					require.NoError(t, err)
@@ -963,6 +972,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		CheckpointPrefix:  checkpointPrefix,
 		Callback:          callback,
 		MetadataStoreType: DCPMetadataStoreCS,
+		MetadataStore:     bucket.GetMetadataStore(),
 	}
 
 	dcpClient := newDCPClientWithFastCheckpointing(t, bucket, dcpOptions)
@@ -1113,6 +1123,7 @@ func TestDCPDataType(t *testing.T) {
 		OneShot:          true,
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		Callback:         callback,
+		MetadataStore:    bucket.GetMetadataStore(),
 	}
 
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)

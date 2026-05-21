@@ -20,6 +20,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strconv"
@@ -105,6 +107,7 @@ type ServerContext struct {
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect            // singleton instance for this server's sgcollect_info process
 	NodeUID                       string                // Stable identifier for this SG node, derived deterministically from host fingerprint
+	RuntimeStatus                 *RuntimeStatus        // Cached runtime environment info (GOMEMLIMIT, GOMAXPROCS, cgroup), computed once at startup
 	ClusterCompat                 *clusterCompatManager // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn       // supply a custom function for buckets, used for testing only
 }
@@ -215,6 +218,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 			sc.statsContext.heapProfileEnabled = false
 		}
 	}
+
+	sc.RuntimeStatus = getRuntimeStatus()
 
 	sc.startStatsLogger(ctx)
 
@@ -961,10 +966,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 	}
 
-	// If identified as default database, use metadataID of "" so legacy non namespaced docs are used
-	if config.MetadataID != defaultMetadataID {
-		contextOptions.MetadataID = config.MetadataID
-	}
+	// NewMetadataKeys handles the "_default" -> legacy (unprefixed) key mapping, so we can pass config.MetadataID through directly.
+	contextOptions.MetadataID = config.MetadataID
 
 	contextOptions.BlipStatsReportingInterval = defaultBytesStatsReportingInterval.Milliseconds()
 	contextOptions.ImportVersion = config.ImportVersion
@@ -981,6 +984,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
 	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
+
+	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {
+		if options.loadFromBucket {
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidResyncPartitions))
+		}
+		return nil, fmt.Errorf("resync_partitions must be between 1 and %d, got %d", dbcontext.NumVBuckets(), *config.Unsupported.ResyncPartitions)
+	}
 
 	if config.CORS != nil {
 		dbcontext.CORS = config.DbConfig.CORS
@@ -1088,6 +1098,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if !startOnlineProcesses {
+		dbcontext.InitializeOfflineMode()
 		return dbcontext, nil
 	}
 
@@ -2303,6 +2314,21 @@ func (sc *ServerContext) SetContextLogID(parent context.Context, id string) cont
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent
+}
+
+// getRuntimeStatus returns runtime memory and CPU information, computed once at startup and cached on ServerContext.
+func getRuntimeStatus() *RuntimeStatus {
+	rs := &RuntimeStatus{
+		GoMemlimitBytes: debug.SetMemoryLimit(-1),
+		GoMaxprocs:      runtime.GOMAXPROCS(0),
+	}
+
+	cgroupLimit, err := memlimit.FromCgroup()
+	if err == nil {
+		rs.CgroupMemoryLimitBytes = &cgroupLimit
+	}
+
+	return rs
 }
 
 // getTotalMemory returns the total memory available on the system. If a cgroup is detected, it will use the cgroup memory max.

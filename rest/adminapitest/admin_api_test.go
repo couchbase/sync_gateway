@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -360,6 +362,24 @@ func TestGetStatus(t *testing.T) {
 	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
 	rest.RequireStatus(t, response, 204)
 	assert.Equal(t, "GET", response.Header().Get("Allow"))
+}
+
+func TestGetStatusRuntimeInfo(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("GET", "/_status", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	var responseBody rest.Status
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
+
+	require.NotNil(t, responseBody.Runtime)
+	assert.Greater(t, responseBody.Runtime.GoMaxprocs, 0)
+	assert.NotZero(t, responseBody.Runtime.GoMemlimitBytes)
+
+	assert.Equal(t, runtime.GOMAXPROCS(0), responseBody.Runtime.GoMaxprocs)
+	assert.Equal(t, debug.SetMemoryLimit(-1), responseBody.Runtime.GoMemlimitBytes)
 }
 
 func TestFlush(t *testing.T) {
@@ -2969,8 +2989,8 @@ func TestNotExistentDBRequest(t *testing.T) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	rest.MakeUser(t, httpClient, eps[0], "random", "password", nil)
-	defer rest.DeleteUser(t, httpClient, eps[0], "random")
+	base.MakeUser(t, httpClient, eps[0], "random", "password", nil)
+	defer base.DeleteUser(t, httpClient, eps[0], "random")
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
@@ -3907,8 +3927,8 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	// create a role to authenticate with in admin endpoint
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
-	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
+	base.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
 	cfg := rt.NewDbConfig()
 	input, err := base.JSONMarshal(&cfg)
@@ -3943,8 +3963,8 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	// create a role to authenticate with in admin endpoint
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
-	rest.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
-	defer rest.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
+	base.MakeUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", rest.MobileSyncGatewayRole.RoleName, tb.GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], rest.MobileSyncGatewayRole.RoleName)
 
 	cfg := rt.NewDbConfig()
 	input, err := base.JSONMarshal(&cfg)
