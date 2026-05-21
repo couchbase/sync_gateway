@@ -1226,7 +1226,7 @@ var AuditEvents = events{
 		Description: "A document channel history was compacted by the Administrator",
 		MandatoryFields: AuditFields{
 			AuditFieldDocID:    "document id",
-			AuditFieldChannels: "channels",
+			AuditFieldChannels: []string{"list", "of", "channels"},
 			AuditFieldSequence: "sequence",
 		},
 		mandatoryFieldGroups: []fieldGroup{

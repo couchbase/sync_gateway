@@ -2067,11 +2067,12 @@ func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
 			}
 
 			body := string(base.MustJSONMarshal(t, CompactDocChannelHistoryRequest{
-				DocIds: tc.docIDs,
-				Seq:    1,
+				Seq: 1,
 			}))
 			output := base.AuditLogContents(t, func(t testing.TB) {
-				RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_channel_history/_compact", body), http.StatusOK)
+				for _, docID := range tc.docIDs {
+					RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_channel_history/"+docID+"/compact", body), http.StatusOK)
+				}
 			})
 
 			for _, docID := range tc.docIDs {

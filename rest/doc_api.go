@@ -984,7 +984,7 @@ func (h *handler) handleCompactDocChannelHistory() error {
 	base.Audit(h.ctx(), base.AuditIDDocumentChannelHistoryCompact, base.AuditFields{
 		base.AuditFieldDocID:    docid,
 		base.AuditFieldChannels: channels,
-		base.AuditFieldSequence: req.Seq,
+		base.AuditFieldSequence: strconv.FormatUint(req.Seq, 10),
 	})
 
 	h.writeJSON(res)
