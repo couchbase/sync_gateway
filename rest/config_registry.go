@@ -19,8 +19,7 @@ import (
 )
 
 // ErrNoEligibleAckers is returned by IsConfigFullyApplied when no alive node in the
-// config group is eligible to acknowledge the version. Callers should treat this as
-// "do not proceed" rather than "vacuously satisfied".
+// config group is eligible to acknowledge the version.
 var ErrNoEligibleAckers = errors.New("no alive nodes in config group to acknowledge version")
 
 // GatewayRegistry lists all databases defined for the bucket, across config groups.  Used to fetch the full set of databases for a config group (for config polling),
@@ -414,13 +413,11 @@ func NewRegistryConfigGroup() *RegistryConfigGroup {
 // IsConfigFullyApplied returns acked=true when every node in the registry
 // belonging to configGroupID has applied the given version for dbName.
 // Nodes belonging to a different config group are ignored. "Alive" is
-// determined by the existing heartbeat-expiry pruning in RegisterNodeVersion —
-// stale nodes are removed from the registry before this function is called,
+// determined by the existing heartbeat-expiry pruning in RegisterNodeVersion
 // so every node present here is considered alive.
 // missing lists the UIDs of in-group nodes that have NOT acked the version
 // (either because they have no entry for dbName or report a different version).
-// Returns ErrNoEligibleAckers when no node in the config group is found —
-// callers should treat this as "do not proceed" rather than "vacuously satisfied".
+// Returns ErrNoEligibleAckers when no node in the config group is found
 func (r *GatewayRegistry) IsConfigFullyApplied(_ context.Context, configGroupID, dbName, version string) (acked bool, missing []string, err error) {
 	var eligible bool
 	for uid, node := range r.Nodes {

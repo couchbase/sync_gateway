@@ -704,18 +704,15 @@ func TestIsConfigFullyAppliedTwoNodeConvergence(t *testing.T) {
 	defer tb.Close(ctx)
 
 	groupID := t.Name()
-	rtConfigWithUID := func(uid string) *RestTesterConfig {
-		return &RestTesterConfig{
-			CustomTestBucket: tb.NoCloseClone(),
-			PersistentConfig: true,
-			GroupID:          &groupID,
-			nodeUID:          uid,
-		}
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
 	}
 
-	rtA := NewRestTester(t, rtConfigWithUID("node-a"))
+	rtA := NewRestTester(t, rtConfig)
 	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfigWithUID("node-b"))
+	rtB := NewRestTester(t, rtConfig)
 	defer rtB.Close()
 
 	bucketName := tb.GetName()
@@ -748,18 +745,15 @@ func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 	defer tb.Close(ctx)
 
 	groupID := t.Name()
-	rtConfigWithUID := func(uid string) *RestTesterConfig {
-		return &RestTesterConfig{
-			CustomTestBucket: tb.NoCloseClone(),
-			PersistentConfig: true,
-			GroupID:          &groupID,
-			nodeUID:          uid,
-		}
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
 	}
 
-	rtA := NewRestTester(t, rtConfigWithUID("node-a"))
+	rtA := NewRestTester(t, rtConfig)
 	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfigWithUID("node-b"))
+	rtB := NewRestTester(t, rtConfig)
 	defer rtB.Close()
 
 	bucketName := tb.GetName()
@@ -773,10 +767,10 @@ func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 	refreshAndGetRegistry(t, rtB, bucketName)
 
 	// use rtA as we never prune our own node entry so running as rtB will not prune the stale node
-	setNodeHeartbeatAt(t, rtA, bucketName, "node-b", time.Now().Add(-2*rtA.ServerContext().ClusterCompat.heartbeatExpiry()))
+	setNodeHeartbeatAt(t, rtA, bucketName, rtB.ServerContext().NodeUID, time.Now().Add(-2*rtA.ServerContext().ClusterCompat.heartbeatExpiry()))
 
 	registry := refreshAndGetRegistry(t, rtA, bucketName)
-	assert.NotContains(t, registry.Nodes, "node-b", "stale node B should be pruned")
+	assert.NotContains(t, registry.Nodes, rtB.ServerContext().NodeUID, "stale node B should be pruned")
 
 	dbVersion := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", dbVersion)
@@ -793,16 +787,13 @@ func TestIsConfigFullyAppliedNodeRestart(t *testing.T) {
 	defer tb.Close(ctx)
 
 	groupID := t.Name()
-	rtConfigWithUID := func(uid string) *RestTesterConfig {
-		return &RestTesterConfig{
-			CustomTestBucket: tb.NoCloseClone(),
-			PersistentConfig: true,
-			GroupID:          &groupID,
-			nodeUID:          uid,
-		}
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
 	}
 
-	rtA := NewRestTester(t, rtConfigWithUID("node-a"))
+	rtA := NewRestTester(t, rtConfig)
 	defer rtA.Close()
 
 	bucketName := tb.GetName()
@@ -814,7 +805,7 @@ func TestIsConfigFullyAppliedNodeRestart(t *testing.T) {
 	dbVersion := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, dbVersion)
 
-	rtB := NewRestTester(t, rtConfigWithUID("node-b"))
+	rtB := NewRestTester(t, rtConfig)
 	defer rtB.Close()
 
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
@@ -853,7 +844,6 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupA,
-		nodeUID:          "node-a",
 	})
 	defer rtA.Close()
 
@@ -870,7 +860,6 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupB,
-		nodeUID:          "node-c",
 	})
 	defer rtB.Close()
 
@@ -887,14 +876,14 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 	assert.Empty(t, missing)
 
 	// assert both db's are there, to verify the cross-group node is not being ignored entirely
-	nodeA := registry.Nodes["node-a"]
+	nodeA := registry.Nodes[rtA.ServerContext().NodeUID]
 	require.NotNil(t, nodeA, "node A should be in registry")
 	assert.Contains(t, nodeA.Databases, "db1", "node A registry entry should track db1")
 	nodeADbVersion := nodeA.Databases["db1"]
 
-	nodeC := registry.Nodes["node-c"]
-	require.NotNil(t, nodeC, "node C should be in registry")
-	assert.Contains(t, nodeC.Databases, "db1", "node C registry entry should track db1 even though it's in a different group")
+	nodeC := registry.Nodes[rtB.ServerContext().NodeUID]
+	require.NotNil(t, nodeC, "node B should be in registry")
+	assert.Contains(t, nodeC.Databases, "db1", "node B registry entry should track db1 even though it's in a different group")
 	nodeCDbVersion := nodeC.Databases["db1"]
 	// assert that versions are different to verify that both nodes are actually tracking their own db's config versions, not just blindly sharing the same version across groups
 	assert.NotEqual(t, nodeADbVersion, nodeCDbVersion)
@@ -910,18 +899,15 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 	defer tb.Close(ctx)
 
 	groupID := t.Name()
-	rtConfigWithUID := func(uid string) *RestTesterConfig {
-		return &RestTesterConfig{
-			CustomTestBucket: tb.NoCloseClone(),
-			PersistentConfig: true,
-			GroupID:          &groupID,
-			nodeUID:          uid,
-		}
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
 	}
 
-	rtA := NewRestTester(t, rtConfigWithUID("node-a"))
+	rtA := NewRestTester(t, rtConfig)
 	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfigWithUID("node-b"))
+	rtB := NewRestTester(t, rtConfig)
 	defer rtB.Close()
 
 	bucketName := tb.GetName()
@@ -971,18 +957,15 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	defer tb.Close(ctx)
 
 	groupID := t.Name()
-	rtConfigWithUID := func(uid string) *RestTesterConfig {
-		return &RestTesterConfig{
-			CustomTestBucket: tb.NoCloseClone(),
-			PersistentConfig: true,
-			GroupID:          &groupID,
-			nodeUID:          uid,
-		}
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
 	}
 
-	rtA := NewRestTester(t, rtConfigWithUID("node-a"))
+	rtA := NewRestTester(t, rtConfig)
 	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfigWithUID("node-b"))
+	rtB := NewRestTester(t, rtConfig)
 	defer rtB.Close()
 
 	bucketName := tb.GetName()
@@ -997,7 +980,7 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	require.NotEmpty(t, dbVersion, "node A should track the db version after creating it")
 
 	registryBefore := refreshAndGetRegistry(t, rtB, bucketName)
-	nodeB := registryBefore.Nodes["node-b"]
+	nodeB := registryBefore.Nodes[rtB.ServerContext().NodeUID]
 	require.NotNil(t, nodeB, "node B should be in registry")
 	require.Contains(t, nodeB.Databases, "db", "node B registry entry should track the db version after loading it")
 
@@ -1007,7 +990,7 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
 
 	registryAfter := refreshAndGetRegistry(t, rtB, bucketName)
-	nodeB = registryAfter.Nodes["node-b"]
+	nodeB = registryAfter.Nodes[rtB.ServerContext().NodeUID]
 	require.NotNil(t, nodeB, "node B should still be in registry")
 	assert.NotContains(t, nodeB.Databases, "db", "node B registry entry should no longer track version for deleted db")
 }
@@ -1060,7 +1043,6 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupID,
-		nodeUID:          "node-a",
 	})
 	defer rt.Close()
 
@@ -1082,7 +1064,7 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 	assert.NotEmpty(t, tracked["db2"])
 
 	registry := refreshAndGetRegistry(t, rt, bucketName)
-	node, ok := registry.Nodes["node-a"]
+	node, ok := registry.Nodes[rt.ServerContext().NodeUID]
 	require.True(t, ok, "node should be in registry")
 	require.NotNil(t, node.Databases, "Databases map should be stamped after Refresh")
 	assert.Equal(t, tracked["db1"], node.Databases["db1"], "db1 version in registry should match tracked version")
@@ -1116,7 +1098,6 @@ func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupID,
-		nodeUID:          "node-a",
 	})
 	defer rtA.Close()
 
@@ -1134,7 +1115,6 @@ func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupID,
-		nodeUID:          "node-b",
 	})
 	defer rtB.Close()
 
@@ -1146,7 +1126,7 @@ func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 	require.Contains(t, trackedB, "db2", "node B should have tracked db2 after poll")
 
 	registry := refreshAndGetRegistry(t, rtB, bucketName)
-	nodeB, ok := registry.Nodes["node-b"]
+	nodeB, ok := registry.Nodes[rtB.ServerContext().NodeUID]
 	require.True(t, ok, "node B should be in registry")
 	require.NotNil(t, nodeB.Databases)
 	assert.Equal(t, trackedB["db1"], nodeB.Databases["db1"], "db1 version in registry should match node B tracked version")
@@ -1174,7 +1154,6 @@ func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupA,
-		nodeUID:          "node-a",
 	})
 	defer rt.Close()
 

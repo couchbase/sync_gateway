@@ -75,14 +75,9 @@ type RestTesterConfig struct {
 	collectionConfig                collectionConfiguration
 	numCollections                  int
 	nodeClusterCompatVersion        *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
-	// nodeUID overrides ServerContext.NodeUID before initializeBootstrapConnection runs.
-	// Required for multi-node tests: without it every RestTester on the same host gets the
-	// same deterministic UID (derived from hostname + MACs + listen address), so the cluster
-	// registry treats them as a single node.
-	nodeUID              string
-	allowDbConfigEnvVars *bool
-	maxConcurrentRevs    *int
-	UseXattrConfig       bool
+	allowDbConfigEnvVars            *bool
+	maxConcurrentRevs               *int
+	UseXattrConfig                  bool
 }
 
 type collectionConfiguration uint8
@@ -328,9 +323,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
-	if rt.RestTesterConfig.nodeUID != "" {
-		rt.RestTesterServerContext.NodeUID = rt.RestTesterConfig.nodeUID
-	}
+	// generate a unique node UUID
+	rt.RestTesterServerContext.NodeUID = uuid.NewString()
+
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
