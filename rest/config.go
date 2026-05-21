@@ -1734,9 +1734,6 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 
 		if !found {
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q was running on this node, but config was not found on the server - removing database (%v)", base.MD(dbName), getConfigErr)
-			if sc.ClusterCompat != nil {
-				sc.ClusterCompat.removeAppliedDatabaseVersion(dbc.Bucket.GetName(), dbName)
-			}
 			sc._removeDatabase(ctx, dbName)
 		}
 	}

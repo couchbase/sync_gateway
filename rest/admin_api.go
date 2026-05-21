@@ -791,10 +791,7 @@ func (h *handler) updateConfigAndReloadDatabase(ctx base.NonCancellableContext, 
 	defer h.server._databasesLock.Unlock()
 
 	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false); err != nil {
-		return err
-	}
-	return nil
+	return h.server._reloadDatabaseWithConfig(ctx.Ctx, *updatedDbConfig, false, false)
 }
 
 func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, dbName string, validateOIDC, validateConfigUpdate, mergeConfig bool, dbConfig *DbConfig) error {

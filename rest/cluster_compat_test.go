@@ -995,6 +995,36 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	assert.NotContains(t, nodeB.Databases, "db", "node B registry entry should no longer track version for deleted db")
 }
 
+// TestIsConfigFullyAppliedDeleteDBRemovesTrackingOnDeletingNode tests a node taking remove request for a database will
+// remove the database config tracking form its own manager
+func TestIsConfigFullyAppliedDeleteDBRemovesTrackingOnDeletingNode(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	ccm := sc.ClusterCompat
+	require.NotNil(t, ccm)
+
+	bucketName := rt.Bucket().GetName()
+
+	require.NotEmpty(t, ccm.getAppliedDBVersionsForBucket(bucketName)["db"], "version should be tracked after initial create")
+
+	registryBefore := refreshAndGetRegistry(t, rt, bucketName)
+	nodeBefore := registryBefore.Nodes[sc.NodeUID]
+	require.NotNil(t, nodeBefore, "self should be in registry before delete")
+	require.Contains(t, nodeBefore.Databases, "db", "self registry entry should track the db version before delete")
+
+	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	assert.NotContains(t, ccm.getAppliedDBVersionsForBucket(bucketName), "db", "appliedDBVersions should be cleared on the deleting node")
+
+	registryAfter := refreshAndGetRegistry(t, rt, bucketName)
+	nodeAfter := registryAfter.Nodes[sc.NodeUID]
+	require.NotNil(t, nodeAfter, "self should still be in registry after delete (still heartbeating)")
+	assert.NotContains(t, nodeAfter.Databases, "db", "self registry entry should no longer track version for deleted db")
+}
+
 // TestClusterCompatAppliedDBVersionUpdatedByMutateDbConfig verifies that mutating a database
 // config via POST /{db}/_config/audit (which calls mutateDbConfig) records the updated config
 // version in clusterCompatManager.

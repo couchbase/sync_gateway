@@ -91,6 +91,9 @@ func (v *ClusterCompatVersion) UnmarshalJSON(data []byte) error {
 // RegistryNode represents a single Sync Gateway node's version registration in the cluster.
 // HeartbeatAt is rewritten on every register call; entries whose HeartbeatAt is older than
 // the configured node heartbeat expiry are pruned by RegisterNodeVersion.
+// ConfigGroupID each SGW node belongs to one config group, single valued per RegistryNode
+// Databases keyed by db name, value is the applied DatabaseConfig.Version. Stamped on every RegisterNodeVersion call from
+// the writing node's appliedDBVersions map
 type RegistryNode struct {
 	Version       ClusterCompatVersion `json:"version"`
 	HeartbeatAt   time.Time            `json:"heartbeat_at"`
