@@ -933,6 +933,11 @@ func (h *handler) isReadOnlyGuest() bool {
 // channel names to the sequences at which the document was removed from each channel.
 func (h *handler) handleGetDocChannelHistory() error {
 	h.assertAdminOnly()
+
+	if !h.collection.UseXattrs() {
+		return fmt.Errorf("xattrs not enabled")
+	}
+
 	docid := h.PathVar("docid")
 
 	chanHistory, err := h.collection.GetDocChannelHistory(h.ctx(), docid)
@@ -945,8 +950,7 @@ func (h *handler) handleGetDocChannelHistory() error {
 }
 
 type CompactDocChannelHistoryRequest struct {
-	DocIds []string `json:"doc_ids"`
-	Seq    uint64   `json:"seq"`
+	Seq uint64 `json:"seq"`
 }
 
 // handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/_compact.
@@ -956,29 +960,29 @@ type CompactDocChannelHistoryRequest struct {
 func (h *handler) handleCompactDocChannelHistory() error {
 	h.assertAdminOnly()
 
+	if !h.collection.UseXattrs() {
+		return fmt.Errorf("xattrs not enabled")
+	}
+
 	var req CompactDocChannelHistoryRequest
+
+	docid := h.PathVar("docid")
+
 	err := h.readJSONInto(&req)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
-	}
-
-	if len(req.DocIds) == 0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "missing doc ids")
 	}
 
 	if req.Seq == 0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "missing seq")
 	}
 
-	res := make(map[string][]string)
-	for _, id := range req.DocIds {
-		channels, err := h.collection.CompactDocChannelHistory(h.ctx(), id, req.Seq)
-		if err != nil && !base.IsDocNotFoundError(err) {
-			return err
-		}
-		if _, ok := res[id]; !ok {
-			res[id] = channels
-		}
+	channels, err := h.collection.CompactDocChannelHistory(h.ctx(), docid, req.Seq)
+	if err != nil && !base.IsDocNotFoundError(err) {
+		return err
+	}
+	res := map[string][]string{
+		"compacted_channels": channels,
 	}
 
 	h.writeJSON(res)
