@@ -174,10 +174,10 @@ func TestResyncDCPInit(t *testing.T) {
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	for _, testCase := range resyncTestModes() {
-		if testCase.distributed {
-			t.Skip("Enable in CBG-5184")
-		}
 		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.distributed {
+				t.Skip("Enable in CBG-5184")
+			}
 			docsToCreate := 1000
 			if base.UnitTestUrlIsWalrus() {
 				// rosmar runs too quickly, increase doc count
@@ -326,10 +326,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
 	for _, testCase := range resyncTestModes() {
-		if testCase.distributed {
-			t.Skip("Enable in CBG-5184")
-		}
 		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.distributed {
+				t.Skip("Enable in CBG-5184")
+			}
 			docsToCreate := 1000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
@@ -357,7 +357,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 				defer wg.Done()
 				waitForResyncDocsProcessed(t, db, 100)
 
-				err = db.ResyncManager.Start(ctx, options)
+				err := db.ResyncManager.Start(ctx, options)
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "Process already running")
 			}()
@@ -380,10 +380,10 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	for _, testCase := range resyncTestModes() {
-		if testCase.distributed {
-			t.Skip("Enable in CBG-5184")
-		}
 		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.distributed {
+				t.Skip("Enable in CBG-5184")
+			}
 			docsToCreate := 5000
 			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 				docsToCreate:                 docsToCreate,
@@ -527,13 +527,14 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	wg.Wait()
 }
 
+// testDBForResyncOptions defines options for setting up a test database for resync tests.
 type testDBForResyncOptions struct {
 	docsToCreate                 int  // number of documents to create
 	updateSyncFuncAfterDocsAdded bool // update the sync function after documents have been added
-	distributed                  bool
+	distributed                  bool // force distributed or non distributed mode for resync manager
 }
 
-// helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
+// setupTestDBForResyncWithDocs creates a databases and seeds it with documents for setupTestDBForResyncWithDocs
 func setupTestDBForResyncWithDocs(t testing.TB, opts testDBForResyncOptions) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	syncFn := `
