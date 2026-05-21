@@ -173,95 +173,22 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	docsToCreate := 1000
-	if base.UnitTestUrlIsWalrus() {
-		// rosmar runs too quickly, increase doc count
-		docsToCreate *= 5
-	}
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
-	defer db.Close(ctx)
-
-	options := map[string]any{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
-	}
-
-	err := db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		waitForResyncDocsProcessed(t, db, 300)
-		require.NoError(t, db.ResyncManager.Stop(ctx))
-	}()
-
-	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
-	assert.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
-	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
-
-	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
-
-	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(300))
-	wg.Wait()
-}
-
-func TestResyncManagerDCPStart(t *testing.T) {
-	t.Run("Resync without updating sync function", func(t *testing.T) {
-		docsToCreate := 100
-		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
-		defer db.Close(ctx)
-
-		dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		scopeAndCollectionName := dbc.ScopeAndCollectionName()
-		scopeName := scopeAndCollectionName.ScopeName()
-		collectionName := scopeAndCollectionName.CollectionName()
-
-		options := map[string]any{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         base.NewCollectionNames(),
+	for _, testCase := range resyncTestModes() {
+		if testCase.distributed {
+			t.Skip("Enable in CBG-5184")
 		}
-		require.NoError(t, db.ResyncManager.Start(ctx, options))
-		stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
-
-		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
-		assert.Equal(t, int64(0), stats.DocsChanged)
-
-		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
-
-		cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
-		assert.Equal(t, int64(0), cs.ResyncNumChanged.Value())
-
-		assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-	})
-
-	for _, distributed := range []bool{false, true} {
-		if distributed && !base.IsEnterpriseEdition() {
-			// distributed resync is only supported in EE
-			continue
-		}
-		t.Run(fmt.Sprintf("Resync with updated sync function/distributed=%t", distributed), func(t *testing.T) {
-			if distributed && base.UnitTestUrlIsWalrus() {
-				t.Skip("Distribute resync not supported for rosmar")
+		t.Run(testCase.name, func(t *testing.T) {
+			docsToCreate := 1000
+			if base.UnitTestUrlIsWalrus() {
+				// rosmar runs too quickly, increase doc count
+				docsToCreate *= 5
 			}
-			docsToCreate := 100
-			db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+				docsToCreate:                 docsToCreate,
+				updateSyncFuncAfterDocsAdded: true,
+				distributed:                  testCase.distributed,
+			})
 			defer db.Close(ctx)
-
-			dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			scopeAndCollectionName := dbc.ScopeAndCollectionName()
-			scopeName := scopeAndCollectionName.ScopeName()
-			collectionName := scopeAndCollectionName.CollectionName()
-
-			initialStats := getResyncStats(t, db)
-			log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
 			options := map[string]any{
 				"database":            db,
@@ -269,134 +196,244 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				"collections":         base.NewCollectionNames(),
 			}
 
-			if distributed {
-				rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-				require.True(t, ok)
-				rs.Distributed = true
-			}
 			err := db.ResyncManager.Start(ctx, options)
 			require.NoError(t, err)
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				waitForResyncDocsProcessed(t, db, 300)
+				require.NoError(t, db.ResyncManager.Stop(ctx))
+			}()
 
-			if distributed {
-				waitForResyncDocsChanged(t, db, int64(docsToCreate))
-				err := db.ResyncManager.Stop(ctx)
+			stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
+			assert.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
+			assert.Less(t, stats.DocsChanged, int64(docsToCreate))
+
+			assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+
+			assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+			assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(300))
+			wg.Wait()
+		})
+	}
+}
+
+func TestResyncManagerDCPStart(t *testing.T) {
+	for _, testCase := range resyncTestModes() {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Run("Resync without updating sync function", func(t *testing.T) {
+				if testCase.distributed {
+					t.Skip("Enable in CBG-5184")
+				}
+				docsToCreate := 100
+				db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+					docsToCreate: docsToCreate,
+					distributed:  testCase.distributed,
+				})
+				defer db.Close(ctx)
+
+				dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				scopeAndCollectionName := dbc.ScopeAndCollectionName()
+				scopeName := scopeAndCollectionName.ScopeName()
+				collectionName := scopeAndCollectionName.CollectionName()
+
+				options := map[string]any{
+					"database":            db,
+					"regenerateSequences": false,
+					"collections":         base.NewCollectionNames(),
+				}
+				require.NoError(t, db.ResyncManager.Start(ctx, options))
+				stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+
+				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
+				assert.Equal(t, int64(0), stats.DocsChanged)
+
+				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
+
+				cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
 				require.NoError(t, err)
-			} else {
-				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
-			}
+				assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
+				assert.Equal(t, int64(0), cs.ResyncNumChanged.Value())
 
-			stats := getResyncStats(t, db)
-			// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
-			// be greater than DocsChanged
-			assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+				assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+			})
 
-			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-			assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+			t.Run("Resync with updated sync function", func(t *testing.T) {
+				docsToCreate := 100
+				db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+					docsToCreate:                 docsToCreate,
+					updateSyncFuncAfterDocsAdded: true,
+					distributed:                  testCase.distributed,
+				})
+				defer db.Close(ctx)
 
-			cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
-			require.NoError(t, err)
-			assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
-			assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
+				dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+				scopeAndCollectionName := dbc.ScopeAndCollectionName()
+				scopeName := scopeAndCollectionName.ScopeName()
+				collectionName := scopeAndCollectionName.CollectionName()
 
-			// This is just a temporary check until MB-70378 is implemented
-			if !distributed {
-				deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
-				assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
-			}
+				initialStats := getResyncStats(t, db)
+				log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
+
+				options := map[string]any{
+					"database":            db,
+					"regenerateSequences": false,
+					"collections":         base.NewCollectionNames(),
+				}
+
+				if testCase.distributed {
+					rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+					require.True(t, ok)
+					rs.Distributed = true
+				}
+				err := db.ResyncManager.Start(ctx, options)
+				require.NoError(t, err)
+
+				if testCase.distributed {
+					waitForResyncDocsChanged(t, db, int64(docsToCreate))
+					err := db.ResyncManager.Stop(ctx)
+					require.NoError(t, err)
+				} else {
+					RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+				}
+
+				stats := getResyncStats(t, db)
+				// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
+				// be greater than DocsChanged
+				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+				assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+
+				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+
+				cs, err := db.DbStats.CollectionStat(scopeName, collectionName)
+				require.NoError(t, err)
+				assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
+				assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
+
+				// This is just a temporary check until MB-70378 is implemented
+				if !testCase.distributed {
+					deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
+					assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
+				}
+			})
 		})
 	}
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
-	docsToCreate := 1000
-	// rosmar runs too quickly, increase doc count
-	if base.UnitTestUrlIsWalrus() {
-		docsToCreate *= 10
+	for _, testCase := range resyncTestModes() {
+		if testCase.distributed {
+			t.Skip("Enable in CBG-5184")
+		}
+		t.Run(testCase.name, func(t *testing.T) {
+			docsToCreate := 1000
+			// rosmar runs too quickly, increase doc count
+			if base.UnitTestUrlIsWalrus() {
+				docsToCreate *= 10
+			}
+			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+				docsToCreate: docsToCreate,
+				distributed:  testCase.distributed,
+			})
+			defer db.Close(ctx)
+
+			options := map[string]any{
+				"database":            db,
+				"regenerateSequences": false,
+				"collections":         base.NewCollectionNames(),
+			}
+
+			err := db.ResyncManager.Start(ctx, options)
+			require.NoError(t, err)
+
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			// Attempt to Start running process
+			go func() {
+				defer wg.Done()
+				waitForResyncDocsProcessed(t, db, 100)
+
+				err = db.ResyncManager.Start(ctx, options)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "Process already running")
+			}()
+
+			stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+
+			// If there are tombstones from a previous test which have been deleted from the bucket, processed docs will
+			// be greater than DocsChanged
+			require.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+			assert.Equal(t, int64(0), stats.DocsChanged)
+
+			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
+
+			assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+			wg.Wait()
+		})
 	}
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
-	defer db.Close(ctx)
-
-	options := map[string]any{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
-	}
-
-	err := db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	// Attempt to Start running process
-	go func() {
-		defer wg.Done()
-		waitForResyncDocsProcessed(t, db, 100)
-
-		err = db.ResyncManager.Start(ctx, options)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Process already running")
-	}()
-
-	stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
-
-	// If there are tombstones from a previous test which have been deleted from the bucket, processed docs will
-	// be greater than DocsChanged
-	require.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-	assert.Equal(t, int64(0), stats.DocsChanged)
-
-	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-	assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
-
-	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-	wg.Wait()
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
-	docsToCreate := 5000
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
-	defer db.Close(ctx)
+	for _, testCase := range resyncTestModes() {
+		if testCase.distributed {
+			t.Skip("Enable in CBG-5184")
+		}
+		t.Run(testCase.name, func(t *testing.T) {
+			docsToCreate := 5000
+			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+				docsToCreate:                 docsToCreate,
+				updateSyncFuncAfterDocsAdded: true,
+				distributed:                  testCase.distributed,
+			})
+			defer db.Close(ctx)
 
-	options := map[string]any{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
+			options := map[string]any{
+				"database":            db,
+				"regenerateSequences": false,
+				"collections":         base.NewCollectionNames(),
+			}
+
+			err := db.ResyncManager.Start(ctx, options)
+			require.NoError(t, err)
+
+			// Attempt to Stop Process
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				waitForResyncDocsProcessed(t, db, 2000)
+				require.NoError(t, db.ResyncManager.Stop(ctx))
+			}()
+
+			stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
+
+			require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
+			assert.Less(t, stats.DocsChanged, int64(docsToCreate))
+
+			assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+
+			// Resume process
+			err = db.ResyncManager.Start(ctx, options)
+			require.NoError(t, err)
+
+			stats = waitForResyncState(t, db, BackgroundProcessStateCompleted)
+
+			assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+
+			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+			assert.Equal(t, int64(docsToCreate), db.DbStats.Database().ResyncNumChanged.Value())
+
+			assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+			wg.Wait()
+		})
 	}
-
-	err := db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
-
-	// Attempt to Stop Process
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		waitForResyncDocsProcessed(t, db, 2000)
-		require.NoError(t, db.ResyncManager.Stop(ctx))
-	}()
-
-	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
-
-	require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
-	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
-
-	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
-
-	// Resume process
-	err = db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
-
-	stats = waitForResyncState(t, db, BackgroundProcessStateCompleted)
-
-	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
-
-	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
-	assert.Equal(t, int64(docsToCreate), db.DbStats.Database().ResyncNumChanged.Value())
-
-	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-	wg.Wait()
 }
 
 // TestResyncManagerDCPResumeStoppedProcessChangeCollections starts a resync with a single collection, stops it, and re-runs with an additional collection.
@@ -490,14 +527,29 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	wg.Wait()
 }
 
+type testDBForResyncOptions struct {
+	docsToCreate                 int  // number of documents to create
+	updateSyncFuncAfterDocsAdded bool // update the sync function after documents have been added
+	distributed                  bool
+}
+
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
-func setupTestDBForResyncWithDocs(t testing.TB, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
+func setupTestDBForResyncWithDocs(t testing.TB, opts testDBForResyncOptions) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	syncFn := `
 function sync(doc, oldDoc){
 	channel("channel.ABC");
 }
 `
+	rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
+	require.True(t, ok)
+
+	if opts.distributed {
+		rs.Distributed = true
+	} else {
+		require.False(t, rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
+	}
+
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, syncFn)
@@ -505,16 +557,16 @@ function sync(doc, oldDoc){
 
 	// Create the docs that will be marked and not swept
 	body := map[string]any{"foo": "bar"}
-	for i := range docsToCreate {
+	for i := range opts.docsToCreate {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 
-	assert.Equal(t, docsToCreate, int(db.DbStats.Database().SyncFunctionCount.Value()))
+	assert.Equal(t, opts.docsToCreate, int(db.DbStats.Database().SyncFunctionCount.Value()))
 	db.DbStats.Database().SyncFunctionCount.Set(0)
 
-	if updateResyncFuncAfterDocsAdded {
+	if opts.updateSyncFuncAfterDocsAdded {
 		syncFn = `
 function sync(doc, oldDoc){
 	channel("channel.ABC123");
@@ -853,4 +905,27 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(planPIndexesJSON, &planPIndexes))
 	require.Len(t, planPIndexes.PlanPIndexes, int(numPartitions),
 		"expected %d pindexes matching ResyncPartitions", numPartitions)
+}
+
+type resyncTestCase struct {
+	name        string // name of test case
+	distributed bool   // use distributed resync
+}
+
+// resyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
+func resyncTestModes() []resyncTestCase {
+	testCases := []resyncTestCase{
+		{
+			name:        "distributed=false",
+			distributed: false,
+		},
+	}
+	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
+		testCases = append(testCases, resyncTestCase{
+
+			name:        "distributed=true",
+			distributed: true,
+		})
+	}
+	return testCases
 }
