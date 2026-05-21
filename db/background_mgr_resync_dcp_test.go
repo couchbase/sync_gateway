@@ -165,6 +165,9 @@ func TestResyncDCPInit(t *testing.T) {
 				assert.Equal(t, testCase.initialClusterState.DocsChanged, response.DocsChanged)
 				assert.Equal(t, testCase.initialClusterState.DocsProcessed, response.DocsProcessed)
 			}
+
+			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
+			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumProcessed.Value())
 		})
 	}
 }
@@ -197,6 +200,9 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
 	assert.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
 	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
+
+	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
 	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(300))
@@ -339,6 +345,9 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	require.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+	assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
+
 	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	wg.Wait()
 }
@@ -371,6 +380,9 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
 	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
 
+	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
+
 	// Resume process
 	err = db.ResyncManager.Start(ctx, options)
 	require.NoError(t, err)
@@ -379,6 +391,9 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
+	assert.Equal(t, int64(docsToCreate), db.DbStats.Database().ResyncNumChanged.Value())
 
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	wg.Wait()
@@ -441,21 +456,18 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
-			stats := getResyncStats(t, db)
-			if stats.DocsProcessed >= (docsPerCollection / 5) {
-				err = db.ResyncManager.Stop(ctx)
-				require.NoError(t, err)
-				break
-			}
-			time.Sleep(1 * time.Microsecond)
-		}
+		waitForResyncDocsProcessed(t, db, docsPerCollection/5)
+		err = db.ResyncManager.Stop(ctx)
+		require.NoError(t, err)
 	}()
 
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
 
 	require.Less(t, stats.DocsProcessed, docsPerCollection, "DocsProcessed is equal to docs created. Consider setting docsPerCollection > %d.", docsPerCollection)
 	assert.Less(t, stats.DocsChanged, docsPerCollection)
+
+	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), docsPerCollection)
+	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), docsPerCollection)
 
 	firstDocsChanged := stats.DocsChanged
 
@@ -470,6 +482,9 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 	assert.GreaterOrEqual(t, stats.DocsProcessed, totalDocCount)
 	assert.Equal(t, totalDocCount, stats.DocsChanged+firstDocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), totalDocCount)
+	assert.Equal(t, totalDocCount, db.DbStats.Database().ResyncNumChanged.Value())
 
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), totalDocCount)
 	wg.Wait()
@@ -552,7 +567,11 @@ function sync(doc, oldDoc){
 	channel("resync_channel");
 }`
 	resyncStats := runResync(t, ctx, db, collection, syncFn)
+	assert.GreaterOrEqual(t, resyncStats.DocsProcessed, int64(2))
 	assert.Equal(t, int64(2), resyncStats.DocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(2))
+	assert.Equal(t, int64(2), db.DbStats.Database().ResyncNumChanged.Value())
 
 	var cas uint64
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
@@ -574,7 +593,11 @@ function sync(doc, oldDoc){
 	channel("resync_channel_again");
 }`
 	resyncStats = runResync(t, ctx, db, collection, syncFn)
+	assert.GreaterOrEqual(t, resyncStats.DocsProcessed, int64(2))
 	assert.Equal(t, int64(2), resyncStats.DocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(4))
+	assert.Equal(t, int64(4), db.DbStats.Database().ResyncNumChanged.Value())
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
@@ -611,7 +634,7 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 // helper function to Unmarshal BackgroundProcess state into ResyncManagerResponseDCP
 func getResyncStats(t testing.TB, db *Database) ResyncManagerResponseDCP {
 	var resp ResyncManagerResponseDCP
-	rawStatus, _, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{})
+	rawStatus, err := db.ResyncManager.GetStatus(base.TestCtx(t))
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(rawStatus, &resp))
 	return resp
@@ -627,7 +650,11 @@ func waitForResyncState(t testing.TB, db *Database, desiredState BackgroundProce
 func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 	// this intentionally uses a very short poll interval to catch progress as quickly as possible
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		stats := getResyncStats(t, db)
+		// to stop the document, poll the local status rather than the cluster status which is updated on a timer
+		rawStatus, _, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{})
+		require.NoError(c, err)
+		var stats ResyncManagerResponseDCP
+		assert.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
 		assert.Greater(c, stats.DocsProcessed, count)
 	}, 1*time.Minute, 100*time.Millisecond)
 }
@@ -637,6 +664,7 @@ func waitForResyncDocsChanged(t testing.TB, db *Database, count int64) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Equal(c, stats.DocsChanged, count)
+		assert.GreaterOrEqual(c, stats.DocsProcessed, count)
 	}, 5*time.Minute, 100*time.Millisecond)
 }
 

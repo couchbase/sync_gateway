@@ -46,17 +46,14 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
 	}
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err := attachMigrationMgr.Start(ctx, nil)
+	err := db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
 
 	// assert that the subset (5) of the docs were changed, all created docs were processed (10)
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats := getAttachmentMigrationStats(t, db)
 	assert.Equal(t, int64(10), stats.DocsProcessed)
 	assert.Equal(t, int64(5), stats.DocsChanged)
 
@@ -65,12 +62,26 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 
 }
 
-func getAttachmentMigrationStats(t *testing.T, migrationManager BackgroundManagerProcessI) AttachmentMigrationManagerResponse {
+func getAttachmentMigrationStats(t *testing.T, db *Database) AttachmentMigrationManagerResponse {
 	var resp AttachmentMigrationManagerResponse
-	rawStatus, _, err := migrationManager.GetProcessStatus(BackgroundManagerStatus{})
+	rawStatus, err := db.AttachmentMigrationManager.GetStatus(base.TestCtx(t))
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
 	return resp
+}
+
+// waitForAttachmentMigrationDocsProcessed waits until the resync manager has processed at least the specified count of documents.
+func waitForAttachmentMigrationDocsProcessed(t testing.TB, db *Database, count int64) {
+	// this intentionally uses a very short poll interval to catch progress as quickly as possible
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		// Poll the local status so the wait can stop as soon as the requested progress is observed,
+		// without waiting for the cluster status' periodic update.
+		rawStatus, _, err := db.AttachmentMigrationManager.Process.GetProcessStatus(BackgroundManagerStatus{})
+		assert.NoError(c, err)
+		var stats AttachmentMigrationManagerResponse
+		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
+		assert.GreaterOrEqual(c, stats.DocsProcessed, count)
+	}, 1*time.Minute, 10*time.Millisecond)
 }
 
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
@@ -90,10 +101,8 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, doc.Attachments())
 	}
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
 
-	err := attachMigrationMgr.Start(ctx, nil)
+	err := db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// Attempt to Stop Process
@@ -101,20 +110,14 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
-			stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
-			if stats.DocsProcessed >= 200 {
-				err = attachMigrationMgr.Stop(ctx)
-				require.NoError(t, err)
-				break
-			}
-			time.Sleep(1 * time.Microsecond)
-		}
+		waitForAttachmentMigrationDocsProcessed(t, db, 200)
+		err = db.AttachmentMigrationManager.Stop(ctx)
+		require.NoError(t, err)
 	}()
 
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateStopped)
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateStopped)
 
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats := getAttachmentMigrationStats(t, db)
 	require.Less(t, stats.DocsProcessed, int64(4000))
 
 	// assert that the sync info metadata version is not present
@@ -123,12 +126,12 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	require.Error(t, err)
 
 	// Resume process
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
 
-	stats = getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats = getAttachmentMigrationStats(t, db)
 	require.GreaterOrEqual(t, stats.DocsProcessed, int64(4000))
 
 	// assert that the sync info metadata version doc has been written to the database collection
@@ -153,17 +156,14 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 	_, err = collection.dataStore.Add(ctx, key, 0, []byte(`{"test":"doc"}`))
 	require.NoError(t, err)
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats := getAttachmentMigrationStats(t, db)
 	// no docs should be changed, only one has xattr defined thus should only have one of the two docs processed
 	assert.Equal(t, int64(1), stats.DocsProcessed)
 	assert.Equal(t, int64(0), stats.DocsChanged)
@@ -208,17 +208,14 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, updateXattrs, DefaultMutateInOpts())
 	require.NoError(t, err)
 
-	attachMigrationMgr := NewAttachmentMigrationManager(db.DatabaseContext)
-	require.NotNil(t, attachMigrationMgr)
-
-	err = attachMigrationMgr.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// wait for task to complete
-	RequireBackgroundManagerState(t, attachMigrationMgr, BackgroundProcessStateCompleted)
+	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
 
 	// assert that the two added docs above were processed but not changed
-	stats := getAttachmentMigrationStats(t, attachMigrationMgr.Process)
+	stats := getAttachmentMigrationStats(t, db)
 	assert.Equal(t, int64(1), stats.DocsProcessed)
 	assert.Equal(t, int64(1), stats.DocsChanged)
 
