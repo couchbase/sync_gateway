@@ -10,7 +10,9 @@ licenses/APL2.txt.
 
 package base
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // RedactableError is an error that can be used as a drop-in replacement for an error,
 // which has the ability to redact any sensitive data by calling redact() on all of its args.
@@ -52,4 +54,16 @@ func (re *RedactableError) Redact() string {
 	redactedArgs := redact(re.args)
 	// can't use Sprintf as it doesn't support `%w`
 	return fmt.Errorf(re.fmt, redactedArgs...).Error()
+}
+
+// Unwrap returns the underlying error(s).
+func (re *RedactableError) Unwrap() []error {
+	var errs []error
+	for _, arg := range re.args {
+		err, ok := arg.(error)
+		if ok {
+			errs = append(errs, err)
+		}
+	}
+	return errs
 }
