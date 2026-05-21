@@ -528,8 +528,8 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		BackgroundManagerStatus: status,
 		ResyncID:                r.ResyncID,
 		resyncStats: resyncStats{
-			DocsChanged:   previousStats.DocsChanged + (r.docsChangedLocalSerialized.Load() - r.docsChangedLocal.Load()),
-			DocsProcessed: previousStats.DocsProcessed + (r.docsProcessedLocalSerialized.Load() + r.docsProcessedLocal.Load()),
+			DocsChanged:   previousStats.DocsChanged + (r.docsChangedLocal.Load() - r.docsChangedLocalSerialized.Load()),
+			DocsProcessed: previousStats.DocsProcessed + (r.docsProcessedLocal.Load() - r.docsProcessedLocalSerialized.Load()),
 		},
 		CollectionsProcessing: r.ResyncedCollections,
 	}
