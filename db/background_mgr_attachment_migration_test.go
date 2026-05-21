@@ -81,7 +81,6 @@ func waitForAttachmentMigrationDocsProcessed(t testing.TB, db *Database, count i
 		var stats AttachmentMigrationManagerResponse
 		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
 		assert.GreaterOrEqual(c, stats.DocsProcessed, count)
-		assert.GreaterOrEqual(c, stats.DocsChanged, int64(0))
 	}, 1*time.Minute, 10*time.Millisecond)
 }
 
