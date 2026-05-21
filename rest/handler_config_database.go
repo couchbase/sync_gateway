@@ -90,7 +90,6 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
 		return err
 	}
-	h.server.recordAppliedDBVersionIfTracking(bucket, dbName, updatedDbConfig.Version)
 
 	h.setEtag(updatedDbConfig.Version)
 	h.setStatus(http.StatusOK, "updated")

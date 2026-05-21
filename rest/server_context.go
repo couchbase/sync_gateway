@@ -1089,6 +1089,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	for _, name := range fqCollections {
 		sc._collectionRegistry[name] = dbName
 	}
+	// track db config version in cluster compat manager for flush to registry on next Refresh cycle
+	sc.recordAppliedDBVersionIfTracking(spec.BucketName, dbName, config.Version)
 
 	if !startOnlineProcesses {
 		dbcontext.InitializeOfflineMode()

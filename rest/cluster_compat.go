@@ -97,18 +97,6 @@ func (m *clusterCompatManager) Start(_ context.Context) {
 	m.appliedDBVersions = make(map[string]map[string]string)
 }
 
-// recordAppliedDatabaseVersion records that this node has successfully applied the given
-// config version for a database. The version is stamped into the bucket's registry on
-// the next RegisterNodeVersion call (heartbeat refresh).
-func (m *clusterCompatManager) recordAppliedDatabaseVersion(bucket, dbName, version string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.appliedDBVersions[bucket] == nil {
-		m.appliedDBVersions[bucket] = make(map[string]string)
-	}
-	m.appliedDBVersions[bucket][dbName] = version
-}
-
 // removeAppliedDatabaseVersion removes the tracked config version for a database that is
 // no longer served by this node.
 func (m *clusterCompatManager) removeAppliedDatabaseVersion(bucket, dbName string) {
@@ -121,10 +109,17 @@ func (m *clusterCompatManager) removeAppliedDatabaseVersion(bucket, dbName strin
 	}
 }
 
-// recordAppliedDBVersionIfTracking is a helper that conditionally records the applied database version if cluster compat tracking is enabled.
+// recordAppliedDBVersionIfTracking records that this node has successfully applied the given
+// config version for a database. The version is stamped into the bucket's registry on
+// the next RegisterNodeVersion call (heartbeat refresh). Only run if cluster compat tracking is enabled.
 func (sc *ServerContext) recordAppliedDBVersionIfTracking(bucket, dbName, version string) {
 	if sc.ClusterCompat != nil && version != "" {
-		sc.ClusterCompat.recordAppliedDatabaseVersion(bucket, dbName, version)
+		sc.ClusterCompat.mu.Lock()
+		defer sc.ClusterCompat.mu.Unlock()
+		if sc.ClusterCompat.appliedDBVersions[bucket] == nil {
+			sc.ClusterCompat.appliedDBVersions[bucket] = make(map[string]string)
+		}
+		sc.ClusterCompat.appliedDBVersions[bucket][dbName] = version
 	}
 }
 

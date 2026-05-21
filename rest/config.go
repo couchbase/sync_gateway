@@ -2140,14 +2140,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		}
 	}
 
-	// Capture the config version before stripping — used to record which version this
-	// node has applied in the cluster registry.
-	appliedVersion := cnf.Version
-
-	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
-	// by any output
-	cnf.Version = ""
-
 	// Prevent database from being unsuspended when it is suspended
 	if sc._isDatabaseSuspended(cnf.Name) {
 		return true, nil
@@ -2158,7 +2150,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
-	sc.recordAppliedDBVersionIfTracking(*cnf.Bucket, cnf.Name, appliedVersion)
 
 	return true, nil
 }
