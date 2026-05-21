@@ -2519,6 +2519,10 @@ type UserChannelHistory struct {
 	Channels ColAccessHistoryMap `json:"channels"`
 }
 
+type UserChannelHistoryResp struct {
+	CompactedChannels ColAccessHistoryMap `json:"compacted_channels"`
+}
+
 func (h *handler) getUserChannelHistory() error {
 	h.assertAdminOnly()
 	username := internalUserName(mux.Vars(h.rq)["name"])
@@ -2532,10 +2536,15 @@ func (h *handler) getUserChannelHistory() error {
 	colAccess := user.GetCollectionsAccess()
 
 	colAccessHistoryMap := make(map[string]map[string][]string)
-	for scope, _ := range colAccess {
-		colAccessHistoryMap[scope] = make(map[string][]string)
-		for col, _ := range colAccess[scope] {
-			colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colAccess[scope][col].ChannelHistory_))
+	if colAccess == nil {
+		colAccessHistoryMap[base.DefaultScope] = make(map[string][]string)
+		colAccessHistoryMap[base.DefaultScope][base.DefaultCollection] = slices.Collect(maps.Keys(user.ChannelHistory()))
+	} else {
+		for scope, _ := range colAccess {
+			colAccessHistoryMap[scope] = make(map[string][]string)
+			for col, _ := range colAccess[scope] {
+				colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colAccess[scope][col].ChannelHistory_))
+			}
 		}
 	}
 
@@ -2574,8 +2583,8 @@ func (h *handler) compactUserChannelHistory() error {
 		}
 	}
 
-	userCompactedChannelHistory := UserChannelHistory{
-		Channels: colAccessHistoryMap,
+	userCompactedChannelHistory := UserChannelHistoryResp{
+		CompactedChannels: colAccessHistoryMap,
 	}
 
 	err = authenticator.Save(user)

@@ -1622,7 +1622,7 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 
 }
 
-// TestGetUserChannelHistory tests the GET /_user/{name}/_channel_history admin endpoint,
+// TestGetUserChannelHistory tests the GET /_user/{name}/_access_history admin endpoint,
 // which returns the revoked channel history for a user across all scopes and collections.
 func TestGetUserChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, nil)
@@ -1630,7 +1630,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 
 	// Returns 404 when the requested user does not exist.
 	t.Run("UserNotFound", func(t *testing.T) {
-		response := rt.SendAdminRequest(http.MethodGet, "/db/_user/ghost/_channel_history", "")
+		response := rt.SendAdminRequest(http.MethodGet, "/db/_user/ghost/_access_history", "")
 		RequireStatus(t, response, http.StatusNotFound)
 	})
 
@@ -1641,7 +1641,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 			GetUserPayload(t, "user1", "letmein", "", ds, []string{"chan1", "chan2"}, nil))
 		RequireStatus(t, response, http.StatusCreated)
 
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user1/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user1/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
 		var result map[string]ColAccessHistoryMap
@@ -1665,7 +1665,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 			GetUserPayload(t, "user2", "letmein", "", ds, []string{}, nil))
 		RequireStatus(t, response, http.StatusOK)
 
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
 		var result map[string]ColAccessHistoryMap
@@ -1689,7 +1689,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 			GetUserPayload(t, "user3", "letmein", "", ds, []string{"chan3"}, nil))
 		RequireStatus(t, response, http.StatusOK)
 
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
 		var result map[string]ColAccessHistoryMap
@@ -1718,7 +1718,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 			GetUserPayload(t, "user4", "letmein", "", ds, []string{"chan1"}, nil))
 		RequireStatus(t, response, http.StatusOK)
 
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
 		var result map[string]ColAccessHistoryMap
@@ -1743,7 +1743,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		scope := ds.ScopeName()
 		collection := ds.CollectionName()
 		body := fmt.Sprintf(`{"channels":{%q:{%q:["chan1"]}}}`, scope, collection)
-		response := rt.SendAdminRequest(http.MethodPost, "/db/_user/ghost/_channel_history", body)
+		response := rt.SendAdminRequest(http.MethodPost, "/db/_user/ghost/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusNotFound)
 	})
 
@@ -1754,7 +1754,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 			GetUserPayload(t, "user1", "letmein", "", ds, []string{"chan1"}, nil))
 		RequireStatus(t, response, http.StatusCreated)
 
-		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user1/_channel_history", `not-valid-json`)
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user1/_access_history/compact", `not-valid-json`)
 		RequireStatus(t, response, http.StatusBadRequest)
 	})
 
@@ -1774,7 +1774,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		RequireStatus(t, response, http.StatusOK)
 
 		// Verify history is populated before compaction
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var beforeResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
@@ -1782,15 +1782,15 @@ func TestCompactUserChannelHistory(t *testing.T) {
 
 		// Compact chan1 and chan2
 		body := fmt.Sprintf(`{"channels":{%q:{%q:["chan1","chan2"]}}}`, scope, collection)
-		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user2/_channel_history", body)
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user2/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistory
+		var result UserChannelHistoryResp
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-		assert.ElementsMatch(t, []string{"chan1", "chan2"}, result.Channels[scope][collection])
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, result.CompactedChannels[scope][collection])
 
 		// GET confirms history is now empty
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var afterResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
@@ -1813,7 +1813,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		RequireStatus(t, response, http.StatusOK)
 
 		// Verify history is populated before compaction
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var beforeResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
@@ -1821,15 +1821,15 @@ func TestCompactUserChannelHistory(t *testing.T) {
 
 		// Compact a channel that doesn't exist in history
 		body := fmt.Sprintf(`{"channels":{%q:{%q:["doesNotExist"]}}}`, scope, collection)
-		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user3/_channel_history", body)
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user3/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistory
+		var result UserChannelHistoryResp
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-		assert.Empty(t, result.Channels[scope][collection])
+		assert.Empty(t, result.CompactedChannels[scope][collection])
 
 		// GET confirms original history is untouched
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var afterResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
@@ -1852,7 +1852,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		RequireStatus(t, response, http.StatusOK)
 
 		// Verify history is populated before compaction
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var beforeResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
@@ -1860,15 +1860,15 @@ func TestCompactUserChannelHistory(t *testing.T) {
 
 		// Compact chan1 and doesNotExist — only chan1 should be returned
 		body := fmt.Sprintf(`{"channels":{%q:{%q:["chan1","doesNotExist"]}}}`, scope, collection)
-		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user4/_channel_history", body)
+		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user4/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistory
+		var result UserChannelHistoryResp
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-		assert.ElementsMatch(t, []string{"chan1"}, result.Channels[scope][collection])
+		assert.ElementsMatch(t, []string{"chan1"}, result.CompactedChannels[scope][collection])
 
 		// GET confirms only chan1 was removed; chan2 and chan3 remain
-		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_channel_history", "")
+		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 		var afterResult UserChannelHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
