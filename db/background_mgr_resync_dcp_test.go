@@ -56,8 +56,7 @@ func TestResyncDCPInit(t *testing.T) {
 					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
-					VBUUIDs:      []uint64{1},
-					DocsTargeted: 50,
+					VBUUIDs: []uint64{1},
 				},
 			},
 			forceReset:           false,
