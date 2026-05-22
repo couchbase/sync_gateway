@@ -323,6 +323,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
+	// generate a unique node UUID
+	rt.RestTesterServerContext.NodeUID = uuid.NewString()
+
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {

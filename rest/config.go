@@ -2137,10 +2137,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		}
 	}
 
-	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
-	// by any output
-	cnf.Version = ""
-
 	// Prevent database from being unsuspended when it is suspended
 	if sc._isDatabaseSuspended(cnf.Name) {
 		return true, nil

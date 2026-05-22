@@ -43,6 +43,10 @@ type clusterCompatManager struct {
 	// cachedVersion/cachedNodes are observed state from the most recent successful refresh.
 	cachedVersion *base.ClusterCompatVersion
 	cachedNodes   map[string]base.ClusterCompatVersion
+	// appliedDBVersions tracks the database config version this node has successfully
+	// applied, keyed by bucket name then database name. Populated by _applyConfig on
+	// successful load, consumed by RegisterNodeVersion to stamp the registry.
+	appliedDBVersions map[string]map[string]string
 	// lastRefreshAt records when Refresh last completed a registry write cycle. Used to
 	// rate-limit periodic Refresh — see Refresh(). RegisterBucket does not update this:
 	// a new bucket coming into scope should still trigger the next periodic heartbeat.
@@ -90,6 +94,47 @@ func (m *clusterCompatManager) Start(_ context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.trackedBuckets = make(map[string]struct{})
+	m.appliedDBVersions = make(map[string]map[string]string)
+}
+
+// removeAppliedDatabaseVersion removes the tracked config version for a database that is
+// no longer served by this node.
+func (m *clusterCompatManager) removeAppliedDatabaseVersion(bucket, dbName string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.appliedDBVersions[bucket], dbName)
+	if len(m.appliedDBVersions[bucket]) == 0 {
+		// if no db's are tracked for this bucket, remove the bucket key to avoid leaving an empty map around
+		delete(m.appliedDBVersions, bucket)
+	}
+}
+
+// recordAppliedDBVersion records that this node has successfully applied the given
+// config version for a database. The version is stamped into the bucket's registry on
+// the next RegisterNodeVersion call (heartbeat refresh). Only run if cluster compat tracking is enabled.
+func (m *clusterCompatManager) recordAppliedDBVersion(bucket, dbName, version string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.appliedDBVersions[bucket] == nil {
+		m.appliedDBVersions[bucket] = make(map[string]string)
+	}
+	m.appliedDBVersions[bucket][dbName] = version
+}
+
+// getAppliedDBVersionsForBucket returns a copy of the applied database versions for the
+// given bucket. Returns nil if no versions are tracked for the bucket.
+func (m *clusterCompatManager) getAppliedDBVersionsForBucket(bucket string) map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	bucketDBs := m.appliedDBVersions[bucket]
+	if len(bucketDBs) == 0 {
+		return nil
+	}
+	cp := make(map[string]string, len(bucketDBs))
+	for k, v := range bucketDBs {
+		cp[k] = v
+	}
+	return cp
 }
 
 // Stop best-effort deregisters this node from the buckets this node registered in.
@@ -128,7 +173,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	if !m.claimBucket(bucket) {
 		return nil
 	}
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.BootstrapContext.clusterCompatVersion, m.heartbeatExpiry())
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry())
 	if err != nil {
 		m.releaseBucket(bucket)
 		return err
@@ -268,7 +313,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (*b
 	nodeMap := make(map[string]base.ClusterCompatVersion)
 	succeeded := 0
 	for _, bucket := range buckets {
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, nodeVersion, expiry)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue

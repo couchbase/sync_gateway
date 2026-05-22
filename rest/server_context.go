@@ -1096,6 +1096,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	for _, name := range fqCollections {
 		sc._collectionRegistry[name] = dbName
 	}
+	// track db config version in cluster compat manager for flush to registry on next Refresh cycle.
+	// config.Version is intentionally retained on the runtime DatabaseConfig (was previously
+	// stripped here); it never appears in REST responses because handleGetDbConfig returns
+	// *DbConfig, not *DatabaseConfig.
+	if sc.ClusterCompat != nil && config.Version != "" {
+		sc.ClusterCompat.recordAppliedDBVersion(spec.BucketName, dbName, config.Version)
+	}
 
 	if !startOnlineProcesses {
 		dbcontext.InitializeOfflineMode()
@@ -1697,6 +1704,8 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if dbCtx == nil {
 		return false
 	}
+	// Capture bucket name before unload, since _unloadDatabase may close the bucket.
+	bucketName := dbCtx.Bucket.GetName()
 
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
@@ -1707,6 +1716,9 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 		if dbName == registryDbName {
 			delete(sc._collectionRegistry, fqCollection)
 		}
+	}
+	if sc.ClusterCompat != nil {
+		sc.ClusterCompat.removeAppliedDatabaseVersion(bucketName, dbName)
 	}
 	return true
 }
