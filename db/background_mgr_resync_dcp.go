@@ -173,11 +173,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	var dcpClient base.DCPClient
 	var dcpClientClose dcpClientCloser
 	defer func() {
-		if !dcpClientClose.isClosed() {
-			err := dcpClientClose.shutdown() // shutdown in case of panic
-			if err != nil {
-				base.WarnfCtx(ctx, "Failed to close resync DCP client on shutdown! %v", err)
-			}
+		if dcpClientClose.isClosed() {
+			return
+		}
+		err := dcpClientClose.shutdown() // shutdown in case of panic
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to close resync DCP client on shutdown! %v", err)
 		}
 	}()
 
