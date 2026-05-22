@@ -361,6 +361,84 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 }
 
+// TestTouchPreservesCAS verifies that Touch and GetAndTouchRaw do NOT bump the document's CAS,
+// matching Couchbase Server's memcached TOUCH/GAT semantics.
+// Callers needing to force a CAS bump (e.g. config rollback) must use a real mutation; see TestTouchMetadataDocument.
+func TestTouchPreservesCAS(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	key := t.Name()
+	val := []byte("hello")
+
+	require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, val))
+	defer func() { assert.NoError(t, dataStore.Delete(ctx, key)) }()
+
+	_, originalCAS, err := dataStore.GetRaw(ctx, key)
+	require.NoError(t, err)
+	require.NotZero(t, originalCAS)
+
+	getTouchVal, getTouchCAS, err := dataStore.GetAndTouchRaw(ctx, key, 0)
+	require.NoError(t, err)
+	require.Equal(t, val, getTouchVal)
+	require.Equal(t, originalCAS, getTouchCAS, "GetAndTouchRaw should not bump CAS")
+
+	touchCAS, err := dataStore.Touch(ctx, key, 0)
+	require.NoError(t, err)
+	require.Equal(t, originalCAS, touchCAS, "Touch should not bump CAS")
+}
+
+// TestTouchMetadataDocument verifies that BootstrapConnection.TouchMetadataDocument honours the supplied CAS
+// (rejecting stale-CAS callers with a CasMismatch error) and bumps the document's CAS on success.
+// This is the mechanism rest/config_manager.go relies on to block racing writers during registry rollback.
+func TestTouchMetadataDocument(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	cluster := newTestBootstrapConnection(t, ctx)
+	defer cluster.Close()
+
+	bucketName := bucket.BucketSpec.BucketName
+	docID := t.Name()
+	body := map[string]any{"name": "original"}
+
+	originalCAS, err := cluster.InsertMetadataDocument(ctx, bucketName, docID, body)
+	require.NoError(t, err)
+	defer func() { _ = cluster.DeleteMetadataDocument(ctx, bucketName, docID, 0) }()
+
+	// Stale CAS must be rejected with CasMismatch (mirrors CBS subdoc Touch with Cas option).
+	_, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS+1)
+	require.Error(t, err)
+	require.True(t, IsCasMismatch(err), "expected CasMismatch, got %T: %v", err, err)
+
+	// Correct CAS succeeds and returns a new (different) CAS.
+	newCAS, err := cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS)
+	require.NoError(t, err)
+	require.NotEqual(t, originalCAS, newCAS, "TouchMetadataDocument should bump CAS")
+
+	// The previously-valid CAS is now stale.
+	_, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db2", originalCAS)
+	require.Error(t, err)
+	require.True(t, IsCasMismatch(err), "expected CasMismatch on stale CAS retry, got %T: %v", err, err)
+}
+
+// newTestBootstrapConnection constructs a BootstrapConnection matching the current test backing
+// store (Rosmar or Couchbase Server).
+func newTestBootstrapConnection(t *testing.T, ctx context.Context) BootstrapConnection {
+	t.Helper()
+	if UnitTestUrlIsWalrus() {
+		cluster, err := NewRosmarCluster(UnitTestUrl())
+		require.NoError(t, err)
+		return cluster
+	}
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, TestUseXattrs(), CachedClusterConnections)
+	require.NoError(t, err)
+	return cluster
+}
+
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
