@@ -1701,6 +1701,51 @@ func TestGetUserChannelHistory(t *testing.T) {
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][collection])
 	})
 
+	// User has channels revoked in two named collections (same scope). Both collections and their respective revoked channels should appear in _channel_history.
+	t.Run("MultipleNamedCollections", func(t *testing.T) {
+		base.RequireNumTestDataStores(t, 2)
+		rtMulti := NewRestTesterMultipleCollections(t, nil, 2)
+		defer rtMulti.Close()
+
+		scope := rtMulti.GetDbCollections()[0].ScopeName
+		col1 := rtMulti.GetDbCollections()[0].Name
+		col2 := rtMulti.GetDbCollections()[1].Name
+
+		userPayload := fmt.Sprintf(`{
+			"password": "letmein",
+			"collection_access": {
+				%q: {
+					%q: {"admin_channels": ["chan1", "chan2"]},
+					%q: {"admin_channels": ["chan3", "chan4"]}
+				}
+			}
+		}`, scope, col1, col2)
+		response := rtMulti.SendAdminRequest(http.MethodPut, "/db/_user/user1", userPayload)
+		RequireStatus(t, response, http.StatusCreated)
+
+		// Revoke all channels in both collections
+		revokePayload := fmt.Sprintf(`{
+			"collection_access": {
+				%q: {
+					%q: {"admin_channels": []},
+					%q: {"admin_channels": []}
+				}
+			}
+		}`, scope, col1, col2)
+		response = rtMulti.SendAdminRequest(http.MethodPut, "/db/_user/user1", revokePayload)
+		RequireStatus(t, response, http.StatusOK)
+
+		response = rtMulti.SendAdminRequest(http.MethodGet, "/db/_user/user1/_access_history", "")
+		RequireStatus(t, response, http.StatusOK)
+
+		var result map[string]ColAccessHistoryMap
+		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
+
+		channelHistory := result["channels"]
+		assert.ElementsMatch(t, []string{"chan1", "chan2"}, channelHistory[scope][col1])
+		assert.ElementsMatch(t, []string{"chan3", "chan4"}, channelHistory[scope][col2])
+	})
+
 	// Revocation history is preserved even after a previously revoked channel is re-granted.
 	t.Run("ChannelHistoryAfterReGrant", func(t *testing.T) {
 		ds := rt.GetSingleDataStore()
@@ -1731,7 +1776,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 	})
 }
 
-// TestCompactUserChannelHistory tests the POST /_user/{name}/_channel_history admin endpoint,
+// TestCompactUserChannelHistory tests the POST /_user/{name}/_access_history/compact admin endpoint,
 // which removes specified channels from a user's revocation history and returns those that were found and removed.
 func TestCompactUserChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, nil)

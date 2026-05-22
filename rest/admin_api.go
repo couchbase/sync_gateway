@@ -2540,10 +2540,10 @@ func (h *handler) getUserChannelHistory() error {
 		colAccessHistoryMap[base.DefaultScope] = make(map[string][]string)
 		colAccessHistoryMap[base.DefaultScope][base.DefaultCollection] = slices.Collect(maps.Keys(user.ChannelHistory()))
 	} else {
-		for scope, _ := range colAccess {
+		for scope, cols := range colAccess {
 			colAccessHistoryMap[scope] = make(map[string][]string)
-			for col, _ := range colAccess[scope] {
-				colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colAccess[scope][col].ChannelHistory_))
+			for col, colVal := range cols {
+				colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colVal.ChannelHistory_))
 			}
 		}
 	}
@@ -2568,17 +2568,17 @@ func (h *handler) compactUserChannelHistory() error {
 	username := internalUserName(mux.Vars(h.rq)["name"])
 	authenticator := h.db.Authenticator(h.ctx())
 	user, err := authenticator.GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
+	if err != nil {
 		return err
+	}
+	if user == nil {
+		return kNotFoundError
 	}
 
 	colAccessHistoryMap := make(map[string]map[string][]string)
-	for scope, _ := range reqUserChannelHistory.Channels {
+	for scope, cols := range reqUserChannelHistory.Channels {
 		colAccessHistoryMap[scope] = make(map[string][]string)
-		for col, _ := range reqUserChannelHistory.Channels[scope] {
+		for col, _ := range cols {
 			colAccessHistoryMap[scope][col] = user.CompactChannelHistory(scope, col, reqUserChannelHistory.Channels[scope][col])
 		}
 	}

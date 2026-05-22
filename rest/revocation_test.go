@@ -903,8 +903,8 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
-	body := fmt.Sprintf(`{"channels": {%q:{%q:["A"]}}}'`, dataStore.ScopeName(), dataStore.CollectionName())
-	resp = rt.SendAdminRequest("POST", "/db/_user/user/_channel_history", body)
+	body := fmt.Sprintf(`{"channels": {%q:{%q:["A"]}}}`, dataStore.ScopeName(), dataStore.CollectionName())
+	resp = rt.SendAdminRequest("POST", "/db/_user/user/_access_history/compact", body)
 	RequireStatus(t, resp, http.StatusOK)
 
 	changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
