@@ -173,9 +173,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	var dcpClient base.DCPClient
 	var dcpClientClose dcpClientCloser
 	defer func() {
-		err := dcpClientClose.shutdown() // shutdown in case of panic
-		if err != nil {
-			base.WarnfCtx(ctx, "Failed to close resync DCP client on shutdown! %v", err)
+		if !dcpClientClose.isClosed() {
+			err := dcpClientClose.shutdown() // shutdown in case of panic
+			if err != nil {
+				base.WarnfCtx(ctx, "Failed to close resync DCP client on shutdown! %v", err)
+			}
 		}
 	}()
 
@@ -655,7 +657,7 @@ type dcpClientCloser struct {
 }
 
 // shutdown will shut down all related resources. This function is only executed once, but it is safe to call
-// multple times and will return the same error if it has already been executed or is being simultaneously
+// multiple times and will return the same error if it has already been executed or is being simultaneously
 // executed.
 func (d *dcpClientCloser) shutdown() error {
 	d.closeLock.Lock()
@@ -676,4 +678,11 @@ func (d *dcpClientCloser) shutdown() error {
 // registration.
 func (d *dcpClientCloser) append(f func() error) {
 	d.funcs = append([]func() error{f}, d.funcs...)
+}
+
+// isClosed returns true when shutdown has already been executed.
+func (d *dcpClientCloser) isClosed() bool {
+	d.closeLock.Lock()
+	defer d.closeLock.Unlock()
+	return d.closed
 }
