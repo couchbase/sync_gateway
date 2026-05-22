@@ -1,0 +1,38 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+get:
+  summary: Get the cluster compatibility version state
+  description: |-
+    Returns the cluster-wide cluster compatibility version, the per-node versions registered
+    in the cluster, and the frozen value if a freeze is currently in effect.
+
+    Without a freeze, `cluster_compat_version` is the minimum across all live nodes. With a
+    freeze, `cluster_compat_version` is pinned to `frozen_cluster_compat_version`. The
+    presence of `frozen_cluster_compat_version` in the response indicates that a freeze is set.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Dev Ops
+  responses:
+    '200':
+      description: Returned the cluster compatibility version state successfully
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized
+    '503':
+      description: Cluster compatibility version tracking is not enabled on this node
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Server
+  operationId: get__cluster_compat_version

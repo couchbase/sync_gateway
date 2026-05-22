@@ -55,8 +55,11 @@ const (
 	AuditIDSyncGatewayProfiling         AuditID = 53304
 
 	// SG cluster events
-	AuditIDClusterInfoRead AuditID = 53350
-	AuditIDPostUpgrade     AuditID = 54043
+	AuditIDClusterInfoRead              AuditID = 53350
+	AuditIDClusterCompatVersionRead     AuditID = 53351
+	AuditIDClusterCompatVersionFreeze   AuditID = 53352
+	AuditIDClusterCompatVersionUnfreeze AuditID = 53353
+	AuditIDPostUpgrade                  AuditID = 54043
 
 	// Database events
 	AuditIDCreateDatabase  AuditID = 54000
@@ -459,6 +462,38 @@ var AuditEvents = events{
 	AuditIDClusterInfoRead: {
 		Name:               "Sync Gateway cluster info read",
 		Description:        "Sync Gateway cluster info was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionRead: {
+		Name:               "Sync Gateway cluster compatibility version read",
+		Description:        "Sync Gateway cluster compatibility version was viewed",
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionFreeze: {
+		Name:        "Sync Gateway cluster compatibility version frozen",
+		Description: "An admin pinned the Sync Gateway cluster compatibility version to its current value",
+		MandatoryFields: AuditFields{
+			AuditFieldClusterCompatVersion: "4.1",
+			AuditFieldFrozenAt:             "2026-01-02T15:04:05Z",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+		IsGlobalEvent:      true,
+	},
+	AuditIDClusterCompatVersionUnfreeze: {
+		Name:        "Sync Gateway cluster compatibility version unfrozen",
+		Description: "An admin cleared the Sync Gateway cluster compatibility version freeze. The cluster_compat_version and frozen_at fields describe the freeze record that was lifted (when it was originally set), not the time of the unfreeze action.",
+		OptionalFields: AuditFields{
+			AuditFieldClusterCompatVersion: "4.1",
+			AuditFieldFrozenAt:             "2026-01-02T15:04:05Z",
+		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,

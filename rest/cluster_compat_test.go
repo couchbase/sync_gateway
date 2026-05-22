@@ -115,7 +115,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	var eg errgroup.Group
 	for i := 0; i < n; i++ {
 		eg.Go(func() error {
-			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour)
+			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour, true)
 			return err
 		})
 	}
@@ -142,7 +142,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	const n = 10
 	version := base.NodeClusterCompatVersion
 	for i := 0; i < n; i++ {
-		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour)
+		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour, true)
 		require.NoError(t, err)
 	}
 
@@ -280,13 +280,13 @@ func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
 	require.NotNil(t, ccm)
 
 	// Make sure self is registered, then make its heartbeat ancient.
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour)
+	_, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, true)
 	require.NoError(t, err)
 	staleTime := time.Now().Add(-100 * ccm.heartbeatExpiry())
 	setNodeHeartbeatAt(t, rt, bucketName, selfUID, staleTime)
 
 	// Re-register with a non-zero expiry. Self must survive and have a fresh heartbeat.
-	registry, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, ccm.heartbeatExpiry())
+	registry, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, ccm.heartbeatExpiry(), true)
 	require.NoError(t, err)
 	require.Contains(t, registry.Nodes, selfUID)
 	assert.True(t, registry.Nodes[selfUID].HeartbeatAt.After(staleTime), "self's heartbeat must have been refreshed")
@@ -403,17 +403,24 @@ func TestClusterCompatDowngradeAllowedSameOrOlderPeers(t *testing.T) {
 }
 
 // TestClusterCompatDowngradeEmptyRegistry verifies that creating a database against a fresh
-// (empty) bucket succeeds and ratchets ClusterCompatVersionHWM up to the node's compat version.
+// (empty) bucket succeeds and ratchets ClusterCompatVersionHWM up to the node's compat
+// version. The ratchet is performed by Refresh once the database is online — drive it
+// explicitly here rather than waiting for the periodic ticker.
 func TestClusterCompatDowngradeEmptyRegistry(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
+	ctx := base.TestCtx(t)
 	bucketName := rt.Bucket().GetName()
 	bc := rt.ServerContext().BootstrapContext
 
-	registry, err := bc.getGatewayRegistry(base.TestCtx(t), bucketName)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first apply")
+	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first refresh")
 }
 
 // TestClusterCompatDowngradeBlockedByPersistentHWM verifies the persistent floor: a bucket
@@ -462,6 +469,10 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
 
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
@@ -470,7 +481,7 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	registry.ClusterCompatVersionHWM = preserved
 	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "lower-peer", "", base.NewClusterCompatVersion(0, 1), nil, time.Hour)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "lower-peer", "", base.NewClusterCompatVersion(0, 1), nil, time.Hour, true)
 	require.Error(t, err, "lower-version registration must be rejected when HWM is higher")
 	require.Contains(t, err.Error(), "newer Sync Gateway cluster compat version")
 
@@ -491,7 +502,11 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
 
-	// After auto-create db, HWM == self version (only node).
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	// After auto-create db + first refresh, HWM == self version (only node).
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
@@ -499,7 +514,7 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 	// Add a higher-version peer. Cluster compat is still min(self, higher) == self, so HWM
 	// must not budge.
 	higher := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "higher-peer", "", higher, nil, time.Hour)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, "higher-peer", "", higher, nil, time.Hour, true)
 	require.NoError(t, err)
 	registry, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
@@ -1206,7 +1221,312 @@ func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
 	assert.Empty(t, missing)
 }
 
+// TestClusterCompatFreezeAndUnfreeze exercises the manager's Freeze/Unfreeze methods:
+// Freeze captures the current cluster compat version into the registry; Unfreeze clears it.
+func TestClusterCompatFreezeAndUnfreeze(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+	require.NotNil(t, ccm.ClusterCompatVersion())
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, freeze)
+	assert.Equal(t, base.NodeClusterCompatVersion, freeze.Version)
+	assert.False(t, freeze.FrozenAt.IsZero())
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	require.NotNil(t, registry.Frozen, "freeze should be persisted to bucket registry")
+	assert.Equal(t, freeze.Version, registry.Frozen.Version)
+
+	cleared, residual, err := ccm.Unfreeze(ctx)
+	require.NoError(t, err)
+	assert.Nil(t, residual)
+	require.NotNil(t, cleared, "Unfreeze should return the freeze record that was cleared")
+	assert.Equal(t, base.NodeClusterCompatVersion, cleared.Version)
+
+	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Nil(t, registry.Frozen, "freeze should be cleared from bucket registry")
+	assert.Nil(t, ccm.getCachedFreeze())
+}
+
+// TestClusterCompatFreezeIdempotent verifies that calling Freeze a second time returns the
+// existing freeze record rather than refreshing FrozenAt.
+func TestClusterCompatFreezeIdempotent(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	first, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	second, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	assert.Equal(t, first.Version, second.Version)
+	assert.True(t, second.FrozenAt.Equal(first.FrozenAt), "FrozenAt should not change on a no-op re-freeze")
+}
+
+// TestClusterCompatFreezePinsAcrossNodeAdvances seeds peer nodes with a higher version into the
+// registry and verifies that, while frozen, the reported cluster compat version stays at the
+// captured value rather than advancing to the live-node minimum.
+func TestClusterCompatFreezePinsAcrossNodeAdvances(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, freeze)
+	frozenVersion := freeze.Version
+
+	// Seed a peer at a higher version directly into the registry. The freeze pins reporting
+	// at frozenVersion regardless of whether peer registrations would have advanced the
+	// live-node minimum.
+	higher := base.NewClusterCompatVersion(frozenVersion.Major+1, 0)
+	seedRegistryNode(t, rt, bucketName, "synthetic-peer", higher)
+
+	ccm.lastRefreshAt = time.Time{}
+	ccm.Refresh(ctx)
+
+	got := ccm.ClusterCompatVersion()
+	require.NotNil(t, got)
+	assert.Equal(t, frozenVersion, *got, "while frozen, reported version should stay at the frozen value")
+}
+
+// TestClusterCompatFreezePreventsHWMAdvance verifies the rollback-preservation contract of
+// the freeze: while a freeze is in effect, a subsequent RegisterNodeVersion at a higher
+// version (e.g. a node that has been upgraded past the frozen version) must not ratchet
+// ClusterCompatVersionHWM past the freeze. If HWM advances, the downgrade gate would later
+// refuse rolling that node back to the frozen version — defeating the freeze's purpose.
+func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
+	lowVersion := base.NewClusterCompatVersion(1, 0)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig:         true,
+		nodeClusterCompatVersion: &lowVersion,
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	ctx := base.TestCtx(t)
+	bc := rt.ServerContext().BootstrapContext
+	bucketName := rt.Bucket().GetName()
+
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	freeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.Equal(t, lowVersion, freeze.Version)
+
+	// Simulate a node upgrade by re-registering self at a higher version. Without the
+	// freeze ceiling, RegisterNodeVersion would ratchet HWM up to this higher value.
+	higher := base.NewClusterCompatVersion(2, 0)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, rt.ServerContext().NodeUID, "", higher, nil, time.Hour, true)
+	require.NoError(t, err)
+
+	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	assert.Equal(t, lowVersion, registry.ClusterCompatVersionHWM, "HWM must not advance past the frozen version")
+}
+
+// TestClusterCompatFreezeBeforeVersion verifies the manager refuses to freeze when no
+// cluster compat version has been observed yet (e.g. before RegisterBucket has run).
+func TestClusterCompatFreezeBeforeVersion(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	// Construct a fresh manager that has never refreshed — its cachedVersion is nil.
+	freshManager := &clusterCompatManager{sc: rt.ServerContext()}
+	ctx := base.TestCtx(t)
+	freshManager.Start(ctx)
+	defer freshManager.Stop(ctx)
+
+	_, err := freshManager.Freeze(ctx)
+	assert.ErrorIs(t, err, ErrFreezeNoVersion)
+}
+
+// TestClusterCompatFreezePartialFailure verifies that when a tracked bucket cannot be
+// frozen (e.g. its registry doc is unparseable), Freeze returns ErrFreezePartial rather
+// than silently succeeding. This makes Freeze success-on-all (mirror of Unfreeze), so the
+// admin gets a clear error and can see in the response which buckets did get frozen.
+func TestClusterCompatFreezePartialFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	aggregate, err := ccm.Freeze(ctx)
+	assert.ErrorIs(t, err, ErrFreezePartial)
+	assert.Nil(t, aggregate, "no bucket accepted the freeze, so the aggregate must be nil")
+	assert.Nil(t, ccm.getCachedFreeze(), "cache must remain unset when no bucket accepted the freeze")
+}
+
+// TestClusterCompatFreezePartialFailureREST verifies the REST handler returns 503 with a
+// ClusterCompatVersionState body when Freeze partially fails — mirroring unfreeze. The
+// body must report the live cluster compat version but no frozen version, since the
+// failed freeze did not pin any value.
+func TestClusterCompatFreezePartialFailureREST(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+	var state ClusterCompatVersionState
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
+	assert.Nil(t, state.FrozenClusterCompatVersion, "no bucket accepted the freeze, so no frozen version should be reported")
+	assert.NotNil(t, state.ClusterCompatVersion, "the live cluster compat version should still be reported after a failed freeze")
+}
+
+// TestClusterCompatFreezePreservesCacheOnTotalFailure verifies that if Freeze fails on
+// every tracked bucket (succeeded==0), the previously-cached freeze is preserved rather
+// than wiped to nil. A transient bucket outage that prevents any SetRegistryFreeze from
+// succeeding must not erase a real, persistent freeze from the reporting endpoint — the
+// next periodic Refresh self-heals from the authoritative bucket registries.
+func TestClusterCompatFreezePreservesCacheOnTotalFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	preFreeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, preFreeze)
+	require.NotNil(t, ccm.getCachedFreeze(), "cache must have a freeze record after successful Freeze")
+
+	// Corrupt the registry so subsequent SetRegistryFreeze calls fail at the getRegistry
+	// step — driving the all-buckets-failed (succeeded==0, aggregate==nil) branch.
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	aggregate, err := ccm.Freeze(ctx)
+	assert.ErrorIs(t, err, ErrFreezePartial)
+	assert.Nil(t, aggregate, "no bucket accepted the freeze, so the aggregate must be nil")
+
+	cached := ccm.getCachedFreeze()
+	require.NotNil(t, cached, "cache must be preserved when no bucket accepted the freeze")
+	assert.Equal(t, preFreeze.Version, cached.Version, "cache should still reflect the pre-failure freeze")
+	assert.True(t, cached.FrozenAt.Equal(preFreeze.FrozenAt), "FrozenAt should not have shifted")
+}
+
+// corruptGatewayRegistry overwrites the registry doc on the given bucket with a non-object
+// JSON value so that getGatewayRegistry's unmarshal fails. This simulates a bucket whose
+// registry has become inaccessible — used to drive the partial-failure branch of Unfreeze.
+func corruptGatewayRegistry(t *testing.T, rt *RestTester, bucketName string) {
+	t.Helper()
+	ctx := base.TestCtx(t)
+	conn := rt.ServerContext().BootstrapContext.Connection
+	var existing map[string]any
+	cas, err := conn.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, &existing)
+	require.NoError(t, err)
+	_, err = conn.WriteMetadataDocument(ctx, bucketName, base.SGRegistryKey, cas, "corrupted-registry-for-test")
+	require.NoError(t, err)
+}
+
+// TestClusterCompatUnfreezePartialFailure verifies that when ClearRegistryFreeze fails on
+// a tracked bucket AND the residual re-read also fails, Unfreeze returns
+// ErrUnfreezePartial with residual==nil. The bucket's registry is overwritten with an
+// unparseable value so getGatewayRegistry fails — which propagates through both
+// ClearRegistryFreeze and the residual re-read, hitting the clearFailed>0 / residual==nil
+// branch. Also verifies the cache is preserved (not wiped to nil) so admins see a stable
+// view until Refresh self-heals.
+func TestClusterCompatUnfreezePartialFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	preFreeze, err := ccm.Freeze(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, preFreeze)
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	cleared, residual, err := ccm.Unfreeze(ctx)
+	assert.ErrorIs(t, err, ErrUnfreezePartial)
+	require.NotNil(t, cleared, "Unfreeze should return the pre-op freeze record so the handler can surface it")
+	assert.Equal(t, preFreeze.Version, cleared.Version)
+	assert.Nil(t, residual, "re-read should fail on the corrupted registry, leaving residual unknown")
+
+	cached := ccm.getCachedFreeze()
+	require.NotNil(t, cached, "cache must be preserved when residual state could not be verified")
+	assert.Equal(t, preFreeze.Version, cached.Version, "cache should still reflect the pre-op freeze")
+}
+
+// TestClusterCompatUnfreezePartialFailureREST verifies the REST handler returns 503 with
+// an HTTP-Error body (not a ClusterCompatVersionState) when Unfreeze fails and the
+// residual state could not be verified. The error reason must include the previously-
+// frozen version so the admin has a recovery target.
+func TestClusterCompatUnfreezePartialFailureREST(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	ccm.Refresh(ctx)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/freeze", "")
+	RequireStatus(t, resp, http.StatusOK)
+
+	preFreezeVersion := base.NodeClusterCompatVersion.String()
+
+	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/_cluster_compat_version/unfreeze", "")
+	RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	var httpErr struct {
+		Error  string `json:"error"`
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &httpErr))
+	assert.NotEmpty(t, httpErr.Error)
+	assert.Contains(t, httpErr.Reason, preFreezeVersion, "error reason should name the previously-frozen version so the admin has a recovery target")
+}
+
 // TestClusterCompatRefreshIntervalUnclamped verifies refreshInterval returns the configured
+// ConfigUpdateFrequency verbatim — no silent floor. The validator is responsible for rejecting
+// pathological combinations (see TestStartupConfigNodeHeartbeatExpiryValidation), so the
+// runtime must not disagree with what the validator approved.
 func TestClusterCompatRefreshIntervalUnclamped(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()

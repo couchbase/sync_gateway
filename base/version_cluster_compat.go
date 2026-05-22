@@ -101,6 +101,14 @@ type RegistryNode struct {
 	Databases     map[string]string    `json:"databases,omitempty"`
 }
 
+// RegistryFreeze records an admin-issued cluster compatibility version freeze stored in a
+// bucket registry. When present, the cluster compatibility version reported by Sync Gateway is
+// pinned to Version, preventing it from advancing as nodes are upgraded.
+type RegistryFreeze struct {
+	Version  ClusterCompatVersion `json:"version"`
+	FrozenAt time.Time            `json:"frozen_at"`
+}
+
 // ParseClusterCompatVersion parses a "major.minor" string into a ClusterCompatVersion.
 func ParseClusterCompatVersion(s string) (ClusterCompatVersion, error) {
 	parts := strings.SplitN(s, ".", 2)

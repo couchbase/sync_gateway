@@ -3356,6 +3356,44 @@ ClusterCompatVersion:
   nullable: true
   example: '4.1'
   title: Cluster Compatibility Version
+ClusterCompatVersionState:
+  type: object
+  description: |-
+    Cluster compatibility version state.
+
+    Without a freeze, `cluster_compat_version` is the minimum version across all live nodes
+    in the cluster, and advances automatically as nodes are upgraded.
+
+    A freeze pins `cluster_compat_version` to the value captured at the time of the freeze,
+    preventing it from advancing as nodes upgrade. This preserves the option to roll a node
+    back to the prior major/minor before committing to the upgrade.
+
+    The presence of `frozen_cluster_compat_version` indicates that a frozen version is currently set;
+    its absence indicates no version has been frozen.
+  properties:
+    cluster_compat_version:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: |-
+        The currently-reported cluster compatibility version. Equal to
+        `frozen_cluster_compat_version` when a freeze is set, otherwise the minimum across
+        all live nodes. Omitted if no version has been computed yet (e.g. immediately after
+        startup, before any node has registered).
+    nodes:
+      type: object
+      description: |-
+        Per-node cluster compatibility versions, keyed by node UID. Includes every node
+        currently registered in any tracked bucket registry.
+      additionalProperties:
+        x-additionalPropertiesName: nodeUID
+        $ref: '#/ClusterCompatVersion'
+    frozen_cluster_compat_version:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: |-
+        The cluster compatibility version captured at the time of the most recent freeze.
+        Omitted when no freeze is set.
+  title: Cluster Compatibility Version State
 DiagnosticFunctionException:
   description: The exception thrown during evaluation (if any).
   type: string
@@ -3445,6 +3483,14 @@ GatewayRegistry:
       additionalProperties:
         x-additionalPropertiesName: nodeUID
         $ref: '#/RegistryNode'
+    frozen_cluster_compat_version:
+      allOf:
+        - $ref: '#/RegistryFrozenClusterCompatVersion'
+      description: |-
+        Cluster compatibility version freeze record. When present, the
+        cluster compatibility version reported by this Sync Gateway is capped at
+        `frozen_cluster_compat_version.version` until the freeze is cleared via
+        `POST /_cluster_compat_version/unfreeze`.
 
 RegistryNode:
   type: object
@@ -3458,6 +3504,27 @@ RegistryNode:
       type: string
       format: date-time
       description: Time of the node's last heartbeat write to this registry.
+
+RegistryFrozenClusterCompatVersion:
+  type: object
+  description: |-
+    A cluster compatibility version freeze record stored in a bucket registry. Set by
+    `POST /_cluster_compat_version/freeze` and cleared by
+    `POST /_cluster_compat_version/unfreeze`. Cluster-wide freeze state is the aggregate of
+    these records across all bucket registries.
+  properties:
+    version:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: |-
+        The cluster compatibility version captured at the time of the freeze.
+    frozen_at:
+      type: string
+      format: date-time
+      description: Time at which the freeze was set.
+  required:
+    - version
+    - frozen_at
 
 RegistryConfigGroup:
   type: object

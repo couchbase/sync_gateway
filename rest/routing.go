@@ -271,6 +271,12 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 	r.Handle("/_cluster_info",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo, handlerOptions{sgcollect: true})).Methods("GET")
+	r.Handle("/_cluster_compat_version",
+		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterCompatVersion, handlerOptions{sgcollect: true})).Methods("GET")
+	r.Handle("/_cluster_compat_version/freeze",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFreezeClusterCompatVersion)).Methods("POST")
+	r.Handle("/_cluster_compat_version/unfreeze",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleUnfreezeClusterCompatVersion)).Methods("POST")
 
 	r.Handle("/_status",
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus, handlerOptions{sgcollect: true})).Methods("GET")

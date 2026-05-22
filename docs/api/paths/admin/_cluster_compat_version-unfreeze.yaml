@@ -1,0 +1,52 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+post:
+  summary: Clear the cluster compatibility version freeze
+  description: |-
+    Clears any pinned cluster compatibility version previously frozen via `POST /_cluster_compat_version/freeze`.
+
+    The reported `cluster_compat_version` will resume tracking the live-node minimum and may immediately advance if all nodes have been upgraded since the freeze was set.
+
+    Returns success only if the cluster is fully unfrozen.
+    If any part of the cluster remains frozen after the request, a `503` is returned with the current state -
+    the cluster compatibility version may still be held back, and the request should be retried.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Dev Ops
+  responses:
+    '200':
+      description: Cluster compatibility version freeze has been cleared
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized
+    '500':
+      description: An unexpected error occurred while clearing the cluster compatibility version freeze
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '503':
+      description: |-
+        The unfreeze did not fully apply. The cluster compatibility version may still be held back
+        and the request should be retried. The response body is either a `ClusterCompatVersionState`
+        showing the residual freeze, or an `HTTP-Error` when cluster compatibility version tracking
+        is not enabled on this node, or when the unfreeze partially failed and the residual freeze
+        state could not be verified.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: ../../components/schemas.yaml#/ClusterCompatVersionState
+              - $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Server
+  operationId: post__cluster_compat_version_unfreeze
