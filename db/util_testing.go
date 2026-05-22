@@ -1169,3 +1169,22 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	}
 	return nil
 }
+
+// RestartChangeListener stops and restarts the changes feed. If flushCache is true, clear the cache.
+func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) {
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db.mutationListener.Stop(ctx)
+
+	require.NoError(t, db.changeCache.Clear(ctx))
+	var err error
+	db.mutationListener, err = newChangeListener(db.Bucket.GetName(), db.Options.GroupID, db)
+	require.NoError(t, err)
+	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
+	require.NoError(t, db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore))
+}
+
+// FlushChannelCache stops the changes feed, clears the channel and change cache, and restarts the changes feed.
+func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
+	db.RestartChangeListener(t, true)
+}

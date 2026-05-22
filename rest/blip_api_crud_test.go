@@ -3432,9 +3432,7 @@ func TestChangesFeedExitDisconnect(t *testing.T) {
 		rt.CreateUser(alice, []string{"*"})
 		rt.CreateTestDoc("doc1")
 		rt.WaitForPendingChanges()
-		collection, ctx := rt.GetSingleTestDatabaseCollection()
-		err := collection.FlushChannelCache(ctx)
-		require.NoError(t, err)
+		rt.GetDatabase().FlushChannelCache(t)
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
 			&BlipTesterClientOpts{Username: alice},
 		)
