@@ -944,7 +944,11 @@ func resyncTestModes() []resyncTestCase {
 // version-byte prefix. regenerateSequences=true is required so the syncInfo update path runs.
 func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 	docsToCreate := 10
-	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+	opts := testDBForResyncOptions{
+		docsToCreate:                 docsToCreate,
+		updateSyncFuncAfterDocsAdded: true,
+	}
+	db, ctx := setupTestDBForResyncWithDocs(t, opts)
 	defer db.Close(ctx)
 
 	ccv := base.NewClusterCompatVersion(4, 1)
