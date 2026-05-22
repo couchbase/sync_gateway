@@ -931,7 +931,6 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequence(t *testing.T) {
-	t.Skip("FIXME")
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	pendingMaxWait := uint32(5)

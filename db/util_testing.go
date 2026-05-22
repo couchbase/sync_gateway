@@ -1175,7 +1175,9 @@ func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) 
 	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
 	db.mutationListener.Stop(ctx)
 
-	require.NoError(t, db.changeCache.Clear(ctx))
+	if flushCache {
+		require.NoError(t, db.changeCache.Clear(ctx))
+	}
 	var err error
 	db.mutationListener, err = newChangeListener(db.Bucket.GetName(), db.Options.GroupID, db)
 	require.NoError(t, err)
