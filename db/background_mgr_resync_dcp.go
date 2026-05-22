@@ -171,6 +171,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 	var doneChan chan error
 	var dcpClient base.DCPClient
+	var dcpClientClose dcpClientCloser
+	defer func() {
+		err := dcpClientClose.shutdown() // shutdown in case of panic
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to close resync DCP client on shutdown! %v", err)
+		}
+	}()
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback(ctx)
@@ -275,7 +282,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync heartbeater: %v", err)
 		}
-		defer resyncHB.Stop(ctx)
+		dcpClientClose.append(func() error {
+			resyncHB.Stop(ctx)
+			return nil
+		})
 
 		resyncCfg, err := base.NewCfgSG(ctx, db.MetadataStore, db.MetadataKeys.ResyncCfgPrefix(), true)
 		if err != nil {
@@ -312,7 +322,10 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error starting resync sharded dcp feed: %v", err)
 		}
-		defer resyncCbgtContext.Stop(ctx)
+		dcpClientClose.append(func() error {
+			resyncCbgtContext.Stop(ctx)
+			return nil
+		})
 	} else {
 
 		clientOptions := r.getDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
@@ -329,6 +342,12 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			_ = dcpClient.Close()
 			return err
 		}
+		dcpClientClose.append(func() error {
+			_ = dcpClient.Close()
+			err := <-doneChan
+			return err
+		})
+
 		base.DebugfCtx(ctx, base.KeyAll, "Resync DCP client started.")
 
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
@@ -337,7 +356,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	select {
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
-		err := dcpClient.Close()
+		err := dcpClientClose.shutdown()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 			return err
@@ -399,21 +418,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			db.RequireResync = collectionsRequiringResync
 		}
 	case <-terminator.Done():
-		if !r.Distributed {
-			base.DebugfCtx(ctx, base.KeyAll, "Terminator closed. Ending Resync process.")
-			err := dcpClient.Close()
-			if err != nil {
-				base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
-				return err
-			}
 
-			err = <-doneChan
-			if err != nil {
-				return err
-			}
-
-			base.InfofCtx(ctx, base.KeyAll, "resync was terminated. Docs changed: %d Docs Processed: %d", r.DocsChanged(), r.DocsProcessed())
+		base.DebugfCtx(ctx, base.KeyAll, "Terminator closed. Ending Resync process.")
+		err := dcpClientClose.shutdown()
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to close resync DCP client after completion! %v", err)
 		}
+		base.InfofCtx(ctx, base.KeyAll, "resync was terminated. Docs changed: %d Docs Processed: %d", r.DocsChanged(), r.DocsProcessed())
+		return err
 	}
 
 	return nil
@@ -631,4 +643,37 @@ func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string, distribu
 		)
 	}
 	return checkpointPrefix
+}
+
+// dcpClientCloser is a helper struct to manage closing of DCP resources. Register cleanup functions using append.
+// Cleanup functions are executed in reverse order of registration.
+type dcpClientCloser struct {
+	lastError error
+	closeLock sync.Mutex
+	funcs     []func() error
+	closed    bool
+}
+
+// shutdown will shut down all related resources. This function is only executed once, but it is safe to call
+// multple times and will return the same error if it has already been executed or is being simultaneously
+// executed.
+func (d *dcpClientCloser) shutdown() error {
+	d.closeLock.Lock()
+	defer d.closeLock.Unlock()
+	if d.closed {
+		return d.lastError
+	}
+	d.closed = true
+	var errs []error
+	for _, f := range d.funcs {
+		errs = append(errs, f())
+	}
+	d.lastError = errors.Join(errs...)
+	return d.lastError
+}
+
+// append registers a cleanup function to be executed on shutdown. Functions are executed in reverse order of
+// registration.
+func (d *dcpClientCloser) append(f func() error) {
+	d.funcs = append([]func() error{f}, d.funcs...)
 }
