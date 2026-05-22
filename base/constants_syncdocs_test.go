@@ -301,15 +301,15 @@ func TestInitSyncInfoErrors(t *testing.T) {
 		expectedError               string
 		requiresResync              bool
 		requiresAttachmentMigration bool
-		addCallback                 func(docID string) (bool, error)
+		writeCasCallback            func(docID string) (uint64, error)
 	}{
 		{
 
 			name:                        "generic error",
 			requiresResync:              true,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
-				return false, fmt.Errorf("generic error")
+			writeCasCallback: func(docID string) (uint64, error) {
+				return 0, fmt.Errorf("generic error")
 			},
 			expectedError: "generic error",
 		},
@@ -317,8 +317,8 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, then empty",
 			requiresResync:              true,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
-				return false, sgbucket.CasMismatchErr{}
+			writeCasCallback: func(docID string) (uint64, error) {
+				return 0, sgbucket.CasMismatchErr{}
 			},
 			expectedError: "syncInfo missing after CAS mismatch on add",
 		},
@@ -326,15 +326,15 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=match, no metadataVersion",
 			requiresResync:              false,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{MetadataID: Ptr(expectedMetadataID)}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -342,7 +342,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=mismatch, no metadataVersion",
 			requiresResync:              true,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
 						MetadataID: Ptr("another metadataID"),
@@ -350,9 +350,9 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -360,7 +360,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=match, correct metadataVersion",
 			requiresResync:              false,
 			requiresAttachmentMigration: false,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
 						MetadataID:      Ptr(expectedMetadataID),
@@ -369,9 +369,9 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -379,7 +379,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=mismatch, correct metadataVersion",
 			requiresResync:              true,
 			requiresAttachmentMigration: false,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
 						MetadataID:      Ptr("another metadataID"),
@@ -388,9 +388,9 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -398,7 +398,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=match, incorrect metadataVersion",
 			requiresResync:              false,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
 						MetadataID:      Ptr(expectedMetadataID),
@@ -407,9 +407,9 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -417,7 +417,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			name:                        "single cas error, get replacement with metadataID=mismatch, incorrect metadataVersion",
 			requiresResync:              true,
 			requiresAttachmentMigration: true,
-			addCallback: func(docID string) (bool, error) {
+			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
 						MetadataID:      Ptr("another metadataID"),
@@ -426,9 +426,9 @@ func TestInitSyncInfoErrors(t *testing.T) {
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
-					return false, sgbucket.CasMismatchErr{}
+					return 0, sgbucket.CasMismatchErr{}
 				}
-				return false, nil
+				return 0, nil
 			},
 			expectedError: "",
 		},
@@ -444,7 +444,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 			shouldFailAdd.Store(false)
-			ds.config.AddCallback = test.addCallback
+			ds.config.WriteCasCallback = test.writeCasCallback
 			requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, expectedMetadataID, nil)
 			if test.expectedError != "" {
 				require.Error(t, err)

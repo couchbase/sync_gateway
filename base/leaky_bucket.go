@@ -160,6 +160,11 @@ type LeakyBucketConfig struct {
 	// AddCallback issues a callback during Add.
 	AddCallback func(key string) (bool, error)
 
+	// WriteCasCallback issues a callback during WriteCas. If it returns a non-nil error,
+	// the underlying WriteCas is skipped and the error is returned as-is. Useful for
+	// injecting CasMismatchErr on the insert/replace path.
+	WriteCasCallback func(key string) (uint64, error)
+
 	CreateIndexIfNotExistsCallback func(indexName string)
 
 	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.

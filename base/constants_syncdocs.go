@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 const SyncDocPrefix = "_sync:"                                 // Prefix for all legacy (non-namespaced) Sync Gateway metadata documents
@@ -453,6 +455,17 @@ func marshalSyncInfo(syncInfo *SyncInfo, clusterCompatVersion *ClusterCompatVers
 	return payload, nil
 }
 
+// syncInfoWriteOpts returns the appropriate WriteOptions for a marshalSyncInfo payload.
+// V1-prefixed payloads must be written as binary datatype. Bare-JSON payloads (ccv < 4.1)
+// continue to be written as JSON datatype so a not-yet-upgraded peer whose reader
+// enforces datatype can still load it.
+func syncInfoWriteOpts(payload []byte) sgbucket.WriteOptions {
+	if len(payload) > 0 && payload[0] == byte(SyncInfoTypeV1) {
+		return sgbucket.Raw
+	}
+	return 0
+}
+
 // DecodeSyncInfo decodes a raw syncInfo payload, handling the version-byte prefix
 // introduced in ccv 4.1+.
 func DecodeSyncInfo(data []byte) (SyncInfo, error) {
@@ -508,9 +521,13 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string, clusterC
 		if mErr != nil {
 			return true, true, mErr
 		}
-		_, addErr := ds.Add(ctx, SGSyncInfo, 0, payload)
+		// WriteCas with cas=0 inserts the payload, picking the datatype tag from the
+		// payload's prefix (binary for V1, JSON for bare-JSON ccv < 4.1). Using Add here
+		// would unconditionally tag as JSON via SGJSONTranscoder, which loses the binary
+		// datatype needed for V1 payloads.
+		_, writeErr := ds.WriteCas(ctx, SGSyncInfo, 0, 0, payload, syncInfoWriteOpts(payload))
 		switch {
-		case IsCasMismatch(addErr):
+		case IsCasMismatch(writeErr):
 			// attempt new fetch
 			var refound bool
 			syncInfo, refound, err = loadSyncInfo(ctx, ds)
@@ -520,8 +537,8 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string, clusterC
 			if !refound {
 				return true, true, fmt.Errorf("syncInfo missing after CAS mismatch on add")
 			}
-		case addErr != nil:
-			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+		case writeErr != nil:
+			return true, true, fmt.Errorf("Error adding syncInfo: %v", writeErr)
 		default:
 			syncInfo = newSyncInfo
 		}
@@ -546,18 +563,39 @@ func (s *SyncInfo) requiresResync(metadataID string) bool {
 }
 
 // updateSyncInfo CAS-updates the syncInfo document by reading it, applying mutate to the
-// decoded value, and writing back in the format dictated by clusterCompatVersion.
+// decoded value, and writing back in the format dictated by clusterCompatVersion. Uses
+// GetRaw + WriteCas with sgbucket.Raw rather than DataStore.Update so the doc can be read
+// and written with binary datatype - gocb's RawJSONTranscoder (used by Update) rejects
+// non-JSON datatypes, and the V1 syncInfo format is byte-prefixed binary. Retries on CAS
+// mismatch indefinitely, mirroring the unbounded retry loop in DataStore.Update.
 func updateSyncInfo(ctx context.Context, ds DataStore, clusterCompatVersion *ClusterCompatVersion, mutate func(*SyncInfo)) error {
-	_, err := ds.Update(ctx, SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
-		syncInfo, decodeErr := DecodeSyncInfo(current)
-		if decodeErr != nil {
-			return nil, nil, false, decodeErr
+	for {
+		current, cas, getErr := ds.GetRaw(ctx, SGSyncInfo)
+		notFound := IsDocNotFoundError(getErr)
+		if getErr != nil && !notFound {
+			return getErr
+		}
+		var syncInfo SyncInfo
+		if !notFound {
+			decoded, decodeErr := DecodeSyncInfo(current)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			syncInfo = decoded
+		} else {
+			cas = 0
 		}
 		mutate(&syncInfo)
-		bytes, err := marshalSyncInfo(&syncInfo, clusterCompatVersion)
-		return bytes, nil, false, err
-	})
-	return err
+		bytes, marshalErr := marshalSyncInfo(&syncInfo, clusterCompatVersion)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, writeErr := ds.WriteCas(ctx, SGSyncInfo, 0, cas, bytes, syncInfoWriteOpts(bytes)); writeErr == nil {
+			return nil
+		} else if !IsCasMismatch(writeErr) {
+			return writeErr
+		}
+	}
 }
 
 // SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present.

@@ -156,6 +156,12 @@ func (lds *LeakyDataStore) Remove(ctx context.Context, k string, cas uint64) (ca
 	return lds.dataStore.Remove(ctx, k, cas)
 }
 func (lds *LeakyDataStore) WriteCas(ctx context.Context, k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (uint64, error) {
+	if lds.config.WriteCasCallback != nil {
+		casOut, err := lds.config.WriteCasCallback(k)
+		if err != nil {
+			return casOut, err
+		}
+	}
 	return lds.dataStore.WriteCas(ctx, k, exp, cas, v, opt)
 }
 func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
