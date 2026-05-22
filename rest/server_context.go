@@ -387,7 +387,7 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			dbConfigFound, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name, false)
+			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtxForDatabase(ctx), name, false)
 		}
 		if dbConfigFound {
 			sc._databasesLock.RLock()

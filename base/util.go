@@ -67,7 +67,7 @@ func NewNonCancelCtx() NonCancellableContext {
 	return ctxStruct
 }
 
-// NewNonCancelCtx creates a new background context struct for operations that require a fresh context, with database logging context added
+// NewNonCancelCtxForDatabase creates a new background context struct for operations that require a fresh context, with database logging context added
 func NewNonCancelCtxForDatabase(parentContext context.Context) NonCancellableContext {
 	ctx := getLogCtx(parentContext)
 
