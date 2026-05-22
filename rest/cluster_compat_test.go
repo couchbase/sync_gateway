@@ -1382,12 +1382,16 @@ func TestClusterCompatFreezePartialFailure(t *testing.T) {
 
 	corruptGatewayRegistry(t, rt, rt.Bucket().GetName())
 
-	_, err := ccm.Freeze(ctx)
+	aggregate, err := ccm.Freeze(ctx)
 	assert.ErrorIs(t, err, ErrFreezePartial)
+	assert.Nil(t, aggregate, "no bucket accepted the freeze, so the aggregate must be nil")
+	assert.Nil(t, ccm.getCachedFreeze(), "cache must remain unset when no bucket accepted the freeze")
 }
 
 // TestClusterCompatFreezePartialFailureREST verifies the REST handler returns 503 with a
-// ClusterCompatVersionState body when Freeze partially fails — mirroring unfreeze.
+// ClusterCompatVersionState body when Freeze partially fails — mirroring unfreeze. The
+// body must report the live cluster compat version but no frozen version, since the
+// failed freeze did not pin any value.
 func TestClusterCompatFreezePartialFailureREST(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1403,6 +1407,8 @@ func TestClusterCompatFreezePartialFailureREST(t *testing.T) {
 	RequireStatus(t, resp, http.StatusServiceUnavailable)
 	var state ClusterCompatVersionState
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &state))
+	assert.Nil(t, state.FrozenClusterCompatVersion, "no bucket accepted the freeze, so no frozen version should be reported")
+	assert.NotNil(t, state.ClusterCompatVersion, "the live cluster compat version should still be reported after a failed freeze")
 }
 
 // TestClusterCompatFreezePreservesCacheOnTotalFailure verifies that if Freeze fails on
