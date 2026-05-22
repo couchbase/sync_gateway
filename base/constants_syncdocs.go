@@ -28,11 +28,11 @@ const DefaultMetadataID = "_default" // MetadataID assigned to databases that in
 
 const minimumAttachmentMigrationMetadataVersion = "4.0.0" // minimum metadata version that needs to be defined for metadata migration.
 
-type syncInfoMetaVersion byte
+type syncInfoEncodingType byte
 
 const (
 	// SyncInfoTypeUnknown is an unused byte value but here for clarity between the zero value
-	SyncInfoTypeUnknown syncInfoMetaVersion = iota
+	SyncInfoTypeUnknown syncInfoEncodingType = iota
 	// SyncInfoTypeV1 is used to denote a sync info document in version 4.1 and later
 	SyncInfoTypeV1
 )
