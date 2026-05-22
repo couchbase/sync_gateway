@@ -245,6 +245,19 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		c.dbStats().Database().Crc32MatchCount.Add(1)
 	}
 
+	if !isSgWrite {
+		var importErr error
+
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
+		if importErr != nil {
+			return nil, importErr
+		}
+		if doc == nil {
+			return nil, fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+		}
+		cas = doc.Cas
+	}
+
 	compactedChannels := make([]string, 0)
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
@@ -296,11 +309,9 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
 	// Only update _sync.cas and _mou.cas if the pre-compaction doc had already been imported by SGW
-	if isSgWrite {
-		opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
-			sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
-			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
-		}
+	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
 	}
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 

@@ -4185,8 +4185,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	// History should be compacted
 	assert.Less(t, len(syncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
 	// CV must be updated by the import triggered during compaction
-	// This assertion should be changed after CBG-5397
-	assert.Equal(t, cvBeforeCompaction, syncData.CVOrRevTreeID(), "cv should be updated after compaction import")
+	assert.NotEqual(t, cvBeforeCompaction, syncData.CVOrRevTreeID(), "cv should be updated after compaction import")
 
 	// Step 10: Verify document is still accessible and intact
 	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
