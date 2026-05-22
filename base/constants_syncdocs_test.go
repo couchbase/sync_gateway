@@ -296,10 +296,6 @@ func TestInitSyncInfoErrors(t *testing.T) {
 	shouldFailAdd := atomic.Bool{}
 	expectedMetadataID := "metadataID"
 
-	missingErrorMsg := "missing"
-	if !UnitTestUrlIsWalrus() {
-		missingErrorMsg = "not found"
-	}
 	testCases := []struct {
 		name                        string
 		expectedError               string
@@ -324,7 +320,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			addCallback: func(docID string) (bool, error) {
 				return false, sgbucket.CasMismatchErr{}
 			},
-			expectedError: missingErrorMsg,
+			expectedError: "syncInfo missing after CAS mismatch on add",
 		},
 		{
 			name:                        "single cas error, get replacement with metadataID=match, no metadataVersion",
@@ -449,7 +445,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			}()
 			shouldFailAdd.Store(false)
 			ds.config.AddCallback = test.addCallback
-			requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, expectedMetadataID)
+			requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, expectedMetadataID, nil)
 			if test.expectedError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), test.expectedError)
@@ -458,6 +454,196 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			}
 			require.Equal(t, test.requiresResync, requiresResync, "Expected requiresResync to be %t", test.requiresResync)
 			require.Equal(t, test.requiresAttachmentMigration, requiresAttachmentMigration, "Expected requiresAttachmentMigration to be %t", test.requiresAttachmentMigration)
+		})
+	}
+}
+
+func TestInitSyncInfoBinaryFormat(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ds := bucket.DefaultDataStore(ctx)
+
+	ccv40 := NewClusterCompatVersion(4, 0)
+	ccv41 := NewClusterCompatVersion(4, 1)
+
+	resetDoc := func(t *testing.T) {
+		err := ds.Delete(ctx, SGSyncInfo)
+		if err != nil && !IsDocNotFoundError(err) {
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("no doc, ccv 4.1 writes V1 prefix", func(t *testing.T) {
+		resetDoc(t)
+		_, _, err := InitSyncInfo(ctx, ds, "x", &ccv41)
+		require.NoError(t, err)
+		raw, _, err := ds.GetRaw(ctx, SGSyncInfo)
+		require.NoError(t, err)
+		require.NotEmpty(t, raw)
+		require.Equal(t, byte(SyncInfoTypeV1), raw[0], "expected V1 prefix byte")
+		decoded, err := DecodeSyncInfo(raw)
+		require.NoError(t, err)
+		require.Equal(t, "x", *decoded.MetadataID)
+	})
+
+	t.Run("no doc, ccv 4.0 writes legacy JSON", func(t *testing.T) {
+		resetDoc(t)
+		_, _, err := InitSyncInfo(ctx, ds, "x", &ccv40)
+		require.NoError(t, err)
+		raw, _, err := ds.GetRaw(ctx, SGSyncInfo)
+		require.NoError(t, err)
+		require.NotEmpty(t, raw)
+		require.Equal(t, byte('{'), raw[0], "expected legacy JSON")
+	})
+
+	t.Run("V1 prefixed doc readable with ccv=nil (forward-compat)", func(t *testing.T) {
+		resetDoc(t)
+		payload := append([]byte{byte(SyncInfoTypeV1)}, []byte(`{"metadataID":"x"}`)...)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, payload))
+		requiresResync, _, err := InitSyncInfo(ctx, ds, "x", nil)
+		require.NoError(t, err)
+		require.False(t, requiresResync)
+	})
+
+	t.Run("V1 prefixed doc round-trip at ccv=4.1", func(t *testing.T) {
+		resetDoc(t)
+		payload := append([]byte{byte(SyncInfoTypeV1)}, []byte(`{"metadataID":"x","metadata_version":"4.0.0"}`)...)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, payload))
+		requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, "x", &ccv41)
+		require.NoError(t, err)
+		require.False(t, requiresResync)
+		require.False(t, requiresAttachmentMigration)
+	})
+
+	t.Run("corrupt leading byte propagates decode error", func(t *testing.T) {
+		resetDoc(t)
+		payload := append([]byte{0xff}, []byte(`{"metadataID":"x"}`)...)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, payload))
+		_, _, err := InitSyncInfo(ctx, ds, "x", nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unrecognized syncInfo version byte")
+	})
+}
+
+func TestSetSyncInfoBinaryFormat(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ds := bucket.DefaultDataStore(ctx)
+
+	ccv41 := NewClusterCompatVersion(4, 1)
+
+	resetDoc := func(t *testing.T) {
+		err := ds.Delete(ctx, SGSyncInfo)
+		if err != nil && !IsDocNotFoundError(err) {
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("legacy JSON doc upgraded to V1 on SetSyncInfoMetadataID at ccv 4.1", func(t *testing.T) {
+		resetDoc(t)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, []byte(`{"metadataID":"y","metadata_version":"4.0.0"}`)))
+
+		require.NoError(t, SetSyncInfoMetadataID(ctx, ds, "x", &ccv41))
+
+		raw, _, err := ds.GetRaw(ctx, SGSyncInfo)
+		require.NoError(t, err)
+		require.NotEmpty(t, raw)
+		require.Equal(t, byte(SyncInfoTypeV1), raw[0], "expected V1 prefix byte after Set at ccv 4.1")
+		decoded, err := DecodeSyncInfo(raw)
+		require.NoError(t, err)
+		require.Equal(t, "x", *decoded.MetadataID, "metadataID should be updated")
+		require.Equal(t, "4.0.0", decoded.MetaDataVersion, "metaVersion should be preserved")
+	})
+
+	t.Run("legacy JSON doc upgraded to V1 on SetSyncInfoMetaVersion at ccv 4.1", func(t *testing.T) {
+		resetDoc(t)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, []byte(`{"metadataID":"y","metadata_version":"3.0.0"}`)))
+
+		require.NoError(t, SetSyncInfoMetaVersion(ctx, ds, "4.0.0", &ccv41))
+
+		raw, _, err := ds.GetRaw(ctx, SGSyncInfo)
+		require.NoError(t, err)
+		require.NotEmpty(t, raw)
+		require.Equal(t, byte(SyncInfoTypeV1), raw[0], "expected V1 prefix byte after Set at ccv 4.1")
+		decoded, err := DecodeSyncInfo(raw)
+		require.NoError(t, err)
+		require.Equal(t, "y", *decoded.MetadataID, "metadataID should be preserved")
+		require.Equal(t, "4.0.0", decoded.MetaDataVersion, "metaVersion should be updated")
+	})
+
+	t.Run("corrupt doc surfaces decode error via Set", func(t *testing.T) {
+		resetDoc(t)
+		require.NoError(t, ds.SetRaw(ctx, SGSyncInfo, 0, nil, append([]byte{0xff}, []byte(`{"metadataID":"y"}`)...)))
+
+		err := SetSyncInfoMetadataID(ctx, ds, "x", nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unrecognized syncInfo version byte")
+	})
+
+	t.Run("empty arg is a no-op", func(t *testing.T) {
+		resetDoc(t)
+
+		require.NoError(t, SetSyncInfoMetadataID(ctx, ds, "", nil))
+		require.NoError(t, SetSyncInfoMetaVersion(ctx, ds, "", nil))
+
+		_, _, err := ds.GetRaw(ctx, SGSyncInfo)
+		require.True(t, IsDocNotFoundError(err), "expected no syncInfo doc to be written, got err=%v", err)
+	})
+}
+
+func TestDecodeSyncInfo(t *testing.T) {
+	populated := SyncInfo{MetadataID: Ptr("x"), MetaDataVersion: "4.0.0"}
+	populatedJSON := `{"metadataID":"x","metadata_version":"4.0.0"}`
+
+	testCases := []struct {
+		name        string
+		input       []byte
+		expected    SyncInfo
+		expectedErr string
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: SyncInfo{},
+		},
+		{
+			name:     "legacy JSON",
+			input:    []byte(populatedJSON),
+			expected: populated,
+		},
+		{
+			name:     "V1 prefix + JSON",
+			input:    append([]byte{byte(SyncInfoTypeV1)}, []byte(populatedJSON)...),
+			expected: populated,
+		},
+		{
+			name:        "V1 prefix + malformed JSON",
+			input:       append([]byte{byte(SyncInfoTypeV1)}, []byte(`{not json`)...),
+			expectedErr: "Error unmarshalling syncInfo",
+		},
+		{
+			name:        "unknown discriminator 0xFF",
+			input:       append([]byte{0xff}, []byte(populatedJSON)...),
+			expectedErr: "unrecognized syncInfo version byte",
+		},
+		{
+			name:        "SyncInfoTypeUnknown (0x00) is not silently accepted",
+			input:       append([]byte{byte(SyncInfoTypeUnknown)}, []byte(populatedJSON)...),
+			expectedErr: "unrecognized syncInfo version byte",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DecodeSyncInfo(tc.input)
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, got)
 		})
 	}
 }

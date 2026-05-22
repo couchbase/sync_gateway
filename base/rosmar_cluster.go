@@ -222,8 +222,23 @@ func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID strin
 	if IsDocNotFoundError(err) {
 		return false, nil
 	}
-	return err != nil, err
+	return err == nil, err
+}
 
+// GetRawDocument fetches a document from the default collection as raw bytes.  Does not use configPersistence - callers
+// requiring configPersistence handling should use GetMetadataDocument.
+func (c *RosmarCluster) GetRawDocument(ctx context.Context, bucket, docID string) (value []byte, exists bool, err error) {
+	ds, closer, err := c.getDefaultDataStore(ctx, bucket)
+	if err != nil {
+		return nil, false, err
+	}
+	defer closer(ctx)
+
+	value, _, err = ds.GetRaw(ctx, docID)
+	if IsDocNotFoundError(err) {
+		return nil, false, nil
+	}
+	return value, err == nil, err
 }
 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections

@@ -834,7 +834,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
-				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID)
+				var ccv *base.ClusterCompatVersion
+				if sc.ClusterCompat != nil {
+					ccv = sc.ClusterCompat.ClusterCompatVersion()
+				}
+				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID, ccv)
 				if err != nil {
 					if options.loadFromBucket {
 						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
@@ -858,7 +862,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// No explicitly defined scopes means we'll initialize this as a usable default collection, otherwise it's for metadata only
 		if len(config.Scopes) == 0 {
 			scName := base.DefaultScopeAndCollectionName()
-			resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, ds, config.MetadataID)
+			var ccv *base.ClusterCompatVersion
+			if sc.ClusterCompat != nil {
+				ccv = sc.ClusterCompat.ClusterCompatVersion()
+			}
+			resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, ds, config.MetadataID, ccv)
 			if err != nil {
 				if options.loadFromBucket {
 					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
@@ -968,6 +976,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	// NewMetadataKeys handles the "_default" -> legacy (unprefixed) key mapping, so we can pass config.MetadataID through directly.
 	contextOptions.MetadataID = config.MetadataID
+
+	// Stored as a closure so callers re-resolve at call time: cluster compat changes as peers
+	// join/leave during a rolling upgrade, and long-lived consumers (e.g. background managers
+	// mid-run) must observe the current value rather than one captured at db construction.
+	contextOptions.ClusterCompatVersion = func() *base.ClusterCompatVersion {
+		if sc.ClusterCompat != nil {
+			return sc.ClusterCompat.ClusterCompatVersion()
+		}
+		return nil
+	}
 
 	contextOptions.BlipStatsReportingInterval = defaultBytesStatsReportingInterval.Milliseconds()
 	contextOptions.ImportVersion = config.ImportVersion

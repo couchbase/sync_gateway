@@ -937,3 +937,33 @@ func resyncTestModes() []resyncTestCase {
 	}
 	return testCases
 }
+
+// TestResyncManagerDCPWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
+// DatabaseContextOptions.ClusterCompatVersion through ResyncManagerDCP.Run into
+// base.SetSyncInfoMetadataID — when ccv>=4.1 the syncInfo doc is written with the V1
+// version-byte prefix. regenerateSequences=true is required so the syncInfo update path runs.
+func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
+	docsToCreate := 10
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
+	defer db.Close(ctx)
+
+	ccv := base.NewClusterCompatVersion(4, 1)
+	db.Options.ClusterCompatVersion = func() *base.ClusterCompatVersion { return &ccv }
+	// Resync only writes syncInfo when MetadataID is non-empty (SetSyncInfoMetadataID is a no-op otherwise).
+	db.Options.MetadataID = "test_resync_md_id"
+
+	dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	options := map[string]any{
+		"database":            db,
+		"regenerateSequences": true,
+		"collections":         base.NewCollectionNames(),
+	}
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+	RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+
+	raw, _, err := dbc.dataStore.GetRaw(ctx, base.SGSyncInfo)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "expected V1 prefix byte from resync write at ccv 4.1")
+}

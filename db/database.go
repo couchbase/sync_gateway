@@ -210,16 +210,17 @@ type DatabaseContextOptions struct {
 	BlipStatsReportingInterval       int64          // interval to report blip stats in milliseconds
 	ChangesRequestPlus               bool           // Sets the default value for request_plus, for non-continuous changes feeds
 	ConfigPrincipals                 *ConfigPrincipals
-	TestPurgeIntervalOverride        *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
-	TestVersionPruningWindowOverride *time.Duration    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
-	LoggingConfig                    *base.DbLogConfig // Per-database log configuration
-	MaxConcurrentChangesBatches      *int              // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs                *int              // Maximum number of revs to process concurrently per replication
-	NumIndexReplicas                 uint              // Number of replicas for GSI indexes
-	NumIndexPartitions               *uint32           // Number of partitions for GSI indexes, if not set will default to 1
-	ImportVersion                    uint64            // Version included in import DCP checkpoints, incremented when collections added to db
-	DisablePublicAllDocs             bool              // Disable public access to the _all_docs endpoint for this database
-	StoreLegacyRevTreeData           *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	TestPurgeIntervalOverride        *time.Duration                    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
+	TestVersionPruningWindowOverride *time.Duration                    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
+	LoggingConfig                    *base.DbLogConfig                 // Per-database log configuration
+	MaxConcurrentChangesBatches      *int                              // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs                *int                              // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas                 uint                              // Number of replicas for GSI indexes
+	NumIndexPartitions               *uint32                           // Number of partitions for GSI indexes, if not set will default to 1
+	ImportVersion                    uint64                            // Version included in import DCP checkpoints, incremented when collections added to db
+	DisablePublicAllDocs             bool                              // Disable public access to the _all_docs endpoint for this database
+	StoreLegacyRevTreeData           *bool                             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	ClusterCompatVersion             func() *base.ClusterCompatVersion // ClusterCompatVersion returns the current cluster-wide minimum SG version, or nil if not yet known.
 }
 
 type ConfigPrincipals struct {

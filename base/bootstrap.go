@@ -44,6 +44,9 @@ type BootstrapConnection interface {
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetDocument(ctx context.Context, bucket, docID string, rv any) (exists bool, err error)
+	// GetRawDocument retrieves the document with the specified key from the bucket's default collection as raw bytes.
+	// Returns exists=false if key is not found, returns error for any other error.
+	GetRawDocument(ctx context.Context, bucket, docID string) (value []byte, exists bool, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -473,6 +476,32 @@ func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID s
 	}
 	err = getResult.Content(rv)
 	return true, err
+}
+
+// GetRawDocument fetches a document from the default collection as raw bytes.  Does not use configPersistence - callers
+// requiring configPersistence handling should use GetMetadataDocument.
+func (cc *CouchbaseCluster) GetRawDocument(ctx context.Context, bucketName, docID string) (value []byte, exists bool, err error) {
+	if cc == nil {
+		return nil, false, errors.New("nil CouchbaseCluster")
+	}
+	b, teardown, err := cc.getBucket(ctx, bucketName)
+	if err != nil {
+		return nil, false, err
+	}
+
+	defer teardown()
+	getOptions := &gocb.GetOptions{
+		Transcoder: NewSGRawTranscoder(),
+	}
+	getResult, err := b.DefaultCollection().Get(docID, getOptions)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	err = getResult.Content(&value)
+	return value, true, err
 }
 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections

@@ -26,6 +26,15 @@ const DefaultMetadataID = "_default" // MetadataID assigned to databases that in
 
 const minimumAttachmentMigrationMetadataVersion = "4.0.0" // minimum metadata version that needs to be defined for metadata migration.
 
+type syncInfoMetaVersion byte
+
+const (
+	// SyncInfoTypeUnknown is an unused byte value but here for clarity between the zero value
+	SyncInfoTypeUnknown syncInfoMetaVersion = iota
+	// SyncInfoTypeV1 is used to denote a sync info document in version 4.1 and later
+	SyncInfoTypeV1
+)
+
 // Sync Gateway Metadata document types
 type metadataKey int
 
@@ -430,46 +439,100 @@ type SyncInfo struct {
 	MetaDataVersion string  `json:"metadata_version,omitempty"`
 }
 
-// initSyncInfo attempts to initialize syncInfo for a datastore
-//  1. If syncInfo doesn't exist, it is created for the specified metadataID
-//  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
-//  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
-//     If syncInfo exists and has metaDataVersion greater than or equal to 4.0, return requiresAttachmentMigration=false, else requiresAttachmentMigration=true to bring migrate metadata attachments.
-func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string) (requiresResync bool, requiresAttachmentMigration bool, err error) {
+// marshalSyncInfo serialises a SyncInfo, prepending the V1 version byte when the cluster
+// has rolled forward to 4.1+. Older clusters keep writing bare JSON so a not-yet-upgraded
+// peer can still read the document.
+func marshalSyncInfo(syncInfo *SyncInfo, clusterCompatVersion *ClusterCompatVersion) ([]byte, error) {
+	payload, err := JSONMarshal(syncInfo)
+	if err != nil {
+		return nil, fmt.Errorf("Error marshalling syncInfo: %v", err)
+	}
+	if clusterCompatVersion != nil && clusterCompatVersion.AtLeast(4, 1) {
+		payload = append([]byte{byte(SyncInfoTypeV1)}, payload...)
+	}
+	return payload, nil
+}
 
-	var syncInfo SyncInfo
-	_, fetchErr := ds.Get(ctx, SGSyncInfo, &syncInfo)
+// DecodeSyncInfo decodes a raw syncInfo payload, handling the optional version-byte prefix
+// introduced in 4.1. Empty input yields a zero-value SyncInfo with no error so callers can
+// treat "not present" and "present but empty" uniformly.
+func DecodeSyncInfo(data []byte) (SyncInfo, error) {
+	var s SyncInfo
+	if len(data) == 0 {
+		return s, nil
+	}
+	switch {
+	case data[0] == '{':
+		// legacy bare-JSON encoding
+	case data[0] == byte(SyncInfoTypeV1):
+		data = data[1:]
+	default:
+		return s, fmt.Errorf("unrecognized syncInfo version byte: 0x%02x", data[0])
+	}
+	if err := JSONUnmarshal(data, &s); err != nil {
+		return s, fmt.Errorf("Error unmarshalling syncInfo: %v", err)
+	}
+	return s, nil
+}
+
+// loadSyncInfo fetches and decodes syncInfo for a datastore. found=false means the doc does
+// not exist; found=true with a zero-value SyncInfo means the doc exists but is empty.
+func loadSyncInfo(ctx context.Context, ds DataStore) (syncInfo SyncInfo, found bool, err error) {
+	raw, _, fetchErr := ds.GetRaw(ctx, SGSyncInfo)
 	if IsDocNotFoundError(fetchErr) {
+		return SyncInfo{}, false, nil
+	}
+	if fetchErr != nil {
+		return SyncInfo{}, false, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+	}
+	s, err := DecodeSyncInfo(raw)
+	return s, true, err
+}
+
+// InitSyncInfo attempts to initialize syncInfo for a datastore.
+//  1. If syncInfo doesn't exist, it is created for the specified metadataID.
+//  2. If syncInfo exists with a matching metadataID, returns requiresResync=false.
+//  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true.
+//     If syncInfo exists and has metaDataVersion >= 4.0, returns requiresAttachmentMigration=false,
+//     otherwise requiresAttachmentMigration=true to migrate metadata attachments.
+func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string, clusterCompatVersion *ClusterCompatVersion) (requiresResync bool, requiresAttachmentMigration bool, err error) {
+	syncInfo, found, err := loadSyncInfo(ctx, ds)
+	if err != nil {
+		return true, true, err
+	}
+	if !found {
 		if metadataID == "" {
 			return false, true, nil
 		}
-		newSyncInfo := &SyncInfo{MetadataID: Ptr(metadataID)}
-		_, addErr := ds.Add(ctx, SGSyncInfo, 0, newSyncInfo)
-		if IsCasMismatch(addErr) {
+		newSyncInfo := SyncInfo{MetadataID: Ptr(metadataID)}
+		payload, mErr := marshalSyncInfo(&newSyncInfo, clusterCompatVersion)
+		if mErr != nil {
+			return true, true, mErr
+		}
+		_, addErr := ds.Add(ctx, SGSyncInfo, 0, payload)
+		switch {
+		case IsCasMismatch(addErr):
 			// attempt new fetch
-			_, fetchErr = ds.Get(ctx, SGSyncInfo, &syncInfo)
-			if fetchErr != nil {
-				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
+			var refound bool
+			syncInfo, refound, err = loadSyncInfo(ctx, ds)
+			if err != nil {
+				return true, true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", err)
 			}
-		} else if addErr != nil {
+			if !refound {
+				return true, true, fmt.Errorf("syncInfo missing after CAS mismatch on add")
+			}
+		case addErr != nil:
 			return true, true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+		default:
+			syncInfo = newSyncInfo
 		}
-		requiresResync = syncInfo.requiresResync(metadataID)
-		requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
-		if err != nil {
-			return requiresResync, true, err
-		}
-		return requiresResync, requiresAttachmentMigration, nil
-	} else if fetchErr != nil {
-		return true, true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
 	}
+
 	requiresResync = syncInfo.requiresResync(metadataID)
-	// check for meta version, if we don't have meta version of 4.0 we need to run migration job
 	requiresAttachmentMigration, err = CompareMetadataVersion(ctx, syncInfo.MetaDataVersion)
 	if err != nil {
 		return requiresResync, true, err
 	}
-
 	return requiresResync, requiresAttachmentMigration, nil
 }
 
@@ -483,48 +546,40 @@ func (s *SyncInfo) requiresResync(metadataID string) bool {
 	return *s.MetadataID != metadataID
 }
 
-// SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present
-func SetSyncInfoMetadataID(ctx context.Context, ds DataStore, metadataID string) error {
-
-	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
-	if metadataID == "" {
-		return nil
-	}
+// updateSyncInfo CAS-updates the syncInfo document by reading it, applying mutate to the
+// decoded value, and writing back in the format dictated by clusterCompatVersion.
+func updateSyncInfo(ctx context.Context, ds DataStore, clusterCompatVersion *ClusterCompatVersion, mutate func(*SyncInfo)) error {
 	_, err := ds.Update(ctx, SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
-		var syncInfo SyncInfo
-		if current != nil {
-			parseErr := JSONUnmarshal(current, &syncInfo)
-			if parseErr != nil {
-				return nil, nil, false, parseErr
-			}
+		syncInfo, decodeErr := DecodeSyncInfo(current)
+		if decodeErr != nil {
+			return nil, nil, false, decodeErr
 		}
-		// if we have a metadataID to set, set it preserving the metadata version if present
-		syncInfo.MetadataID = Ptr(metadataID)
-		bytes, err := JSONMarshal(&syncInfo)
+		mutate(&syncInfo)
+		bytes, err := marshalSyncInfo(&syncInfo, clusterCompatVersion)
 		return bytes, nil, false, err
 	})
 	return err
 }
 
-// SetSyncInfoMetaVersion sets sync info in DataStore to specified metadata version, preserving metadataID if present
-func SetSyncInfoMetaVersion(ctx context.Context, ds DataStore, metaVersion string) error {
+// SetSyncInfoMetadataID sets syncInfo in a DataStore to the specified metadataID, preserving metadata version if present.
+func SetSyncInfoMetadataID(ctx context.Context, ds DataStore, metadataID string, clusterCompatVersion *ClusterCompatVersion) error {
+	// If the metadataID isn't defined, don't persist SyncInfo.  Defensive handling for legacy use cases.
+	if metadataID == "" {
+		return nil
+	}
+	return updateSyncInfo(ctx, ds, clusterCompatVersion, func(s *SyncInfo) {
+		s.MetadataID = Ptr(metadataID)
+	})
+}
+
+// SetSyncInfoMetaVersion sets syncInfo in a DataStore to the specified metadata version, preserving metadataID if present.
+func SetSyncInfoMetaVersion(ctx context.Context, ds DataStore, metaVersion string, clusterCompatVersion *ClusterCompatVersion) error {
 	if metaVersion == "" {
 		return nil
 	}
-	_, err := ds.Update(ctx, SGSyncInfo, 0, func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
-		var syncInfo SyncInfo
-		if current != nil {
-			parseErr := JSONUnmarshal(current, &syncInfo)
-			if parseErr != nil {
-				return nil, nil, false, parseErr
-			}
-		}
-		// if we have a meta version to set, set it preserving the metadata ID if present
-		syncInfo.MetaDataVersion = metaVersion
-		bytes, err := JSONMarshal(&syncInfo)
-		return bytes, nil, false, err
+	return updateSyncInfo(ctx, ds, clusterCompatVersion, func(s *SyncInfo) {
+		s.MetaDataVersion = metaVersion
 	})
-	return err
 }
 
 // SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specified. Otherwise, returns the original string.

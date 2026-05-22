@@ -311,3 +311,42 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 		})
 	}
 }
+
+// TestAttachmentMigrationWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
+// DatabaseContextOptions.ClusterCompatVersion through AttachmentMigrationManager.Run into
+// base.SetSyncInfoMetaVersion — when ccv>=4.1 the syncInfo doc is written with the V1
+// version-byte prefix.
+func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	ccv := base.NewClusterCompatVersion(4, 1)
+	db.Options.ClusterCompatVersion = func() *base.ClusterCompatVersion { return &ccv }
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	for i := range 3 {
+		docBody := Body{
+			"value":         1234,
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		}
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		_, _, err := collection.Put(ctx, key, docBody)
+		require.NoError(t, err)
+	}
+	// move one doc's attachment metadata so the migration has work to do
+	key := fmt.Sprintf("%s_0", t.Name())
+	value, _, err := collection.dataStore.GetRaw(ctx, key)
+	require.NoError(t, err)
+	MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
+
+	mgr := NewAttachmentMigrationManager(db.DatabaseContext)
+	require.NotNil(t, mgr)
+	require.NoError(t, mgr.Start(ctx, nil))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	raw, _, err := collection.dataStore.GetRaw(ctx, base.SGSyncInfo)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "expected V1 prefix byte from attachment migration write at ccv 4.1")
+}

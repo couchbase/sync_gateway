@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,4 +130,82 @@ func TestBootstrapRefCounting(t *testing.T) {
 	// make sure you can "remove" a non existent bucket in the case that bucket removal is called multiple times
 	cluster.cachedBucketConnections.removeOutdatedBuckets(SetOf("not-a-bucket"))
 
+}
+
+// newTestBootstrapConnection returns a BootstrapConnection bound to the current test backing store
+// (Rosmar in-memory or Couchbase Server) so a single test can exercise both implementations.
+func newTestBootstrapConnection(t *testing.T) BootstrapConnection {
+	t.Helper()
+	ctx := TestCtx(t)
+	if UnitTestUrlIsWalrus() {
+		cluster, err := NewRosmarCluster(rosmar.InMemoryURL)
+		require.NoError(t, err)
+		t.Cleanup(cluster.Close)
+		return cluster
+	}
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, TestUseXattrs(), CachedClusterConnections)
+	require.NoError(t, err)
+	t.Cleanup(cluster.Close)
+	return cluster
+}
+
+func TestBootstrapConnectionGetRawDocument(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ds := bucket.DefaultDataStore(ctx)
+	bucketName := bucket.GetName()
+
+	cluster := newTestBootstrapConnection(t)
+	const docID = "test_get_raw_doc"
+
+	t.Run("doc absent", func(t *testing.T) {
+		value, exists, err := cluster.GetRawDocument(ctx, bucketName, docID)
+		require.NoError(t, err)
+		require.False(t, exists)
+		require.Nil(t, value)
+	})
+
+	t.Run("legacy JSON", func(t *testing.T) {
+		defer func() { _ = ds.Delete(ctx, docID) }()
+		legacyJSON := []byte(`{"metadataID":"x"}`)
+		require.NoError(t, ds.SetRaw(ctx, docID, 0, nil, legacyJSON))
+
+		value, exists, err := cluster.GetRawDocument(ctx, bucketName, docID)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Equal(t, legacyJSON, value)
+		require.Equal(t, byte('{'), value[0])
+	})
+
+	t.Run("V1 binary", func(t *testing.T) {
+		defer func() { _ = ds.Delete(ctx, docID) }()
+		payload := append([]byte{byte(SyncInfoTypeV1)}, []byte(`{"metadataID":"x"}`)...)
+		require.NoError(t, ds.SetRaw(ctx, docID, 0, nil, payload))
+
+		value, exists, err := cluster.GetRawDocument(ctx, bucketName, docID)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Equal(t, payload, value)
+		require.Equal(t, byte(SyncInfoTypeV1), value[0])
+	})
+}
+
+// TestBootstrapConnectionGetDocumentExists GetDocument must report exists=true for a doc that exists.
+func TestBootstrapConnectionGetDocumentExists(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ds := bucket.DefaultDataStore(ctx)
+	bucketName := bucket.GetName()
+
+	cluster := newTestBootstrapConnection(t)
+
+	const docID = "test_get_doc_exists"
+	require.NoError(t, ds.Set(ctx, docID, 0, nil, []byte(`{"x":1}`)))
+
+	var got map[string]any
+	exists, err := cluster.GetDocument(ctx, bucketName, docID, &got)
+	require.NoError(t, err)
+	require.True(t, exists, "expected GetDocument to report exists=true for an existing doc")
 }
