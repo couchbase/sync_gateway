@@ -1343,7 +1343,7 @@ func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
 	// Simulate a node upgrade by re-registering self at a higher version. Without the
 	// freeze ceiling, RegisterNodeVersion would ratchet HWM up to this higher value.
 	higher := base.NewClusterCompatVersion(2, 0)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, rt.ServerContext().NodeUID, higher, time.Hour, true)
+	_, err = bc.RegisterNodeVersion(ctx, bucketName, rt.ServerContext().NodeUID, "", higher, nil, time.Hour, true)
 	require.NoError(t, err)
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
