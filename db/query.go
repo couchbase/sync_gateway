@@ -57,6 +57,7 @@ const (
 	QueryTypeAllDocs             = "allDocs"
 	QueryTypeUsers               = "users"
 	QueryTypeUserFunctionPrefix  = "function:" // Prefix applied to named functions from config file
+	QueryTypeCountDocs           = "count"
 )
 
 type SGQuery struct {
@@ -355,6 +356,22 @@ var QueryAllDocs = SGQuery{
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
 		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard),
+	adhoc: false,
+}
+
+// QueryCountDocs finds documents that are tagged with sync metadata, including tombstones. This ignores any metadata
+// documents starting with _sync:
+var QueryCountDocs = SGQuery{
+	name: QueryTypeCountDocs,
+	statement: fmt.Sprintf(
+		"SELECT COUNT(*) as count "+
+			"FROM %s AS %s "+
+			"USE INDEX ($idx) "+
+			"WHERE $sync.`sequence` > 0 AND "+ // Required to use IndexAllDocs
+			"META(%s).id NOT LIKE '%s' "+
+			"AND $sync IS NOT MISSING ",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
@@ -763,6 +780,51 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+}
+
+// CountAllDocs returns the total number of documents in the collection that contain _sync metadata.
+// When using views, tombstoned documents are excluded.
+func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (docCount uint64, err error) {
+
+	// View Query
+	if c.useViews() {
+		opts := Body{"stale": false, "reduce": true}
+		results, viewErr := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
+		if viewErr != nil {
+			return 0, viewErr
+		}
+		var row struct {
+			Value float64 `json:"value"`
+		}
+		if results.Next(ctx, &row) {
+			docCount = uint64(row.Value)
+		}
+		return docCount, results.Close(ctx)
+	}
+
+	// N1QL Query
+	countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, c.UseXattrs())
+	countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
+
+	results, err := N1QLQueryWithStats(ctx, c.dataStore, QueryTypeCountDocs, countDocsQueryStatement, nil, base.RequestPlus, QueryCountDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		closeErr := results.Close(ctx)
+		if err == nil {
+			err = closeErr
+		}
+	}()
+
+	var row struct {
+		Count uint64 `json:"count"`
+	}
+	if results.Next(ctx, &row) {
+		return row.Count, nil
+	}
+
+	return 0, nil
 }
 
 func (c *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {

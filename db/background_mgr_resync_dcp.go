@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,12 +30,16 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
-	docsProcessedLocal           atomic.Int64 // number of documents processed locally on this node since the last start or resume of resync
-	docsChangedLocal             atomic.Int64 // number of documents changed locally on this node since the last start or resume of resync
-	docsProcessedLocalSerialized atomic.Int64 // number of documents processed locally on this node that have been serialized to the status document
-	docsChangedLocalSerialized   atomic.Int64 // number of documents changed locally on this node that have been serialized to the status document
-	docsProcessedCrossNode       atomic.Int64 // number of documents processed across all nodes, as reported by the status document
-	docsChangedCrossNode         atomic.Int64 // number of documents changed across all nodes, as reported by the status document
+	docsProcessedLocal           atomic.Int64  // number of documents processed locally on this node since the last start or resume of resync
+	docsChangedLocal             atomic.Int64  // number of documents changed locally on this node since the last start or resume of resync
+	docsErroredLocal             atomic.Int64  // number of documents that failed to resync locally on this node since the last start or resume of resync
+	docsProcessedLocalSerialized atomic.Int64  // number of documents processed locally on this node that have been serialized to the status document
+	docsChangedLocalSerialized   atomic.Int64  // number of documents changed locally on this node that have been serialized to the status document
+	docsErroredLocalSerialized   atomic.Int64  // number of documents that failed to resync locally on this node that have been serialized to the status document
+	docsProcessedCrossNode       atomic.Int64  // number of documents processed across all nodes, as reported by the status document
+	docsChangedCrossNode         atomic.Int64  // number of documents changed across all nodes, as reported by the status document
+	docsErroredCrossNode         atomic.Int64  // number of documents that failed to resync across all nodes, as reported by the status document
+	docsTargeted                 atomic.Uint64 // number of documents targeted for resync, computed once at the start of a new run
 	ResyncID                     string
 	VBUUIDs                      []uint64
 	useXattrs                    bool
@@ -45,8 +51,8 @@ type ResyncManagerDCP struct {
 
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
 type resyncCollectionInfo struct {
-	hasAllCollections bool
 	collectionIDs     []uint32
+	hasAllCollections bool
 }
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
@@ -76,14 +82,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	}
 
 	// Get collectionIds and store in manager for use in DCP client later
-	collectionIDs, hasAllCollections, collectionNames, err := getCollectionIdsAndNames(db, resyncCollections)
+	collections, err := getResyncCollections(db, resyncCollections)
 	if err != nil {
 		return err
 	}
-	r.collectionIDs = collectionIDs
-	r.hasAllCollections = hasAllCollections
+	r.hasAllCollections = len(resyncCollections) == 0
 	// add collection list to manager for use in status call
-	r.SetCollectionStatus(collectionNames)
+	r.setCollectionStatus(collections)
 
 	// If the previous run completed, or we couldn't determine, we will start the resync with a new resync ID.
 	// Otherwise, we should resume with the resync ID, and the previous stats specified in the doc.
@@ -100,9 +105,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	} else if !base.SlicesEqualIgnoreOrder(r.collectionIDs, statusDoc.CollectionIDs) {
 		resetMsg = "collection IDs have changed"
 	} else {
-		// use the resync ID from the status doc to resume
-		r.ResyncID = statusDoc.ResyncID
-		r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
+		r.initializeFromPreviousStatus(statusDoc)
 		base.InfofCtx(ctx, base.KeyAll, "Resuming resync with ID: %q", r.ResyncID)
 		return nil
 	}
@@ -118,9 +121,29 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	if err != nil {
 		return err
 	}
+
+	docsTargeted, err := totalResyncDocs(ctx, collections)
+	if err != nil {
+		return err
+	}
+	r.docsTargeted.Store(docsTargeted)
+
 	r.ResyncID = newID.String()
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
 	return nil
+}
+
+// totalResyncDocs returns an estimate of the number of documents processed for resync.
+func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint64, error) {
+	var total uint64
+	for _, collection := range collections {
+		count, err := collection.CountAllDocs(ctx)
+		if err != nil {
+			return 0, base.RedactErrorf("resync: failed to count docs for collection %s.%s", base.MD(collection.ScopeName), base.MD(collection.Name))
+		}
+		total += count
+	}
+	return total, nil
 }
 
 // purgeCheckpoints removes checkpoints for a given resync run.
@@ -221,6 +244,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			db.DbStats.Database().ResyncNumChanged.Add(1)
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
+			r.docsErroredLocal.Add(1)
 			base.WarnfCtx(ctx, "Resync: Error updating doc %q: %v", base.UD(docID), err)
 			return false
 		}
@@ -419,28 +443,22 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	return nil
 }
 
-// getCollectionIdsAndNames returns collection names. If no collections are specified, it returns all collections. The
-// ids for all collections are returned.
-func getCollectionIdsAndNames(db *Database, resyncCollections base.CollectionNames) (collectionIDs []uint32, hasAllCollections bool, collectionNames base.CollectionNames, err error) {
+// getResyncCollections returns collections requested for resync. If no collections are specified, it returns all collections.
+func getResyncCollections(db *Database, resyncCollections base.CollectionNames) (collections DatabaseCollections, err error) {
 	if len(resyncCollections) == 0 {
-		hasAllCollections = true
-		for collectionID := range db.CollectionByID {
-			collectionIDs = append(collectionIDs, collectionID)
-		}
-		return collectionIDs, hasAllCollections, db.collectionNames(), nil
+		return slices.Collect(maps.Values(db.CollectionByID)), nil
 	}
-	hasAllCollections = false
 
 	for scopeName, collectionsName := range resyncCollections {
 		for _, collectionName := range collectionsName {
 			collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 			if err != nil {
-				return nil, hasAllCollections, nil, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
+				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
 			}
-			collectionIDs = append(collectionIDs, collection.GetCollectionID())
+			collections = append(collections, collection)
 		}
 	}
-	return collectionIDs, hasAllCollections, resyncCollections, nil
+	return collections, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -453,20 +471,32 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.docsChangedLocalSerialized.Store(0)
 	r.docsChangedLocal.Store(0)
 	r.docsChangedCrossNode.Store(0)
+	r.docsErroredLocalSerialized.Store(0)
+	r.docsErroredLocal.Store(0)
+	r.docsErroredCrossNode.Store(0)
+	r.docsTargeted.Store(0)
 	r.ResyncedCollections = nil
 }
 
-func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
-	r.docsChangedLocal.Store(docChanged)
-	r.docsProcessedLocal.Store(docProcessed)
+// initializeFromPreviousStatus restores the in-memory state of the manager from a previously persisted status
+// document so that a resumed run starts with the correct accumulated counts.
+func (r *ResyncManagerDCP) initializeFromPreviousStatus(statusDoc ResyncManagerStatusDocDCP) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.ResyncID = statusDoc.ResyncID
+	r.docsChangedLocal.Store(statusDoc.DocsChanged)
+	r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
+	r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	r.docsTargeted.Store(statusDoc.DocsTargeted)
 }
 
-// SetCollectionStatus sets the active collection names being resynced.
-func (r *ResyncManagerDCP) SetCollectionStatus(collectionNames base.CollectionNames) {
+// setCollectionStatus sets the active collections being resynced.
+func (r *ResyncManagerDCP) setCollectionStatus(collections DatabaseCollections) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.ResyncedCollections = collectionNames
+	r.ResyncedCollections = collections.getNames()
+	r.collectionIDs = collections.getIDs()
 }
 
 // ResyncManagerResponseDCP is the struct used to serialize the status of the resync process. This matches the output
@@ -480,8 +510,10 @@ type ResyncManagerResponseDCP struct {
 
 // resyncStats is a part of the ResyncManagerResponseDCP struct that only contains the stats fields for efficincy.
 type resyncStats struct {
-	DocsChanged   int64 `json:"docs_changed"`
-	DocsProcessed int64 `json:"docs_processed"`
+	DocsChanged   int64  `json:"docs_changed"`
+	DocsProcessed int64  `json:"docs_processed"`
+	DocsErrored   int64  `json:"docs_errored"`
+	DocsTargeted  uint64 `json:"docs_targeted"`
 }
 
 // SetProcessStatus reports the new status that was serialized to the bucket along with the last status that polled
@@ -508,8 +540,10 @@ func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus 
 
 	r.docsProcessedCrossNode.Store(newStats.DocsProcessed)
 	r.docsChangedCrossNode.Store(newStats.DocsChanged)
+	r.docsErroredCrossNode.Store(newStats.DocsErrored)
 	r.docsProcessedLocalSerialized.Add(newStats.DocsProcessed - previousStats.DocsProcessed)
 	r.docsChangedLocalSerialized.Add(newStats.DocsChanged - previousStats.DocsChanged)
+	r.docsErroredLocalSerialized.Add(newStats.DocsErrored - previousStats.DocsErrored)
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
@@ -530,6 +564,8 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		resyncStats: resyncStats{
 			DocsChanged:   previousStats.DocsChanged + (r.docsChangedLocal.Load() - r.docsChangedLocalSerialized.Load()),
 			DocsProcessed: previousStats.DocsProcessed + (r.docsProcessedLocal.Load() - r.docsProcessedLocalSerialized.Load()),
+			DocsErrored:   previousStats.DocsErrored + (r.docsErroredLocal.Load() - r.docsErroredLocalSerialized.Load()),
+			DocsTargeted:  r.docsTargeted.Load(),
 		},
 		CollectionsProcessing: r.ResyncedCollections,
 	}
@@ -538,6 +574,7 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 	if len(previousStatus) == 0 {
 		response.DocsChanged = r.DocsChanged()
 		response.DocsProcessed = r.DocsProcessed()
+		response.DocsErrored = r.DocsErrored()
 	}
 
 	meta := ResyncManagerMeta{
@@ -567,6 +604,12 @@ func (r *ResyncManagerDCP) DocsChanged() int64 {
 // processed by other nodes.
 func (r *ResyncManagerDCP) DocsProcessed() int64 {
 	return r.docsProcessedCrossNode.Load() + r.docsProcessedLocal.Load() - r.docsProcessedLocalSerialized.Load()
+}
+
+// DocsErrored returns the total number of documents that failed to resync across the entire resync process.
+// This includes docs errored by other nodes.
+func (r *ResyncManagerDCP) DocsErrored() int64 {
+	return r.docsErroredCrossNode.Load() + r.docsErroredLocal.Load() - r.docsErroredLocalSerialized.Load()
 }
 
 type ResyncManagerMeta struct {

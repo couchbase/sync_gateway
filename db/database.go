@@ -2026,6 +2026,7 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 			QueryTypeTombstones,
 			QueryTypeResync,
 			QueryTypeAllDocs,
+			QueryTypeCountDocs,
 			QueryTypeUsers,
 		}
 	}
