@@ -173,6 +173,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	var dcpClient base.DCPClient
 	var dcpClientClose dcpClientCloser
 	defer func() {
+		// check isClosed to avoid double reporting a closed error if already closed
 		if dcpClientClose.isClosed() {
 			return
 		}
