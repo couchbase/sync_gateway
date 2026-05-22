@@ -62,7 +62,11 @@ type TombstoneManagerResponse struct {
 	DocsPurged int64 `json:"docs_purged"`
 }
 
-func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
+func (t *TombstoneCompactionManager) SetProcessStatus(context.Context, []byte, []byte) {
+	return
+}
+
+func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	retStatus := TombstoneManagerResponse{
 		BackgroundManagerStatus: backgroundManagerStatus,
 		DocsPurged:              atomic.LoadInt64(&t.PurgedDocCount),

@@ -76,7 +76,7 @@ func waitForAttachmentMigrationDocsProcessed(t testing.TB, db *Database, count i
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		// Poll the local status so the wait can stop as soon as the requested progress is observed,
 		// without waiting for the cluster status' periodic update.
-		rawStatus, _, err := db.AttachmentMigrationManager.Process.GetProcessStatus(BackgroundManagerStatus{})
+		rawStatus, _, err := db.AttachmentMigrationManager.Process.GetProcessStatus(BackgroundManagerStatus{}, nil)
 		assert.NoError(c, err)
 		var stats AttachmentMigrationManagerResponse
 		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))

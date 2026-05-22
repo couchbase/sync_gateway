@@ -4534,7 +4534,9 @@ func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any,
 	return nil
 }
 
-func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
+func (i *testBackgroundProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	statusJSON, err := base.JSONMarshal(status)
 	if err != nil {
 		return nil, nil, err

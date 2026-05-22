@@ -106,9 +106,19 @@ type BackgroundManagerStatus struct {
 // BackgroundManagerProcessI is an interface satisfied by any of the background processes
 // Examples of this: ReSync, Compaction, Attachment Migration
 type BackgroundManagerProcessI interface {
+	// Init is called before Run for setup purposes. If Init errors, Run will not happen.
 	Init(ctx context.Context, options map[string]any, clusterStatus []byte) error
+	// Run implements all of the work of the process.
 	Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
-	GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error)
+	// GetProcessStatus accepts the current BackgroundManagerStatus and the previousStatus that was serialized. previousStatus is
+	// only populated when updating cluster status, it may be nil in some circumstances. This is only used for multi
+	// node background managers.
+	GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) (statusOut []byte, meta []byte, err error)
+	// SetProcessStatus updates the newStatus with the latest serialized status. This includes the last known status
+	// from GetProcessStatus.
+	SetProcessStatus(ctx context.Context, previousStatus []byte, newStatus []byte)
+	// ResetStatus is called when the process is started to reset any internal status of the process and signalling
+	// that all stats should be reset to 0.
 	ResetStatus()
 }
 
@@ -336,18 +346,23 @@ func (b *BackgroundManager) GetStatus(ctx context.Context) ([]byte, error) {
 		// If we're running cluster mode, but we have no status it means we haven't run it yet.
 		// Get local status which will construct a 'initial' status
 		if status == nil {
-			status, _, err = b.getStatusLocal()
+			status, _, err := b.getStatusLocalWithoutPrevious()
 			return status, err
 		}
 
 		return status, err
 	}
 
-	status, _, err := b.getStatusLocal()
+	status, _, err := b.getStatusLocalWithoutPrevious()
 	return status, err
 }
 
-func (b *BackgroundManager) getStatusLocal() ([]byte, []byte, error) {
+func (b *BackgroundManager) getStatusLocalWithoutPrevious() ([]byte, []byte, error) {
+	return b.getStatusWithPrevious(nil)
+
+}
+
+func (b *BackgroundManager) getStatusWithPrevious(previous []byte) ([]byte, []byte, error) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 
@@ -360,7 +375,7 @@ func (b *BackgroundManager) getStatusLocal() ([]byte, []byte, error) {
 		backgroundStatus.LastErrorMessage = b.lastError.Error()
 	}
 
-	return b.Process.GetProcessStatus(backgroundStatus)
+	return b.Process.GetProcessStatus(backgroundStatus, previous)
 }
 
 func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, error) {
@@ -395,7 +410,7 @@ func (b *BackgroundManager) getStatusFromCluster(ctx context.Context) ([]byte, e
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
 				if clusterState == string(BackgroundProcessStateRunning) {
-					status, _, err = b.getStatusLocal()
+					status, _, err = b.getStatusLocalWithoutPrevious()
 					if err != nil {
 						return nil, err
 					}
@@ -559,7 +574,7 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 		return nil
 	}
 	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value any) {
-		status, metadata, err := b.getStatusLocal()
+		status, metadata, err := b.getStatusLocalWithoutPrevious()
 		if err != nil {
 			return true, err, nil
 		}
@@ -582,8 +597,11 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
 func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
 	docID := b.clusterAwareOptions.StatusDocID()
+	var previousStatus []byte
+	var newStatus []byte
 	_, err := b.clusterAwareOptions.metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
-		status, metadata, err := b.getStatusLocal()
+		previousStatus = current
+		status, metadata, err := b.getStatusWithPrevious(current)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -609,10 +627,14 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("could not marshal updated status doc %q: %w", docID, err)
 		}
+		newStatus = status
 		return outputBytes, nil, false, nil
 	})
-
-	return err
+	if err != nil {
+		return err
+	}
+	b.Process.SetProcessStatus(ctx, previousStatus, newStatus)
+	return nil
 }
 
 type HeartbeatDoc struct {

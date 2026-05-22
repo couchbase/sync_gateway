@@ -256,7 +256,9 @@ type AttachmentManagerStatusDoc struct {
 	AttachmentManagerMeta     `json:"meta"`
 }
 
-func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
+func (a *AttachmentCompactionManager) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 

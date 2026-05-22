@@ -62,7 +62,9 @@ type AsyncIndexInitManagerResponse struct {
 	IndexStatus IndexStatusByCollection `json:"index_status"`
 }
 
-func (a *AsyncIndexInitManager) GetProcessStatus(status BackgroundManagerStatus) (statusOut []byte, meta []byte, err error) {
+func (a *AsyncIndexInitManager) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (a *AsyncIndexInitManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) (statusOut []byte, meta []byte, err error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
