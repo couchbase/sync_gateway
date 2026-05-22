@@ -361,10 +361,10 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 }
 
-// TestTouchPreservesCAS verifies that Touch and GetAndTouchRaw do NOT bump the document's CAS,
-// matching Couchbase Server's memcached TOUCH/GAT semantics.
-// Callers needing to force a CAS bump (e.g. config rollback) must use a real mutation; see TestTouchMetadataDocument.
-func TestTouchPreservesCAS(t *testing.T) {
+// TestTouchCASSemantics verifies Touch/GetAndTouchRaw CAS behavior against CB Server's
+// memcached TOUCH/GAT semantics: when the expiry value is unchanged the op is a no-op
+// and CAS is preserved; when the expiry value changes, CAS is bumped.
+func TestTouchCASSemantics(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -380,14 +380,28 @@ func TestTouchPreservesCAS(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, originalCAS)
 
+	// No-op: doc has exp=0, GAT/Touch with exp=0 should preserve CAS.
 	getTouchVal, getTouchCAS, err := dataStore.GetAndTouchRaw(ctx, key, 0)
 	require.NoError(t, err)
 	require.Equal(t, val, getTouchVal)
-	require.Equal(t, originalCAS, getTouchCAS, "GetAndTouchRaw should not bump CAS")
+	require.Equal(t, originalCAS, getTouchCAS, "no-op GetAndTouchRaw should not bump CAS")
 
 	touchCAS, err := dataStore.Touch(ctx, key, 0)
 	require.NoError(t, err)
-	require.Equal(t, originalCAS, touchCAS, "Touch should not bump CAS")
+	require.Equal(t, originalCAS, touchCAS, "no-op Touch should not bump CAS")
+
+	// Changing the expiry is a metadata mutation: CAS is bumped each time.
+	touchCAS, err = dataStore.Touch(ctx, key, 60)
+	require.NoError(t, err)
+	require.NotEqual(t, originalCAS, touchCAS, "Touch should bump CAS when setting a new TTL")
+
+	_, getTouchCAS, err = dataStore.GetAndTouchRaw(ctx, key, 120)
+	require.NoError(t, err)
+	require.NotEqual(t, touchCAS, getTouchCAS, "GetAndTouchRaw should bump CAS when changing TTL")
+
+	clearTouchCAS, err := dataStore.Touch(ctx, key, 0)
+	require.NoError(t, err)
+	require.NotEqual(t, getTouchCAS, clearTouchCAS, "Touch should bump CAS when clearing TTL")
 }
 
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
