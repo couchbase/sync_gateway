@@ -453,9 +453,8 @@ func marshalSyncInfo(syncInfo *SyncInfo, clusterCompatVersion *ClusterCompatVers
 	return payload, nil
 }
 
-// DecodeSyncInfo decodes a raw syncInfo payload, handling the optional version-byte prefix
-// introduced in 4.1. Empty input yields a zero-value SyncInfo with no error so callers can
-// treat "not present" and "present but empty" uniformly.
+// DecodeSyncInfo decodes a raw syncInfo payload, handling the version-byte prefix
+// introduced in ccv 4.1+.
 func DecodeSyncInfo(data []byte) (SyncInfo, error) {
 	var s SyncInfo
 	if len(data) == 0 {
