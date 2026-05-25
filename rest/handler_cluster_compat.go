@@ -23,7 +23,7 @@ import (
 type ClusterCompatVersionState struct {
 	ClusterCompatVersion       *base.ClusterCompatVersion           `json:"cluster_compat_version,omitempty"`
 	Nodes                      map[string]base.ClusterCompatVersion `json:"nodes,omitempty"`
-	PreCCVAwareNodes              map[string]base.ClusterCompatVersion `json:"pre_ccv_aware_nodes,omitempty"`
+	PreCCVAwareNodes           map[string]base.ClusterCompatVersion `json:"pre_ccv_aware_nodes,omitempty"`
 	FrozenClusterCompatVersion *base.ClusterCompatVersion           `json:"frozen_cluster_compat_version,omitempty"`
 }
 
@@ -134,7 +134,7 @@ func buildClusterCompatVersionState(mgr *clusterCompatManager) ClusterCompatVers
 	state := ClusterCompatVersionState{
 		ClusterCompatVersion: mgr.ClusterCompatVersion(),
 		Nodes:                mgr.NodeVersions(),
-		PreCCVAwareNodes:        mgr.PreCCVAwareNodeVersions(),
+		PreCCVAwareNodes:     mgr.PreCCVAwareNodeVersions(),
 	}
 	if freeze := mgr.getCachedFreeze(); freeze != nil {
 		v := freeze.Version
