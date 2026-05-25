@@ -9,7 +9,6 @@
 package base
 
 import (
-	"context"
 	"sort"
 	"strings"
 	"sync"
@@ -219,7 +218,7 @@ func TestTouchMetadataDocument(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	cluster := newTestBootstrapConnection(t, ctx)
+	cluster := newTestBootstrapConnection(t)
 	defer cluster.Close()
 
 	bucketName := bucket.BucketSpec.BucketName
@@ -244,18 +243,4 @@ func TestTouchMetadataDocument(t *testing.T) {
 	_, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db2", originalCAS)
 	require.Error(t, err)
 	require.True(t, IsCasMismatch(err), "expected CasMismatch on stale CAS retry, got %T: %v", err, err)
-}
-
-// newTestBootstrapConnection constructs a BootstrapConnection matching the current test backing
-// store (Rosmar or Couchbase Server).
-func newTestBootstrapConnection(t *testing.T, ctx context.Context) BootstrapConnection {
-	t.Helper()
-	if UnitTestUrlIsWalrus() {
-		cluster, err := NewRosmarCluster(UnitTestUrl())
-		require.NoError(t, err)
-		return cluster
-	}
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, TestUseXattrs(), CachedClusterConnections)
-	require.NoError(t, err)
-	return cluster
 }
