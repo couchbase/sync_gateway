@@ -908,6 +908,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	changes = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
+	assert.Equal(t, "_user/user", changes.Results[0].ID)
 }
 
 func TestRevocationWithAdminRoles(t *testing.T) {

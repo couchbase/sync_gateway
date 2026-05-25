@@ -405,6 +405,15 @@ func (role *roleImpl) authorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
 }
 
+func (role *roleImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
+	chanHistory := role.CollectionChannelHistory(scope, collection)
+	if chanHistory == nil {
+		return []string{}
+	}
+	compactedChannels := chanHistory.PruneHistoryByKey(channels)
+	return compactedChannels
+}
+
 // Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.
 // A nil Principal means access control is disabled, so the function will return nil.
 func authorizeAllChannels(princ Principal, channels base.Set) error {

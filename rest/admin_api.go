@@ -16,9 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -2513,43 +2511,29 @@ func (h *handler) handleGetClusterInfo() error {
 	return nil
 }
 
-type ColAccessHistoryMap map[string]map[string][]string
-
-type UserChannelHistory struct {
-	Channels ColAccessHistoryMap `json:"channels"`
+type GetUserAccessHistoryResponse struct {
+	Channels auth.CollectionAccessHistory `json:"channels"`
 }
 
-type UserChannelHistoryResp struct {
-	CompactedChannels ColAccessHistoryMap `json:"compacted_channels"`
+type CompactUserAccessHistoryResponse struct {
+	CompactedChannels auth.CollectionAccessHistory `json:"compacted_channels"`
 }
 
 func (h *handler) getUserChannelHistory() error {
 	h.assertAdminOnly()
 	username := internalUserName(mux.Vars(h.rq)["name"])
 	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
+	if err != nil {
 		return err
 	}
-	colAccess := user.GetCollectionsAccess()
-
-	colAccessHistoryMap := make(map[string]map[string][]string)
-	if colAccess == nil {
-		colAccessHistoryMap[base.DefaultScope] = make(map[string][]string)
-		colAccessHistoryMap[base.DefaultScope][base.DefaultCollection] = slices.Collect(maps.Keys(user.ChannelHistory()))
-	} else {
-		for scope, cols := range colAccess {
-			colAccessHistoryMap[scope] = make(map[string][]string)
-			for col, colVal := range cols {
-				colAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colVal.ChannelHistory_))
-			}
-		}
+	if user == nil {
+		return kNotFoundError
 	}
 
-	userChannelHistory := UserChannelHistory{
-		Channels: colAccessHistoryMap,
+	collectionAccessHistory := user.GetCollectionAccessHistory()
+
+	userChannelHistory := GetUserAccessHistoryResponse{
+		Channels: collectionAccessHistory,
 	}
 
 	h.writeJSON(userChannelHistory)
@@ -2559,10 +2543,10 @@ func (h *handler) getUserChannelHistory() error {
 
 func (h *handler) compactUserChannelHistory() error {
 	h.assertAdminOnly()
-	var reqUserChannelHistory UserChannelHistory
+	var reqUserChannelHistory GetUserAccessHistoryResponse
 	err := h.readJSONInto(&reqUserChannelHistory)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Failed to read user channel history: %v", err)
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid request payload: %v", err)
 	}
 
 	username := internalUserName(mux.Vars(h.rq)["name"])
@@ -2578,12 +2562,12 @@ func (h *handler) compactUserChannelHistory() error {
 	colAccessHistoryMap := make(map[string]map[string][]string)
 	for scope, cols := range reqUserChannelHistory.Channels {
 		colAccessHistoryMap[scope] = make(map[string][]string)
-		for col, _ := range cols {
-			colAccessHistoryMap[scope][col] = user.CompactChannelHistory(scope, col, reqUserChannelHistory.Channels[scope][col])
+		for col, colVal := range cols {
+			colAccessHistoryMap[scope][col] = user.CompactChannelHistory(scope, col, colVal)
 		}
 	}
 
-	userCompactedChannelHistory := UserChannelHistoryResp{
+	userCompactedChannelHistory := CompactUserAccessHistoryResponse{
 		CompactedChannels: colAccessHistoryMap,
 	}
 

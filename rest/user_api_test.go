@@ -1644,7 +1644,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user1/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
-		var result map[string]ColAccessHistoryMap
+		var result map[string]auth.CollectionAccessHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		channelHistory := result["channels"]
@@ -1668,7 +1668,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
-		var result map[string]ColAccessHistoryMap
+		var result map[string]auth.CollectionAccessHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		channelHistory := result["channels"]
@@ -1692,7 +1692,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
-		var result map[string]ColAccessHistoryMap
+		var result map[string]auth.CollectionAccessHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		channelHistory := result["channels"]
@@ -1738,7 +1738,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		response = rtMulti.SendAdminRequest(http.MethodGet, "/db/_user/user1/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
-		var result map[string]ColAccessHistoryMap
+		var result map[string]auth.CollectionAccessHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		channelHistory := result["channels"]
@@ -1766,7 +1766,7 @@ func TestGetUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
 
-		var result map[string]ColAccessHistoryMap
+		var result map[string]auth.CollectionAccessHistory
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 
 		channelHistory := result["channels"]
@@ -1821,7 +1821,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		// Verify history is populated before compaction
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var beforeResult UserChannelHistory
+		var beforeResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, beforeResult.Channels[scope][collection])
 
@@ -1830,14 +1830,14 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user2/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistoryResp
+		var result CompactUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, result.CompactedChannels[scope][collection])
 
 		// GET confirms history is now empty
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user2/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var afterResult UserChannelHistory
+		var afterResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
 		assert.Empty(t, afterResult.Channels[scope][collection])
 	})
@@ -1860,7 +1860,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		// Verify history is populated before compaction
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var beforeResult UserChannelHistory
+		var beforeResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, beforeResult.Channels[scope][collection])
 
@@ -1869,14 +1869,14 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user3/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistoryResp
+		var result CompactUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 		assert.Empty(t, result.CompactedChannels[scope][collection])
 
 		// GET confirms original history is untouched
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user3/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var afterResult UserChannelHistory
+		var afterResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
 		assert.ElementsMatch(t, []string{"chan1", "chan2"}, afterResult.Channels[scope][collection])
 	})
@@ -1899,7 +1899,7 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		// Verify history is populated before compaction
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var beforeResult UserChannelHistory
+		var beforeResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &beforeResult))
 		assert.ElementsMatch(t, []string{"chan1", "chan2", "chan3"}, beforeResult.Channels[scope][collection])
 
@@ -1908,14 +1908,14 @@ func TestCompactUserChannelHistory(t *testing.T) {
 		response = rt.SendAdminRequest(http.MethodPost, "/db/_user/user4/_access_history/compact", body)
 		RequireStatus(t, response, http.StatusOK)
 
-		var result UserChannelHistoryResp
+		var result CompactUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 		assert.ElementsMatch(t, []string{"chan1"}, result.CompactedChannels[scope][collection])
 
 		// GET confirms only chan1 was removed; chan2 and chan3 remain
 		response = rt.SendAdminRequest(http.MethodGet, "/db/_user/user4/_access_history", "")
 		RequireStatus(t, response, http.StatusOK)
-		var afterResult UserChannelHistory
+		var afterResult GetUserAccessHistoryResponse
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &afterResult))
 		assert.ElementsMatch(t, []string{"chan2", "chan3"}, afterResult.Channels[scope][collection])
 	})

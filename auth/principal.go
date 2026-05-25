@@ -58,6 +58,8 @@ type Principal interface {
 	// Sets the created time for the principal document
 	SetCreatedAt(t time.Time)
 
+	CompactChannelHistory(scope string, col string, channels []string) []string
+
 	// Principal includes the PrincipalCollectionAccess interface for operations against
 	// the _default._default collection (stored directly on the principal for backward
 	// compatibility)
@@ -136,8 +138,6 @@ type User interface {
 	RoleHistory() TimedSetHistory
 
 	InitializeRoles() error
-
-	CompactChannelHistory(scope string, col string, channels []string) []string
 
 	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) (RevokedChannels, error)
 

@@ -750,14 +750,6 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) (base.Set, error) {
 	return output, nil
 }
 
-func (user *userImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
-	chanHistory := user.CollectionChannelHistory(scope, collection)
-	if chanHistory == nil {
-		return []string{}
-	}
-	compactedChannels := chanHistory.PruneHistoryByKey(channels)
-	return compactedChannels
-}
 
 // ////// MARSHALING:
 
