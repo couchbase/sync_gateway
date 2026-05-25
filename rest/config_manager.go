@@ -720,15 +720,22 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 // heartbeatExpiry must be positive; the validator enforces this for user-supplied configs and
 // the runtime fallback ensures a sane default (see clusterCompatManager.heartbeatExpiry).
 //
+// preCCVAwarePeers carries observations of pre-CCV-aware peers (detected via cbgt NodeDefs or
+// SGRCluster.Nodes) keyed by pre-CCV-aware peer UUID. Each observation is upserted into
+// registry.PreCCVAwareNodes with LastObservedAt = now; entries not refreshed within heartbeatExpiry
+// are pruned in the same write. Passing a nil/empty map is safe — existing legacy entries
+// simply age out naturally.
+//
 // ratchetHWM controls whether this call is allowed to advance ClusterCompatVersionHWM. Pass
 // false for the first registration during database load (e.g. the RegisterBucket call from
 // _applyConfig) — HWM is monotonic and a ratchet committed off transient startup state can
 // never be rolled back. The periodic Refresh passes true only for buckets where at least
-// one database has reached DBOnline (see clusterCompatManager.ratchetEligibleBuckets).
-// Node heartbeat refresh and stale pruning happen in either case.
+// one database has reached DBOnline (see clusterCompatManager.ratchetEligibleBuckets), so the
+// pre-CCV-aware-peer side-channels are guaranteed to be live when the ratchet runs. Node heartbeat
+// refresh, pre-CCV-aware-peer upsert, and stale pruning happen in either case.
 //
 // Uses CAS retry on conflict. Returns the registry as written.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration, ratchetHWM bool) (*GatewayRegistry, error) {
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, nodeUID, groupID string, version base.ClusterCompatVersion, databases map[string]string, heartbeatExpiry time.Duration, preCCVAwarePeers map[string]base.RegistryPreCCVAwareNode, ratchetHWM bool) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
@@ -747,18 +754,38 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 			ConfigGroupID: groupID,
 			Databases:     databases,
 		}
+		// Mirror pre-CCV-aware-peer observations into registry.PreCCVAwareNodes, keyed by pre-CCV-aware peer
+		// UUID. Upsert refreshes LastObservedAt to "now" so subsequent prune calls keep them
+		// alive while we keep seeing them; entries we no longer observe age out via
+		// pruneStalePreCCVAwareNodes.
+		now := time.Now().UTC()
+		if len(preCCVAwarePeers) > 0 && registry.PreCCVAwareNodes == nil {
+			registry.PreCCVAwareNodes = make(map[string]*base.RegistryPreCCVAwareNode)
+		}
+		for uuid, peer := range preCCVAwarePeers {
+			entry := peer
+			entry.LastObservedAt = now
+			registry.PreCCVAwareNodes[uuid] = &entry
+		}
+		preCCVAwarePruned := pruneStalePreCCVAwareNodes(registry.PreCCVAwareNodes, heartbeatExpiry)
 		// Ratchet ClusterCompatVersionHWM up to the current cluster compat version (min over
-		// all registered nodes). Never decreases — if a lower-version node joins, HWM stays.
-		// While a freeze is in effect, the freeze version is a ceiling on advancement: HWM
-		// must not climb past it, otherwise the downgrade gate above would later block rolling
-		// any node back to the frozen version (the freeze's whole purpose).
+		// all registered nodes and observed pre-CCV-aware peers). Each pre-CCV-aware peer contributes its
+		// observed major.minor when its build version is known, falling back to
+		// PreSGNodeVersionFallback when the side-channel observation didn't carry one. Never
+		// decreases — if a lower-version node joins, HWM stays. While a freeze is in effect,
+		// the freeze version is a ceiling on advancement: HWM must not climb past it,
+		// otherwise the downgrade gate above would later block rolling any node back to the
+		// frozen version (the freeze's whole purpose).
 		//
-		// Gated on ratchetHWM so startup-window registrations can refresh node heartbeat
-		// without committing HWM off transient state.
+		// Gated on ratchetHWM so startup-window registrations can refresh Nodes / PreCCVAwareNodes
+		// without committing HWM off a possibly-incomplete pre-CCV-aware-peer observation.
 		var hwmBumped bool
 		var previousHWM, ccv base.ClusterCompatVersion
 		if ratchetHWM {
 			ccv = minRegistryNodeClusterCompatVersion(registry.Nodes)
+			if preCCVAwareMin, ok := minPreCCVAwareNodeClusterCompatVersion(registry.PreCCVAwareNodes); ok && ccv.GreaterThan(preCCVAwareMin) {
+				ccv = preCCVAwareMin
+			}
 			if registry.Frozen != nil && ccv.GreaterThan(registry.Frozen.Version) {
 				ccv = registry.Frozen.Version
 			}
@@ -778,6 +805,9 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, bucketName, 
 		}
 		if len(pruned) > 0 {
 			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(bucketName), base.MD(pruned))
+		}
+		if len(preCCVAwarePruned) > 0 {
+			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale pre-CCV-aware peer observations from bucket %s: %v", len(preCCVAwarePruned), base.MD(bucketName), base.MD(preCCVAwarePruned))
 		}
 		if hwmBumped {
 			base.InfofCtx(ctx, base.KeyConfig, "Updated cluster compat version high-water mark in bucket %s from %s to %s", base.MD(bucketName), previousHWM, ccv)
@@ -824,6 +854,21 @@ func minRegistryNodeClusterCompatVersion(nodes map[string]*base.RegistryNode) ba
 		versions = append(versions, node.Version)
 	}
 	return base.MinClusterCompatVersion(versions...)
+}
+
+// minPreCCVAwareNodeClusterCompatVersion returns the minimum cluster compat version across all
+// observed pre-CCV-aware-peer entries. Each peer's Version is already the parsed major.minor
+// (PreSGNodeVersionFallback when the side-channel observation didn't carry one) — the
+// observer collapses precision at write time. Returns (zero, false) when preCCVAwareNodes is empty.
+func minPreCCVAwareNodeClusterCompatVersion(preCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode) (base.ClusterCompatVersion, bool) {
+	if len(preCCVAwareNodes) == 0 {
+		return base.ClusterCompatVersion{}, false
+	}
+	versions := make([]base.ClusterCompatVersion, 0, len(preCCVAwareNodes))
+	for _, node := range preCCVAwareNodes {
+		versions = append(versions, node.Version)
+	}
+	return base.MinClusterCompatVersion(versions...), true
 }
 
 // SetRegistryFreeze sets the cluster compat version freeze on the given bucket's registry.
@@ -894,6 +939,22 @@ func pruneStaleNodes(nodes map[string]*base.RegistryNode, selfUID string, expiry
 		if node.HeartbeatAt.Before(cutoff) {
 			delete(nodes, uid)
 			pruned = append(pruned, uid)
+		}
+	}
+	return pruned
+}
+
+// pruneStalePreCCVAwareNodes deletes entries from preCCVAwareNodes whose LastObservedAt is older than
+// expiry. Mirrors pruneStaleNodes' semantics; pre-CCV-aware-peer entries have no "self" exemption since
+// the observer is itself in registry.Nodes, not registry.PreCCVAwareNodes. Returns the keys of
+// pruned entries (in non-deterministic order).
+func pruneStalePreCCVAwareNodes(preCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode, expiry time.Duration) []string {
+	cutoff := time.Now().UTC().Add(-expiry)
+	var pruned []string
+	for key, node := range preCCVAwareNodes {
+		if node.LastObservedAt.Before(cutoff) {
+			delete(preCCVAwareNodes, key)
+			pruned = append(pruned, key)
 		}
 	}
 	return pruned

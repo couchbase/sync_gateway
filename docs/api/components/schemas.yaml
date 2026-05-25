@@ -3387,6 +3387,22 @@ ClusterCompatVersionState:
       additionalProperties:
         x-additionalPropertiesName: nodeUID
         $ref: '#/ClusterCompatVersion'
+    pre_ccv_aware_nodes:
+      type: object
+      description: |-
+        Pre-CCV-aware Sync Gateway peers observed via side-channels (cbgt NodeDefs for
+        sharded import, SGRCluster.Nodes for ISGR), keyed by pre-CCV-aware peer UUID. Each
+        peer's value is its observed cluster compatibility version (major.minor) — the
+        observer parses the side-channel's full build version and stores major.minor
+        only, since CCV decisions don't depend on higher precision. When the side-channel
+        didn't carry a version, a conservative pre-SGNode-Version fallback (4.0) is
+        substituted at observation time. Peers below the cluster's HWM are reported here
+        for operator visibility but do not roll cluster_compat_version back below HWM —
+        that case represents an unsupported downgrade. Omitted when no pre-CCV-aware peers
+        are currently observed.
+      additionalProperties:
+        x-additionalPropertiesName: nodeUUID
+        $ref: '#/ClusterCompatVersion'
     frozen_cluster_compat_version:
       allOf:
         - $ref: '#/ClusterCompatVersion'
@@ -3491,6 +3507,18 @@ GatewayRegistry:
         cluster compatibility version reported by this Sync Gateway is capped at
         `frozen_cluster_compat_version.version` until the freeze is cleared via
         `POST /_cluster_compat_version/unfreeze`.
+    pre_ccv_aware_nodes:
+      description: |-
+        Map of pre-CCV-aware peer UUID to that peer's pre-CCV-aware-node entry. Records pre-CCV-aware
+        Sync Gateway peers detected via side-channel registries (cbgt `NODE_DEFS_KNOWN` for
+        sharded import, `SGRCluster.Nodes` for inter-SG replication). Unlike `nodes`, entries
+        here are written by an observing CCV-aware peer rather than by the pre-CCV-aware peer
+        itself. Entries age out via the heartbeat-expiry prune on each registry write. Omitted
+        when no pre-CCV-aware peers are currently recorded.
+      type: object
+      additionalProperties:
+        x-additionalPropertiesName: nodeUUID
+        $ref: '#/RegistryPreCCVAwareNode'
 
 RegistryNode:
   type: object
@@ -3504,6 +3532,34 @@ RegistryNode:
       type: string
       format: date-time
       description: Time of the node's last heartbeat write to this registry.
+
+RegistryPreCCVAwareNode:
+  type: object
+  description: |-
+    An observation of a pre-CCV-aware Sync Gateway peer recorded by a CCV-aware peer. Written
+    by the observer (not the pre-CCV-aware peer), keyed in `pre_ccv_aware_nodes` by the pre-CCV-aware peer's
+    UUID. The observer collapses the peer's side-channel build version to major.minor at write
+    time; when the side-channel observation didn't carry a version, a conservative
+    pre-SGNode-Version fallback (4.0) is substituted. Entries below the bucket's
+    `cluster_compat_version_hwm` are reported here for operator visibility but do not pull
+    reported cluster_compat_version back below HWM.
+  properties:
+    version:
+      allOf:
+        - $ref: '#/ClusterCompatVersion'
+      description: |-
+        The pre-CCV-aware peer's cluster compatibility version (major.minor). Reflects either the
+        parsed side-channel build version or the conservative fallback when none was carried.
+    last_observed_at:
+      type: string
+      format: date-time
+      description: |-
+        Time at which the observation was last refreshed by an observer. Entries whose
+        `last_observed_at` is older than the configured heartbeat expiry are pruned on the
+        next registry write.
+  required:
+    - version
+    - last_observed_at
 
 RegistryFrozenClusterCompatVersion:
   type: object

@@ -13,6 +13,7 @@ package base
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -21,8 +22,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"errors"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -481,17 +480,68 @@ func (c *CbgtContext) StartManager(ctx context.Context, opts ShardedDCPOptions) 
 	return nil
 }
 
-// getNodeVersion returns the version of the node from its Extras field, or nil if none is stored. Returns an error if
-// the extras could not be parsed.
+// preCbgtExtrasVersion returns a fake 3.0 ComparableBuildVersion. cbgt extras Version stamping
+// shipped in 3.1 (CBG-2213), so a NodeDef whose Extras carries no version is reliably a pre-3.1
+// Sync Gateway node. Used as the stamped value when getNodeVersion can't find a real version in
+// extras.
+func preCbgtExtrasVersion() *ComparableBuildVersion {
+	v := &ComparableBuildVersion{major: 3}
+	return v
+}
+
+// getNodeVersion returns the version of the node from its Extras field. cbgt extras Version
+// stamping was added in 3.1 (CBG-2213); a missing/empty Extras therefore reliably indicates a
+// pre-3.1 peer and is stamped as a fake 3.0 ComparableBuildVersion — never nil. Returns an
+// error if the extras are present but unparseable.
 func getNodeVersion(def *cbgt.NodeDef) (*ComparableBuildVersion, error) {
 	if len(def.Extras) == 0 {
-		return nil, nil
+		return preCbgtExtrasVersion(), nil
 	}
 	var extras nodeExtras
 	if err := JSONUnmarshal([]byte(def.Extras), &extras); err != nil {
 		return nil, fmt.Errorf("parsing node extras: %w", err)
 	}
+	if extras.Version == nil {
+		return preCbgtExtrasVersion(), nil
+	}
 	return extras.Version, nil
+}
+
+// CbgtNodeInfo is a parsed view of a single cbgt.NodeDef entry suitable for callers outside of
+// the cbgt code path (e.g. cluster compat observation). Hostname comes from NodeDef.HostPort.
+// Version is always non-nil: pre-3.1 peers (no Extras) are stamped as a fake 3.0 by getNodeVersion.
+type CbgtNodeInfo struct {
+	UUID     string
+	Hostname string
+	Version  *ComparableBuildVersion
+}
+
+// ListCbgtNodes enumerates cbgt's NODE_DEFS_KNOWN registry and returns a parsed view of each
+// node. Returns a nil slice when there are no nodes. Returns an error only when the underlying
+// cbgt.CfgGetNodeDefs call fails; per-node extras parse failures degrade to the pre-3.1
+// stamp and do not abort the listing.
+func ListCbgtNodes(ctx context.Context, cfg cbgt.Cfg) ([]CbgtNodeInfo, error) {
+	nodes, _, err := cbgt.CfgGetNodeDefs(cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return nil, err
+	}
+	if nodes == nil || len(nodes.NodeDefs) == 0 {
+		return nil, nil
+	}
+	out := make([]CbgtNodeInfo, 0, len(nodes.NodeDefs))
+	for _, def := range nodes.NodeDefs {
+		version, err := getNodeVersion(def)
+		if err != nil {
+			WarnfCtx(ctx, "Failed to parse extras for cbgt node %s: %v; treating as pre-3.1", MD(def.UUID), err)
+			version = preCbgtExtrasVersion()
+		}
+		out = append(out, CbgtNodeInfo{
+			UUID:     def.UUID,
+			Hostname: def.HostPort,
+			Version:  version,
+		})
+	}
+	return out, nil
 }
 
 // getMinNodeVersion returns the version of the oldest node currently in the cluster.
@@ -509,9 +559,6 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 		nodeVersion, err := getNodeVersion(node)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get version of node %v: %w", MD(node.HostPort).Redact(), err)
-		}
-		if nodeVersion == nil {
-			nodeVersion = zeroComparableBuildVersion()
 		}
 		if minVersion == nil || nodeVersion.Less(minVersion) {
 			minVersion = nodeVersion

@@ -84,8 +84,12 @@ func NewComparableBuildVersion(majorStr, minorStr, patchStr, otherStr, buildStr,
 	return v, nil
 }
 
-// Equal returns true if pv is equal to b
+// Equal returns true if pv and b describe the same build (all version components equal).
+// Nil-safe: two nil receivers are equal; a nil and a non-nil are not.
 func (pv *ComparableBuildVersion) Equal(b *ComparableBuildVersion) bool {
+	if pv == nil || b == nil {
+		return pv == b
+	}
 	return pv.epoch == b.epoch &&
 		pv.major == b.major &&
 		pv.minor == b.minor &&
@@ -135,6 +139,33 @@ func (a *ComparableBuildVersion) Less(b *ComparableBuildVersion) bool {
 
 	// versions are equal
 	return false
+}
+
+// ClusterCompatVersion returns the major.minor of this build as a ClusterCompatVersion.
+// Patch / build / edition / epoch are dropped — CCV decisions are major.minor-only.
+// Returns a zero ClusterCompatVersion when pv is nil.
+func (pv *ComparableBuildVersion) ClusterCompatVersion() ClusterCompatVersion {
+	if pv == nil {
+		return ClusterCompatVersion{}
+	}
+	return ClusterCompatVersion{Major: pv.major, Minor: pv.minor}
+}
+
+// AtLeastMinorVersion returns true if pv is at least the given major.minor (ignoring patch,
+// build, edition). Returns false if pv is nil. Epoch is treated as more significant than
+// major — a higher epoch beats any lower-epoch major.minor regardless of the threshold,
+// matching the ordering used by Less.
+func (pv *ComparableBuildVersion) AtLeastMinorVersion(major, minor uint8) bool {
+	if pv == nil {
+		return false
+	}
+	if pv.epoch != 0 {
+		return true
+	}
+	if pv.major != major {
+		return pv.major > major
+	}
+	return pv.minor >= minor
 }
 
 // AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.

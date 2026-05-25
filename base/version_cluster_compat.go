@@ -41,6 +41,13 @@ func (v ClusterCompatVersion) GreaterThan(other ClusterCompatVersion) bool {
 	return clusterCompatVersionLess(other, v)
 }
 
+// IsZero reports whether v is the zero value (Major == 0 && Minor == 0), which is how an
+// unset / never-ratcheted version is represented (e.g. a fresh GatewayRegistry before any
+// node has registered).
+func (v ClusterCompatVersion) IsZero() bool {
+	return v.Major == 0 && v.Minor == 0
+}
+
 // MinClusterCompatVersion returns the minimum version from the given versions.
 // Returns the zero value if no versions are provided.
 func MinClusterCompatVersion(versions ...ClusterCompatVersion) ClusterCompatVersion {
@@ -107,6 +114,34 @@ type RegistryNode struct {
 type RegistryFreeze struct {
 	Version  ClusterCompatVersion `json:"version"`
 	FrozenAt time.Time            `json:"frozen_at"`
+}
+
+// PreSGNodeVersionFallback is the cluster compat version stamped onto an observation of a
+// peer found in SGRCluster.Nodes whose SGNode entry doesn't carry a Version field — i.e. a
+// pre-4.1 peer (SGNode.Version was introduced in 4.1). Capping at 4.0 reflects what we know:
+// the peer participates in ISGR but predates the version-stamping field. When the side-channel
+// does carry a parseable version, that observed version is used directly instead.
+//
+// Different from preCbgtExtrasVersion (3.0) because each side-channel started carrying
+// version info in a different release: cbgt extras since 3.1, SGNode.Version since 4.1.
+var PreSGNodeVersionFallback = NewClusterCompatVersion(4, 0)
+
+// RegistryPreCCVAwareNode represents an observation of a pre-CCV-aware Sync Gateway peer by a CCV-
+// aware node. Unlike RegistryNode, these entries are written by an observing peer, not by the
+// pre-CCV-aware peer itself, and are keyed in GatewayRegistry.PreCCVAwareNodes by the pre-CCV-aware peer's
+// UUID (which is therefore not duplicated inside the entry body). Observations of the same
+// peer through multiple side-channels collapse onto a single entry with the lower-versioned
+// reading winning. LastObservedAt plays the same role as RegistryNode.HeartbeatAt: entries
+// older than the configured heartbeat expiry are pruned by RegisterNodeVersion.
+//
+// Version is the pre-CCV-aware peer's cluster compat version (major.minor). The observer parses
+// the side-channel's full build version at observation time and stores only the major.minor —
+// CCV decisions don't need higher precision and storing the build string would imply
+// precision the observation can't guarantee. When the side-channel carried no version,
+// Version is set to PreSGNodeVersionFallback as a conservative fallback at observation time.
+type RegistryPreCCVAwareNode struct {
+	Version        ClusterCompatVersion `json:"version"`
+	LastObservedAt time.Time            `json:"last_observed_at"`
 }
 
 // ParseClusterCompatVersion parses a "major.minor" string into a ClusterCompatVersion.

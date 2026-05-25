@@ -72,7 +72,19 @@ type clusterCompatManager struct {
 	// reports a freeze. Stored separately for surfacing via the API and audit; its Version
 	// participates in computeCCV alongside the node versions.
 	cachedFreeze *base.RegistryFreeze
-	// cachedVersion is the reported cluster compat version: computeCCV(cachedNodes, cachedFreeze).
+	// cachedPreCCVAwareNodes is the union of pre-CCV-aware peers observed across tracked bucket
+	// registries from the most recent observation, keyed by pre-CCV-aware peer UUID. Reported
+	// verbatim via the API for operator visibility; only the subset whose Version is at or
+	// above cachedHWM participates in computeCCV (entries below HWM represent an unsupported
+	// downgrade we deliberately don't roll CCV back for).
+	cachedPreCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode
+	// cachedHWM is the aggregated ClusterCompatVersionHWM across tracked bucket registries
+	// (max across buckets). Acts as a floor for pre-CCV-aware-peer contributions to computeCCV: a
+	// pre-CCV-aware peer observed below HWM is an unsupported downgrade the cluster cannot
+	// stop but should not surface as a CCV regression. Nil until at least one bucket has
+	// reported a non-zero HWM.
+	cachedHWM *base.ClusterCompatVersion
+	// cachedVersion is the reported cluster compat version: computeCCV(cachedNodes, cachedFreeze, cachedPreCCVAwareNodes, cachedHWM).
 	// Nil when nothing has been observed yet.
 	cachedVersion *base.ClusterCompatVersion
 	// appliedDBVersions tracks the database config version this node has successfully
@@ -217,11 +229,17 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	if !m.claimBucket(bucket) {
 		return nil
 	}
+	// Callers of RegisterBucket (currently only _applyConfig) hold _databasesLock for write,
+	// so observePreCCVAwarePeersForBucket's RLock would self-deadlock. Use the lock-free body —
+	// the caller's exclusive ownership of the database set is the necessary guarantee.
+	//
 	// ratchetHWM=false here: HWM is monotonic and cannot be rolled back, so an advance
 	// committed off transient startup state would lock the cluster at a too-high value
 	// forever. The HWM ratchet happens later via the periodic Refresh, gated per-bucket on
-	// at least one database having reached DBOnline (see ratchetEligibleBuckets).
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), false)
+	// at least one database having reached DBOnline (see ratchetEligibleBuckets) — so the
+	// observation is stable when the ratchet actually runs.
+	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), preCCVAwarePeers, false)
 	if err != nil {
 		m.releaseBucket(bucket)
 		return err
@@ -229,9 +247,9 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// Merge this bucket's registry into the cached view and recompute. A node removed from
 	// this bucket but still present in another tracked bucket would not be evicted here —
 	// that's reconciled by the periodic Refresh, which rebuilds the cache from scratch. Same
-	// for the freeze record: a freeze cleared elsewhere stays reflected here until the next
-	// Refresh recomputes the aggregate.
-	oldVersion, newVersion := m.mergeRegistryIntoCache(registry.Nodes, registry.Frozen)
+	// for the freeze record and pre-CCV-aware-node observations: an entry cleared elsewhere stays
+	// reflected here until the next Refresh recomputes the aggregate.
+	oldVersion, newVersion := m.mergeRegistryIntoCache(registry.Nodes, registry.Frozen, registry.PreCCVAwareNodes, registry.ClusterCompatVersionHWM)
 	base.InfofCtx(ctx, base.KeyConfig, "Registered node %s in bucket %s; cluster compatibility version is %v", m.sc.NodeUID, base.MD(bucket), newVersion)
 	if !clusterCompatVersionEqual(oldVersion, newVersion) {
 		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
@@ -241,7 +259,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 
 // ratchetEligibleBuckets returns the set of buckets with at least one DBOnline database.
 // Used by Refresh to gate the HWM ratchet on per-bucket online state: ratcheting requires
-// inputs (e.g. legacy-node detection via ISGR/cbgt) that are only available once the
+// inputs (e.g. pre-CCV-aware-node detection via ISGR/cbgt) that are only available once the
 // database is fully online. Buckets absent from the returned set stay heartbeat-only until
 // the next refresh tick.
 //
@@ -283,10 +301,15 @@ func (m *clusterCompatManager) releaseBucket(bucket string) {
 	delete(m.trackedBuckets, bucket)
 }
 
-// mergeRegistryIntoCache folds the given bucket's node entries and freeze record into the
-// cached cluster view, recomputes the cluster compat version, and returns the previous and
-// new cached versions for caller-side change logging.
-func (m *clusterCompatManager) mergeRegistryIntoCache(nodes map[string]*base.RegistryNode, freeze *base.RegistryFreeze) (oldVersion, newVersion *base.ClusterCompatVersion) {
+// mergeRegistryIntoCache folds the given bucket's node entries, freeze record, pre-CCV-aware-peer
+// observations, and HWM into the cached cluster view, recomputes the cluster compat version,
+// and returns the previous and new cached versions for caller-side change logging. HWM is
+// merged as a max across buckets; a zero-valued hwm (first registration before any ratchet)
+// is ignored. Observed-peer entries for a peer already in the cache are merged with
+// lower-version-wins (with LastObservedAt advanced to whichever observation is newer),
+// matching the cross-bucket aggregation in refreshNodeRegistrations — observed inputs are
+// upgrade-fan-in, so the more conservative reading is the correct CCV input.
+func (m *clusterCompatManager) mergeRegistryIntoCache(nodes map[string]*base.RegistryNode, freeze *base.RegistryFreeze, preCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode, hwm base.ClusterCompatVersion) (oldVersion, newVersion *base.ClusterCompatVersion) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.cachedNodes == nil {
@@ -298,8 +321,28 @@ func (m *clusterCompatManager) mergeRegistryIntoCache(nodes map[string]*base.Reg
 	if freeze != nil {
 		m.cachedFreeze = mergeFreeze(m.cachedFreeze, freeze)
 	}
+	if len(preCCVAwareNodes) > 0 && m.cachedPreCCVAwareNodes == nil {
+		m.cachedPreCCVAwareNodes = make(map[string]*base.RegistryPreCCVAwareNode, len(preCCVAwareNodes))
+	}
+	for key, entry := range preCCVAwareNodes {
+		cp := *entry
+		if existing, ok := m.cachedPreCCVAwareNodes[key]; ok {
+			if existing.Version.GreaterThan(cp.Version) {
+				existing.Version = cp.Version
+			}
+			if cp.LastObservedAt.After(existing.LastObservedAt) {
+				existing.LastObservedAt = cp.LastObservedAt
+			}
+			continue
+		}
+		m.cachedPreCCVAwareNodes[key] = &cp
+	}
+	if !hwm.IsZero() && (m.cachedHWM == nil || hwm.GreaterThan(*m.cachedHWM)) {
+		cp := hwm
+		m.cachedHWM = &cp
+	}
 	oldVersion = m.cachedVersion
-	newVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+	newVersion = computeCCV(m.cachedNodes, m.cachedFreeze, m.cachedPreCCVAwareNodes, m.cachedHWM)
 	m.cachedVersion = newVersion
 	return oldVersion, newVersion
 }
@@ -335,6 +378,26 @@ func (m *clusterCompatManager) NodeVersions() map[string]base.ClusterCompatVersi
 	return nodes
 }
 
+// PreCCVAwareNodeVersions returns the observed pre-CCV-aware peers, keyed by peer UUID, with each
+// peer's observed major.minor cluster compat version as the value. Entries whose source
+// observation didn't carry a version are reported as PreSGNodeVersionFallback (the
+// conservative fallback applied at observation time). Reports all pre-CCV-aware peers verbatim,
+// including peers below the registry HWM that don't participate in computeCCV (see
+// computeCCV) — those entries are surfaced here for operator visibility. Returns nil when
+// no pre-CCV-aware peers are currently observed.
+func (m *clusterCompatManager) PreCCVAwareNodeVersions() map[string]base.ClusterCompatVersion {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.cachedPreCCVAwareNodes) == 0 {
+		return nil
+	}
+	out := make(map[string]base.ClusterCompatVersion, len(m.cachedPreCCVAwareNodes))
+	for k, v := range m.cachedPreCCVAwareNodes {
+		out[k] = v.Version
+	}
+	return out
+}
+
 // Refresh re-registers this node in every tracked bucket and recomputes the cluster compat
 // version. Called from the config polling goroutine.
 //
@@ -354,12 +417,12 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 		return
 	}
 
-	nodes, freeze, err := m.refreshNodeRegistrations(ctx)
+	nodes, freeze, preCCVAwareNodes, hwm, err := m.refreshNodeRegistrations(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to refresh cluster compat version: %v", err)
 		return
 	}
-	newVersion := computeCCV(nodes, freeze)
+	newVersion := computeCCV(nodes, freeze, preCCVAwareNodes, hwm)
 
 	// Race window: if a Freeze or Unfreeze completed between refreshNodeRegistrations
 	// returning and the lock acquisition below, this write overwrites their mutation with
@@ -371,6 +434,8 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 	oldVersion := m.cachedVersion
 	m.cachedNodes = nodes
 	m.cachedFreeze = freeze
+	m.cachedPreCCVAwareNodes = preCCVAwareNodes
+	m.cachedHWM = hwm
 	m.cachedVersion = newVersion
 	m.lastRefreshAt = time.Now().UTC()
 	m.mu.Unlock()
@@ -385,10 +450,10 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 // an error if every tracked bucket failed so callers can leave the previously-cached state
 // in place — stale is preferable to flipping the cluster compat version to nil on a transient
 // bucket outage.
-func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, error) {
+func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, map[string]*base.RegistryPreCCVAwareNode, *base.ClusterCompatVersion, error) {
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
@@ -401,11 +466,14 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	// Collect unique node versions across all bucket registries. A node appearing in multiple
 	// bucket registries will have the same version — last-write-wins is fine.
 	nodeMap := make(map[string]base.ClusterCompatVersion)
+	preCCVAwareMap := make(map[string]*base.RegistryPreCCVAwareNode)
 	var aggregateFreeze *base.RegistryFreeze
+	var aggregateHWM *base.ClusterCompatVersion
 	succeeded := 0
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, ratchet)
+		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, preCCVAwarePeers, ratchet)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
@@ -417,25 +485,117 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 		if registry.Frozen != nil {
 			aggregateFreeze = mergeFreeze(aggregateFreeze, registry.Frozen)
 		}
+		// HWM aggregates as max across tracked buckets: the cluster's effective floor is the
+		// highest version any bucket has committed to. Zero-valued HWMs (buckets that have
+		// never ratcheted) don't participate.
+		if !registry.ClusterCompatVersionHWM.IsZero() {
+			if aggregateHWM == nil || registry.ClusterCompatVersionHWM.GreaterThan(*aggregateHWM) {
+				cp := registry.ClusterCompatVersionHWM
+				aggregateHWM = &cp
+			}
+		}
+		// A pre-CCV-aware peer UUID appearing in multiple bucket registries — keep the lower-
+		// versioned reading, with LastObservedAt advanced to the most recent observation
+		// of either reading.
+		for uuid, entry := range registry.PreCCVAwareNodes {
+			cp := *entry
+			if existing, ok := preCCVAwareMap[uuid]; ok {
+				if existing.Version.GreaterThan(cp.Version) {
+					existing.Version = cp.Version
+				}
+				if cp.LastObservedAt.After(existing.LastObservedAt) {
+					existing.LastObservedAt = cp.LastObservedAt
+				}
+				continue
+			}
+			preCCVAwareMap[uuid] = &cp
+		}
 	}
 	if succeeded == 0 {
-		return nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
+		return nil, nil, nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
 	}
-	return nodeMap, aggregateFreeze, nil
+	return nodeMap, aggregateFreeze, preCCVAwareMap, aggregateHWM, nil
+}
+
+// ccvAwareMajorVersion / ccvAwareMinorVersion is the major.minor threshold used to
+// discriminate CCV-aware peers from pre-CCV-aware peers when reading their
+// self-published version from cbgt NodeDef.Extras and SGNode.Version. Any peer with a non-nil
+// version at-or-above this threshold is assumed to self-register via RegisterNodeVersion;
+// anything below (or nil) is treated as pre-CCV-aware and capped at PreSGNodeVersionFallback.
+const (
+	ccvAwareMajorVersion = 4
+	ccvAwareMinorVersion = 1
+)
+
+// observePreCCVAwarePeersForBucket gathers pre-CCV-aware-peer observations across all databases this
+// server context has loaded against the given bucket. Returns nil when nothing to report.
+//
+// Acquires _databasesLock.RLock to snapshot the database set. Callers that already hold a
+// _databasesLock write lock (e.g. _applyConfig) must use _observePreCCVAwarePeersForBucket instead
+// to avoid self-deadlock.
+//
+// Best-effort: enumeration errors from cbgt cfg / SGRCluster cfg on individual databases are
+// logged by the per-database observer and do not abort the sweep. The caller's CCV cap still
+// works correctly off whichever observations did succeed.
+func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+	sc._databasesLock.RLock()
+	defer sc._databasesLock.RUnlock()
+	return sc._observePreCCVAwarePeersForBucket(ctx, bucket)
+}
+
+// _observePreCCVAwarePeersForBucket is the lock-free body of observePreCCVAwarePeersForBucket.
+// Callers MUST hold _databasesLock (read or write) for the duration of the call.
+// When the same UUID is observed by multiple databases (e.g. two databases on the same
+// bucket both seeing a 3.x peer), entries are merged with the lower-versioned observation
+// winning, matching the per-database merge inside ObservePreCCVAwarePeers.
+func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+	databases := make([]*db.DatabaseContext, 0, len(sc._databases))
+	for _, dbCtx := range sc._databases {
+		if dbCtx == nil || dbCtx.Bucket == nil || dbCtx.Bucket.GetName() != bucket {
+			continue
+		}
+		databases = append(databases, dbCtx)
+	}
+	var out map[string]base.RegistryPreCCVAwareNode
+	for _, dbCtx := range databases {
+		for uuid, entry := range dbCtx.ObservePreCCVAwarePeers(ctx, ccvAwareMajorVersion, ccvAwareMinorVersion) {
+			if out == nil {
+				out = make(map[string]base.RegistryPreCCVAwareNode)
+			}
+			if existing, ok := out[uuid]; ok && !existing.Version.GreaterThan(entry.Version) {
+				continue
+			}
+			out[uuid] = entry
+		}
+	}
+	return out
 }
 
 // computeCCV returns the reported cluster compat version: the minimum across the live-node
-// versions and the freeze ceiling (when set). Returns nil when no versions are available.
+// versions, the freeze ceiling (when set), and any observed pre-CCV-aware peers whose Version is at
+// or above hwm. Returns nil when no inputs at all are available.
 //
-// The single combining point for all CCV inputs. Future inputs (e.g. an HWM floor) should
-// participate here rather than as a separate override path.
-func computeCCV(nodes map[string]base.ClusterCompatVersion, freeze *base.RegistryFreeze) *base.ClusterCompatVersion {
-	versions := make([]base.ClusterCompatVersion, 0, len(nodes)+1)
+// hwm acts as a floor specifically for pre-CCV-aware peers: a pre-CCV-aware peer observed below the
+// registry HWM represents an unsupported downgrade — the cluster has already committed to a
+// higher CCV via the monotonic HWM ratchet, so an aged-in pre-CCV-aware peer should not surface as a
+// CCV regression. Observed peers below HWM are still reported via PreCCVAwareNodeVersions for
+// operator visibility; they're only excluded from this min-fold.
+//
+// The single combining point for all CCV inputs. New inputs should participate here rather
+// than as a separate override path.
+func computeCCV(nodes map[string]base.ClusterCompatVersion, freeze *base.RegistryFreeze, preCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode, hwm *base.ClusterCompatVersion) *base.ClusterCompatVersion {
+	versions := make([]base.ClusterCompatVersion, 0, len(nodes)+1+len(preCCVAwareNodes))
 	for _, v := range nodes {
 		versions = append(versions, v)
 	}
 	if freeze != nil {
 		versions = append(versions, freeze.Version)
+	}
+	for _, ln := range preCCVAwareNodes {
+		if hwm != nil && hwm.GreaterThan(ln.Version) {
+			continue
+		}
+		versions = append(versions, ln.Version)
 	}
 	if len(versions) == 0 {
 		return nil
@@ -539,7 +699,7 @@ func (m *clusterCompatManager) Freeze(ctx context.Context) (*base.RegistryFreeze
 	if succeeded > 0 {
 		m.mu.Lock()
 		m.cachedFreeze = aggregate
-		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze, m.cachedPreCCVAwareNodes, m.cachedHWM)
 		m.mu.Unlock()
 	}
 
@@ -582,7 +742,7 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (previousFreeze, re
 	if len(buckets) == 0 {
 		m.mu.Lock()
 		m.cachedFreeze = nil
-		m.cachedVersion = computeCCV(m.cachedNodes, nil)
+		m.cachedVersion = computeCCV(m.cachedNodes, nil, m.cachedPreCCVAwareNodes, m.cachedHWM)
 		m.mu.Unlock()
 		return previousFreeze, nil, nil
 	}
@@ -610,7 +770,7 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (previousFreeze, re
 	if clearFailed == 0 || residual != nil {
 		m.mu.Lock()
 		m.cachedFreeze = residual
-		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze)
+		m.cachedVersion = computeCCV(m.cachedNodes, m.cachedFreeze, m.cachedPreCCVAwareNodes, m.cachedHWM)
 		m.mu.Unlock()
 	}
 	if residual != nil {

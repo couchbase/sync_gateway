@@ -58,6 +58,17 @@ type GatewayRegistry struct {
 	CreatedAt               time.Time                       `json:"created_at"`                              // Time the registry was created
 	Nodes                   map[string]*base.RegistryNode   `json:"nodes,omitempty"`                         // Map of node UID to node version registration
 	Frozen                  *base.RegistryFreeze            `json:"frozen_cluster_compat_version,omitempty"` // Admin-issued cluster compat version freeze
+	// PreCCVAwareNodes records pre-CCV-aware Sync Gateway peers observed by CCV-aware nodes through
+	// side-channel registries (cbgt NodeDefs for sharded import, SGRCluster.Nodes for ISGR),
+	// keyed by pre-CCV-aware peer UUID. Entries whose side-channel observation didn't carry a
+	// version fall back to base.PreSGNodeVersionFallback. Entries cap HWM ratchet
+	// advancement at observation time (preventing the cluster from committing past a
+	// pre-CCV-aware peer that's still present), and the subset whose Version is at or above
+	// ClusterCompatVersionHWM also participates in computeCCV. Entries strictly below HWM
+	// represent an unsupported downgrade — they remain visible for operator audit but do not
+	// drag reported CCV back below HWM. Entries age out via the heartbeat-expiry prune in
+	// RegisterNodeVersion.
+	PreCCVAwareNodes map[string]*base.RegistryPreCCVAwareNode `json:"pre_ccv_aware_nodes,omitempty"`
 }
 
 const GatewayRegistryVersion = "1.0"
