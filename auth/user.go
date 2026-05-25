@@ -750,7 +750,6 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) (base.Set, error) {
 	return output, nil
 }
 
-
 // ////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current
