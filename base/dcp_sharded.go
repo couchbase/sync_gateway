@@ -486,6 +486,7 @@ func (c *CbgtContext) StartManager(ctx context.Context, opts ShardedDCPOptions) 
 // extras.
 func preCbgtExtrasVersion() *ComparableBuildVersion {
 	v := &ComparableBuildVersion{major: 3}
+	v.str = v.formatComparableBuildVersion()
 	return v
 }
 
