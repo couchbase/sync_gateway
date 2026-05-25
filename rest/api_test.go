@@ -4181,7 +4181,6 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 
 	// Step 9: Verify compaction succeeded and history was removed
 	require.NoError(t, err)
-	//syncData, _, err := collection.GetDocSyncDataNoImport(ctx, nonImportedDocID, db.DocUnmarshalSync)
 
 	xattrs, cas, err := dataStore.GetXattrs(ctx, nonImportedDocID, []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName})
 	require.NoError(t, err)
