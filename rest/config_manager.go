@@ -1041,10 +1041,17 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	// If _default._default is already associated with a non-default metadataID, use the standard ID
 	bucketName := config.GetBucketName()
 	var syncInfo base.SyncInfo
-	exists, err := b.Connection.GetDocument(ctx, bucketName, base.SGSyncInfo, &syncInfo)
+	rawSyncInfo, exists, err := b.Connection.GetRawDocument(ctx, bucketName, base.SGSyncInfo)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error checking syncInfo metadataID in default collection - using standard metadataID.  Error: %v", err)
 		return standardMetadataID
+	}
+	if exists {
+		syncInfo, err = base.DecodeSyncInfo(rawSyncInfo)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error decoding syncInfo metadataID in default collection - using standard metadataID.  Error: %v", err)
+			return standardMetadataID
+		}
 	}
 
 	if exists && (syncInfo.MetadataID != nil && *syncInfo.MetadataID != defaultMetadataID) {

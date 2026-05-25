@@ -148,6 +148,69 @@ func TestComputeMetadataID(t *testing.T) {
 
 }
 
+// TestComputeMetadataIDBinaryFormat covers the syncInfo-V1 binary read path through
+// computeMetadataID, plus the corrupt-doc fallback. Existing TestComputeMetadataID covers
+// the legacy JSON, no-doc, and short-circuit cases
+func TestComputeMetadataIDBinaryFormat(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
+	}
+	base.TestRequiresCollections(t)
+
+	config := BootstrapStartupConfigForTest(t)
+	ctx := base.TestCtx(t)
+	sc, err := SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer sc.Close(ctx)
+
+	bootstrapContext := sc.BootstrapContext
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+	bucketName := tb.GetName()
+
+	registry, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+
+	dbName := "dbName"
+	standardMetadataID := dbName
+	defaultDbConfig := makeDbConfig(bucketName, dbName, nil)
+	defaultStore := tb.Bucket.DefaultDataStore(ctx)
+
+	resetSyncInfo := func(t *testing.T) {
+		err := defaultStore.Delete(ctx, base.SGSyncInfo)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("V1 binary doc with non-default metadataID returns standard ID", func(t *testing.T) {
+		resetSyncInfo(t)
+		payload := append([]byte{byte(base.SyncInfoTypeV1)}, []byte(`{"metadataID":"foo"}`)...)
+		require.NoError(t, defaultStore.SetRaw(ctx, base.SGSyncInfo, 0, nil, payload))
+
+		metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
+		assert.Equal(t, standardMetadataID, metadataID)
+	})
+
+	t.Run("V1 binary doc with default metadataID returns default ID", func(t *testing.T) {
+		resetSyncInfo(t)
+		payload := append([]byte{byte(base.SyncInfoTypeV1)}, []byte(`{"metadataID":"`+defaultMetadataID+`"}`)...)
+		require.NoError(t, defaultStore.SetRaw(ctx, base.SGSyncInfo, 0, nil, payload))
+
+		metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
+		assert.Equal(t, defaultMetadataID, metadataID)
+	})
+
+	t.Run("corrupt doc falls back to standard ID", func(t *testing.T) {
+		resetSyncInfo(t)
+		require.NoError(t, defaultStore.SetRaw(ctx, base.SGSyncInfo, 0, nil, append([]byte{0xff}, []byte(`{"metadataID":"foo"}`)...)))
+
+		metadataID := bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
+		assert.Equal(t, standardMetadataID, metadataID)
+	})
+}
+
 func TestLongMetadataID(t *testing.T) {
 
 	bootstrapContext := bootstrapContext{}

@@ -4656,8 +4656,8 @@ func TestSettingSyncInfo(t *testing.T) {
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
 
-	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1"))
-	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID"))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1", nil))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID", nil))
 
 	// assert that after above operations meta version is preserved after setting of metadataID
 	var syncInfo base.SyncInfo
@@ -4671,8 +4671,8 @@ func TestSettingSyncInfo(t *testing.T) {
 	// remove sync info to test another permutation
 	require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
 
-	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID"))
-	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1"))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "someID", nil))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "1", nil))
 
 	// assert that after above operations metadataID is preserved after setting of metaVersion
 	syncInfo = base.SyncInfo{}
@@ -4684,7 +4684,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	}, syncInfo)
 
 	// test updating each element in sync info now both elements are defined
-	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "4"))
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, "4", nil))
 	_, err = ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
@@ -4692,7 +4692,7 @@ func TestSettingSyncInfo(t *testing.T) {
 		MetadataID:      base.Ptr("someID"),
 	}, syncInfo)
 
-	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "test"))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "test", nil))
 	_, err = ds.Get(ctx, base.SGSyncInfo, &syncInfo)
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
@@ -4724,15 +4724,15 @@ func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
 	require.NoError(t, ds.Set(ctx, base.SGSyncInfo, 0, nil, oldSyncInfo))
 
 	// InitSyncInfo should detect the mismatch and require resync
-	requiresResync, _, err := base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)
+	requiresResync, _, err := base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID, nil)
 	require.NoError(t, err)
 	require.True(t, requiresResync)
 
 	// SetSyncInfoMetadataID with the same Options.MetadataID should update the syncInfo document
-	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, db.DatabaseContext.Options.MetadataID))
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, db.DatabaseContext.Options.MetadataID, nil))
 
 	// Subsequent InitSyncInfo should find a match and not require resync
-	requiresResync, _, err = base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID)
+	requiresResync, _, err = base.InitSyncInfo(ctx, ds, db.DatabaseContext.Options.MetadataID, nil)
 	require.NoError(t, err)
 	assert.False(t, requiresResync)
 }
@@ -4791,13 +4791,13 @@ func TestInitSyncInfo(t *testing.T) {
 		t.Run(testcase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 			if testcase.initialMetaID != "" {
-				require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.initialMetaID))
+				require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.initialMetaID, nil))
 			}
 			if testcase.metaVersion != "" {
-				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion))
+				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion, nil))
 			}
 
-			requireResync, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID)
+			requireResync, requireMigration, err := base.InitSyncInfo(ctx, ds, testcase.newMetadataID, nil)
 			require.NoError(t, err)
 			if testcase.requireMigration {
 				assert.True(t, requireMigration)
@@ -4827,13 +4827,13 @@ func TestInitSyncInfoRequireMigrationEmptyBucket(t *testing.T) {
 	ds := tb.GetSingleDataStore()
 
 	// test no sync info in bucket and set metadataID, returns requireMigration
-	_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+	_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID", nil)
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
 
 	// delete the doc, test no sync info in bucket returns requireMigration
 	require.NoError(t, ds.Delete(ctx, base.SGSyncInfo))
-	_, requireMigration, err = base.InitSyncInfo(ctx, ds, "")
+	_, requireMigration, err = base.InitSyncInfo(ctx, ds, "", nil)
 	require.NoError(t, err)
 	assert.True(t, requireMigration)
 }
@@ -4881,15 +4881,15 @@ func TestInitSyncInfoMetaVersionComparison(t *testing.T) {
 		t.Run(testcase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 			// set sync info with no metaversion
-			require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.metadataID))
+			require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, testcase.metadataID, nil))
 
 			if testcase.metaVersion == "" {
-				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID", nil)
 				require.NoError(t, err)
 				assert.True(t, requireMigration)
 			} else {
-				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion))
-				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID")
+				require.NoError(t, base.SetSyncInfoMetaVersion(ctx, ds, testcase.metaVersion, nil))
+				_, requireMigration, err := base.InitSyncInfo(ctx, ds, "someID", nil)
 				require.NoError(t, err)
 				assert.False(t, requireMigration)
 			}

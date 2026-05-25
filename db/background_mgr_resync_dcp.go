@@ -407,7 +407,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 				if !ok {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
 				}
-				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
+				var ccv *base.ClusterCompatVersion
+				if db.Options.ClusterCompatVersion != nil {
+					ccv = db.Options.ClusterCompatVersion()
+				}
+				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID, ccv); err != nil {
 					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
 				}
 				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}

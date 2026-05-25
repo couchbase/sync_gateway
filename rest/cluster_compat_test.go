@@ -1539,3 +1539,53 @@ func TestClusterCompatRefreshIntervalUnclamped(t *testing.T) {
 		assert.Equal(t, d, ccm.refreshInterval(), "refreshInterval should return the configured value verbatim for %s", d)
 	}
 }
+
+// TestSyncInfoUpgradeGate tests syncInfo write gate during a rolling upgrade.
+// With a 4.0 peer present, writes must stay legacy JSON and once all peers reach 4.1+, writes flip to V1.
+func TestSyncInfoUpgradeGate(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := base.TestCtx(t)
+	bucketName := rt.Bucket().GetName()
+	ccm := rt.ServerContext().ClusterCompat
+	require.NotNil(t, ccm)
+	dbCtx := rt.GetDatabase()
+	ds := rt.GetSingleDataStore()
+
+	const metadataID = "test_md"
+	const fakePeerUID = "fake-4.0-peer"
+
+	// Phase 1: mid-upgrade, a 4.0 peer is still registered. ccv should be 4.0.
+	seedRegistryNode(t, rt, bucketName, fakePeerUID, base.NewClusterCompatVersion(4, 0))
+	ccm.lastRefreshAt = time.Time{} // bypass refresh rate-limit
+	ccm.Refresh(ctx)
+	got := ccm.ClusterCompatVersion()
+	require.NotNil(t, got)
+	require.Equal(t, base.NewClusterCompatVersion(4, 0), *got, "mixed-version min should be 4.0")
+
+	// Resolve the production-wired closure and feed its result to SetSyncInfoMetadataID
+	ccv := dbCtx.Options.ClusterCompatVersion()
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
+	raw, _, err := ds.GetRaw(ctx, base.SGSyncInfo)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+	require.Equal(t, byte('{'), raw[0], "during mixed-version cluster, syncInfo write must be legacy JSON")
+
+	// Phase 2: 4.0 peer leaves. Only the local node (>=4.1) remains.
+	rt.ServerContext().BootstrapContext.DeregisterNodeVersion(ctx, bucketName, fakePeerUID)
+	ccm.lastRefreshAt = time.Time{} // bypass refresh rate-limit
+	ccm.Refresh(ctx)
+	got = ccm.ClusterCompatVersion()
+	require.NotNil(t, got)
+	require.True(t, got.AtLeast(4, 1), "after 4.0 peer leaves, ccv should be >= 4.1; got %v", got)
+
+	// Same closure, called again — must resolve to the new value at call time, not the value
+	// captured during phase 1.
+	ccv = dbCtx.Options.ClusterCompatVersion()
+	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
+	raw, _, err = ds.GetRaw(ctx, base.SGSyncInfo)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "after upgrade completes, syncInfo write should be V1")
+}
