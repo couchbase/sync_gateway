@@ -124,7 +124,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 
 	docsTargeted, err := totalResyncDocs(ctx, collections)
 	if err != nil {
-		return err
+		base.WarnfCtx(ctx, "Failed to count total documents for resync: %v, continuing to resync", err)
 	}
 	r.docsTargeted.Store(docsTargeted)
 

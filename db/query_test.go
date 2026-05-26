@@ -554,7 +554,16 @@ func TestCountAllDocs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs), count)
 
-	// Delete a doc
+	if !base.TestsDisableGSI() {
+		n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
+		require.True(t, ok, "Unable to get n1QLStore for testBucket")
+		countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, collection.UseXattrs())
+		countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], collection.UseXattrs(), collection.numIndexPartitions())
+		plan, err := n1QLStore.ExplainQuery(ctx, countDocsQueryStatement, nil)
+		require.NoError(t, err, "Error generating explain for count all docs query")
+		require.True(t, IsCovered(plan), "Expected %s to be covering", plan)
+	}
+
 	_, _, err = collection.DeleteDoc(ctx, "doc0", docToDelete.ExtractDocVersion())
 	require.NoError(t, err)
 

@@ -370,8 +370,7 @@ var QueryCountDocs = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.`sequence` > 0 AND "+ // Required to use IndexAllDocs
-			"META(%s).id NOT LIKE '%s' "+
-			"AND $sync IS NOT MISSING ",
+			"META(%s).id NOT LIKE '%s' ",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
@@ -750,7 +749,7 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 
 	// View Query
 	if c.useViews() {
-		opts := Body{"stale": false, "reduce": false}
+		opts := Body{"stale": true, "reduce": false}
 		if startKey != "" {
 			opts[QueryParamStartKey] = startKey
 		}
@@ -779,30 +778,28 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
 		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
-	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.NotBounded, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
 
 // CountAllDocs returns the total number of documents in the collection that contain _sync metadata.
 // When using views, tombstoned documents are excluded.
-func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (docCount uint64, err error) {
-
-	// View Query
+func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 	if c.useViews() {
 		opts := Body{"stale": false, "reduce": true}
-		results, viewErr := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
-		if viewErr != nil {
-			return 0, viewErr
+		results, err := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
+		if err != nil {
+			return 0, err
 		}
 		var row struct {
 			Value float64 `json:"value"`
 		}
-		if results.Next(ctx, &row) {
-			docCount = uint64(row.Value)
+		err = results.One(ctx, &row)
+		if err != nil {
+			return 0, err
 		}
-		return docCount, results.Close(ctx)
+		return uint64(row.Value), nil
 	}
 
-	// N1QL Query
 	countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, c.UseXattrs())
 	countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
 
@@ -810,21 +807,14 @@ func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (docCount uint64,
 	if err != nil {
 		return 0, err
 	}
-	defer func() {
-		closeErr := results.Close(ctx)
-		if err == nil {
-			err = closeErr
-		}
-	}()
-
 	var row struct {
 		Count uint64 `json:"count"`
 	}
-	if results.Next(ctx, &row) {
-		return row.Count, nil
+	err = results.One(ctx, &row)
+	if err != nil {
+		return 0, err
 	}
-
-	return 0, nil
+	return row.Count, nil
 }
 
 func (c *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
