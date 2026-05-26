@@ -15,6 +15,7 @@ import (
 	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -219,6 +220,107 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		return *docRoot.SyncData, nil
 	}
 
+}
+
+// CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
+// This is used to prune stale channel assignment history to reduce storage overhead.
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
+	key := realDocID(docid)
+	if key == "" {
+		return nil, base.HTTPErrorf(400, "Invalid doc ID")
+	}
+
+	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+	if err != nil {
+		return nil, err
+	}
+
+	doc, err := c.unmarshalDocumentWithXattrs(ctx, key, nil, xattrs, cas, DocUnmarshalSync)
+	if err != nil {
+		return nil, err
+	}
+
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
+	}
+
+	if !isSgWrite {
+		var importErr error
+
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
+		if importErr != nil {
+			return nil, importErr
+		}
+		if doc == nil {
+			return nil, fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+		}
+		cas = doc.Cas
+	}
+
+	compactedChannels := make([]string, 0)
+
+	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
+		del := channel.End <= seq
+		if del {
+			compactedChannels = append(compactedChannels, channel.Name)
+		}
+		return del
+	})
+
+	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
+		del := channel.End != 0 && channel.End <= seq
+		if del {
+			compactedChannels = append(compactedChannels, channel.Name)
+		}
+		return del
+	})
+
+	for chanName, chanEntry := range doc.SyncData.Channels {
+		if chanEntry != nil && chanEntry.Seq <= seq {
+			compactedChannels = append(compactedChannels, chanName)
+			delete(doc.SyncData.Channels, chanName)
+		}
+	}
+
+	// Exit early if no compaction occurred
+	if len(compactedChannels) == 0 {
+		return []string{}, nil
+	}
+
+	rawSyncXattr, err := base.JSONMarshal(doc.SyncData)
+	if err != nil {
+		return nil, base.RedactErrorf("failed to marshal sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
+	}
+
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		base.WarnfCtx(ctx, `Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
+		return nil, base.RedactErrorf(`Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
+	}
+
+	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, revSeqNo, doc.MetadataOnlyUpdate)
+
+	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+	if err != nil {
+		return nil, base.RedactErrorf("failed to marshal _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
+	}
+
+	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
+	opts := &sgbucket.MutateInOptions{}
+	// Only update _sync.cas and _mou.cas if the pre-compaction doc had already been imported by SGW
+	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
+	}
+	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
+
+	updatedXattr := map[string][]byte{
+		base.SyncXattrName: rawSyncXattr,
+		base.MouXattrName:  rawMouXattr,
+	}
+	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
+	return compactedChannels, err
 }
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
