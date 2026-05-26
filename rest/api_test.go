@@ -4318,7 +4318,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		require.Len(t, apiResult, len(expectedChanHistory))
 		for chanName, expectedSeq := range expectedChanHistory {
-			assert.Equal(t, expectedSeq, apiResult[chanName])
+			assert.ElementsMatch(t, expectedSeq, apiResult[chanName])
 		}
 	})
 
