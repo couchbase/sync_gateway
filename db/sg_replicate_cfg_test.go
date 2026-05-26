@@ -141,6 +141,52 @@ func TestReplicateManagerNodes(t *testing.T) {
 	assert.Len(t, replications, 0)
 }
 
+// TestReplicateManagerRegisterNodeRefreshesVersion verifies registerNodeForHost's in-place
+// Version refresh path: if an SGNode already exists in the cluster config without a Version
+// (the state a pre-4.1 peer would have left behind), a CCV-aware re-registration must overwrite
+// it with the local build's ProductVersion so subsequent observers correctly classify this
+// node as CCV-aware. Re-registering with a matching Version remains a no-op.
+func TestReplicateManagerRegisterNodeRefreshesVersion(t *testing.T) {
+
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	testCfg, err := base.NewCfgSG(ctx, testBucket.GetSingleDataStore(), "", false)
+	require.NoError(t, err)
+
+	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
+	require.NoError(t, err)
+	defer manager.Stop()
+
+	const nodeUUID = "legacy-style-node"
+	// Seed the cluster with a Version-less entry (simulates a pre-4.1 peer that wrote itself
+	// before SGNode.Version existed).
+	err = manager.updateCluster(func(cluster *SGRCluster) (cancel bool, err error) {
+		cluster.Nodes[nodeUUID] = &SGNode{UUID: nodeUUID, Host: "legacy-host"}
+		return false, nil
+	})
+	require.NoError(t, err)
+
+	nodes, err := manager.getNodes()
+	require.NoError(t, err)
+	require.Contains(t, nodes, nodeUUID)
+	require.Nil(t, nodes[nodeUUID].Version, "seeded entry should have no Version")
+
+	// First refresh: Version was nil → must be set to ProductVersion.
+	require.NoError(t, manager.registerNodeForHost(nodeUUID, "legacy-host"))
+	nodes, err = manager.getNodes()
+	require.NoError(t, err)
+	require.NotNil(t, nodes[nodeUUID].Version, "Version must be set after refresh")
+	assert.True(t, nodes[nodeUUID].Version.Equal(base.ProductVersion), "Version must match local build")
+
+	// Second refresh: Version is already current → no-op, must not error.
+	require.NoError(t, manager.registerNodeForHost(nodeUUID, "legacy-host"))
+	nodes, err = manager.getNodes()
+	require.NoError(t, err)
+	assert.True(t, nodes[nodeUUID].Version.Equal(base.ProductVersion), "idempotent re-registration must not perturb Version")
+}
+
 // Test concurrent node operations on SGReplicateManager
 func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 

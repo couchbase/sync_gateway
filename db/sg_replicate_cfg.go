@@ -81,14 +81,16 @@ func NewSGRCluster() *SGRCluster {
 
 // SGNode represents a single Sync Gateway node in the cluster
 type SGNode struct {
-	UUID string `json:"uuid"` // Node UUID
-	Host string `json:"host"` // Host name
+	UUID    string                       `json:"uuid"`              // Node UUID
+	Host    string                       `json:"host"`              // Host name
+	Version *base.ComparableBuildVersion `json:"version,omitempty"` // Sync Gateway product version of the node. Pre-4.1 nodes omit this field; CCV-aware observers use its presence and value to filter peers when computing the pre-CCV-aware-node cap.
 }
 
 func NewSGNode(uuid string, host string) *SGNode {
 	return &SGNode{
-		UUID: uuid,
-		Host: host,
+		UUID:    uuid,
+		Host:    host,
+		Version: base.ProductVersion,
 	}
 }
 
@@ -991,13 +993,19 @@ func (m *sgReplicateManager) RegisterNode(nodeUUID string) error {
 }
 
 // registerNodeForHost node adds a node to the cluster config, then triggers replication rebalance.
-// Retries on CAS failure, is no-op if node already exists in config.  Split out of RegisterNode to support
-// testing with specified host values.
+// Retries on CAS failure, is no-op if node already exists in config with matching Version.  Split
+// out of RegisterNode to support testing with specified host values. If the entry exists but its
+// Version differs from the local build (or is missing), Version is refreshed in place so CCV-aware
+// observers correctly classify this node as CCV-aware on subsequent registrations.
 func (m *sgReplicateManager) registerNodeForHost(nodeUUID string, host string) error {
 	registerNodeCallback := func(cluster *SGRCluster) (cancel bool, err error) {
-		_, exists := cluster.Nodes[nodeUUID]
+		existing, exists := cluster.Nodes[nodeUUID]
 		if exists {
-			return true, nil
+			if existing.Version.Equal(base.ProductVersion) {
+				return true, nil
+			}
+			existing.Version = base.ProductVersion
+			return false, nil
 		}
 		cluster.Nodes[nodeUUID] = NewSGNode(nodeUUID, host)
 		cluster.RebalanceReplications()

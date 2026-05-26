@@ -17,11 +17,13 @@ import (
 )
 
 // ClusterCompatVersionState is the response payload for /_cluster_compat_version. It
-// describes the cluster-wide cluster compatibility version, the per-node versions
-// registered in the cluster, and (only when set) the frozen value pinning it.
+// describes the cluster-wide cluster compatibility version, the per-node versions registered
+// in the cluster, any pre-CCV-aware peers observed via side-channels, and (only when set)
+// the frozen value pinning it.
 type ClusterCompatVersionState struct {
 	ClusterCompatVersion       *base.ClusterCompatVersion           `json:"cluster_compat_version,omitempty"`
 	Nodes                      map[string]base.ClusterCompatVersion `json:"nodes,omitempty"`
+	PreCCVAwareNodes           map[string]base.ClusterCompatVersion `json:"pre_ccv_aware_nodes,omitempty"`
 	FrozenClusterCompatVersion *base.ClusterCompatVersion           `json:"frozen_cluster_compat_version,omitempty"`
 }
 
@@ -132,6 +134,7 @@ func buildClusterCompatVersionState(mgr *clusterCompatManager) ClusterCompatVers
 	state := ClusterCompatVersionState{
 		ClusterCompatVersion: mgr.ClusterCompatVersion(),
 		Nodes:                mgr.NodeVersions(),
+		PreCCVAwareNodes:     mgr.PreCCVAwareNodeVersions(),
 	}
 	if freeze := mgr.getCachedFreeze(); freeze != nil {
 		v := freeze.Version
