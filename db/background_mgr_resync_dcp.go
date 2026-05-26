@@ -448,23 +448,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	return nil
 }
 
-func getResyncCollections(db *Database, resyncCollections base.CollectionNames) (collections DatabaseCollections, err error) {
-	if len(resyncCollections) == 0 {
-		return slices.Collect(maps.Values(db.CollectionByID)), nil
-	}
-
-	for scopeName, collectionsName := range resyncCollections {
-		for _, collectionName := range collectionsName {
-			collection, err := db.GetDatabaseCollection(scopeName, collectionName)
-			if err != nil {
-				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
-			}
-			collections = append(collections, collection)
-		}
-	}
-	return collections, nil
-}
-
 func (r *ResyncManagerDCP) ResetStatus() {
 	r.lock.Lock()
 	defer r.lock.Unlock()
