@@ -258,7 +258,7 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 		return nil, err
 	}
 	for chanName, chanVal := range syncData.Channels {
-		if chanVal != nil {
+		if chanVal != nil && chanVal.Seq != 0 {
 			chanHistory.addChannelHistoryEntry(chanName, chanVal.Seq)
 		}
 	}

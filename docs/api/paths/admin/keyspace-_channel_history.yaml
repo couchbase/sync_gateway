@@ -39,7 +39,7 @@ get:
               items:
                 type: integer
                 format: int64
-                minimum: 0
+                minimum: 1
               description: Sequences at which the document was removed from this channel.
             description: Map of channel names to their revocation sequences.
             example:

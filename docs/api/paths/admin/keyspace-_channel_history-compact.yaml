@@ -33,7 +33,7 @@ post:
                 Channel history having end sequences earlier than this sequence will be removed from the specified document's metadata.
               type: integer
               format: int64
-              minimum: 0
+              minimum: 1
               example: 12345
   responses:
     '200':
