@@ -81,12 +81,17 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		return errors.New("collections option is required and must be of type base.CollectionNames")
 	}
 
-	// Get collectionIds and store in manager for use in DCP client later
-	collections, err := getResyncCollections(db, resyncCollections)
-	if err != nil {
-		return err
+	var collections DatabaseCollections
+	if len(resyncCollections) > 0 {
+		var err error
+		collections, err = db.collections(resyncCollections)
+		if err != nil {
+			return err
+		}
+	} else {
+		collections = slices.Collect(maps.Values(db.CollectionByID))
+		r.hasAllCollections = true
 	}
-	r.hasAllCollections = len(resyncCollections) == 0
 	// add collection list to manager for use in status call
 	r.setCollectionStatus(collections)
 
@@ -443,7 +448,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	return nil
 }
 
-// getResyncCollections returns collections requested for resync. If no collections are specified, it returns all collections.
 func getResyncCollections(db *Database, resyncCollections base.CollectionNames) (collections DatabaseCollections, err error) {
 	if len(resyncCollections) == 0 {
 		return slices.Collect(maps.Values(db.CollectionByID)), nil

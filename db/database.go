@@ -2615,3 +2615,18 @@ func (db *DatabaseContext) InitializeOfflineMode() {
 	db.DBStateManager.SetResyncFunc(TempResyncHandler)
 	db.DBStateManager.StartPolling(db.CancelContext)
 }
+
+// colletions returns the DatabaseCollection objects matching the following collection names.
+func (db *DatabaseContext) collections(names base.CollectionNames) (DatabaseCollections, error) {
+	collections := make(DatabaseCollections, 0, len(names))
+	for scopeName, collectionsName := range names {
+		for _, collectionName := range collectionsName {
+			collection, err := db.GetDatabaseCollection(scopeName, collectionName)
+			if err != nil {
+				return nil, base.RedactErrorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
+			}
+			collections = append(collections, collection)
+		}
+	}
+	return collections, nil
+}
