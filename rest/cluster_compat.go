@@ -239,7 +239,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// at least one database having reached DBOnline (see ratchetEligibleBuckets) — so the
 	// observation is stable when the ratchet actually runs.
 	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucket,
 		NodeUID:          m.sc.NodeUID,
 		GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
@@ -482,7 +482,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
 		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 			BucketName:       bucket,
 			NodeUID:          m.sc.NodeUID,
 			GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,

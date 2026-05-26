@@ -701,9 +701,9 @@ func (b *bootstrapContext) setGatewayRegistry(ctx context.Context, bucketName st
 	return nil
 }
 
-// RegisterNodeVersionParams bundles arguments to RegisterNodeVersion. Grouped into a struct
+// RegisterNodeVersionOpts bundles arguments to RegisterNodeVersion. Grouped into a struct
 // so the call sites stay readable as the parameter set grows.
-type RegisterNodeVersionParams struct {
+type RegisterNodeVersionOpts struct {
 	// Databases is the map of database name → config version applied on this node for the
 	// bucket, stamped into registry.Nodes[NodeUID].Databases. Nil-safe.
 	Databases map[string]string
@@ -736,52 +736,52 @@ type RegisterNodeVersionParams struct {
 // write per attempt.
 //
 // The cluster compat downgrade gate is enforced here: if registry.ClusterCompatVersionHWM has
-// a higher major.minor than params.Version, registration is refused with an error and no write
+// a higher major.minor than opts.Version, registration is refused with an error and no write
 // occurs. This is the single point of enforcement for cluster compat — every writer that
 // updates Nodes / ClusterCompatVersionHWM goes through this function, so the gate cannot be
 // bypassed by callers updating those fields. Other registry fields (e.g. ConfigGroups) are
 // written by separate code paths and are unaffected by this gate. registry.SGVersion is
 // intentionally not consulted; it is diagnostic-only.
 //
-// Self (params.NodeUID) is always retained: even if a stale prior entry for this node exists,
+// Self (opts.NodeUID) is always retained: even if a stale prior entry for this node exists,
 // it is not pruned by the prune step — it is overwritten with a fresh heartbeat in the same
 // write. This guarantees the registry never ends up with an empty Nodes map after a successful
 // call.
 //
 // Uses CAS retry on conflict. Returns the registry as written.
-func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, params RegisterNodeVersionParams) (*GatewayRegistry, error) {
+func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, opts RegisterNodeVersionOpts) (*GatewayRegistry, error) {
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
-		registry, err := b.getGatewayRegistry(ctx, params.BucketName)
+		registry, err := b.getGatewayRegistry(ctx, opts.BucketName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get registry for node registration: %w", err)
 		}
-		if registry.ClusterCompatVersionHWM.GreaterThan(params.Version) {
-			return nil, base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway cluster compat version %s. This Sync Gateway is %s.", base.MD(params.BucketName), registry.ClusterCompatVersionHWM, params.Version)
+		if registry.ClusterCompatVersionHWM.GreaterThan(opts.Version) {
+			return nil, base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway cluster compat version %s. This Sync Gateway is %s.", base.MD(opts.BucketName), registry.ClusterCompatVersionHWM, opts.Version)
 		}
 		if registry.Nodes == nil {
 			registry.Nodes = make(map[string]*base.RegistryNode)
 		}
-		pruned := pruneStaleNodes(registry.Nodes, params.NodeUID, params.HeartbeatExpiry)
-		registry.Nodes[params.NodeUID] = &base.RegistryNode{
-			Version:       params.Version,
+		pruned := pruneStaleNodes(registry.Nodes, opts.NodeUID, opts.HeartbeatExpiry)
+		registry.Nodes[opts.NodeUID] = &base.RegistryNode{
+			Version:       opts.Version,
 			HeartbeatAt:   time.Now().UTC(),
-			ConfigGroupID: params.GroupID,
-			Databases:     params.Databases,
+			ConfigGroupID: opts.GroupID,
+			Databases:     opts.Databases,
 		}
 		// Mirror pre-CCV-aware-peer observations into registry.PreCCVAwareNodes, keyed by pre-CCV-aware peer
 		// UUID. Upsert refreshes LastObservedAt to "now" so subsequent prune calls keep them
 		// alive while we keep seeing them; entries we no longer observe age out via
 		// pruneStalePreCCVAwareNodes.
 		now := time.Now().UTC()
-		if len(params.PreCCVAwarePeers) > 0 && registry.PreCCVAwareNodes == nil {
+		if len(opts.PreCCVAwarePeers) > 0 && registry.PreCCVAwareNodes == nil {
 			registry.PreCCVAwareNodes = make(map[string]*base.RegistryPreCCVAwareNode)
 		}
-		for uuid, peer := range params.PreCCVAwarePeers {
+		for uuid, peer := range opts.PreCCVAwarePeers {
 			entry := peer
 			entry.LastObservedAt = now
 			registry.PreCCVAwareNodes[uuid] = &entry
 		}
-		preCCVAwarePruned := pruneStalePreCCVAwareNodes(registry.PreCCVAwareNodes, params.HeartbeatExpiry)
+		preCCVAwarePruned := pruneStalePreCCVAwareNodes(registry.PreCCVAwareNodes, opts.HeartbeatExpiry)
 		// Ratchet ClusterCompatVersionHWM up to the current cluster compat version (min over
 		// all registered nodes and observed pre-CCV-aware peers). Each pre-CCV-aware peer contributes its
 		// observed major.minor when its build version is known, falling back to
@@ -791,12 +791,12 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, params Regis
 		// otherwise the downgrade gate above would later block rolling any node back to the
 		// frozen version (the freeze's whole purpose).
 		//
-		// Gated on params.RatchetHWM so startup-window registrations can refresh Nodes /
+		// Gated on opts.RatchetHWM so startup-window registrations can refresh Nodes /
 		// PreCCVAwareNodes without committing HWM off a possibly-incomplete pre-CCV-aware-peer
 		// observation.
 		var hwmBumped bool
 		var previousHWM, ccv base.ClusterCompatVersion
-		if params.RatchetHWM {
+		if opts.RatchetHWM {
 			ccv = minRegistryNodeClusterCompatVersion(registry.Nodes)
 			if preCCVAwareMin, ok := minPreCCVAwareNodeClusterCompatVersion(registry.PreCCVAwareNodes); ok && ccv.GreaterThan(preCCVAwareMin) {
 				ccv = preCCVAwareMin
@@ -810,26 +810,26 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, params Regis
 				registry.ClusterCompatVersionHWM = ccv
 			}
 		}
-		err = b.setGatewayRegistry(ctx, params.BucketName, registry)
+		err = b.setGatewayRegistry(ctx, opts.BucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(params.BucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(opts.BucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
 				continue
 			}
 			return nil, fmt.Errorf("failed to write registry for node registration: %w", err)
 		}
 		if len(pruned) > 0 {
-			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(params.BucketName), base.MD(pruned))
+			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(opts.BucketName), base.MD(pruned))
 		}
 		if len(preCCVAwarePruned) > 0 {
-			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale pre-CCV-aware peer observations from bucket %s: %v", len(preCCVAwarePruned), base.MD(params.BucketName), base.MD(preCCVAwarePruned))
+			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale pre-CCV-aware peer observations from bucket %s: %v", len(preCCVAwarePruned), base.MD(opts.BucketName), base.MD(preCCVAwarePruned))
 		}
 		if hwmBumped {
-			base.InfofCtx(ctx, base.KeyConfig, "Updated cluster compat version high-water mark in bucket %s from %s to %s", base.MD(params.BucketName), previousHWM, ccv)
+			base.InfofCtx(ctx, base.KeyConfig, "Updated cluster compat version high-water mark in bucket %s from %s to %s", base.MD(opts.BucketName), previousHWM, ccv)
 		}
 		return registry, nil
 	}
-	return nil, base.RedactErrorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(params.BucketName))
+	return nil, base.RedactErrorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(opts.BucketName))
 }
 
 // DeregisterNodeVersion removes a node's version entry from the given bucket's registry.
