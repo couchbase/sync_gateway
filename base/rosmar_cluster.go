@@ -78,9 +78,8 @@ func (c *RosmarCluster) openBucket(bucketName string) (*rosmar.Bucket, error) {
 	return rosmar.OpenBucketIn(c.serverURL, bucketName, rosmar.CreateOrOpen)
 }
 
-// getDefaultDataStore returns the default datastore for the specified bucket. Returns a bucket close function and an
-// error.
-func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName string) (sgbucket.DataStore, func(ctx context.Context), error) {
+// getDefaultDataStore returns the default datastore for the specified bucket. Returns a bucket close function and an error.
+func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName string) (*rosmar.Collection, func(ctx context.Context), error) {
 	bucket, err := rosmar.OpenBucketIn(c.serverURL, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
 		return nil, nil, err
@@ -93,7 +92,13 @@ func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName stri
 		closeFn(ctx)
 		return nil, nil, err
 	}
-	return ds, closeFn, nil
+	rosmarCollection, ok := ds.(*rosmar.Collection)
+	if !ok {
+		AssertfCtx(ctx, "Unexpected type for default collection for bucket %q: %T", bucketName, ds)
+		closeFn(ctx)
+		return nil, nil, fmt.Errorf("unexpected type for default collection for bucket %q: %T", bucketName, ds)
+	}
+	return rosmarCollection, closeFn, nil
 }
 
 // GetMetadataDocument returns a metadata document from the default collection for the specified bucket.
@@ -130,7 +135,6 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 
 // TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
 // trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
-
 func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
 	ds, closer, err := c.getDefaultDataStore(ctx, location)
 	if err != nil {
@@ -138,8 +142,7 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 	}
 	defer closer(ctx)
 
-	// FIXME to not touch the whole document?
-	return ds.Touch(ctx, docID, 0)
+	return ds.TouchXattrWithCas(ctx, docID, cfgXattrKey, property, value, cas)
 }
 
 // DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
