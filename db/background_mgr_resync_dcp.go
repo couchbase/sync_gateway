@@ -124,7 +124,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 
 	docsTargeted, err := totalResyncDocs(ctx, collections)
 	if err != nil {
-		base.WarnfCtx(ctx, "Failed to count total documents for resync: %v, continuing to resync", err)
+		base.WarnfCtx(ctx, "Failed to count total documents for resync: %v, continuing resync", err)
 	}
 	r.docsTargeted.Store(docsTargeted)
 
@@ -139,7 +139,7 @@ func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint
 	for _, collection := range collections {
 		count, err := collection.CountAllDocs(ctx)
 		if err != nil {
-			return 0, base.RedactErrorf("resync: failed to count docs for collection %s.%s", base.MD(collection.ScopeName), base.MD(collection.Name))
+			return 0, base.RedactErrorf("failed to count docs for collection %s.%s: %w", base.MD(collection.ScopeName), base.MD(collection.Name), err)
 		}
 		total += count
 	}

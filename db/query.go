@@ -749,7 +749,7 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 
 	// View Query
 	if c.useViews() {
-		opts := Body{"stale": true, "reduce": false}
+		opts := Body{"stale": false, "reduce": false}
 		if startKey != "" {
 			opts[QueryParamStartKey] = startKey
 		}
@@ -778,14 +778,14 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
 		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
-	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.NotBounded, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
 
 // CountAllDocs returns the total number of documents in the collection that contain _sync metadata.
 // When using views, tombstoned documents are excluded.
 func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 	if c.useViews() {
-		opts := Body{"stale": false, "reduce": true}
+		opts := Body{"reduce": true}
 		results, err := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 		if err != nil {
 			return 0, err
@@ -803,7 +803,7 @@ func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 	countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, c.UseXattrs())
 	countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
 
-	results, err := N1QLQueryWithStats(ctx, c.dataStore, QueryTypeCountDocs, countDocsQueryStatement, nil, base.RequestPlus, QueryCountDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+	results, err := N1QLQueryWithStats(ctx, c.dataStore, QueryTypeCountDocs, countDocsQueryStatement, nil, base.NotBounded, QueryCountDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 	if err != nil {
 		return 0, err
 	}
