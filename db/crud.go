@@ -222,54 +222,58 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+type ChannelHistory map[string]map[uint64]bool
+
+func (ch ChannelHistory) addChannelHistoryEntry(name string, seq uint64) {
+	if _, ok := ch[name]; !ok {
+		ch[name] = make(map[uint64]bool)
+	}
+	if _, ok := ch[name][seq]; !ok {
+		ch[name][seq] = true
+	}
+}
+
+func (ch ChannelHistory) getChannelHistoryResponse() map[string][]uint64 {
+	response := make(map[string][]uint64)
+	for chanName, chanEntry := range ch {
+		response[chanName] = make([]uint64, 0)
+		for seq, _ := range chanEntry {
+			response[chanName] = append(response[chanName], seq)
+		}
+	}
+	return response
+}
+
 // GetDocChannelHistory returns the channel revocation history for the given document as a map
 // from channel name to the sequences at which the document was removed from that channel.
 // It collects revocation sequences from the active Channels map, the ChannelSet, and the
 // ChannelSetHistory (overflow). Only channels that have been revoked at least once appear in
 // the result; active memberships with no revocation history are omitted, even though a currently
 // assigned channel can still appear if it was revoked and later re-added.
-func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string]uint64, error) {
+func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string][]uint64, error) {
 
-	chanHistory := make(map[string]uint64)
+	chanHistory := make(ChannelHistory)
 	syncData, err := c.GetDocSyncData(ctx, docid)
 	if err != nil {
 		return nil, err
 	}
 	for chanName, chanVal := range syncData.Channels {
 		if chanVal != nil {
-			if _, ok := chanHistory[chanName]; !ok {
-				chanHistory[chanName] = chanVal.Seq
-				continue
-			}
-			if chanVal.Seq > chanHistory[chanName] {
-				chanHistory[chanName] = chanVal.Seq
-			}
+			chanHistory.addChannelHistoryEntry(chanName, chanVal.Seq)
 		}
 	}
 	for _, chanSetEntry := range syncData.ChannelSet {
 		if chanSetEntry.End != 0 {
-			if _, ok := chanHistory[chanSetEntry.Name]; !ok {
-				chanHistory[chanSetEntry.Name] = chanSetEntry.End
-				continue
-			}
-			if chanSetEntry.End > chanHistory[chanSetEntry.Name] {
-				chanHistory[chanSetEntry.Name] = chanSetEntry.End
-			}
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
 		}
 	}
 	for _, chanSetEntry := range syncData.ChannelSetHistory {
 		if chanSetEntry.End != 0 {
-			if _, ok := chanHistory[chanSetEntry.Name]; !ok {
-				chanHistory[chanSetEntry.Name] = chanSetEntry.End
-				continue
-			}
-			if chanSetEntry.End > chanHistory[chanSetEntry.Name] {
-				chanHistory[chanSetEntry.Name] = chanSetEntry.End
-			}
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
 		}
 	}
 
-	return chanHistory, nil
+	return chanHistory.getChannelHistoryResponse(), nil
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.

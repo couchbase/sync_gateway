@@ -953,10 +953,10 @@ type CompactDocChannelHistoryRequest struct {
 	Seq uint64 `json:"seq"`
 }
 
-// handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/_compact.
-// It accepts a JSON body with a list of doc IDs and a sequence number, and removes channel
-// history entries that ended at or before that sequence for each document, returning the
-// list of compacted channel names per doc ID.
+// handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/{docid}/compact.
+// It accepts a JSON body containing a sequence number and removes channel history entries
+// for the specified document that ended at or before that sequence, returning the compacted
+// channel names for that document.
 func (h *handler) handleCompactDocChannelHistory() error {
 	h.assertAdminOnly()
 
@@ -978,7 +978,7 @@ func (h *handler) handleCompactDocChannelHistory() error {
 	}
 
 	channels, err := h.collection.CompactDocChannelHistory(h.ctx(), docid, req.Seq)
-	if err != nil && !base.IsDocNotFoundError(err) {
+	if err != nil {
 		return err
 	}
 	res := map[string][]string{

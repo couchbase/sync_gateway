@@ -11,11 +11,11 @@ parameters:
 post:
   summary: Compact Channel History of Document
   description: |-
-    Compacts inactive channel history entries from one or more documents before a specified sequence number.
+    Compacts channel history for a specified document.  Channel history older than the specified sequence will be removed.
 
-    This endpoint removes all inactive channel entries (for sequences before the specified sequence number where the document left the channel),
+    This endpoint removes all channel entries (for sequences before the specified sequence number where the document left the channel),
     effectively cleaning up historical channel membership information while preserving active channels and recent changes.
-    This is useful for reducing storage overhead when maintaining large document histories.
+    This can be useful for reducing metadata size for documents that frequently gain and lose access to channels.
 
     Required Sync Gateway RBAC roles:
 
@@ -30,7 +30,7 @@ post:
           properties:
             seq:
               description: |-
-                Channel history for inactive channels having end sequences earlier than this sequence will be removed from the specified document's metadata.
+                Channel history having end sequences earlier than this sequence will be removed from the specified document's metadata.
               type: integer
               format: int64
               minimum: 0
@@ -38,10 +38,10 @@ post:
   responses:
     '200':
       description: |-
-        Successfully compacted channel history from the specified documents.
-        Returns a mapping of document IDs to the list of channels that were compacted.
+        Successfully compacted channel history from the specified document.
+        Returns a list of channels that were compacted.
 
-        If a document ID has an empty array, it means either no channels were compacted for that document or the document was not found.
+        If the response has an empty array, it means either no channels were compacted.
 
       content:
         application/json:
@@ -61,7 +61,7 @@ post:
                 - channel1
                 - channel2
     '400':
-      description: 'Bad request. This could be due to invalid request parameters such as missing or malformed doc_ids array or invalid seq value.'
+      description: 'Bad request. This could be due to invalid request parameters such as invalid seq value.'
       content:
         application/json:
           schema:

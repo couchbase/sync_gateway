@@ -12,9 +12,13 @@ get:
   summary: Get Channel History of Document
   description: |-
     Returns the channel revocation history for the specified document as a map of channel
-    names to the sequence at which the document was removed from each channel. Only channels
+    names to the array of sequences at which the document was removed from each channel. Only channels
     that have been revoked at least once are included; channels the document is currently
-    assigned to are excluded.
+    assigned may be included if they were previously revoked.
+
+    Multiple sequences for a given channel indicate that the document has lost access to that channel
+    more than once — each sequence represents a point in time at which the document was removed from
+    the channel.
 
     Required Sync Gateway RBAC roles:
 
@@ -24,21 +28,26 @@ get:
     '200':
       description: |-
         Successfully retrieved the channel revocation history for the specified document.
-        Returns a JSON object mapping each channel name to the sequence at which
+        Returns a JSON object mapping each channel name to an array of sequences at which
         the document was removed from that channel.
       content:
         application/json:
           schema:
             type: object
             additionalProperties:
-              type: integer
-              format: int64
-              minimum: 0
+              type: array
+              items:
+                type: integer
+                format: int64
+                minimum: 0
               description: Sequences at which the document was removed from this channel.
             description: Map of channel names to their revocation sequences.
             example:
-              channel1: 7
-              channel2: 5
+              channel1:
+                - 3
+                - 7
+              channel2:
+                - 5
     '404':
       description: Document not found.
       content:

@@ -4052,6 +4052,15 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		// Compacting nonexistent doc should return not found error
 		_, err := collection.CompactDocChannelHistory(ctx, "nonexistent", 1)
 		assert.Error(t, err)
+
+		req := CompactDocChannelHistoryRequest{
+			Seq: 999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/nonexistent/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusNotFound)
 	})
 
 	t.Run("multiple channels with mixed history", func(t *testing.T) {
@@ -4282,6 +4291,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 		version := rt.PutDoc("doc1", `{"channels": ["chan1"]}`)
 
 		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		chanRevocationSeq1 := rt.GetDocumentSequence("doc1")
 
 		version = rt.UpdateDoc("doc1", version, `{"channels": ["chan1","chan2"]}`)
 
@@ -4290,21 +4300,21 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		rt.UpdateDoc("doc1", version, `{"channels": ["chan3","chan2"]}`)
 
-		expectedChanHistory := map[string]uint64{
-			"chan1": chanRevocationSeq2,
-			"chan2": chanRevocationSeq2,
+		expectedChanHistory := map[string][]uint64{
+			"chan1": {chanRevocationSeq2, chanRevocationSeq1},
+			"chan2": {chanRevocationSeq2},
 		}
 
 		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc1")
 		require.NoError(t, err)
 		require.Len(t, chanHistory, len(expectedChanHistory))
 		for chanName, expectedSeq := range expectedChanHistory {
-			assert.Equal(t, expectedSeq, chanHistory[chanName])
+			assert.ElementsMatch(t, expectedSeq, chanHistory[chanName])
 		}
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc1", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		require.Len(t, apiResult, len(expectedChanHistory))
 		for chanName, expectedSeq := range expectedChanHistory {
@@ -4339,7 +4349,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 		version := rt.PutDoc("doc3", `{"channels": ["chan1"]}`)
 		rt.UpdateDoc("doc3", version, `{"channels": []}`)
 		revocationSeq := rt.GetDocumentSequence("doc3")
-		expected := map[string]uint64{"chan1": revocationSeq}
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
 
 		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc3")
 		require.NoError(t, err)
@@ -4347,7 +4357,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc3", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		assert.Equal(t, expected, apiResult)
 	})
@@ -4356,10 +4366,10 @@ func TestGetDocChannelHistory(t *testing.T) {
 		version := rt.PutDoc("doc4", `{"channels": ["chan1", "chan2", "chan3"]}`)
 		rt.UpdateDoc("doc4", version, `{"channels": []}`)
 		revocationSeq := rt.GetDocumentSequence("doc4")
-		expected := map[string]uint64{
-			"chan1": revocationSeq,
-			"chan2": revocationSeq,
-			"chan3": revocationSeq,
+		expected := map[string][]uint64{
+			"chan1": {revocationSeq},
+			"chan2": {revocationSeq},
+			"chan3": {revocationSeq},
 		}
 
 		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc4")
@@ -4368,7 +4378,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc4", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		assert.Equal(t, expected, apiResult)
 	})
@@ -4388,7 +4398,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc5", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		assert.NotEmpty(t, apiResult["chan1"])
 	})
@@ -4398,7 +4408,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 		version := rt.PutDoc("doc6", `{"channels": ["chan1", "chan2"]}`)
 		rt.UpdateDoc("doc6", version, `{"channels": ["chan2"]}`)
 		revocationSeq := rt.GetDocumentSequence("doc6")
-		expected := map[string]uint64{"chan1": revocationSeq}
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
 
 		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc6")
 		require.NoError(t, err)
@@ -4407,7 +4417,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc6", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		assert.Equal(t, expected, apiResult)
 	})
@@ -4419,7 +4429,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		// Re-add chan1 — it should still appear in history from the earlier revocation
 		rt.UpdateDoc("doc8", version, `{"channels": ["chan1"]}`)
-		expected := map[string]uint64{"chan1": revocationSeq}
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
 
 		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc8")
 		require.NoError(t, err)
@@ -4427,7 +4437,7 @@ func TestGetDocChannelHistory(t *testing.T) {
 
 		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc8", "")
 		RequireStatus(t, resp, http.StatusOK)
-		var apiResult map[string]uint64
+		var apiResult map[string][]uint64
 		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
 		assert.Equal(t, expected, apiResult)
 	})
