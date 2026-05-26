@@ -115,7 +115,13 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	var eg errgroup.Group
 	for i := 0; i < n; i++ {
 		eg.Go(func() error {
-			_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour, nil, true)
+			_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+				BucketName:      bucketName,
+				NodeUID:         fmt.Sprintf("node-%d", i),
+				Version:         version,
+				HeartbeatExpiry: time.Hour,
+				RatchetHWM:      true,
+			})
 			return err
 		})
 	}
@@ -142,7 +148,13 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	const n = 10
 	version := base.NodeClusterCompatVersion
 	for i := 0; i < n; i++ {
-		_, err := bc.RegisterNodeVersion(ctx, bucketName, fmt.Sprintf("node-%d", i), "", version, nil, time.Hour, nil, true)
+		_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+			BucketName:      bucketName,
+			NodeUID:         fmt.Sprintf("node-%d", i),
+			Version:         version,
+			HeartbeatExpiry: time.Hour,
+			RatchetHWM:      true,
+		})
 		require.NoError(t, err)
 	}
 
@@ -280,13 +292,25 @@ func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
 	require.NotNil(t, ccm)
 
 	// Make sure self is registered, then make its heartbeat ancient.
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, nil, true)
+	_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         selfUID,
+		Version:         base.NodeClusterCompatVersion,
+		HeartbeatExpiry: time.Hour,
+		RatchetHWM:      true,
+	})
 	require.NoError(t, err)
 	staleTime := time.Now().Add(-100 * ccm.heartbeatExpiry())
 	setNodeHeartbeatAt(t, rt, bucketName, selfUID, staleTime)
 
 	// Re-register with a non-zero expiry. Self must survive and have a fresh heartbeat.
-	registry, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, ccm.heartbeatExpiry(), nil, true)
+	registry, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         selfUID,
+		Version:         base.NodeClusterCompatVersion,
+		HeartbeatExpiry: ccm.heartbeatExpiry(),
+		RatchetHWM:      true,
+	})
 	require.NoError(t, err)
 	require.Contains(t, registry.Nodes, selfUID)
 	assert.True(t, registry.Nodes[selfUID].HeartbeatAt.After(staleTime), "self's heartbeat must have been refreshed")
@@ -481,7 +505,13 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	registry.ClusterCompatVersionHWM = preserved
 	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "lower-peer", "", base.NewClusterCompatVersion(0, 1), nil, time.Hour, nil, true)
+	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         "lower-peer",
+		Version:         base.NewClusterCompatVersion(0, 1),
+		HeartbeatExpiry: time.Hour,
+		RatchetHWM:      true,
+	})
 	require.Error(t, err, "lower-version registration must be rejected when HWM is higher")
 	require.Contains(t, err.Error(), "newer Sync Gateway cluster compat version")
 
@@ -514,7 +544,13 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 	// Add a higher-version peer. Cluster compat is still min(self, higher) == self, so HWM
 	// must not budge.
 	higher := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, "higher-peer", "", higher, nil, time.Hour, nil, true)
+	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         "higher-peer",
+		Version:         higher,
+		HeartbeatExpiry: time.Hour,
+		RatchetHWM:      true,
+	})
 	require.NoError(t, err)
 	registry, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
@@ -1343,7 +1379,13 @@ func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
 	// Simulate a node upgrade by re-registering self at a higher version. Without the
 	// freeze ceiling, RegisterNodeVersion would ratchet HWM up to this higher value.
 	higher := base.NewClusterCompatVersion(2, 0)
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, rt.ServerContext().NodeUID, "", higher, nil, time.Hour, nil, true)
+	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         rt.ServerContext().NodeUID,
+		Version:         higher,
+		HeartbeatExpiry: time.Hour,
+		RatchetHWM:      true,
+	})
 	require.NoError(t, err)
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
@@ -1615,7 +1657,14 @@ func TestRegisterNodeVersion_PreCCVAwarePeerCapsHWM(t *testing.T) {
 
 	const peerUUID = "observed-db-uuid"
 	peers := map[string]base.RegistryPreCCVAwareNode{peerUUID: {Version: base.PreSGNodeVersionFallback}}
-	registry, err = bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, peers, true)
+	registry, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:       bucketName,
+		NodeUID:          selfUID,
+		Version:          base.NodeClusterCompatVersion,
+		HeartbeatExpiry:  time.Hour,
+		PreCCVAwarePeers: peers,
+		RatchetHWM:       true,
+	})
 	require.NoError(t, err)
 
 	require.Contains(t, registry.PreCCVAwareNodes, peerUUID)
@@ -1648,7 +1697,15 @@ func TestRegisterNodeVersion_PreCCVAwarePeerIdempotentRefresh(t *testing.T) {
 
 	const peerUUID = "same-peer"
 	peers := map[string]base.RegistryPreCCVAwareNode{peerUUID: {Version: base.PreSGNodeVersionFallback}}
-	registry, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, peers, true)
+	params := RegisterNodeVersionParams{
+		BucketName:       bucketName,
+		NodeUID:          selfUID,
+		Version:          base.NodeClusterCompatVersion,
+		HeartbeatExpiry:  time.Hour,
+		PreCCVAwarePeers: peers,
+		RatchetHWM:       true,
+	}
+	registry, err := bc.RegisterNodeVersion(ctx, params)
 	require.NoError(t, err)
 	require.Contains(t, registry.PreCCVAwareNodes, peerUUID)
 	firstObserved := registry.PreCCVAwareNodes[peerUUID].LastObservedAt
@@ -1657,7 +1714,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerIdempotentRefresh(t *testing.T) {
 	// would otherwise produce identical instants.
 	time.Sleep(2 * time.Millisecond)
 
-	registry, err = bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, peers, true)
+	registry, err = bc.RegisterNodeVersion(ctx, params)
 	require.NoError(t, err)
 	assert.Len(t, registry.PreCCVAwareNodes, 1, "duplicate observation must not create a second entry")
 	assert.True(t, registry.PreCCVAwareNodes[peerUUID].LastObservedAt.After(firstObserved), "LastObservedAt must be refreshed on re-observation")
@@ -1678,7 +1735,14 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 	// Seed via initial observation, then mutate LastObservedAt into the past.
 	const peerUUID = "aging-peer"
 	peers := map[string]base.RegistryPreCCVAwareNode{peerUUID: {Version: base.PreSGNodeVersionFallback}}
-	_, err := bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, peers, true)
+	_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:       bucketName,
+		NodeUID:          selfUID,
+		Version:          base.NodeClusterCompatVersion,
+		HeartbeatExpiry:  time.Hour,
+		PreCCVAwarePeers: peers,
+		RatchetHWM:       true,
+	})
 	require.NoError(t, err)
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
@@ -1689,7 +1753,13 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 
 	// Re-register with no pre-CCV-aware peers and a short expiry. The aged entry should be pruned and
 	// HWM should now advance to self's version.
-	registry, err = bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Minute, nil, true)
+	registry, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:      bucketName,
+		NodeUID:         selfUID,
+		Version:         base.NodeClusterCompatVersion,
+		HeartbeatExpiry: time.Minute,
+		RatchetHWM:      true,
+	})
 	require.NoError(t, err)
 	assert.NotContains(t, registry.PreCCVAwareNodes, peerUUID, "stale pre-CCV-aware-peer entry must be pruned")
 	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM must advance after pre-CCV-aware-peer entry is pruned")
@@ -1784,17 +1854,26 @@ func TestFreezeAndPreCCVAwareInteraction(t *testing.T) {
 	require.NotNil(t, ccm)
 	ccm.Refresh(ctx)
 
-	// Freeze at the current (self) version. With only self registered (4.1), freeze pins at 4.1.
-	// Refresh above also ratcheted HWM to 4.1, so the floor is now 4.1.
+	// Freeze at the current (self) version. With only self registered, freeze pins at
+	// base.NodeClusterCompatVersion. Refresh above also ratcheted HWM to that version, so the
+	// floor is now base.NodeClusterCompatVersion.
 	frozen, err := ccm.Freeze(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, frozen)
 	require.Equal(t, base.NodeClusterCompatVersion, frozen.Version)
 
-	// Observe a pre-CCV-aware peer at 4.0 — below the 4.1 HWM. The peer is persisted in the registry
-	// and surfaced via PreCCVAwareNodeVersions, but must not drag reported CCV back below HWM.
+	// Observe a pre-CCV-aware peer at PreSGNodeVersionFallback — below the HWM floor. The peer
+	// is persisted in the registry and surfaced via PreCCVAwareNodeVersions, but must not drag
+	// reported CCV back below HWM.
 	peers := map[string]base.RegistryPreCCVAwareNode{"frozen-era-peer": {Version: base.PreSGNodeVersionFallback}}
-	_, err = bc.RegisterNodeVersion(ctx, bucketName, selfUID, "", base.NodeClusterCompatVersion, nil, time.Hour, peers, true)
+	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:       bucketName,
+		NodeUID:          selfUID,
+		Version:          base.NodeClusterCompatVersion,
+		HeartbeatExpiry:  time.Hour,
+		PreCCVAwarePeers: peers,
+		RatchetHWM:       true,
+	})
 	require.NoError(t, err)
 
 	ccm.lastRefreshAt = time.Time{}

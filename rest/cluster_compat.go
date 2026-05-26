@@ -239,7 +239,16 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// at least one database having reached DBOnline (see ratchetEligibleBuckets) — so the
 	// observation is stable when the ratchet actually runs.
 	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, m.sc.BootstrapContext.clusterCompatVersion, m.getAppliedDBVersionsForBucket(bucket), m.heartbeatExpiry(), preCCVAwarePeers, false)
+	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+		BucketName:       bucket,
+		NodeUID:          m.sc.NodeUID,
+		GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
+		Version:          m.sc.BootstrapContext.clusterCompatVersion,
+		Databases:        m.getAppliedDBVersionsForBucket(bucket),
+		HeartbeatExpiry:  m.heartbeatExpiry(),
+		PreCCVAwarePeers: preCCVAwarePeers,
+		RatchetHWM:       false,
+	})
 	if err != nil {
 		m.releaseBucket(bucket)
 		return err
@@ -473,7 +482,16 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
 		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, bucket, m.sc.NodeUID, m.sc.Config.Bootstrap.ConfigGroupID, nodeVersion, m.getAppliedDBVersionsForBucket(bucket), expiry, preCCVAwarePeers, ratchet)
+		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionParams{
+			BucketName:       bucket,
+			NodeUID:          m.sc.NodeUID,
+			GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
+			Version:          nodeVersion,
+			Databases:        m.getAppliedDBVersionsForBucket(bucket),
+			HeartbeatExpiry:  expiry,
+			PreCCVAwarePeers: preCCVAwarePeers,
+			RatchetHWM:       ratchet,
+		})
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
