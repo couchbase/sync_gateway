@@ -785,7 +785,7 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 // When using views, tombstoned documents are excluded.
 func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 	if c.useViews() {
-		opts := Body{"reduce": true}
+		opts := Body{"stale": false, "reduce": true}
 		results, err := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 		if err != nil {
 			return 0, err
@@ -803,7 +803,7 @@ func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 	countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, c.UseXattrs())
 	countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], c.UseXattrs(), c.numIndexPartitions())
 
-	results, err := N1QLQueryWithStats(ctx, c.dataStore, QueryTypeCountDocs, countDocsQueryStatement, nil, base.NotBounded, QueryCountDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
+	results, err := N1QLQueryWithStats(ctx, c.dataStore, QueryTypeCountDocs, countDocsQueryStatement, nil, base.RequestPlus, QueryCountDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 	if err != nil {
 		return 0, err
 	}
