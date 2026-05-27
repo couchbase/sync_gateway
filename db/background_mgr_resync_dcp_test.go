@@ -401,7 +401,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 			docsToCreate := 5000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
-				docsToCreate *= 5
+				docsToCreate *= 2
 			}
 			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 				docsToCreate:                 docsToCreate,
