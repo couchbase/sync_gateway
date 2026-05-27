@@ -63,6 +63,13 @@ func newvBucketTracker() *vBucketTracker {
 	return &vBucketTracker{m: make(map[string]struct{})}
 }
 
+// clear resets the vBucketTracker to an empty state.
+func (v *vBucketTracker) clear() {
+	v.lock.Lock()
+	defer v.lock.Unlock()
+	v.m = make(map[string]struct{})
+}
+
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
 type resyncCollectionInfo struct {
 	collectionIDs     []uint32
@@ -515,6 +522,7 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.docsErroredLocal.Store(0)
 	r.docsErroredCrossNode.Store(0)
 	r.docsTargeted.Store(0)
+	r.completedvBuckets.clear()
 	r.ResyncedCollections = nil
 }
 
