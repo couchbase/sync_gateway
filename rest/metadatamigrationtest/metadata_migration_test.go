@@ -67,6 +67,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
+		GroupID:          base.Ptr("metadata_migration_cluster"),
 	}
 
 	rtA := rest.NewRestTester(t, rtConfig)
@@ -95,12 +96,17 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	// Flush node A's registry entry so its new db version is visible.
 	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
-	// Node B has NOT yet picked up the updated config. The migration goroutine on node A
-	// should see that node B is still on the old version and not start the migration.
+	// Node B has NOT yet picked up the updated config. Assert directly on the gate that
+	// tryStartMetadataMigration consults: ConfigFullyAppliedFunc must report not-applied (with node
+	// B outstanding), which is what blocks the migration from starting. This is deterministic,
+	// unlike observing the run state of the background goroutine.
 	dbCtxA := rtA.GetDatabase()
 	require.NotNil(t, dbCtxA.MetadataMigrationManager)
-	state := dbCtxA.MetadataMigrationManager.GetRunState()
-	assert.Equal(t, db.BackgroundProcessState(""), state, "migration should not start while node B has not applied the new config")
+	require.NotNil(t, dbCtxA.ConfigFullyAppliedFunc)
+	applied, missing, err := dbCtxA.ConfigFullyAppliedFunc(ctx)
+	require.NoError(t, err)
+	assert.False(t, applied, "config must not be fully applied while node B is still on the old version")
+	assert.Contains(t, missing, rtB.ServerContext().NodeUID, "node B must be reported as not having applied the new config version")
 
 	// Node B picks up the updated config.
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
@@ -108,8 +114,14 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	// Flush node B's registry entry so the new db version is visible.
 	rtB.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
-	// The armMetadataMigrationTask goroutine on node A polls every 10s. Wait for it to
-	// observe that all nodes have applied the config and start the migration.
+	// The gate now reports fully applied across the cluster - this is what unblocks the migration.
+	applied, missing, err = dbCtxA.ConfigFullyAppliedFunc(ctx)
+	require.NoError(t, err)
+	assert.True(t, applied, "config should be fully applied once node B has applied the new version")
+	assert.Empty(t, missing)
+
+	// The armMetadataMigrationTask goroutine on node A polls every 10s. Once the gate is open it
+	// starts the migration; wait for that to happen.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		state := dbCtxA.MetadataMigrationManager.GetRunState()
 		assert.NotEqual(c, db.BackgroundProcessState(""), state,

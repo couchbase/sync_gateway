@@ -15,8 +15,10 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestShouldRunMetadataMigration is a truth table covering the guard that decides whether
@@ -82,4 +84,71 @@ func TestArmMetadataMigrationTaskNoCallback(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		assert.Fail(t, "armMetadataMigrationTask did not return when ConfigFullyAppliedFunc was nil")
 	}
+}
+
+// TestTryStartMetadataMigrationAlreadyRunning verifies that when the migration is already running on
+// another node (the heartbeat lock doc exists), tryStartMetadataMigration reports done=true so the
+// arm loop stops rather than re-acquiring the lock once that node completes - which would re-run the
+// migration once per node in the cluster.
+func TestTryStartMetadataMigrationAlreadyRunning(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-already-running")
+
+	dbCtx := &DatabaseContext{
+		Name:          "test",
+		terminator:    make(chan bool),
+		MetadataStore: metadataStore,
+		MetadataKeys:  metaKeys,
+	}
+	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
+
+	// Simulate another node holding the migration heartbeat lock, so Start returns
+	// errBackgroundManagerProcessAlreadyRunning.
+	heartbeatDocID := dbCtx.MetadataMigrationManager.clusterAwareOptions.HeartbeatDocID()
+	_, err := metadataStore.WriteCas(ctx, heartbeatDocID, BackgroundManagerHeartbeatExpirySecs, 0, []byte("{}"), sgbucket.Raw)
+	require.NoError(t, err)
+
+	// Config is fully applied so the attempt proceeds to Start.
+	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+		return true, nil, nil
+	}
+
+	// done=true tells the arm loop to stop polling rather than retry and re-run later.
+	require.True(t, dbCtx.tryStartMetadataMigration(ctx))
+
+	// The local manager must not have started: it should still be in its initial (uninitialized)
+	// run state, having backed off rather than acquiring the lock.
+	assert.NotEqual(t, BackgroundProcessStateRunning, dbCtx.MetadataMigrationManager.GetRunState())
+
+	// The other node's heartbeat lock must remain untouched.
+	_, _, err = metadataStore.GetRaw(ctx, heartbeatDocID)
+	assert.NoError(t, err, "heartbeat lock doc should still exist - attempt must not have taken it")
+}
+
+// TestTryStartMetadataMigrationConfigNotApplied verifies that while the cluster has not yet
+// converged on the config, tryStartMetadataMigration reports done=false so the arm loop keeps
+// polling, and does not start the migration.
+func TestTryStartMetadataMigrationConfigNotApplied(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	dbCtx := &DatabaseContext{
+		Name:          "test",
+		terminator:    make(chan bool),
+		MetadataStore: testBucket.DefaultDataStore(ctx),
+		MetadataKeys:  base.NewMetadataKeys("test-not-applied"),
+	}
+	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
+
+	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+		return false, []string{"node2"}, nil
+	}
+
+	assert.False(t, dbCtx.tryStartMetadataMigration(ctx))
+	assert.NotEqual(t, BackgroundProcessStateRunning, dbCtx.MetadataMigrationManager.GetRunState())
 }

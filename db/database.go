@@ -100,6 +100,9 @@ const (
 // completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
+// metadataMigrationArmRetryInterval is the amount of time to wait in between retries for checking whether the metadata migration background task should be started.
+const metadataMigrationArmRetryInterval = 10 * time.Second
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -646,18 +649,20 @@ func (context *DatabaseContext) ClusterCompatVersion() *base.ClusterCompatVersio
 // armMetadataMigrationTask polls until all nodes have applied the db config that enables the
 // system metadata collection, then starts the metadata migration background task. This
 // prevents migration from running while some nodes are still writing metadata to the old location.
+// The first attempt happens immediately so an already-converged cluster starts without delay.
 func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
-	const retryInterval = 10 * time.Second
-
 	if dbCtx.ConfigFullyAppliedFunc == nil {
 		base.WarnfCtx(ctx, "No ConfigFullyAppliedFunc set, cannot arm metadata migration for database %s", base.MD(dbCtx.Name))
 		return
 	}
 
-	ticker := time.NewTicker(retryInterval)
+	ticker := time.NewTicker(metadataMigrationArmRetryInterval)
 	defer ticker.Stop()
 
 	for {
+		if dbCtx.tryStartMetadataMigration(ctx) {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			base.DebugfCtx(ctx, base.KeyAll, "Context cancelled, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
@@ -666,23 +671,37 @@ func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 			base.DebugfCtx(ctx, base.KeyAll, "Database closing, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
 			return
 		case <-ticker.C:
-			applied, missing, err := dbCtx.ConfigFullyAppliedFunc(ctx)
-			if err != nil {
-				base.WarnfCtx(ctx, "No eligible nodes for database %s: %v", base.MD(dbCtx.Name), err)
-				continue
-			}
-			if !applied {
-				base.DebugfCtx(ctx, base.KeyAll, "Config not yet fully applied across cluster for database %s, waiting on nodes: %v", base.MD(dbCtx.Name), missing)
-				continue
-			}
-			base.InfofCtx(ctx, base.KeyAll, "Config fully applied across cluster for database %s, starting metadata migration", base.MD(dbCtx.Name))
-			if err := dbCtx.MetadataMigrationManager.Start(ctx, nil); err != nil {
-				base.WarnfCtx(ctx, "Failed to start metadata migration for database %s: %v", base.MD(dbCtx.Name), err)
-				continue
-			}
-			return
 		}
 	}
+}
+
+// tryStartMetadataMigration makes a single attempt to start the metadata migration. It returns true
+// when arming is complete and the caller should stop polling - either because this node started the
+// migration, or because another node already owns the run. It returns false (keep polling) when the
+// cluster has not yet converged on the config or a transient error occurred.
+func (dbCtx *DatabaseContext) tryStartMetadataMigration(ctx context.Context) bool {
+	applied, missing, err := dbCtx.ConfigFullyAppliedFunc(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "No eligible nodes for database %s: %v", base.MD(dbCtx.Name), err)
+		return false
+	}
+	if !applied {
+		base.DebugfCtx(ctx, base.KeyAll, "Config not yet fully applied across cluster for database %s, waiting on nodes: %v", base.MD(dbCtx.Name), missing)
+		return false
+	}
+	base.InfofCtx(ctx, base.KeyAll, "Config fully applied across cluster for database %s, starting metadata migration", base.MD(dbCtx.Name))
+	if err := dbCtx.MetadataMigrationManager.Start(ctx, nil); err != nil {
+		// Another node already holds the migration heartbeat lock, so it owns this run. Stop arming
+		// to avoid re-acquiring the lock and re-running the migration once that node completes and
+		// releases it.
+		if errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
+			base.InfofCtx(ctx, base.KeyAll, "Metadata migration already running on another node for database %s, stopping arm", base.MD(dbCtx.Name))
+			return true
+		}
+		base.WarnfCtx(ctx, "Failed to start metadata migration for database %s: %v", base.MD(dbCtx.Name), err)
+		return false
+	}
+	return true
 }
 
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
