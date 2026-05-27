@@ -112,7 +112,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 	}
 
 	// Initialize ClusterN1QLStore for the bucket.  Scope and collection name are set per-operation
-	n1qlStore, err := base.NewClusterOnlyN1QLStore(connection, bucketName, "", "")
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(connection, bucketName, "", "", cc.UseGOCBFastFailRetry())
 	if err != nil {
 		return nil, err
 	}

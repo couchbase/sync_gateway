@@ -77,7 +77,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 	err = cluster.WaitUntilReady(time.Second*30, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		RetryStrategy: goCBRetryStrategy(spec.UseGOCBFastFailRetry),
 	})
 
 	if err != nil {
@@ -89,7 +89,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		return nil, err
 	}
 
-	return GetGocbV2BucketFromCluster(ctx, cluster, spec, connString, time.Second*30, true)
+	return GetGocbV2BucketFromCluster(ctx, cluster, spec, connString, time.Second*30, spec.UseGOCBFastFailRetry)
 
 }
 
@@ -111,14 +111,8 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
 
-	var retryStrategy gocb.RetryStrategy
-	if failFast {
-		retryStrategy = &goCBv2FailFastRetryStrategy{}
-	} else {
-		retryStrategy = gocb.NewBestEffortRetryStrategy(nil)
-	}
 	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
-		RetryStrategy: retryStrategy,
+		RetryStrategy: goCBRetryStrategy(failFast),
 	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})

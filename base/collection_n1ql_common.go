@@ -101,16 +101,17 @@ func ExplainQuery(ctx context.Context, store N1QLStore, statement string, params
 }
 
 type indexManager struct {
-	cluster        *gocb.QueryIndexManager
-	collection     *gocb.CollectionQueryIndexManager
-	bucketName     string
-	scopeName      string
-	collectionName string
+	cluster              *gocb.QueryIndexManager
+	collection           *gocb.CollectionQueryIndexManager
+	bucketName           string
+	scopeName            string
+	collectionName       string
+	useGOCBFastFailRetry bool
 }
 
 func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
 	opts := &gocb.GetAllQueryIndexesOptions{
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		RetryStrategy: goCBRetryStrategy(im.useGOCBFastFailRetry),
 	}
 
 	if im.collection != nil {

@@ -91,13 +91,14 @@ type BootstrapConnection interface {
 
 // CouchbaseClusterSpec define how to make a connection to Couchbase Server
 type CouchbaseClusterSpec struct {
-	Server        string // connection string to connect to the Couchbase cluster
-	Username      string // RBAC username to authenticate with the cluster
-	Password      string // RBAC password to authenticate with the cluster
-	X509Certpath  string // X.509 cert path to authenticate with the cluster
-	X509Keypath   string // X.509 key path to authenticate with the cluster
-	CACertpath    string // CA cert path to use for TLS connections
-	TLSSkipVerify bool   // If true, do not validate TLS certificate
+	Server               string // connection string to connect to the Couchbase cluster
+	Username             string // RBAC username to authenticate with the cluster
+	Password             string // RBAC password to authenticate with the cluster
+	X509Certpath         string // X.509 cert path to authenticate with the cluster
+	X509Keypath          string // X.509 key path to authenticate with the cluster
+	CACertpath           string // CA cert path to use for TLS connections
+	TLSSkipVerify        bool   // If true, do not validate TLS certificate
+	UseGOCBFastFailRetry bool   // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
@@ -117,6 +118,7 @@ type CouchbaseCluster struct {
 	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint). Values
 	// are bucketBootstrapTarget; absence of an entry means "fall back to the connection-wide flag."
 	bucketBootstrapTargets sync.Map
+	useGOCBFastFailRetry    bool                    // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // bucketBootstrapTarget records where bootstrap docs (registry, dbconfig, cbgt cfg) live for a
@@ -255,6 +257,7 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 		clusterOptions:              clusterOptions,
 		bucketConnectionMode:        bucketMode,
 		useSystemMetadataCollection: useSystemMetadataCollection,
+		useGOCBFastFailRetry: clusterSpec.UseGOCBFastFailRetry,
 	}
 
 	if bucketMode == CachedClusterConnections {
@@ -267,6 +270,12 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 	}
 
 	return cbCluster, nil
+}
+
+// UseGOCBFastFailRetry returns whether gocb operations on this cluster should fail fast instead of using the
+// best-effort retry strategy.
+func (cc *CouchbaseCluster) UseGOCBFastFailRetry() bool {
+	return cc.useGOCBFastFailRetry
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
@@ -287,7 +296,7 @@ func (cc *CouchbaseCluster) connect(auth *gocb.Authenticator) (*gocb.Cluster, er
 	err = cluster.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		RetryStrategy: goCBRetryStrategy(cc.useGOCBFastFailRetry),
 	})
 	if err != nil {
 		_ = cluster.Close(nil)
@@ -1049,7 +1058,7 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 	b = connection.Bucket(bucketName)
 	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		RetryStrategy: goCBRetryStrategy(cc.useGOCBFastFailRetry),
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 	})
 	if err != nil {

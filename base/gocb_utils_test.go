@@ -11,6 +11,7 @@ package base
 import (
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
@@ -94,4 +95,9 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 func TestGoCBCoreAuthConfigInvalidPaths(t *testing.T) {
 	_, err := GoCBCoreAuthConfig("", "", "/non/existent/cert", "/non/existent/key")
 	assert.Error(t, err)
+}
+
+func TestGoCBRetryStrategy(t *testing.T) {
+	assert.IsType(t, &goCBv2FailFastRetryStrategy{}, goCBRetryStrategy(true))
+	assert.IsType(t, gocb.NewBestEffortRetryStrategy(nil), goCBRetryStrategy(false))
 }

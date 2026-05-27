@@ -399,6 +399,7 @@ type bootstrapConnectionOpts struct {
 	tlsSkipVerify               *bool
 	useXattrConfig              bool
 	useSystemMetadataCollection bool
+	useGOCBFastFailRetry bool
 }
 
 // bootstrapConnectionOptsConfigs returns a bootstrapConnectionOpts struct with values populated from the startup and db configs.
@@ -422,6 +423,7 @@ func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, 
 	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
 	opts.useXattrConfig = base.ValDefault(config.Unsupported.UseXattrConfig, false)
 	opts.useSystemMetadataCollection = base.ValDefault(config.Bootstrap.UseSystemMetadataCollection, DefaultUseSystemMetadataCollection)
+	opts.useGOCBFastFailRetry = base.ValDefault(config.Unsupported.UseGOCBFastFailRetry, false)
 }
 
 // setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.
@@ -453,13 +455,14 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 	}
 	cluster, err := base.NewCouchbaseCluster(ctx,
 		base.CouchbaseClusterSpec{
-			Server:        connStr,
-			Username:      opts.username,
-			Password:      opts.password,
-			X509Certpath:  opts.x509CertPath,
-			X509Keypath:   opts.x509KeyPath,
-			CACertpath:    opts.caCertPath,
-			TLSSkipVerify: base.ValDefault(opts.tlsSkipVerify, false),
+			Server:               connStr,
+			Username:             opts.username,
+			Password:             opts.password,
+			X509Certpath:         opts.x509CertPath,
+			X509Keypath:          opts.x509KeyPath,
+			CACertpath:           opts.caCertPath,
+			TLSSkipVerify:        base.ValDefault(opts.tlsSkipVerify, false),
+			UseGOCBFastFailRetry: opts.useGOCBFastFailRetry,
 		},
 		opts.isServerless,
 		opts.bucketCredentials,

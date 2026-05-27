@@ -78,7 +78,7 @@ func initializeCollectionIndexes(ctx context.Context, t *testing.T, testBucket b
 	gocbBucket, err := base.AsGocbV2Bucket(testBucket)
 	require.NoError(t, err)
 
-	n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dsName.ScopeName(), dsName.CollectionName())
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), dsName.ScopeName(), dsName.CollectionName(), gocbBucket.Spec.UseGOCBFastFailRetry)
 	require.NoError(t, err)
 
 	ctx = base.CollectionLogCtx(ctx, dsName.ScopeName(), dsName.CollectionName())

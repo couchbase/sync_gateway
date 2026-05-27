@@ -121,6 +121,7 @@ type BucketSpec struct {
 	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
 	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	UseGOCBFastFailRetry          bool           // When true, gocb readiness checks and index lookups fail fast instead of using the best-effort retry strategy
 }
 
 const defaultNumRetries = 10

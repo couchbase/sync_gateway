@@ -355,7 +355,7 @@ func TestInitializeIndexes(t *testing.T) {
 			gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 			require.NoError(t, err)
 
-			n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name)
+			n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), collection.ScopeName, collection.Name, gocbBucket.Spec.UseGOCBFastFailRetry)
 			require.NoError(t, err)
 
 			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test

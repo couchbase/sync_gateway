@@ -173,6 +173,7 @@ type UnsupportedConfig struct {
 	EffectiveUserHeaderName *string                  `json:"effective_user_header_name,omitempty" help:"HTTP header name to get effective user id from"`
 	AuditInfoProvider       *AuditInfoProviderConfig `json:"audit_info_provider,omitempty"     help:"Configuration for audit info provider"`
 	RosmarBucketManagement  *bool                    `json:"rosmar_bucket_management,omitempty" help:"Enable Rosmar bucket management REST API"`
+	UseGOCBFastFailRetry    *bool                    `json:"use_gocb_fast_fail_retry,omitempty" help:"When true, gocb cluster/bucket readiness checks and index lookups (on both the bootstrap and per-database connections) fail on the first error instead of retrying. When false (default), they use the best-effort retry strategy, retrying until their timeout when Couchbase Server is unavailable or failing over"`
 }
 
 type AuditInfoProviderConfig struct {

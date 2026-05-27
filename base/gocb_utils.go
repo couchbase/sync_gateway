@@ -83,6 +83,15 @@ func (rs *goCBv2FailFastRetryStrategy) RetryAfter(req gocb.RetryRequest, reason 
 	return &gocb.NoRetryRetryAction{}
 }
 
+// goCBRetryStrategy returns the fail-fast retry strategy when useFailFast is true, otherwise the best-effort
+// strategy that retries until the operation's timeout. Gated by the unsupported.use_gocb_fast_fail_retry config.
+func goCBRetryStrategy(useFailFast bool) gocb.RetryStrategy {
+	if useFailFast {
+		return &goCBv2FailFastRetryStrategy{}
+	}
+	return gocb.NewBestEffortRetryStrategy(nil)
+}
+
 // GOCBCORE Utilities
 
 // CertificateAuthenticator allows for certificate auth in gocbcore
