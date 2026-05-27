@@ -10,6 +10,7 @@ package db
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -222,26 +223,55 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
-type ChannelHistory map[string]map[uint64]bool
+type ChannelHistory map[string]map[uint64]struct{}
 
 func (ch ChannelHistory) addChannelHistoryEntry(name string, seq uint64) {
 	if _, ok := ch[name]; !ok {
-		ch[name] = make(map[uint64]bool)
+		ch[name] = make(map[uint64]struct{})
 	}
 	if _, ok := ch[name][seq]; !ok {
-		ch[name][seq] = true
+		ch[name][seq] = struct{}{}
 	}
 }
 
-func (ch ChannelHistory) getChannelHistoryResponse() map[string][]uint64 {
-	response := make(map[string][]uint64)
+type ChannelHistoryEntry struct {
+	name string
+	seqs []uint64
+}
+
+// getChannelHistoryAsMap returns a map of channel name to the array of
+// sequences at which the document lost access to the channel. The
+// map is sorted in the order of the latest sequence, the channel with the
+// latest revocation is the first element and so on.
+func (ch ChannelHistory) getChannelHistoryAsMap() map[string][]uint64 {
+	// creating an array of ChannelHistoryEntries to sort the channe histories
+	// based on their latest sequence of revocation
+	chanHistoryEntries := make([]ChannelHistoryEntry, 0)
 	for chanName, chanEntry := range ch {
-		response[chanName] = make([]uint64, 0)
-		for seq, _ := range chanEntry {
-			response[chanName] = append(response[chanName], seq)
+		entry := ChannelHistoryEntry{
+			name: chanName,
 		}
+		seqs := make([]uint64, 0)
+		for seq, _ := range chanEntry {
+			seqs = append(seqs, seq)
+		}
+		slices.SortFunc(seqs, func(a, b uint64) int {
+			return cmp.Compare(b, a)
+		})
+		entry.seqs = seqs
+		chanHistoryEntries = append(chanHistoryEntries, entry)
 	}
-	return response
+
+	// sorting the channel history entries in the order of the
+	slices.SortFunc(chanHistoryEntries, func(a, b ChannelHistoryEntry) int {
+		return cmp.Compare(b.seqs[0], a.seqs[0])
+	})
+
+	chanHistoryMap := make(map[string][]uint64)
+	for _, entry := range chanHistoryEntries {
+		chanHistoryMap[entry.name] = entry.seqs
+	}
+	return chanHistoryMap
 }
 
 // GetDocChannelHistory returns the channel revocation history for the given document as a map
@@ -273,7 +303,7 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 		}
 	}
 
-	return chanHistory.getChannelHistoryResponse(), nil
+	return chanHistory.getChannelHistoryAsMap(), nil
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
