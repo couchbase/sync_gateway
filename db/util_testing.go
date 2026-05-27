@@ -1191,3 +1191,27 @@ func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) 
 func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
 	db.RestartChangeListener(t, true)
 }
+
+type ResyncTestCase struct {
+	Name        string // name of test case
+	Distributed bool   // use distributed resync
+}
+
+// ResyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
+func ResyncTestModes() []ResyncTestCase {
+	testCases := []ResyncTestCase{
+		{
+			Name:        "distributed=false",
+			Distributed: false,
+		},
+	}
+	/* CBG-5184 enable tests
+	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
+		testCases = append(testCases, ResyncTestCase{
+			Name:        "distributed=true",
+			Distributed: true,
+		})
+	}
+	*/
+	return testCases
+}
