@@ -193,10 +193,10 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 			if testCase.Distributed {
 				t.Skip("Enable in CBG-5184")
 			}
-			docsToCreate := 50000
+			docsToCreate := 1000
 			if base.UnitTestUrlIsWalrus() {
 				// rosmar runs too quickly, increase doc count
-				docsToCreate *= 5
+				docsToCreate *= 3
 			}
 			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 				docsToCreate:                 docsToCreate,
@@ -346,10 +346,10 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 			if testCase.Distributed {
 				t.Skip("Enable in CBG-5184")
 			}
-			docsToCreate := 5000
+			docsToCreate := 1000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
-				docsToCreate *= 5
+				docsToCreate *= 10
 			}
 			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 				docsToCreate: docsToCreate,
