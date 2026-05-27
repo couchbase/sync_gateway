@@ -2087,31 +2087,41 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	LongRunningTest(t)
 
 	ctx := TestCtx(t)
 	for _, tls := range []bool{true, false} {
-		t.Run(fmt.Sprintf("tls=%v", tls), func(t *testing.T) {
-			testBucket := GetTestBucket(t)
-			defer testBucket.Close(ctx)
+		for _, fastFail := range []bool{true, false} {
+			t.Run(fmt.Sprintf("tls=%v/fastFail=%v", tls, fastFail), func(t *testing.T) {
+				testBucket := GetTestBucket(t)
+				defer testBucket.Close(ctx)
 
-			// Override test bucket spec with invalid creds
-			testBucket.BucketSpec.Auth = TestAuthenticator{
-				Username:   "invalid_username",
-				Password:   "invalid_password",
-				BucketName: testBucket.BucketSpec.BucketName,
-			}
-			if tls {
-				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
-				testBucket.BucketSpec.TLSSkipVerify = true // test env isn't always using valid certs
-			} else {
-				testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
-			}
+				// Override test bucket spec with invalid creds
+				testBucket.BucketSpec.Auth = TestAuthenticator{
+					Username:   "invalid_username",
+					Password:   "invalid_password",
+					BucketName: testBucket.BucketSpec.BucketName,
+				}
+				testBucket.BucketSpec.UseGOCBFastFailRetry = fastFail
+				if tls {
+					testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
+					testBucket.BucketSpec.TLSSkipVerify = true // test env isn't always using valid certs
+				} else {
+					testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbases://", "couchbase://")
+				}
 
-			// Attempt to open the bucket again using invalid creds. We should expect an error.
-			bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
-			assert.Equal(t, ErrAuthError, err)
-			assert.Nil(t, bucket)
-		})
+				// Attempt to open the bucket again using invalid creds. We should expect an error.
+				bucket, err := GetBucket(TestCtx(t), testBucket.BucketSpec)
+				assert.Nil(t, bucket)
+				if fastFail {
+					// Fail-fast strategy surfaces the authentication failure directly.
+					assert.Equal(t, ErrAuthError, err)
+				} else {
+					// Best-effort strategy retries the auth failure until WaitUntilReady times out.
+					assert.ErrorIs(t, err, gocb.ErrUnambiguousTimeout)
+				}
+			})
+		}
 	}
 }
 

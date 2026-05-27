@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"sort"
 	"sync"
@@ -1068,7 +1069,11 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 			return nil, nil, ErrAuthError
 		}
 
-		return nil, nil, err
+		// In best-effort retry mode a missing/unreachable bucket surfaces as a timeout rather than an
+		// auth failure. Classify it as a connection error so callers translate it to a 502 instead of a
+		// generic 500, mirroring the per-database connection path (see db.connectToBucketErrorHandling).
+		return nil, nil, HTTPErrorf(http.StatusBadGateway,
+			"Unable to connect to Couchbase Server. Please ensure it is running and reachable, and that bucket %q exists. Error: %s", MD(bucketName).Redact(), err)
 	}
 
 	return b, teardownFn, nil
