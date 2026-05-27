@@ -1003,6 +1003,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.RequireResync = collectionsRequiringResync
 	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
 
+	// Closure that checks whether every node in the cluster has applied the current db config
+	// version. Used by armMetadataMigrationTask to delay migration until the opt-in flag is
+	// active everywhere.
+	if config.Version != "" {
+		configGroupID := sc.Config.Bootstrap.ConfigGroupID
+		bucketName := spec.BucketName
+		cfgVersion := config.Version
+		dbcontext.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			if err != nil {
+				return false, nil, err
+			}
+			return registry.IsConfigFullyApplied(ctx, configGroupID, dbName, cfgVersion)
+		}
+	}
+
 	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {
 		if options.loadFromBucket {
 			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidResyncPartitions))
@@ -1492,6 +1508,15 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "disable_public_all_docs" to false is deprecated. In the future, public access to the all_docs API will be disabled by default.`)
 	}
 
+	useMobileCollection := DefaultUseSystemMetadataCollection
+	if config.UseSystemMobileMetadataCollection != nil && *config.UseSystemMobileMetadataCollection {
+		useMobileCollection = true
+	} else {
+		if sc.Config.Bootstrap.UseSystemMetadataCollection != nil {
+			useMobileCollection = *sc.Config.Bootstrap.UseSystemMetadataCollection
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:                  &cacheOptions,
 		RevisionCacheOptions:          revCacheOptions,
@@ -1529,6 +1554,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		NumIndexReplicas:            config.numIndexReplicas(),
 		DisablePublicAllDocs:        disablePublicAllDocs,
 		StoreLegacyRevTreeData:      base.Ptr(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
+		UseSystemMetadataCollection: useMobileCollection,
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {

@@ -2658,6 +2658,18 @@ func (sc *ServerContext) ForceDbConfigsReload(t *testing.T, ctx context.Context)
 	require.NoError(t, err)
 }
 
+// ForceClusterCompatRefresh forces a cluster compat refresh cycle, flushing pending heartbeats
+// and db version records to the registry document.
+func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Context) {
+	if sc.ClusterCompat == nil {
+		return
+	}
+	sc.ClusterCompat.mu.Lock()
+	sc.ClusterCompat.lastRefreshAt = time.Time{}
+	sc.ClusterCompat.mu.Unlock()
+	sc.ClusterCompat.Refresh(ctx)
+}
+
 // AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
 func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 	sc.invalidDatabaseConfigTracking.m.RLock()

@@ -130,40 +130,42 @@ type DatabaseContext struct {
 	AttachmentCompactionManager *BackgroundManager
 	AttachmentMigrationManager  *BackgroundManager
 	AsyncIndexInitManager       *BackgroundManager
+	MetadataMigrationManager    *BackgroundManager
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
 
-	DbStats                      *base.DbStats                  // stats that correspond to this database context
-	CompactState                 uint32                         // Status of database compaction
-	terminator                   chan bool                      // Signal termination of background goroutines
-	CancelContext                context.Context                // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
-	cancelContextFunc            context.CancelCauseFunc        // Cancel function for cancelContext
-	backgroundTasks              []BackgroundTask               // List of background tasks that are initiated.
-	activeChannels               *channels.ActiveChannels       // Tracks active replications by channel
-	CfgSG                        cbgt.Cfg                       // Sync Gateway cluster shared config
-	SGReplicateMgr               *sgReplicateManager            // Manages interactions with sg-replicate replications
-	Heartbeater                  base.Heartbeater               // Node heartbeater for SG cluster awareness
-	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
-	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
-	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
-	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
-	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
-	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
-	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
-	RequireAttachmentMigration   base.ScopeAndCollectionNames   // Collections that require the attachment migration background task to run against
-	CORS                         *auth.CORSConfig               // CORS configuration
-	EnableMou                    bool                           // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
-	WasInitializedSynchronously  bool                           // true if the database was initialized synchronously
-	BroadcastSlowMode            atomic.Bool                    // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
-	DatabaseStartupError         *DatabaseError                 // Error that occurred during database online processes startup
-	CachedPurgeInterval          atomic.Pointer[time.Duration]  // If set, the cached value of the purge interval to avoid repeated lookups
-	CachedVersionPruningWindow   atomic.Pointer[time.Duration]  // If set, the cached value of the version pruning window to avoid repeated lookups
-	CachedCCVStartingCas         *base.VBucketCAS               // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
-	CachedCCVEnabled             atomic.Bool                    // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
-	numVBuckets                  uint16                         // Number of vbuckets in the bucket
+	DbStats                      *base.DbStats                                     // stats that correspond to this database context
+	CompactState                 uint32                                            // Status of database compaction
+	terminator                   chan bool                                         // Signal termination of background goroutines
+	CancelContext                context.Context                                   // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
+	cancelContextFunc            context.CancelCauseFunc                           // Cancel function for cancelContext
+	backgroundTasks              []BackgroundTask                                  // List of background tasks that are initiated.
+	activeChannels               *channels.ActiveChannels                          // Tracks active replications by channel
+	CfgSG                        cbgt.Cfg                                          // Sync Gateway cluster shared config
+	SGReplicateMgr               *sgReplicateManager                               // Manages interactions with sg-replicate replications
+	Heartbeater                  base.Heartbeater                                  // Node heartbeater for SG cluster awareness
+	ServeInsecureAttachmentTypes bool                                              // Attachment content type will bypass the content-disposition handling, default false
+	NoX509HTTPClient             *http.Client                                      // A HTTP Client from gocb to use the management endpoints
+	ServerContextHasStarted      chan struct{}                                     // Closed via PostStartup once the server has fully started
+	ConfigFullyAppliedFunc       func(ctx context.Context) (bool, []string, error) // Returns (applied, missingNodeUIDs, err) for the current db config version
+	UserFunctionTimeout          time.Duration                                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
+	Scopes                       map[string]Scope                                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	CollectionByID               map[uint32]*DatabaseCollection                    // A map keyed by collection ID to Collection
+	CollectionNames              map[string]map[string]struct{}                    // Map of scope, collection names
+	MetadataKeys                 *base.MetadataKeys                                // Factory to generate metadata document keys
+	RequireResync                base.ScopeAndCollectionNames                      // Collections requiring resync before database can go online
+	RequireAttachmentMigration   base.ScopeAndCollectionNames                      // Collections that require the attachment migration background task to run against
+	CORS                         *auth.CORSConfig                                  // CORS configuration
+	EnableMou                    bool                                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+	WasInitializedSynchronously  bool                                              // true if the database was initialized synchronously
+	BroadcastSlowMode            atomic.Bool                                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	DatabaseStartupError         *DatabaseError                                    // Error that occurred during database online processes startup
+	CachedPurgeInterval          atomic.Pointer[time.Duration]                     // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedVersionPruningWindow   atomic.Pointer[time.Duration]                     // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas         *base.VBucketCAS                                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
+	CachedCCVEnabled             atomic.Bool                                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
+	numVBuckets                  uint16                                            // Number of vbuckets in the bucket
 	SameSiteCookieMode           http.SameSite
 	DBStateManager               *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
@@ -221,6 +223,7 @@ type DatabaseContextOptions struct {
 	DisablePublicAllDocs             bool                              // Disable public access to the _all_docs endpoint for this database
 	StoreLegacyRevTreeData           *bool                             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 	ClusterCompatVersion             func() *base.ClusterCompatVersion // ClusterCompatVersion returns the current cluster-wide minimum SG version, or nil if not yet known.
+	UseSystemMetadataCollection      bool                              // Whether to use a system collection for SG metadata storage
 }
 
 type ConfigPrincipals struct {
@@ -618,6 +621,66 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	return dbContext, nil
 }
 
+// shouldRunMetadataMigration checks whether we should start metadata migration on db startup. Will not start the
+// migration unless all of the following is true:
+// - The option to use a system metadata collection is enabled on db context
+// - The cluster compatibility version is at least 4.1
+func (context *DatabaseContext) shouldRunMetadataMigration() bool {
+	if !context.Options.UseSystemMetadataCollection {
+		return false
+	}
+	var compatVersion *base.ClusterCompatVersion
+	if context.Options.ClusterCompatVersion != nil {
+		compatVersion = context.Options.ClusterCompatVersion()
+	}
+	if compatVersion == nil || !compatVersion.AtLeast(4, 1) {
+		return false
+	}
+	return true
+}
+
+// armMetadataMigrationTask polls until all nodes have applied the db config that enables the
+// system metadata collection, then starts the metadata migration background task. This
+// prevents migration from running while some nodes are still writing metadata to the old location.
+func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
+	const retryInterval = 10 * time.Second
+
+	if dbCtx.ConfigFullyAppliedFunc == nil {
+		base.WarnfCtx(ctx, "No ConfigFullyAppliedFunc set, cannot arm metadata migration for database %s", base.MD(dbCtx.Name))
+		return
+	}
+
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			base.DebugfCtx(ctx, base.KeyAll, "Context cancelled, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
+			return
+		case <-dbCtx.terminator:
+			base.DebugfCtx(ctx, base.KeyAll, "Database closing, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
+			return
+		case <-ticker.C:
+			applied, missing, err := dbCtx.ConfigFullyAppliedFunc(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "No eligible nodes for database %s: %v", base.MD(dbCtx.Name), err)
+				continue
+			}
+			if !applied {
+				base.DebugfCtx(ctx, base.KeyAll, "Config not yet fully applied across cluster for database %s, waiting on nodes: %v", base.MD(dbCtx.Name), missing)
+				continue
+			}
+			base.InfofCtx(ctx, base.KeyAll, "Config fully applied across cluster for database %s, starting metadata migration", base.MD(dbCtx.Name))
+			if err := dbCtx.MetadataMigrationManager.Start(ctx, nil); err != nil {
+				base.WarnfCtx(ctx, "Failed to start metadata migration for database %s: %v", base.MD(dbCtx.Name), err)
+				continue
+			}
+			return
+		}
+	}
+}
+
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
 
 	// If providerName isn't specified, check whether there's a default provider
@@ -694,6 +757,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopp
 		dbCtx.TombstoneCompactionManager,
 		dbCtx.AsyncIndexInitManager,
 		dbCtx.AttachmentMigrationManager,
+		dbCtx.MetadataMigrationManager,
 	} {
 		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
 			stopped = append(stopped, manager)
@@ -2427,6 +2491,11 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Migrating attachment metadata automatically to Sync Gateway 4.0+ for collections %v", cols)
+	}
+
+	db.MetadataMigrationManager = NewMetadataMigrationManager(db)
+	if db.shouldRunMetadataMigration() {
+		go db.armMetadataMigrationTask(ctx)
 	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {
