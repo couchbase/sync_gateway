@@ -30,6 +30,7 @@ func init() {
 type SGDest interface {
 	cbgt.Dest
 	cbgt.DestEx
+	ForceCheckpointWrite()
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
@@ -41,28 +42,32 @@ type DCPDest struct {
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. If persistCheckpoints is true, stores checkpoints as documents in metadataStore starting with checkpointPrefix.
-// Specific stats for DCP are stored in expvars rather than SgwStats, except for partition stat, which indicates the number of cbgt partitions assigned to this node.
+type DCPDestOptions struct {
+	Callback           sgbucket.FeedEventCallbackFunc // Callback function receives DCP events.
+	MetadataStore      sgbucket.DataStore             // location to store checkpoints in
+	MaxVbNo            uint16                         // number of vBuckets for the backing bucket (does not have to match metadata store)
+	PersistCheckpoints bool                           // if true, write checkpoints to MetadataStore with keys prefixed by CheckpointPrefix
+	DcpStats           *expvar.Map                    // Optional stats for dcp_rollback_count. This is not exposed by prometheus.
+	PartitionStat      *SgwIntStat                    // Optional stat for active partition count, to track cbgt partitions.
+	CheckpointPrefix   string                         // document prefix for checkpoint documents.
+	EndSeqNos          map[uint16]uint64              // If running a one shot DCP feed, these should match the end sequence numbers for each vbNo.
+}
+
+// NewDCPDest creates a new DCPDest which manages updates coming from a cbgt-based DCP feed.
 // Each partition will have its own DCPDest object.
 func NewDCPDest(
 	ctx context.Context,
-	callback sgbucket.FeedEventCallbackFunc,
-	metadataStore sgbucket.DataStore,
-	maxVbNo uint16,
-	persistCheckpoints bool,
-	dcpStats *expvar.Map,
-	partitionStat *SgwIntStat,
-	checkpointPrefix string,
+	opts DCPDestOptions,
 ) (SGDest, error) {
-	dcpCommon, err := NewDCPCommon(ctx, callback, metadataStore, maxVbNo, persistCheckpoints, dcpStats, checkpointPrefix)
+	dcpCommon, err := NewDCPCommon(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
-		partitionCountStat: partitionStat,
-		metaInitComplete:   make([]bool, maxVbNo),
+		partitionCountStat: opts.PartitionStat,
+		metaInitComplete:   make([]bool, opts.MaxVbNo),
 	}
 
 	if d.partitionCountStat != nil {
@@ -213,7 +218,7 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 
 // TODO: Not implemented, review potential usage
 func (d *DCPDest) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
+	consistencyLevel cbgt.ConsistencyLevel, consistencySeq uint64, cancelCh <-chan bool) error {
 	WarnfCtx(d.loggingCtx, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
@@ -232,6 +237,23 @@ func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 // Stats would allow SG to return SG-specific stats to cbgt's stats reporting - not currently used.
 func (d *DCPDest) Stats(io.Writer) error {
 	return nil
+}
+
+// ForceCheckpointWrite forces a write on all checkpoints.
+func (d *DCPDest) ForceCheckpointWrite() {
+	for vbNo, init := range d.metaInitComplete {
+		if init {
+			value, _, err := d.getMetaData(uint16(vbNo))
+			if err != nil {
+				WarnfCtx(d.loggingCtx, "Could not retrieve metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
+				continue
+			}
+			err = d.setMetaData(uint16(vbNo), value, true)
+			if err != nil {
+				WarnfCtx(d.loggingCtx, "Could not persist metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
+			}
+		}
+	}
 }
 
 func partitionToVbNo(ctx context.Context, partition string) uint16 {
@@ -316,7 +338,7 @@ func (d *DCPLoggingDest) RollbackEx(partition string, vbucketUUID uint64, rollba
 }
 
 func (d *DCPLoggingDest) ConsistencyWait(partition, partitionUUID string,
-	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
+	consistencyLevel cbgt.ConsistencyLevel, consistencySeq uint64, cancelCh <-chan bool) error {
 	return d.dest.ConsistencyWait(partition, partitionUUID, consistencyLevel, consistencySeq, cancelCh)
 }
 
@@ -332,3 +354,10 @@ func (d *DCPLoggingDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 func (d *DCPLoggingDest) Stats(w io.Writer) error {
 	return d.dest.Stats(w)
 }
+
+func (d *DCPLoggingDest) ForceCheckpointWrite() {
+	d.dest.ForceCheckpointWrite()
+}
+
+var _ SGDest = &DCPDest{}
+var _ SGDest = &DCPLoggingDest{}

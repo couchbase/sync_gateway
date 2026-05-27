@@ -1575,13 +1575,12 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 	checkpointPrefix := "test_shared_dcp_checkpoint"
 	dest, err := NewDCPDest(
 		ctx,
-		nil,
-		metadataStore,
-		vBuckets,
-		true,
-		nil,
-		nil,
-		checkpointPrefix,
+		DCPDestOptions{
+			MetadataStore:      metadataStore,
+			MaxVbNo:            vBuckets,
+			PersistCheckpoints: true,
+			CheckpointPrefix:   checkpointPrefix,
+		},
 	)
 	require.NoError(t, err)
 	dcpDest, ok := dest.(*DCPDest)

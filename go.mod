@@ -7,7 +7,7 @@ require (
 	github.com/KimMachineGun/automemlimit v0.7.5
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/couchbase/cbgt v1.4.14
+	github.com/couchbase/cbgt v1.4.15-0.20260520122852-6e34ff79a0e6
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
 	github.com/couchbase/gocb/v2 v2.12.3

@@ -45,8 +45,22 @@ type ResyncManagerDCP struct {
 	useXattrs                    bool
 	ResyncedCollections          base.CollectionNames
 	resyncCollectionInfo
-	lock        sync.RWMutex
-	Distributed bool
+	lock              sync.RWMutex
+	Distributed       bool
+	dcpDoneChan       chan error      // mark when the DCP feed is completed
+	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
+}
+
+// vBucketTracker tracks completed vBuckets in a thread safe way. It is used to determine when all vBuckets have
+// completed so that the resync process can be marked as complete and the DCP feed can be stopped.
+type vBucketTracker struct {
+	m    map[string]struct{} // map of vBuckets in string format that have been completed
+	lock sync.RWMutex
+}
+
+// newvBucketTracker returns a new instance of vBucketTracker to store completed vBucket numbers.
+func newvBucketTracker() *vBucketTracker {
+	return &vBucketTracker{m: make(map[string]struct{})}
 }
 
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
@@ -59,8 +73,11 @@ var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
 func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
-		name:    "resync",
-		Process: &ResyncManagerDCP{useXattrs: useXattrs},
+		name: "resync",
+		Process: &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			useXattrs:         useXattrs,
+		},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
@@ -197,7 +214,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 	}()
 
-	var doneChan chan error
 	var dcpClient base.DCPClient
 	var dcpClientClose dcpClientCloser
 	defer func() {
@@ -243,7 +259,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		r.docsProcessedLocal.Add(1)
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
-		databaseCollection := db.CollectionByID[event.CollectionID]
+		databaseCollection, ok := db.CollectionByID[event.CollectionID]
+		if !ok {
+			base.AssertfCtx(ctx, "Received DCP event for collection ID %d, but no collection found with that ID, skipping document %q", event.CollectionID, base.UD(docID))
+			return false
+		}
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
 		ctx := databaseCollection.AddCollectionContext(ctx)
 		doc, err := bucketDocumentFromFeed(event)
@@ -292,10 +312,25 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
 
+		r.dcpDoneChan = make(chan error)
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
+		endSeqNos, err := base.GetHighSeqNos(ctx, db.Bucket)
+		if err != nil {
+			return err
+		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
-			resyncDest, err := base.NewDCPDest(ctx, callback, db.MetadataStore, db.numVBuckets, true, nil, nil, checkPointPrefix)
+			resyncDest, err := base.NewDCPDest(
+				ctx,
+				base.DCPDestOptions{
+					Callback:           callback,
+					MetadataStore:      db.MetadataStore,
+					MaxVbNo:            db.numVBuckets,
+					PersistCheckpoints: true,
+					CheckpointPrefix:   checkPointPrefix,
+					EndSeqNos:          endSeqNos,
+				},
+			)
 			if err != nil {
 				return nil, fmt.Errorf("Error creating resync dest: %v", err)
 			}
@@ -329,6 +364,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if err != nil {
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
+
 		var partitionCount uint16
 		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
 			partitionCount = *db.Options.UnsupportedOptions.ResyncPartitions
@@ -338,18 +374,20 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		base.DebugfCtx(ctx, base.KeyAll, "Using %d partitions for resync", partitionCount)
 
 		opts := base.ShardedDCPOptions{
-			DBName:        db.Name,
-			UUID:          db.UUID,
-			NumPartitions: partitionCount,
-			Collections:   collectionNamesByScope,
-			Cfg:           resyncCfg,
-			Heartbeater:   resyncHB,
-			Bucket:        db.Bucket,
-			IndexType:     base.CBGTIndexTypeSyncGatewayResync,
-			DestKey:       resyncDestKey,
-			IndexName:     indexName,
-			Datastore:     db.MetadataStore,
-			FeedType:      base.ShardedDCPFeedTypeResync,
+			DBName:                 db.Name,
+			UUID:                   db.UUID,
+			NumPartitions:          partitionCount,
+			Collections:            collectionNamesByScope,
+			Cfg:                    resyncCfg,
+			Heartbeater:            resyncHB,
+			Bucket:                 db.Bucket,
+			IndexType:              base.CBGTIndexTypeSyncGatewayResync,
+			DestKey:                resyncDestKey,
+			IndexName:              indexName,
+			Datastore:              db.MetadataStore,
+			FeedType:               base.ShardedDCPFeedTypeResync,
+			EndSeqNos:              endSeqNos,
+			UnregisterFeedCallback: r.getUnregisterFeedFunc(ctx, db.numVBuckets),
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(ctx, opts)
 		if err != nil {
@@ -362,14 +400,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	} else {
 
 		clientOptions := r.getDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
+
 		var err error
 		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
 		}
-
-		doneChan, err = dcpClient.Start()
+		r.dcpDoneChan, err = dcpClient.Start()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to start resync DCP feed! %v", err)
 			_ = dcpClient.Close()
@@ -377,7 +415,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		}
 		dcpClientClose.append(func() error {
 			_ = dcpClient.Close()
-			err := <-doneChan
+			err := <-r.dcpDoneChan
 			return err
 		})
 
@@ -385,9 +423,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
-
 	select {
-	case <-doneChan:
+	case <-r.dcpDoneChan:
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
 		err := dcpClientClose.shutdown()
 		if err != nil {
@@ -595,6 +632,44 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		return nil, nil, err
 	}
 	return statusJSON, metaJSON, err
+}
+
+// getUnregisterFeedFunc returns a callback function to be called when a cbgt feed exits. This function will close
+// doneChan when all vBuckets have completed, which will allow the resync process to finish.
+func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuckets uint16) base.CbgtUnregisterFeedCallback {
+	return func(feed cbgt.Feed) {
+		for _, d := range feed.Dests() {
+			d, ok := d.(base.SGDest)
+			if !ok {
+				base.AssertfCtx(ctx, "Expected dest on cbgt.EventHandler.OnUnregisterFeed to be of type SGDest but is of type %T, resync will can complete but checkpoints may not be written", d)
+			}
+		}
+		f, ok := feed.(cbgt.FeedPartitionCompletion)
+		if !ok {
+			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)
+			return
+		}
+		r.markVBucketsCompleted(ctx, f.CompletedPartitions(), totalVBuckets)
+	}
+}
+
+// markVBucketsCompleted marks the provided vBuckets as completed, and if all vBuckets are completed, closes doneChan to
+// allow the resync process to complete. This function is thread safe and can be called multiple times.
+func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, completedPartitions map[string]struct{}, totalVbuckets uint16) {
+	r.completedvBuckets.lock.Lock()
+	defer r.completedvBuckets.lock.Unlock()
+
+	// All vBuckets are completed, no channels need to be closed. This function could be called twice in the case that a
+	// feed has been reopened.
+	if len(r.completedvBuckets.m) == int(totalVbuckets) {
+		return
+	}
+	for vbNo := range completedPartitions {
+		r.completedvBuckets.m[vbNo] = struct{}{}
+	}
+	if len(r.completedvBuckets.m) == int(totalVbuckets) {
+		close(r.dcpDoneChan)
+	}
 }
 
 // DocsChanged returns the total number of documents changed for the entire resync process. This includes docs

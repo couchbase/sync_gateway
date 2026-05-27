@@ -38,6 +38,9 @@ const (
 	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
 )
 
+// CbgtUnregisterFeedCallback is the function invoked by cbgt when a DCP feed shuts down.
+type CbgtUnregisterFeedCallback func(cbgt.Feed)
+
 type ShardedDCPFeedType string
 
 const (
@@ -73,19 +76,21 @@ type CbgtContext struct {
 
 // ShardedDCPOptions contains options for starting a DCP feed for cbgt.
 type ShardedDCPOptions struct {
-	Bucket            Bucket             // bucket to target
-	Cfg               cbgt.Cfg           // cbgt cfg used to coordinate cbgt documents
-	Collections       CollectionNames    // collection names to target
-	DBName            string             // database name is used to look up credentials
-	DestKey           string             // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
-	Heartbeater       Heartbeater        // heartbeater to use to find nodes
-	IndexName         string             // cbgt.Manger.IndexName, used to uniquely identify the index
-	IndexType         string             // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
-	NumPartitions     uint16             // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
-	PreviousIndexName string             // previous index name. If specified, marks IndexName as as a replacement for this name.
-	UUID              string             // database uuid, used to uniquely identify nodes
-	Datastore         DataStore          // datastore to perform KV ops
-	FeedType          ShardedDCPFeedType // type of sharded DCP feed to start
+	Bucket                 Bucket                     // bucket to target
+	Cfg                    cbgt.Cfg                   // cbgt cfg used to coordinate cbgt documents
+	Collections            CollectionNames            // collection names to target
+	DBName                 string                     // database name is used to look up credentials
+	DestKey                string                     // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
+	Heartbeater            Heartbeater                // heartbeater to use to find nodes
+	IndexName              string                     // cbgt.Manger.IndexName, used to uniquely identify the index
+	IndexType              string                     // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
+	NumPartitions          uint16                     // number of cbgt partitions to use, if 0 will default to DefaultImportPartitions
+	PreviousIndexName      string                     // previous index name. If specified, marks IndexName as as a replacement for this name.
+	UUID                   string                     // database uuid, used to uniquely identify nodes
+	Datastore              DataStore                  // datastore to perform KV ops
+	FeedType               ShardedDCPFeedType         // type of sharded DCP feed to start
+	EndSeqNos              map[uint16]uint64          // optional parameter indicating the end sequences to be used for running a one shot feed.
+	UnregisterFeedCallback CbgtUnregisterFeedCallback // optional callback for cbgt.ManagerEventHandlers.OnUnregisterFeed
 }
 
 // Validate makes sure that all options are specified.
@@ -166,7 +171,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 		return nil, fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, opts.Bucket, b.GetSpec(), opts.Cfg, opts.UUID, opts.DBName)
+	cbgtContext, err := initCBGTManager(ctx, opts.Bucket, b.GetSpec(), opts.Cfg, opts.UUID, opts.DBName, opts.UnregisterFeedCallback)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +226,7 @@ func GenerateLegacyImportIndexName(dbName string) string {
 func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions) error {
 	sourceType := SOURCE_DCP_SG
 
-	sourceParams, err := cbgtFeedParams(ctx, opts.Collections, opts.DBName)
+	sourceParams, err := cbgtFeedParams(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -322,7 +327,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string, unregisterCallback CbgtUnregisterFeedCallback) (*CbgtContext, error) {
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
@@ -376,7 +381,11 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	dataDir := ""
 
 	eventHandlersCtx, eventHandlersCancel := context.WithCancelCause(ctx)
-	eventHandlers := &sgMgrEventHandlers{ctx: eventHandlersCtx, ctxCancel: eventHandlersCancel}
+	eventHandlers := &sgMgrEventHandlers{
+		ctx:                    eventHandlersCtx,
+		ctxCancel:              eventHandlersCancel,
+		unregisterFeedCallback: unregisterCallback,
+	}
 
 	// Specify one feed per pindex
 	options := make(map[string]string)
@@ -917,9 +926,10 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 }
 
 type sgMgrEventHandlers struct {
-	ctx       context.Context
-	ctxCancel context.CancelCauseFunc
-	manager   *cbgt.Manager
+	ctx                    context.Context
+	ctxCancel              context.CancelCauseFunc
+	manager                *cbgt.Manager
+	unregisterFeedCallback func(cbgt.Feed) // callback function for when a feed is unregistered. This occurs when a feed completes for any reason: Stop is requested, a rebalance of partitions, the feed naturally ends when reaching expected seequence numbers.
 }
 
 func (meh *sgMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
@@ -932,6 +942,14 @@ func (meh *sgMgrEventHandlers) OnRegisterPIndex(pindex *cbgt.PIndex) {
 
 func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 	// No-op for SG
+}
+
+// OnUnregisterFeed is called to indicate that a DCP feed has stopped. This will be called for normal and abnormal
+// terminations.
+func (meh *sgMgrEventHandlers) OnUnregisterFeed(feed cbgt.Feed) {
+	if meh.unregisterFeedCallback != nil {
+		meh.unregisterFeedCallback(feed)
+	}
 }
 
 // OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
@@ -968,4 +986,9 @@ func (meh *sgMgrEventHandlers) OnFeedError(_ string, r cbgt.Feed, feedErr error)
 		}
 		dcpFeed.NotifyMgrOnClose()
 	}
+}
+
+// cbgtVbNoToPartition converts a vbucket number to a string partition name for cbgt.
+func cbgtVbNoToPartition(vbNo uint16) string {
+	return fmt.Sprintf("%d", vbNo)
 }

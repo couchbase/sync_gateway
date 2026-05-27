@@ -60,30 +60,26 @@ type DCPCommon struct {
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
+	endSeqNos              map[uint16]uint64              // endSeqNos mark the sequence numbers keyed by vBucket ID that are the end sequence numbers for a stream
 }
 
-// NewDCPCommon creates a new DCPCommon which manages updates coming from a cbgt-based DCP feed. The callback function will receive events from a DCP feed. It stores checkpoints in the metaStore starting with checkpointPrefix if persistCheckpoints is true.
-// Specific stats for DCP are stored in expvars rather than SgwStats.
+// NewDCPCommon creates a new DCPCommon instance which manages updates coming from a cbgt-based DCP feed.
 func NewDCPCommon(
 	ctx context.Context,
-	callback sgbucket.FeedEventCallbackFunc,
-	metaStore DataStore,
-	maxVbNo uint16,
-	persistCheckpoints bool,
-	dbStats *expvar.Map,
-	checkpointPrefix string) (*DCPCommon, error) {
+	opts DCPDestOptions) (*DCPCommon, error) {
 
 	c := &DCPCommon{
-		dbStatsExpvars:         dbStats,
-		metaStore:              metaStore,
-		persistCheckpoints:     persistCheckpoints,
-		seqs:                   make([]uint64, maxVbNo),
-		meta:                   make([][]byte, maxVbNo),
-		updatesSinceCheckpoint: make([]uint64, maxVbNo),
-		callback:               callback,
-		lastCheckpointTime:     make([]time.Time, maxVbNo),
-		checkpointPrefix:       checkpointPrefix,
+		dbStatsExpvars:         opts.DcpStats,
+		metaStore:              opts.MetadataStore,
+		persistCheckpoints:     opts.PersistCheckpoints,
+		seqs:                   make([]uint64, opts.MaxVbNo),
+		meta:                   make([][]byte, opts.MaxVbNo),
+		updatesSinceCheckpoint: make([]uint64, opts.MaxVbNo),
+		callback:               opts.Callback,
+		lastCheckpointTime:     make([]time.Time, opts.MaxVbNo),
+		checkpointPrefix:       opts.CheckpointPrefix,
 		loggingCtx:             ctx,
+		endSeqNos:              opts.EndSeqNos,
 	}
 
 	return c, nil
@@ -151,7 +147,9 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 // rollbackEx is called when a DCP open stream issues a rollback. The metadata persisted for a given uuid and sequence number and stream reopening is deferred to cbgt via AutoReconnectAfterRollback feed parameter.
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte) error {
 	InfofCtx(c.loggingCtx, KeyDCP, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
-	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
+	if c.dbStatsExpvars != nil {
+		c.dbStatsExpvars.Add("dcp_rollback_count", 1)
+	}
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
 	if err != nil {
@@ -225,6 +223,21 @@ func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool) {
 	c.m.Lock()
 	defer c.m.Unlock()
+
+	// Check the expected maximum sequence number when running a one shot feed. Do not checkpoint if the incoming
+	// sequence is greater than the expected maximum sequence number.
+	//
+	// DCP will provide mutations that run to the end of the snapshot that contains the end sequence number.
+	if c.endSeqNos != nil {
+		endSeq, ok := c.endSeqNos[vbucketId]
+		if !ok {
+			AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is greater than endSeqNos we have for that vbno", vbucketId)
+		}
+		// Checkpoints
+		if seq > endSeq {
+			return
+		}
+	}
 
 	previousSequence := c.seqs[vbucketId]
 
