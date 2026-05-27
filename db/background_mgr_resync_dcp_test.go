@@ -29,15 +29,17 @@ import (
 
 func TestResyncDCPInit(t *testing.T) {
 	testCases := []struct {
-		title               string
-		initialClusterState ResyncManagerStatusDocDCP
-		forceReset          bool
-		shouldCreateNewRun  bool
+		title                string
+		initialClusterState  ResyncManagerStatusDocDCP
+		forceReset           bool
+		shouldCreateNewRun   bool
+		expectedDocsTargeted uint64
 	}{
 		{
-			title:              "Initialize new run with empty cluster state",
-			forceReset:         false,
-			shouldCreateNewRun: true,
+			title:                "Initialize new run with empty cluster state",
+			forceReset:           false,
+			shouldCreateNewRun:   true,
+			expectedDocsTargeted: 0, // no docs in DB
 		},
 		{
 			title: "Reinitialize existing run",
@@ -50,14 +52,16 @@ func TestResyncDCPInit(t *testing.T) {
 					resyncStats: resyncStats{
 						DocsChanged:   10,
 						DocsProcessed: 20,
+						DocsTargeted:  50,
 					},
 				},
 				ResyncManagerMeta: ResyncManagerMeta{
 					VBUUIDs: []uint64{1},
 				},
 			},
-			forceReset:         false,
-			shouldCreateNewRun: false,
+			forceReset:           false,
+			shouldCreateNewRun:   false,
+			expectedDocsTargeted: 50, // restored from persisted meta
 		},
 		{
 			title: "Restart existing run new Collection",
@@ -77,8 +81,9 @@ func TestResyncDCPInit(t *testing.T) {
 					CollectionIDs: []uint32{123},
 				},
 			},
-			forceReset:         false,
-			shouldCreateNewRun: true,
+			forceReset:           false,
+			shouldCreateNewRun:   true,
+			expectedDocsTargeted: 0, // no docs in DB
 		},
 		{
 			title: "Reinitialize completed run",
@@ -97,8 +102,9 @@ func TestResyncDCPInit(t *testing.T) {
 					VBUUIDs: []uint64{1},
 				},
 			},
-			forceReset:         false,
-			shouldCreateNewRun: true,
+			forceReset:           false,
+			shouldCreateNewRun:   true,
+			expectedDocsTargeted: 0, // no docs in DB
 		},
 		{
 			title: "Force restart existing run",
@@ -117,8 +123,9 @@ func TestResyncDCPInit(t *testing.T) {
 					VBUUIDs: []uint64{1},
 				},
 			},
-			forceReset:         true,
-			shouldCreateNewRun: true,
+			forceReset:           true,
+			shouldCreateNewRun:   true,
+			expectedDocsTargeted: 0, // no docs in DB
 		},
 	}
 
@@ -172,6 +179,7 @@ func TestResyncDCPInit(t *testing.T) {
 				assert.Equal(t, testCase.initialClusterState.DocsChanged, response.DocsChanged)
 				assert.Equal(t, testCase.initialClusterState.DocsProcessed, response.DocsProcessed)
 			}
+			assert.Equal(t, testCase.expectedDocsTargeted, response.DocsTargeted)
 
 			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
 			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumProcessed.Value())
@@ -256,6 +264,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 
 				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
 				assert.Equal(t, int64(0), stats.DocsChanged)
+				assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
 
 				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
@@ -312,6 +321,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				// be greater than DocsChanged
 				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 				assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+				assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
 
 				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
@@ -421,6 +431,9 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 
 			require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
 			assert.Less(t, stats.DocsChanged, int64(docsToCreate))
+			// DocsTargeted is computed once at run start and should be >= docsToCreate
+			assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
+			initialDocsTargeted := stats.DocsTargeted
 
 			assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 			assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
@@ -433,6 +446,8 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 
 			assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+			// DocsTargeted is preserved from the original run start, even after resume
+			assert.Equal(t, initialDocsTargeted, stats.DocsTargeted)
 
 			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 			assert.Equal(t, int64(docsToCreate), db.DbStats.Database().ResyncNumChanged.Value())

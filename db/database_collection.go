@@ -438,3 +438,24 @@ func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionNam
 func (c *DatabaseCollection) AddCollectionContext(ctx context.Context) context.Context {
 	return base.CollectionLogCtx(ctx, c.ScopeName, c.Name)
 }
+
+// DatabaseCollections is a set of collections
+type DatabaseCollections []*DatabaseCollection
+
+// getIDs returns the collection IDs for each collection
+func (c *DatabaseCollections) getIDs() []uint32 {
+	ids := make([]uint32, 0, len(*c))
+	for _, collection := range *c {
+		ids = append(ids, collection.GetCollectionID())
+	}
+	return ids
+}
+
+// getNames return the names of the collections
+func (c *DatabaseCollections) getNames() base.CollectionNames {
+	names := base.NewCollectionNames()
+	for _, collection := range *c {
+		names.Add(collection.dataStore)
+	}
+	return names
+}

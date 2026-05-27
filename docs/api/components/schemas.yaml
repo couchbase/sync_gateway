@@ -2009,6 +2009,12 @@ Resync-status:
     docs_processed:
       description: The amount of docs that have been processed so far in the resync operation.
       type: integer
+    docs_targeted:
+      description: The estimated number of documents to be procsesed by the resync operation.
+      type: integer
+    docs_errored:
+      description: The number of documents which have errored running resync.
+      type: integer
     collections_processing:
       description: The collections that the resync operation is running on.
       allOf:

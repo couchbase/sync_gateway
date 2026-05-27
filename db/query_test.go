@@ -533,3 +533,54 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	require.Len(t, entries, 50)
 	checkFlags(entries)
 }
+
+func TestCountAllDocs(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// Add some docs
+	numDocs := 5
+	var docToDelete *Document
+	for i := range numDocs {
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"value": i})
+		require.NoError(t, err)
+		if i == 0 {
+			docToDelete = doc
+		}
+	}
+
+	count, err := collection.CountAllDocs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(numDocs), count)
+
+	if !base.TestsDisableGSI() {
+		n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
+		require.True(t, ok, "Unable to get n1QLStore for testBucket")
+		countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, collection.UseXattrs())
+		countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], collection.UseXattrs(), collection.numIndexPartitions())
+		plan, err := n1QLStore.ExplainQuery(ctx, countDocsQueryStatement, nil)
+		require.NoError(t, err, "Error generating explain for count all docs query")
+		require.True(t, IsCovered(plan), "Expected %s to be covering", plan)
+	}
+
+	_, _, err = collection.DeleteDoc(ctx, "doc0", docToDelete.ExtractDocVersion())
+	require.NoError(t, err)
+
+	count, err = collection.CountAllDocs(ctx)
+	require.NoError(t, err)
+	// Views exclude tombstoned documents from the map function; N1QL counts them until purged.
+	if base.TestsDisableGSI() {
+		assert.Equal(t, uint64(numDocs-1), count)
+	} else {
+		assert.Equal(t, uint64(numDocs), count)
+	}
+
+	err = collection.Purge(ctx, "doc0", false)
+	require.NoError(t, err)
+
+	count, err = collection.CountAllDocs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(numDocs-1), count)
+
+}
