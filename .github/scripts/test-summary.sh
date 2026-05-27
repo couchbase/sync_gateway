@@ -62,21 +62,19 @@ jq -s -r '
         echo "<summary><strong>FAIL: $test</strong> — <code>$pkg</code></summary>"
         echo ""
         echo '```'
-    } >> "$GITHUB_STEP_SUMMARY"
 
-    # Collect output for the failed test and all its subtests (limit to MAX_OUTPUT_LINES)
-    jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg t "$test" --arg p "$pkg" '
-        [.[] | select(
-            .Package == $p
-            and .Action == "output"
-            and .Test != null
-            and (.Test == $t or (.Test | startswith($t + "/")))
-        )]
-        | .[:$max]
-        | .[].Output // empty
-    ' "$JSON_FILE" >> "$GITHUB_STEP_SUMMARY"
+        # Collect output for the failed test and all its subtests (limit to MAX_OUTPUT_LINES)
+        jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg t "$test" --arg p "$pkg" '
+            [.[] | select(
+                .Package == $p
+                and .Action == "output"
+                and .Test != null
+                and (.Test == $t or (.Test | startswith($t + "/")))
+            )]
+            | .[:$max]
+            | .[].Output // empty
+        ' "$JSON_FILE"
 
-    {
         echo '```'
         echo "</details>"
         echo ""
@@ -96,15 +94,13 @@ if [ "$PKG_FAILED" -gt 0 ]; then
             echo "<summary><strong>FAIL: package</strong> — <code>$pkg</code></summary>"
             echo ""
             echo '```'
-        } >> "$GITHUB_STEP_SUMMARY"
 
-        jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg p "$pkg" '
-            [.[] | select(.Package == $p and .Test == null and .Action == "output")]
-            | .[:$max]
-            | .[].Output // empty
-        ' "$JSON_FILE" >> "$GITHUB_STEP_SUMMARY"
+            jq -s -r --argjson max "$MAX_OUTPUT_LINES" --arg p "$pkg" '
+                [.[] | select(.Package == $p and .Test == null and .Action == "output")]
+                | .[:$max]
+                | .[].Output // empty
+            ' "$JSON_FILE"
 
-        {
             echo '```'
             echo "</details>"
             echo ""
