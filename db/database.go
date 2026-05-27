@@ -847,24 +847,6 @@ func waitForBGTCompletion(ctx context.Context, waitTimeMax time.Duration, tasks 
 	}
 }
 
-// For testing only!
-func (context *DatabaseContext) RestartListener(ctx context.Context) error {
-	context.mutationListener.Stop(ctx)
-	// Delay needed to properly stop
-	time.Sleep(2 * time.Second)
-	var err error
-	context.mutationListener, err = newChangeListener(context.Bucket.GetName(), context.Options.GroupID, context)
-	if err != nil {
-		return err
-	}
-	context.mutationListener.OnChangeCallback = context.changeCache.DocChanged
-	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(ctx, context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
-		return err
-	}
-	return nil
-}
-
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(ctx context.Context, previewOnly bool) (removedDesignDocs []string, err error) {
 	ds := dbCtx.Bucket.DefaultDataStore(ctx)
