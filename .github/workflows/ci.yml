@@ -101,7 +101,7 @@ jobs:
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -137,7 +137,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -174,7 +174,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -209,7 +209,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -247,7 +247,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -315,7 +315,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
         shell: bash
       - name: Test Summary
         if: always()
