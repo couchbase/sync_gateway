@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -321,6 +322,105 @@ func TestIncrCounter(t *testing.T) {
 	retrieval, err = dataStore.Incr(ctx, key, 1, 5, 0)
 	require.NoError(t, err, "Error incrementing value for existing counter")
 	require.Equal(t, uint64(6), retrieval)
+}
+
+// TestIncrParity codifies the shared Incr contract between Rosmar and Couchbase
+// Server - mirrors rosmar.TestIncr so the same matrix runs against the real CBS.
+//
+//   - amt=0 on an existing key still rewrites the doc and bumps CAS (NOT a read-only op).
+//   - Incr uses uint64 addition with wrap on overflow; "negative" amt
+//     (e.g. uint64(-1)) decrements via wrap, with no clamp at 0.
+//   - On a missing key, the delta is not applied — the stored value is def.
+//   - def must fit in int64. CBS's gocb adapter casts def to int64; values
+//     > math.MaxInt64 are interpreted as "do not create if absent" and return
+//     KEY_ENOENT. Rosmar matches this by returning MissingError.
+func TestIncrParity(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	// intentional underflows (follows GoCB semantics)
+	maxU64 := uint64(math.MaxUint64)
+	negTen := maxU64 - 9 // uint64(-10)
+
+	cases := []struct {
+		desc             string  // short English description of the scenario
+		existingValue    *uint64 // if non-nil, seed the key via SetRaw before Incr
+		amt              uint64
+		def              uint64
+		expectErr        bool
+		expectValue      uint64
+		expectPostRaw    string
+		expectCASChanged bool // only checked when the doc existed pre-Incr
+	}{
+		{desc: "create zero counter when key missing", amt: 0, def: 0, expectValue: 0, expectPostRaw: "0"},
+		{desc: "create counter at def when key missing", amt: 0, def: 5, expectValue: 5, expectPostRaw: "5"},
+		{desc: "amt=0 on existing key returns current value and ignores def", existingValue: Ptr(uint64(42)), amt: 0, def: 100, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
+		{desc: "missing key returns def, delta is not applied to it", amt: 1, def: 5, expectValue: 5, expectPostRaw: "5"},
+		{desc: "increment existing counter by amt", existingValue: Ptr(uint64(42)), amt: 1, def: 5, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
+		{desc: "amt=0 on existing key still rewrites doc and bumps CAS", existingValue: Ptr(uint64(42)), amt: 0, def: 0, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
+		{desc: "negative amt on missing key stores def (no wrap into def)", amt: maxU64, def: 0, expectValue: 0, expectPostRaw: "0"},
+		{desc: "negative amt on existing key decrements via uint64 wrap", existingValue: Ptr(uint64(42)), amt: maxU64, def: 0, expectValue: 41, expectPostRaw: "41", expectCASChanged: true},
+		{desc: "amt=-10 on existing key decrements by 10", existingValue: Ptr(uint64(100)), amt: negTen, def: 0, expectValue: 90, expectPostRaw: "90", expectCASChanged: true},
+		{desc: "def > int64 max returns MissingError (matches CBS gocb sentinel)", amt: 1, def: maxU64, expectErr: true},
+		{desc: "def > int64 max is ignored on existing key (delta still applied)", existingValue: Ptr(uint64(42)), amt: 1, def: maxU64, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
+	}
+
+	// formatU64 renders a uint64 as "negN" when it represents a wrapped-negative int64,
+	// so test names read as the caller-intended value (e.g. uint64(-10) → "neg10").
+	formatU64 := func(v uint64) string {
+		if int64(v) < 0 {
+			return fmt.Sprintf("neg%d", -int64(v))
+		}
+		return strconv.FormatUint(v, 10)
+	}
+
+	for _, tc := range cases {
+		state := "missing"
+		if tc.existingValue != nil {
+			state = fmt.Sprintf("existing%d", *tc.existingValue)
+		}
+		name := fmt.Sprintf("%s/amt=%s_def=%s_%s", tc.desc, formatU64(tc.amt), formatU64(tc.def), state)
+		t.Run(name, func(t *testing.T) {
+			key := t.Name()
+
+			_ = dataStore.Delete(ctx, key)
+			defer func() { _ = dataStore.Delete(ctx, key) }()
+
+			if tc.existingValue != nil {
+				raw := []byte(strconv.FormatUint(*tc.existingValue, 10))
+				require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, raw), "setup SetRaw")
+			}
+			_, preCAS, preErr := dataStore.GetRaw(ctx, key)
+
+			value, incrErr := dataStore.Incr(ctx, key, tc.amt, tc.def, 0)
+
+			if tc.expectErr {
+				require.Error(t, incrErr, "expected Incr to error")
+				if tc.existingValue == nil {
+					_, _, postErr := dataStore.GetRaw(ctx, key)
+					require.Error(t, postErr, "doc should not exist after a failed Incr on missing key")
+				}
+				return
+			}
+
+			require.NoError(t, incrErr)
+			require.Equal(t, tc.expectValue, value, "returned counter value")
+
+			postRaw, postCAS, postErr := dataStore.GetRaw(ctx, key)
+			require.NoError(t, postErr, "GetRaw after Incr")
+			require.Equal(t, tc.expectPostRaw, string(postRaw), "post-Incr stored value")
+
+			if preErr == nil {
+				if tc.expectCASChanged {
+					require.NotEqual(t, preCAS, postCAS, "CAS should have changed")
+				} else {
+					require.Equal(t, preCAS, postCAS, "CAS should not have changed")
+				}
+			}
+		})
+	}
 }
 
 func TestGetAndTouchRaw(t *testing.T) {
