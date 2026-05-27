@@ -231,10 +231,8 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 	if c.endSeqNos != nil {
 		endSeq, ok := c.endSeqNos[vbucketId]
 		if !ok {
-			AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is greater than endSeqNos we have for that vbno", vbucketId)
-		}
-		// Checkpoints
-		if seq > endSeq {
+			AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets", vbucketId, c.endSeqNos)
+		} else if seq > endSeq {
 			return
 		}
 	}
