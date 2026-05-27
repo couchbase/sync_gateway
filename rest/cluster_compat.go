@@ -365,11 +365,7 @@ func (m *clusterCompatManager) ClusterCompatVersion() *base.ClusterCompatVersion
 // ClusterIsAtLeast returns true if the cluster compat version is at least the given major.minor.
 // Returns false if no version has been computed yet (conservative — don't advance until we know).
 func (m *clusterCompatManager) ClusterIsAtLeast(major, minor uint8) bool {
-	v := m.getCachedVersion()
-	if v == nil {
-		return false
-	}
-	return v.AtLeast(major, minor)
+	return m.getCachedVersion().AtLeast(major, minor)
 }
 
 // NodeVersions returns the cluster compat version of each node in the cluster, keyed by node UID.

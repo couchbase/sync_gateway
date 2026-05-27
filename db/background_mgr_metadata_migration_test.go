@@ -53,8 +53,8 @@ func TestShouldRunMetadataMigration(t *testing.T) {
 			dbCtx := &DatabaseContext{
 				Options: DatabaseContextOptions{
 					UseSystemMetadataCollection: test.useSystemMeta,
-					ClusterCompatVersion:        test.compatVersion,
 				},
+				ClusterCompatVersionFunc: test.compatVersion,
 			}
 			assert.Equal(t, test.expectedResult, dbCtx.shouldRunMetadataMigration())
 		})

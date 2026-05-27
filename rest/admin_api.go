@@ -1686,10 +1686,8 @@ func (h *handler) handleGetStatus() error {
 		status.Version = base.LongVersionString
 		status.Vendor.Version = base.ProductAPIVersion
 		status.NodeUID = h.server.NodeUID
-		if h.server.ClusterCompat != nil {
-			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
-				status.ClusterCompatVersion = v.String()
-			}
+		if v := h.server.ClusterCompatVersion(); v != nil {
+			status.ClusterCompatVersion = v.String()
 		}
 	}
 

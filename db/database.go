@@ -149,6 +149,7 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client                                      // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                                     // Closed via PostStartup once the server has fully started
 	ConfigFullyAppliedFunc       func(ctx context.Context) (bool, []string, error) // Returns (applied, missingNodeUIDs, err) for the current db config version
+	ClusterCompatVersionFunc     func() *base.ClusterCompatVersion                 // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
 	UserFunctionTimeout          time.Duration                                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
 	Scopes                       map[string]Scope                                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection                    // A map keyed by collection ID to Collection
@@ -222,7 +223,6 @@ type DatabaseContextOptions struct {
 	ImportVersion                    uint64                            // Version included in import DCP checkpoints, incremented when collections added to db
 	DisablePublicAllDocs             bool                              // Disable public access to the _all_docs endpoint for this database
 	StoreLegacyRevTreeData           *bool                             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
-	ClusterCompatVersion             func() *base.ClusterCompatVersion // ClusterCompatVersion returns the current cluster-wide minimum SG version, or nil if not yet known.
 	UseSystemMetadataCollection      bool                              // Whether to use a system collection for SG metadata storage
 }
 
@@ -629,14 +629,18 @@ func (context *DatabaseContext) shouldRunMetadataMigration() bool {
 	if !context.Options.UseSystemMetadataCollection {
 		return false
 	}
-	var compatVersion *base.ClusterCompatVersion
-	if context.Options.ClusterCompatVersion != nil {
-		compatVersion = context.Options.ClusterCompatVersion()
+	return context.ClusterCompatVersion().AtLeast(4, 1)
+}
+
+// ClusterCompatVersion returns the current cluster-wide minimum SG version, or nil if it is not
+// yet known (no ClusterCompatVersionFunc wired, or the cluster compat manager has not computed a
+// version). The result is re-resolved on each call because CCV changes as peers join/leave during
+// a rolling upgrade.
+func (context *DatabaseContext) ClusterCompatVersion() *base.ClusterCompatVersion {
+	if context.ClusterCompatVersionFunc == nil {
+		return nil
 	}
-	if compatVersion == nil || !compatVersion.AtLeast(4, 1) {
-		return false
-	}
-	return true
+	return context.ClusterCompatVersionFunc()
 }
 
 // armMetadataMigrationTask polls until all nodes have applied the db config that enables the

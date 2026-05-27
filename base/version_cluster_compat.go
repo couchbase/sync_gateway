@@ -29,7 +29,12 @@ func NewClusterCompatVersion(major, minor uint8) ClusterCompatVersion {
 }
 
 // AtLeast returns true if this version is greater than or equal to the given major.minor.
-func (v ClusterCompatVersion) AtLeast(major, minor uint8) bool {
+// A nil receiver returns false, representing an unknown cluster compat version that should not
+// gate any version-dependent behavior on.
+func (v *ClusterCompatVersion) AtLeast(major, minor uint8) bool {
+	if v == nil {
+		return false
+	}
 	if v.Major != major {
 		return v.Major > major
 	}
