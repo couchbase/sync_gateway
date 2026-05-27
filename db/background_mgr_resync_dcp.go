@@ -45,9 +45,11 @@ type ResyncManagerDCP struct {
 	useXattrs                    bool
 	ResyncedCollections          base.CollectionNames
 	resyncCollectionInfo
-	lock              sync.RWMutex
-	Distributed       bool
-	dcpDoneChan       chan error      // mark when the DCP feed is completed
+	lock        sync.RWMutex
+	Distributed bool
+	dcpDoneChan chan error // mark when the DCP feed is completed
+	// TODO: put this into data set by GetProcessStatus / SetProcessStatus so this can be determined for other nodes
+	// running resync
 	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
 }
 
