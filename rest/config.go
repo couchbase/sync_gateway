@@ -147,60 +147,61 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 // DbConfig defines a database configuration used in a config file or the REST API.
 type DbConfig struct {
 	BucketConfig
-	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                // Scopes and collection specific config
-	Name                             string                           `json:"name,omitempty"`                  // Database name in REST API (stored as key in JSON)
-	Sync                             *string                          `json:"sync,omitempty"`                  // The sync function applied to write operations in the _default scope and collection
-	Users                            map[string]*auth.PrincipalConfig `json:"users,omitempty"`                 // Initial user accounts
-	Roles                            map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                 // Initial roles
-	RevsLimit                        *uint32                          `json:"revs_limit,omitempty"`            // Max depth a document's revision tree can grow to
-	AutoImport                       any                              `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
-	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`     // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
-	ImportFilter                     *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
-	ImportBackupOldRev               *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`        // Event handlers (webhook)
-	FeedType                         string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" only, "TAP" is ignored
-	AllowEmptyPassword               *bool                            `json:"allow_empty_password,omitempty"`  // Allow empty passwords?  Defaults to false
-	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                 // Cache settings
-	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`        // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
-	StartOffline                     *bool                            `json:"offline,omitempty"`               // start the DB in the offline state, defaults to false
-	Unsupported                      *db.UnsupportedOptions           `json:"unsupported,omitempty"`           // Config for unsupported features
-	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                  // Config properties for OpenID Connect authentication
-	LocalJWTConfig                   auth.LocalJWTConfig              `json:"local_jwt,omitempty"`
-	OldRevExpirySeconds              *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
-	ViewQueryTimeoutSecs             *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
-	LocalDocExpirySecs               *uint32                          `json:"local_doc_expiry_secs,omitempty"`                // The _local doc expiry time in seconds
-	EnableXattrs                     *bool                            `json:"enable_shared_bucket_access,omitempty"`          // Whether to use extended attributes to store _sync metadata
-	SecureCookieOverride             *bool                            `json:"session_cookie_secure,omitempty"`                // Override cookie secure flag
-	SessionCookieName                string                           `json:"session_cookie_name,omitempty"`                  // Custom per-database session cookie name
-	SessionCookieHTTPOnly            *bool                            `json:"session_cookie_http_only,omitempty"`             // HTTP only cookies
-	AllowConflicts                   *bool                            `json:"allow_conflicts,omitempty"`                      // Deprecated: False forbids creating conflicts
-	NumIndexReplicas                 *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes, deprecated for IndexConfig.NumReplicas
-	Index                            *IndexConfig                     `json:"index,omitempty"`                                // Index options
-	UseViews                         *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
-	SendWWWAuthenticateHeader        *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_password_auth is true.
-	DisablePasswordAuth              *bool                            `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
-	BucketOpTimeoutMs                *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	SlowQueryWarningThresholdMs      *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
-	DeltaSync                        *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
-	StoreLegacyRevTreeData           *bool                            `json:"store_legacy_revtree_data,omitempty"`            // Whether to store legacy revision tree pointer data to support older clients using RevTree IDs
-	CompactIntervalDays              *float32                         `json:"compact_interval_days,omitempty"`                // Interval between scheduled compaction runs (in days) - 0 means don't run
-	SGReplicateEnabled               *bool                            `json:"sgreplicate_enabled,omitempty"`                  // When false, node will not be assigned replications
-	SGReplicateWebsocketPingInterval *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
-	Replications                     map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
-	ServeInsecureAttachmentTypes     *bool                            `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
-	QueryPaginationLimit             *int                             `json:"query_pagination_limit,omitempty"`               // Query limit to be used during pagination of large queries
-	UserXattrKey                     *string                          `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty or nil the feature will be disabled.
-	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
-	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
-	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
-	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
-	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
-	ChangesRequestPlus               *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
-	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
-	Logging                          *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
-	UpdatedAt                        *time.Time                       `json:"updated_at,omitempty"`                           // Time at which the database config was last updated
-	CreatedAt                        *time.Time                       `json:"created_at,omitempty"`                           // Time at which the database config was created
-	DisablePublicAllDocs             *bool                            `json:"disable_public_all_docs,omitempty"`              // Whether to disable public access to the _all_docs endpoint for this database
+	Scopes                            ScopesConfig                     `json:"scopes,omitempty"`                // Scopes and collection specific config
+	Name                              string                           `json:"name,omitempty"`                  // Database name in REST API (stored as key in JSON)
+	Sync                              *string                          `json:"sync,omitempty"`                  // The sync function applied to write operations in the _default scope and collection
+	Users                             map[string]*auth.PrincipalConfig `json:"users,omitempty"`                 // Initial user accounts
+	Roles                             map[string]*auth.PrincipalConfig `json:"roles,omitempty"`                 // Initial roles
+	RevsLimit                         *uint32                          `json:"revs_limit,omitempty"`            // Max depth a document's revision tree can grow to
+	AutoImport                        any                              `json:"import_docs,omitempty"`           // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	ImportPartitions                  *uint16                          `json:"import_partitions,omitempty"`     // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
+	ImportFilter                      *string                          `json:"import_filter,omitempty"`         // The import filter applied to import operations in the _default scope and collection
+	ImportBackupOldRev                *bool                            `json:"import_backup_old_rev,omitempty"` // Whether import should attempt to create a temporary backup of the previous revision body, when available.
+	EventHandlers                     *EventHandlerConfig              `json:"event_handlers,omitempty"`        // Event handlers (webhook)
+	FeedType                          string                           `json:"feed_type,omitempty"`             // Feed type - "DCP" only, "TAP" is ignored
+	AllowEmptyPassword                *bool                            `json:"allow_empty_password,omitempty"`  // Allow empty passwords?  Defaults to false
+	CacheConfig                       *CacheConfig                     `json:"cache,omitempty"`                 // Cache settings
+	DeprecatedRevCacheSize            *uint32                          `json:"rev_cache_size,omitempty"`        // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
+	StartOffline                      *bool                            `json:"offline,omitempty"`               // start the DB in the offline state, defaults to false
+	Unsupported                       *db.UnsupportedOptions           `json:"unsupported,omitempty"`           // Config for unsupported features
+	OIDCConfig                        *auth.OIDCOptions                `json:"oidc,omitempty"`                  // Config properties for OpenID Connect authentication
+	LocalJWTConfig                    auth.LocalJWTConfig              `json:"local_jwt,omitempty"`
+	OldRevExpirySeconds               *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
+	ViewQueryTimeoutSecs              *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
+	LocalDocExpirySecs                *uint32                          `json:"local_doc_expiry_secs,omitempty"`                // The _local doc expiry time in seconds
+	EnableXattrs                      *bool                            `json:"enable_shared_bucket_access,omitempty"`          // Whether to use extended attributes to store _sync metadata
+	SecureCookieOverride              *bool                            `json:"session_cookie_secure,omitempty"`                // Override cookie secure flag
+	SessionCookieName                 string                           `json:"session_cookie_name,omitempty"`                  // Custom per-database session cookie name
+	SessionCookieHTTPOnly             *bool                            `json:"session_cookie_http_only,omitempty"`             // HTTP only cookies
+	AllowConflicts                    *bool                            `json:"allow_conflicts,omitempty"`                      // Deprecated: False forbids creating conflicts
+	NumIndexReplicas                  *uint                            `json:"num_index_replicas,omitempty"`                   // Number of GSI index replicas used for core indexes, deprecated for IndexConfig.NumReplicas
+	Index                             *IndexConfig                     `json:"index,omitempty"`                                // Index options
+	UseViews                          *bool                            `json:"use_views,omitempty"`                            // Force use of views instead of GSI
+	SendWWWAuthenticateHeader         *bool                            `json:"send_www_authenticate_header,omitempty"`         // If false, disables setting of 'WWW-Authenticate' header in 401 responses. Implicitly false if disable_password_auth is true.
+	DisablePasswordAuth               *bool                            `json:"disable_password_auth,omitempty"`                // If true, disables user/pass authentication, only permitting OIDC or guest access
+	BucketOpTimeoutMs                 *uint32                          `json:"bucket_op_timeout_ms,omitempty"`                 // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	SlowQueryWarningThresholdMs       *uint32                          `json:"slow_query_warning_threshold,omitempty"`         // Log warnings if N1QL queries take this many ms
+	DeltaSync                         *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                           // Config for delta sync
+	StoreLegacyRevTreeData            *bool                            `json:"store_legacy_revtree_data,omitempty"`            // Whether to store legacy revision tree pointer data to support older clients using RevTree IDs
+	CompactIntervalDays               *float32                         `json:"compact_interval_days,omitempty"`                // Interval between scheduled compaction runs (in days) - 0 means don't run
+	SGReplicateEnabled                *bool                            `json:"sgreplicate_enabled,omitempty"`                  // When false, node will not be assigned replications
+	SGReplicateWebsocketPingInterval  *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
+	Replications                      map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
+	ServeInsecureAttachmentTypes      *bool                            `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
+	QueryPaginationLimit              *int                             `json:"query_pagination_limit,omitempty"`               // Query limit to be used during pagination of large queries
+	UserXattrKey                      *string                          `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty or nil the feature will be disabled.
+	ClientPartitionWindowSecs         *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
+	Guest                             *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
+	JavascriptTimeoutSecs             *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
+	UserFunctions                     *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	Suspendable                       *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	ChangesRequestPlus                *bool                            `json:"changes_request_plus,omitempty"`                 // If set, is used as the default value of request_plus for non-continuous replications
+	CORS                              *auth.CORSConfig                 `json:"cors,omitempty"`                                 // Per-database CORS config
+	Logging                           *DbLoggingConfig                 `json:"logging,omitempty"`                              // Per-database Logging config
+	UpdatedAt                         *time.Time                       `json:"updated_at,omitempty"`                           // Time at which the database config was last updated
+	CreatedAt                         *time.Time                       `json:"created_at,omitempty"`                           // Time at which the database config was created
+	DisablePublicAllDocs              *bool                            `json:"disable_public_all_docs,omitempty"`              // Whether to disable public access to the _all_docs endpoint for this database
+	UseSystemMobileMetadataCollection *bool                            `json:"use_system_metadata_collection,omitempty"`       // Whether to use the system metadata collection for storing Sync Gateway metadata documents.
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -731,27 +732,34 @@ func (dbConfig *DbConfig) validateConfigUpdate(ctx context.Context, old DbConfig
 // validateChanges compares the current DbConfig with the "old" config, and returns an error if any disallowed changes
 // are attempted.
 func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) error {
+	var multiError *base.MultiError
+
 	// allow switching from implicit `_default` to explicit `_default` scope
 	_, newIsDefaultScope := dbConfig.Scopes[base.DefaultScope]
-	if old.Scopes == nil && len(dbConfig.Scopes) == 1 && newIsDefaultScope {
-		return nil
+	if !(old.Scopes == nil && len(dbConfig.Scopes) == 1 && newIsDefaultScope) {
+		if len(dbConfig.Scopes) != len(old.Scopes) {
+			multiError = multiError.Append(fmt.Errorf("cannot change scopes after database creation"))
+		} else {
+			newScopes := make(base.Set, len(dbConfig.Scopes))
+			oldScopes := make(base.Set, len(old.Scopes))
+			for scopeName := range dbConfig.Scopes {
+				newScopes.Add(scopeName)
+			}
+			for scopeName := range old.Scopes {
+				oldScopes.Add(scopeName)
+			}
+			if !newScopes.Equals(oldScopes) {
+				multiError = multiError.Append(fmt.Errorf("cannot change scopes after database creation"))
+			}
+		}
 	}
-	// early exit
-	if len(dbConfig.Scopes) != len(old.Scopes) {
-		return fmt.Errorf("cannot change scopes after database creation")
+
+	if base.ValDefault(old.UseSystemMobileMetadataCollection, false) &&
+		!base.ValDefault(dbConfig.UseSystemMobileMetadataCollection, false) {
+		multiError = multiError.Append(fmt.Errorf("use_system_metadata_collection cannot be disabled once enabled"))
 	}
-	newScopes := make(base.Set, len(dbConfig.Scopes))
-	oldScopes := make(base.Set, len(old.Scopes))
-	for scopeName := range dbConfig.Scopes {
-		newScopes.Add(scopeName)
-	}
-	for scopeName := range old.Scopes {
-		oldScopes.Add(scopeName)
-	}
-	if !newScopes.Equals(oldScopes) {
-		return fmt.Errorf("cannot change scopes after database creation")
-	}
-	return nil
+
+	return multiError.ErrorOrNil()
 }
 
 // validate checks the DbConfig for any invalid or unsupported values and return a http error. If validateReplications is true, return an error if any replications are not valid. Otherwise issue a warning.

@@ -331,6 +331,15 @@ func (sc *ServerContext) Close(ctx context.Context) {
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 }
 
+// ClusterCompatVersion returns the cluster-wide minimum SG version, or nil if the cluster compat
+// manager is not running or has not yet computed a version.
+func (sc *ServerContext) ClusterCompatVersion() *base.ClusterCompatVersion {
+	if sc.ClusterCompat == nil {
+		return nil
+	}
+	return sc.ClusterCompat.ClusterCompatVersion()
+}
+
 func (sc *ServerContext) stopHTTPServers(ctx context.Context) {
 	sc._httpServersLock.Lock()
 	defer sc._httpServersLock.Unlock()
@@ -834,11 +843,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				// Verify whether the collection is associated with a different database's metadataID - if so, add to set requiring resync
-				var ccv *base.ClusterCompatVersion
-				if sc.ClusterCompat != nil {
-					ccv = sc.ClusterCompat.ClusterCompatVersion()
-				}
-				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID, ccv)
+				resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, dataStore, config.MetadataID, sc.ClusterCompatVersion())
 				if err != nil {
 					if options.loadFromBucket {
 						sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
@@ -862,11 +867,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// No explicitly defined scopes means we'll initialize this as a usable default collection, otherwise it's for metadata only
 		if len(config.Scopes) == 0 {
 			scName := base.DefaultScopeAndCollectionName()
-			var ccv *base.ClusterCompatVersion
-			if sc.ClusterCompat != nil {
-				ccv = sc.ClusterCompat.ClusterCompatVersion()
-			}
-			resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, ds, config.MetadataID, ccv)
+			resyncRequired, requiresAttachmentMigration, err := base.InitSyncInfo(ctx, ds, config.MetadataID, sc.ClusterCompatVersion())
 			if err != nil {
 				if options.loadFromBucket {
 					sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitSyncInfoError))
@@ -977,16 +978,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// NewMetadataKeys handles the "_default" -> legacy (unprefixed) key mapping, so we can pass config.MetadataID through directly.
 	contextOptions.MetadataID = config.MetadataID
 
-	// Stored as a closure so callers re-resolve at call time: cluster compat changes as peers
-	// join/leave during a rolling upgrade, and long-lived consumers (e.g. background managers
-	// mid-run) must observe the current value rather than one captured at db construction.
-	contextOptions.ClusterCompatVersion = func() *base.ClusterCompatVersion {
-		if sc.ClusterCompat != nil {
-			return sc.ClusterCompat.ClusterCompatVersion()
-		}
-		return nil
-	}
-
 	contextOptions.BlipStatsReportingInterval = defaultBytesStatsReportingInterval.Milliseconds()
 	contextOptions.ImportVersion = config.ImportVersion
 
@@ -1002,6 +993,27 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
 	dbcontext.RequireAttachmentMigration = collectionsRequiringAttachmentMigration
+
+	// Resolved at call time rather than captured: cluster compat changes as peers join/leave
+	// during a rolling upgrade, and long-lived consumers (e.g. background managers mid-run) must
+	// observe the current value rather than one captured at db construction.
+	dbcontext.ClusterCompatVersionFunc = sc.ClusterCompatVersion
+
+	// Closure that checks whether every node in the cluster has applied the current db config
+	// version. Used by armMetadataMigrationTask to delay migration until the opt-in flag is
+	// active everywhere.
+	if config.Version != "" {
+		configGroupID := sc.Config.Bootstrap.ConfigGroupID
+		bucketName := spec.BucketName
+		cfgVersion := config.Version
+		dbcontext.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			if err != nil {
+				return false, nil, err
+			}
+			return registry.IsConfigFullyApplied(ctx, configGroupID, dbName, cfgVersion)
+		}
+	}
 
 	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {
 		if options.loadFromBucket {
@@ -1492,6 +1504,15 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "disable_public_all_docs" to false is deprecated. In the future, public access to the all_docs API will be disabled by default.`)
 	}
 
+	useMobileCollection := DefaultUseSystemMetadataCollection
+	if config.UseSystemMobileMetadataCollection != nil && *config.UseSystemMobileMetadataCollection {
+		useMobileCollection = true
+	} else {
+		if sc.Config.Bootstrap.UseSystemMetadataCollection != nil {
+			useMobileCollection = *sc.Config.Bootstrap.UseSystemMetadataCollection
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:                  &cacheOptions,
 		RevisionCacheOptions:          revCacheOptions,
@@ -1529,6 +1550,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		NumIndexReplicas:            config.numIndexReplicas(),
 		DisablePublicAllDocs:        disablePublicAllDocs,
 		StoreLegacyRevTreeData:      base.Ptr(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
+		UseSystemMetadataCollection: useMobileCollection,
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {

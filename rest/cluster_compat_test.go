@@ -1606,8 +1606,8 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, base.NewClusterCompatVersion(4, 0), *got, "mixed-version min should be 4.0")
 
-	// Resolve the production-wired closure and feed its result to SetSyncInfoMetadataID
-	ccv := dbCtx.Options.ClusterCompatVersion()
+	// Resolve the production-wired accessor and feed its result to SetSyncInfoMetadataID
+	ccv := dbCtx.ClusterCompatVersion()
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err := ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)
@@ -1622,9 +1622,9 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 	require.NotNil(t, got)
 	require.True(t, got.AtLeast(4, 1), "after 4.0 peer leaves, ccv should be >= 4.1; got %v", got)
 
-	// Same closure, called again — must resolve to the new value at call time, not the value
+	// Same accessor, called again — must resolve to the new value at call time, not the value
 	// captured during phase 1.
-	ccv = dbCtx.Options.ClusterCompatVersion()
+	ccv = dbCtx.ClusterCompatVersion()
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err = ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)

@@ -896,6 +896,158 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 	}
 }
 
+func TestUseSystemMetadataCollectionConfigResolution(t *testing.T) {
+	testCases := []struct {
+		name      string
+		bootstrap *bool // BootstrapConfig.UseSystemMetadataCollection
+		dbLevel   *bool // DbConfig.UseSystemMobileMetadataCollection
+		expected  bool
+	}{
+		{
+			name:     "both nil, default false",
+			expected: false,
+		},
+		{
+			name:      "bootstrap true, db nil",
+			bootstrap: base.Ptr(true),
+			expected:  true,
+		},
+		{
+			name:      "bootstrap false, db nil",
+			bootstrap: base.Ptr(false),
+			expected:  false,
+		},
+		{
+			name:     "bootstrap nil, db true",
+			dbLevel:  base.Ptr(true),
+			expected: true,
+		},
+		{
+			name:     "bootstrap nil, db false",
+			dbLevel:  base.Ptr(false),
+			expected: false,
+		},
+		{
+			name:      "bootstrap true, db true",
+			bootstrap: base.Ptr(true),
+			dbLevel:   base.Ptr(true),
+			expected:  true,
+		},
+		{
+			name:      "bootstrap true, db false — bootstrap wins",
+			bootstrap: base.Ptr(true),
+			dbLevel:   base.Ptr(false),
+			expected:  true,
+		},
+		{
+			name:      "bootstrap false, db true — db opt-in wins",
+			bootstrap: base.Ptr(false),
+			dbLevel:   base.Ptr(true),
+			expected:  true,
+		},
+		{
+			name:      "bootstrap false, db false",
+			bootstrap: base.Ptr(false),
+			dbLevel:   base.Ptr(false),
+			expected:  false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			startupConfig := &StartupConfig{}
+			startupConfig.Bootstrap.UseSystemMetadataCollection = test.bootstrap
+			sc := NewServerContext(ctx, startupConfig, false)
+			defer sc.Close(ctx)
+			config := &DbConfig{
+				UseSystemMobileMetadataCollection: test.dbLevel,
+				Unsupported:                       &db.UnsupportedOptions{},
+			}
+			opts, err := dbcOptionsFromConfig(ctx, sc, config, "fakedb")
+			require.NoError(t, err)
+			require.Equal(t, test.expected, opts.UseSystemMetadataCollection)
+		})
+	}
+}
+
+func TestValidateChangesUseSystemMetadataCollection(t *testing.T) {
+	testCases := []struct {
+		name      string
+		oldValue  *bool
+		newValue  *bool
+		expectErr bool
+	}{
+		{
+			name:      "nil to nil — no change",
+			expectErr: false,
+		},
+		{
+			name:      "nil to true — opt in",
+			newValue:  base.Ptr(true),
+			expectErr: false,
+		},
+		{
+			name:      "nil to false — no-op",
+			newValue:  base.Ptr(false),
+			expectErr: false,
+		},
+		{
+			name:      "false to true — opt in",
+			oldValue:  base.Ptr(false),
+			newValue:  base.Ptr(true),
+			expectErr: false,
+		},
+		{
+			name:      "true to true — no change",
+			oldValue:  base.Ptr(true),
+			newValue:  base.Ptr(true),
+			expectErr: false,
+		},
+		{
+			name:      "true to false — rejected",
+			oldValue:  base.Ptr(true),
+			newValue:  base.Ptr(false),
+			expectErr: true,
+		},
+		{
+			name:      "true to nil — rejected",
+			oldValue:  base.Ptr(true),
+			newValue:  nil,
+			expectErr: true,
+		},
+		{
+			name:      "false to false — no change",
+			oldValue:  base.Ptr(false),
+			newValue:  base.Ptr(false),
+			expectErr: false,
+		},
+		{
+			name:      "false to nil — no-op",
+			oldValue:  base.Ptr(false),
+			newValue:  nil,
+			expectErr: false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			oldConfig := DbConfig{
+				UseSystemMobileMetadataCollection: test.oldValue,
+			}
+			newConfig := DbConfig{
+				UseSystemMobileMetadataCollection: test.newValue,
+			}
+			err := newConfig.validateChanges(ctx, oldConfig)
+			if test.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "use_system_metadata_collection cannot be disabled once enabled")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestHeapProfileValuesPopulated(t *testing.T) {
 	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
 	testCases := []struct {

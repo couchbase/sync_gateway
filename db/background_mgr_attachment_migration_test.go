@@ -313,7 +313,7 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 }
 
 // TestAttachmentMigrationWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
-// DatabaseContextOptions.ClusterCompatVersion through AttachmentMigrationManager.Run into
+// DatabaseContext.ClusterCompatVersion through AttachmentMigrationManager.Run into
 // base.SetSyncInfoMetaVersion — when ccv>=4.1 the syncInfo doc is written with the V1
 // version-byte prefix.
 func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
@@ -321,7 +321,7 @@ func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
 	defer db.Close(ctx)
 
 	ccv := base.NewClusterCompatVersion(4, 1)
-	db.Options.ClusterCompatVersion = func() *base.ClusterCompatVersion { return &ccv }
+	db.ClusterCompatVersionFunc = func() *base.ClusterCompatVersion { return &ccv }
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

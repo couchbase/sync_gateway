@@ -70,10 +70,8 @@ func (h *handler) handleRoot() error {
 		resp.Version = base.LongVersionString
 		resp.Vendor.Version = base.ProductAPIVersion
 		resp.NodeUID = h.server.NodeUID
-		if h.server.ClusterCompat != nil {
-			if v := h.server.ClusterCompat.ClusterCompatVersion(); v != nil {
-				resp.ClusterCompatVersion = v.String()
-			}
+		if v := h.server.ClusterCompatVersion(); v != nil {
+			resp.ClusterCompatVersion = v.String()
 		}
 	}
 

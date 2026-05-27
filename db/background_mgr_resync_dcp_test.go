@@ -939,7 +939,7 @@ func resyncTestModes() []resyncTestCase {
 }
 
 // TestResyncManagerDCPWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
-// DatabaseContextOptions.ClusterCompatVersion through ResyncManagerDCP.Run into
+// DatabaseContext.ClusterCompatVersion through ResyncManagerDCP.Run into
 // base.SetSyncInfoMetadataID — when ccv>=4.1 the syncInfo doc is written with the V1
 // version-byte prefix. regenerateSequences=true is required so the syncInfo update path runs.
 func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
@@ -952,7 +952,7 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 	defer db.Close(ctx)
 
 	ccv := base.NewClusterCompatVersion(4, 1)
-	db.Options.ClusterCompatVersion = func() *base.ClusterCompatVersion { return &ccv }
+	db.ClusterCompatVersionFunc = func() *base.ClusterCompatVersion { return &ccv }
 	// Resync only writes syncInfo when MetadataID is non-empty (SetSyncInfoMetadataID is a no-op otherwise).
 	db.Options.MetadataID = "test_resync_md_id"
 

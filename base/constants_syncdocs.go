@@ -449,7 +449,7 @@ func marshalSyncInfo(syncInfo *SyncInfo, clusterCompatVersion *ClusterCompatVers
 	if err != nil {
 		return nil, fmt.Errorf("Error marshalling syncInfo: %v", err)
 	}
-	if clusterCompatVersion != nil && clusterCompatVersion.AtLeast(4, 1) {
+	if clusterCompatVersion.AtLeast(4, 1) {
 		payload = append([]byte{byte(SyncInfoTypeV1)}, payload...)
 	}
 	return payload, nil
