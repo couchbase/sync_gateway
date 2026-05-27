@@ -188,7 +188,6 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.Distributed {
