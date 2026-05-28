@@ -14,6 +14,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
@@ -94,7 +95,56 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 	}
 	defer persistClusterStatus()
 
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Metadata Migration TODO: CBG-5228", metadataMigrationLoggingID)
+	metadataID := m.dbContext.Options.MetadataID
+	if metadataID == "" {
+		base.WarnfCtx(ctx, "[%s] No MetadataID set on DatabaseContext, cannot record per-DB status", metadataMigrationLoggingID)
+		return nil
+	}
+
+	if m.dbContext.MetadataMigrationStatusUpdater == nil {
+		base.WarnfCtx(ctx, "[%s] MetadataMigrationStatusUpdater not wired on DatabaseContext, skipping status tracking", metadataMigrationLoggingID)
+		return nil
+	}
+
+	now := time.Now().UTC()
+	if err := m.dbContext.MetadataMigrationStatusUpdater(ctx, func(s *base.MetadataMigrationStatus) error {
+		entry, ok := s.Databases[metadataID]
+		if !ok || entry == nil {
+			entry = &base.DatabaseMigrationStatus{}
+			s.Databases[metadataID] = entry
+		}
+		entry.State = base.MigrationStateInProgress
+		entry.StartedAt = &now
+		entry.CompletedAt = nil
+		return nil
+	}); err != nil {
+		return base.RedactErrorf("[%s] Failed to mark per-DB migration in_progress: %v", metadataMigrationLoggingID, err)
+	}
+
+	// CBG-5228 will implement the actual copy + verify here. For now the manager treats the
+	// in_progress → complete transition as a no-op so the bucket-level all-complete trigger can
+	// be exercised end-to-end without waiting on the data movement implementation.
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Per-DB copy step is stubbed (CBG-5228) — recording complete", metadataMigrationLoggingID)
+
+	completedAt := time.Now().UTC()
+	if err := m.dbContext.MetadataMigrationStatusUpdater(ctx, func(s *base.MetadataMigrationStatus) error {
+		entry, ok := s.Databases[metadataID]
+		if !ok || entry == nil {
+			entry = &base.DatabaseMigrationStatus{StartedAt: &now}
+			s.Databases[metadataID] = entry
+		}
+		entry.State = base.MigrationStateComplete
+		entry.CompletedAt = &completedAt
+		return nil
+	}); err != nil {
+		return base.RedactErrorf("[%s] Failed to mark per-DB migration complete: %v", metadataMigrationLoggingID, err)
+	}
+
+	if m.dbContext.PostMetadataMigrationCompleteFunc != nil {
+		if err := m.dbContext.PostMetadataMigrationCompleteFunc(ctx); err != nil {
+			base.WarnfCtx(ctx, "[%s] Post-completion hook returned an error: %v", metadataMigrationLoggingID, err)
+		}
+	}
 	return nil
 }
 

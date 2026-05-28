@@ -152,26 +152,34 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client                                      // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                                     // Closed via PostStartup once the server has fully started
 	ConfigFullyAppliedFunc       func(ctx context.Context) (bool, []string, error) // Returns (applied, missingNodeUIDs, err) for the current db config version
-	ClusterCompatVersionFunc     func() *base.ClusterCompatVersion                 // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
-	UserFunctionTimeout          time.Duration                                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
-	Scopes                       map[string]Scope                                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	CollectionByID               map[uint32]*DatabaseCollection                    // A map keyed by collection ID to Collection
-	CollectionNames              map[string]map[string]struct{}                    // Map of scope, collection names
-	MetadataKeys                 *base.MetadataKeys                                // Factory to generate metadata document keys
-	RequireResync                base.ScopeAndCollectionNames                      // Collections requiring resync before database can go online
-	RequireAttachmentMigration   base.ScopeAndCollectionNames                      // Collections that require the attachment migration background task to run against
-	CORS                         *auth.CORSConfig                                  // CORS configuration
-	EnableMou                    bool                                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
-	WasInitializedSynchronously  bool                                              // true if the database was initialized synchronously
-	BroadcastSlowMode            atomic.Bool                                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
-	DatabaseStartupError         *DatabaseError                                    // Error that occurred during database online processes startup
-	CachedPurgeInterval          atomic.Pointer[time.Duration]                     // If set, the cached value of the purge interval to avoid repeated lookups
-	CachedVersionPruningWindow   atomic.Pointer[time.Duration]                     // If set, the cached value of the version pruning window to avoid repeated lookups
-	CachedCCVStartingCas         *base.VBucketCAS                                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
-	CachedCCVEnabled             atomic.Bool                                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
-	numVBuckets                  uint16                                            // Number of vbuckets in the bucket
-	SameSiteCookieMode           http.SameSite
-	DBStateManager               *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	// MetadataMigrationStatusUpdater runs a CAS-safe read-modify-write against the bucket-level
+	// _sync:metadata_migration_status doc in _system._mobile. Set by ServerContext when the
+	// db is created under use_system_metadata_collection.
+	MetadataMigrationStatusUpdater func(ctx context.Context, mutator func(*base.MetadataMigrationStatus) error) error
+	// PostMetadataMigrationCompleteFunc fires after this database's per-DB migration reports
+	// complete in the status doc. Triggers the bucket-level all-complete check + bootstrap copy
+	// + SetMigrationComplete on the cluster.
+	PostMetadataMigrationCompleteFunc func(ctx context.Context) error
+	ClusterCompatVersionFunc          func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
+	UserFunctionTimeout               time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
+	Scopes                            map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	CollectionByID                    map[uint32]*DatabaseCollection    // A map keyed by collection ID to Collection
+	CollectionNames                   map[string]map[string]struct{}    // Map of scope, collection names
+	MetadataKeys                      *base.MetadataKeys                // Factory to generate metadata document keys
+	RequireResync                     base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
+	RequireAttachmentMigration        base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
+	CORS                              *auth.CORSConfig                  // CORS configuration
+	EnableMou                         bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+	WasInitializedSynchronously       bool                              // true if the database was initialized synchronously
+	BroadcastSlowMode                 atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	DatabaseStartupError              *DatabaseError                    // Error that occurred during database online processes startup
+	CachedPurgeInterval               atomic.Pointer[time.Duration]     // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedVersionPruningWindow        atomic.Pointer[time.Duration]     // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas              *base.VBucketCAS                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
+	CachedCCVEnabled                  atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
+	numVBuckets                       uint16                            // Number of vbuckets in the bucket
+	SameSiteCookieMode                http.SameSite
+	DBStateManager                    *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -626,10 +634,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 // shouldRunMetadataMigration checks whether we should start metadata migration on db startup. Will not start the
 // migration unless all of the following is true:
-// - The option to use a system metadata collection is enabled on db context
-// - The cluster compatibility version is at least 4.1
+//   - The option to use a system metadata collection is enabled on db context
+//   - The cluster compatibility version is at least 4.1
+//   - The per-DB MetadataStore wrapper hasn't already been flagged migration-complete (new-DB fast
+//     path applied at construction time when _default._default has no legacy metadata for this DB)
 func (context *DatabaseContext) shouldRunMetadataMigration() bool {
 	if !context.Options.UseSystemMetadataCollection {
+		return false
+	}
+	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && ms.MigrationComplete() {
 		return false
 	}
 	return context.ClusterCompatVersion().AtLeast(4, 1)
@@ -649,7 +662,9 @@ func (context *DatabaseContext) ClusterCompatVersion() *base.ClusterCompatVersio
 // armMetadataMigrationTask polls until all nodes have applied the db config that enables the
 // system metadata collection, then starts the metadata migration background task. This
 // prevents migration from running while some nodes are still writing metadata to the old location.
-// The first attempt happens immediately so an already-converged cluster starts without delay.
+// The first attempt is the caller's responsibility (done synchronously during StartOnlineProcesses
+// so the goroutine is only spawned when polling is actually needed) — this loop handles the
+// retry cadence for subsequent attempts.
 func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 	if dbCtx.ConfigFullyAppliedFunc == nil {
 		base.WarnfCtx(ctx, "No ConfigFullyAppliedFunc set, cannot arm metadata migration for database %s", base.MD(dbCtx.Name))
@@ -660,9 +675,6 @@ func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		if dbCtx.tryStartMetadataMigration(ctx) {
-			return
-		}
 		select {
 		case <-ctx.Done():
 			base.DebugfCtx(ctx, base.KeyAll, "Context cancelled, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
@@ -671,6 +683,9 @@ func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 			base.DebugfCtx(ctx, base.KeyAll, "Database closing, stopping metadata migration arm for database %s", base.MD(dbCtx.Name))
 			return
 		case <-ticker.C:
+		}
+		if dbCtx.tryStartMetadataMigration(ctx) {
+			return
 		}
 	}
 }
@@ -2501,7 +2516,13 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.MetadataMigrationManager = NewMetadataMigrationManager(db)
 	if db.shouldRunMetadataMigration() {
-		go db.armMetadataMigrationTask(ctx)
+		// Run the first attempt synchronously: an already-converged cluster starts migration
+		// without spawning a polling goroutine, and tests that observe state immediately after
+		// StartOnlineProcesses returns see a deterministic outcome (either the migration started,
+		// or the polling goroutine is sleeping a full ticker before the next attempt).
+		if db.ConfigFullyAppliedFunc != nil && !db.tryStartMetadataMigration(ctx) {
+			go db.armMetadataMigrationTask(ctx)
+		}
 	}
 
 	if err := base.RequireNoBucketTTL(ctx, db.Bucket); err != nil {

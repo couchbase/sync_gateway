@@ -81,6 +81,15 @@ func (h *handler) handleCreateDB() error {
 			config.Bucket = &bucket
 		}
 
+		// Resolve the bucket's bootstrap-doc target before any read/write so a new DB with
+		// per-DB use_system_metadata_collection on a blank bucket lands its registry +
+		// dbconfig directly in _system._mobile rather than stamping into _default._default.
+		// Subsequent bootstrap-doc ops on this bucket reuse the cached decision.
+		optInHint := resolveUseSystemMetadataCollection(h.server.Config, config)
+		if err := h.server.BootstrapContext.Connection.SetBucketBootstrapTargetHint(h.ctx(), bucket, optInHint); err != nil {
+			base.WarnfCtx(h.ctx(), "Failed to resolve bootstrap target for bucket %q: %v", base.MD(bucket), err)
+		}
+
 		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
 		if metadataIDError != nil {
 			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
