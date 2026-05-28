@@ -616,7 +616,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
+	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, metaKeys, dbContext)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
@@ -1751,7 +1751,7 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (db *Database) updateAllPrincipalsSequences(ctx context.Context) error {
+func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) error {
 	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
@@ -1789,7 +1789,7 @@ func (db *Database) updateAllPrincipalsSequences(ctx context.Context) error {
 	return nil
 }
 
-func (db *Database) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
 	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
