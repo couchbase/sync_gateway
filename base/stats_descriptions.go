@@ -422,8 +422,6 @@ const (
 	MetadataMigrationSeqPoisonPillAppliedDesc = "The total number of times this node applied the seq-counter poison pill to initiate fallback→primary sequence handoff. Typically 0 or 1 per migration run."
 
 	MetadataMigrationPassesDesc = "The total number of MigrateMetadata range-scan passes executed for this database."
-
-	MetadataMigrationStateDesc = "The current per-DB metadata migration state: 0 = idle/not started, 1 = in_progress, 2 = complete."
 )
 
 // DB Replicators stats descriptions (ISGR Specific)

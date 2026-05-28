@@ -175,11 +175,10 @@ func TestMetadataMigrationStatsInitialisedWithOptIn(t *testing.T) {
 	require.NotNil(t, dbCtx.DbStats)
 	migStats := dbCtx.DbStats.MetadataMigration()
 	require.NotNil(t, migStats, "migration stats must be initialized when UseSystemMobileMetadataCollection=true")
-	// Default counters all start at 0; state gauge starts idle.
+	// Default counters all start at 0.
 	assert.Equal(t, int64(0), migStats.DocsMigrated.Value())
 	assert.Equal(t, int64(0), migStats.Errors.Value())
 	assert.Equal(t, int64(0), migStats.Passes.Value())
-	assert.Equal(t, base.MigrationStatsStateIdle, migStats.State.Value())
 }
 
 // TestMetadataMigrationRESTGetReportsStatus verifies the new GET

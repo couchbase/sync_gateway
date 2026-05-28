@@ -122,9 +122,6 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 	if m.dbContext.DbStats != nil {
 		promStats = m.dbContext.DbStats.MetadataMigration()
 	}
-	if promStats != nil {
-		promStats.State.Set(base.MigrationStatsStateInProgress)
-	}
 
 	now := time.Now().UTC()
 	if err := m.dbContext.MetadataMigrationStatusUpdater(ctx, func(s *base.MetadataMigrationStatus) error {
@@ -247,10 +244,6 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		return nil
 	}); err != nil {
 		return base.RedactErrorf("[%s] Failed to mark per-DB migration complete: %v", metadataMigrationLoggingID, err)
-	}
-
-	if promStats != nil {
-		promStats.State.Set(base.MigrationStatsStateComplete)
 	}
 
 	if m.dbContext.PostMetadataMigrationCompleteFunc != nil {

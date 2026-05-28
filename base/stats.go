@@ -903,19 +903,12 @@ type SharedBucketImportStats struct {
 	ImportFeedProcessedCount *SgwIntStat `json:"import_feed_processed_count"`
 }
 
-// Per-DB metadata migration state values exported via MigrationStats.State.
-// These mirror the cluster-status values in base/metadata_migration_status.go but
-// scoped to a single DB's view of progress.
-const (
-	MigrationStatsStateIdle       int64 = 0
-	MigrationStatsStateInProgress int64 = 1
-	MigrationStatsStateComplete   int64 = 2
-)
-
-// MigrationStats are per-DB Prometheus-backed counters and a state gauge for the
-// metadata-migration background task. Only initialized for databases that have
-// opted into the system metadata collection — for all other databases this
-// section is absent from the per-DB stats payload.
+// MigrationStats are per-DB Prometheus-backed counters for the metadata-migration
+// background task. Only initialized for databases that have opted into the system
+// metadata collection — for all other databases this section is absent from the
+// per-DB stats payload. Lifecycle state (running/stopped/error) is owned by the
+// BackgroundManager and surfaced via the _metadata_migration REST endpoint, not
+// here.
 type MigrationStats struct {
 	// Cumulative count of fallback keys observed by range scans across all passes.
 	DocsScannedTotal *SgwIntStat `json:"docs_scanned_total"`
@@ -931,8 +924,6 @@ type MigrationStats struct {
 	SeqPoisonPillApplied *SgwIntStat `json:"seq_poison_pill_applied"`
 	// Cumulative count of MigrateMetadata pass invocations.
 	Passes *SgwIntStat `json:"passes"`
-	// Current per-DB migration state (0=idle, 1=in_progress, 2=complete).
-	State *SgwIntStat `json:"state"`
 }
 
 type SgwStatWrapper interface {
@@ -2572,10 +2563,6 @@ func (d *DbStats) InitMigrationStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.State, err = NewIntStat(SubsystemMetadataMigration, "state", StatUnitNoUnits, MetadataMigrationStateDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, MigrationStatsStateIdle)
-	if err != nil {
-		return err
-	}
 	d.MigrationStats = resUtil
 	return nil
 }
@@ -2588,7 +2575,6 @@ func (d *DbStats) unregisterMigrationStats() {
 	prometheus.Unregister(d.MigrationStats.Errors)
 	prometheus.Unregister(d.MigrationStats.SeqPoisonPillApplied)
 	prometheus.Unregister(d.MigrationStats.Passes)
-	prometheus.Unregister(d.MigrationStats.State)
 }
 
 func (d *DbStats) MetadataMigration() *MigrationStats {
