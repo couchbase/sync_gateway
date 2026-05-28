@@ -93,8 +93,14 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	// _default._default for the db's metadataID, flips the MetadataStore wrapper straight to
 	// MigrationComplete, and shouldRunMetadataMigration returns false — which is exactly what
 	// we want for fresh DBs, but defeats this test's premise of verifying the multi-node gate.
+	//
+	// Seed via Incr so the doc matches the on-disk shape of a counter created by the
+	// sequence allocator in real legacy data. SetRaw would write with explicit BinaryType
+	// flag, which the SGJSONTranscoder used by GetCounter can't decode into a *uint64 —
+	// fine on Rosmar (relaxed datatype handling) but a hard failure on Couchbase Server.
 	dbCtxBefore := rtA.GetDatabase()
-	require.NoError(t, tb.Bucket.DefaultDataStore(ctx).SetRaw(ctx, dbCtxBefore.MetadataKeys.SyncSeqKey(), 0, nil, []byte("0")))
+	_, err := tb.Bucket.DefaultDataStore(ctx).Incr(ctx, dbCtxBefore.MetadataKeys.SyncSeqKey(), 1, 0, 0)
+	require.NoError(t, err)
 
 	// Update db config on node A to enable the system metadata collection.
 	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
