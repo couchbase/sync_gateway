@@ -38,12 +38,11 @@ func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]any,
 	a.lock.Lock()
 	doneChan := a._doneChan
 	a.lock.Unlock()
-	select {
-	case err := <-doneChan:
-		return err
-	case <-terminator.Done():
+	err := <-doneChan
+	if terminator.IsClosed() {
 		return nil
 	}
+	return err
 }
 
 type CollectionIndexStatus string
