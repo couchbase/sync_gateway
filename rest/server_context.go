@@ -2382,11 +2382,14 @@ func probeLegacyPerDBMetadata(ctx context.Context, fallback base.DataStore, meta
 }
 
 // maybeCompleteBucketMetadataMigration is invoked after each per-DB migration reports complete.
-// If every database in the bucket's registry has its status entry == complete and the bootstrap
-// block is still not_started, this node claims the bootstrap migration via CAS (winning peer is
-// the only one that proceeds), copies the bucket-global bootstrap docs into _system._mobile,
-// flips bootstrap.state to complete, and finally calls SetMigrationComplete on the cluster so
-// fallback reads stop. Caller may retry: every step is idempotent and CAS-guarded.
+// If every database in the bucket's registry has its status entry == complete, this node copies
+// the bucket-global bootstrap docs into _system._mobile, flips bootstrap.state to complete, and
+// calls SetMigrationComplete on the cluster so fallback reads stop.
+//
+// No leader election: MigrateBootstrapDocs is idempotent under concurrent execution (primary
+// Insert tolerates ErrDocumentExists, fallback Remove uses observed-CAS) and the final state
+// transition is CAS-guarded so the first writer wins and later peers no-op. This avoids the
+// crash-wedge problem an in_progress claim without a lease would introduce.
 func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bucketName string) error {
 	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	if err != nil {
@@ -2398,7 +2401,6 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return nil
 	}
 
-	// First, read-only check: every DB complete?
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
@@ -2411,27 +2413,6 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return nil
 	}
 
-	// CAS-claim the bootstrap migration. Only the node that flips not_started → in_progress
-	// inside the mutator proceeds; everyone else returns and lets the claimant finish.
-	claimed := false
-	_, err = sc.BootstrapContext.Connection.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
-		if s.Bootstrap.State != base.MigrationStateNotStarted {
-			return nil
-		}
-		if !s.AllDatabasesComplete(expected) {
-			return nil
-		}
-		s.Bootstrap.State = base.MigrationStateInProgress
-		claimed = true
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("claim bootstrap migration on bucket %q: %w", bucketName, err)
-	}
-	if !claimed {
-		return nil
-	}
-
 	base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: all per-DB entries complete, starting bootstrap copy", base.MD(bucketName))
 
 	docIDs := bootstrapDocKeysToMigrate(ctx, registry)
@@ -2440,16 +2421,26 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 	}
 
 	completedAt := time.Now().UTC()
+	wonRace := false
 	if _, err := sc.BootstrapContext.Connection.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		wonRace = false
+		if s.Bootstrap.State == base.MigrationStateComplete {
+			return nil
+		}
 		s.Bootstrap.State = base.MigrationStateComplete
 		s.Bootstrap.CompletedAt = &completedAt
+		wonRace = true
 		return nil
 	}); err != nil {
 		return fmt.Errorf("record bootstrap-migration completion on bucket %q: %w", bucketName, err)
 	}
 
 	sc.BootstrapContext.Connection.SetMigrationComplete()
-	base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: bootstrap copy complete, fallback reads disabled", base.MD(bucketName))
+	if wonRace {
+		base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: bootstrap copy complete, fallback reads disabled", base.MD(bucketName))
+	} else {
+		base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: peer already recorded completion, fallback reads disabled locally", base.MD(bucketName))
+	}
 	return nil
 }
 
