@@ -19,7 +19,6 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -345,8 +344,7 @@ func newRosmarBootstrapDualFixture(t *testing.T) bootstrapDualTestFixture {
 }
 
 // newCouchbaseBootstrapDualFixture builds a fixture over the first available test-pool bucket on a
-// real Couchbase Server cluster running in dual-collection mode. Skips when the cluster doesn't
-// expose _system._mobile (CBS < 7.6).
+// real Couchbase Server cluster running in dual-collection mode.
 func newCouchbaseBootstrapDualFixture(t *testing.T) bootstrapDualTestFixture {
 	t.Helper()
 	ctx := TestCtx(t)
@@ -365,10 +363,6 @@ func newCouchbaseBootstrapDualFixture(t *testing.T) bootstrapDualTestFixture {
 
 	bucket, teardown, err := cluster.getBucket(ctx, bucketName)
 	require.NoError(t, err)
-	if !(&GocbV2Bucket{bucket: bucket}).IsSupported(sgbucket.BucketStoreFeatureSystemCollections) {
-		teardown()
-		t.Skip("Test requires system collection support (CBS 7.6+)")
-	}
 	t.Cleanup(teardown)
 
 	primaryCol := bucket.Scope(SystemScope).Collection(SystemCollectionMobile)
