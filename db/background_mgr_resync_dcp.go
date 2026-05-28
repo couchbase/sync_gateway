@@ -644,16 +644,23 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 	return statusJSON, metaJSON, err
 }
 
+// writeSharededDCPCheckpoints writes any outstanding DCP checkpoints.
+func writeSharedDCPCheckpoints(ctx context.Context, feed cbgt.Feed) {
+	for _, d := range feed.Dests() {
+		d, ok := d.(base.SGDest)
+		if ok {
+			d.ForceCheckpointWrite()
+			return
+		}
+	}
+	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed. Feed: %#+v Dests: %#+v, resync will complete but  some checkpoints may not be written", feed, slices.Collect(maps.Values(feed.Dests())))
+}
+
 // getUnregisterFeedFunc returns a callback function to be called when a cbgt feed exits. This function will close
 // doneChan when all vBuckets have completed, which will allow the resync process to finish.
 func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuckets uint16) base.CbgtUnregisterFeedCallback {
 	return func(feed cbgt.Feed) {
-		for _, d := range feed.Dests() {
-			d, ok := d.(base.SGDest)
-			if !ok {
-				base.AssertfCtx(ctx, "Expected dest on cbgt.EventHandler.OnUnregisterFeed to be of type SGDest but is of type %T, resync will can complete but checkpoints may not be written", d)
-			}
-		}
+		writeSharedDCPCheckpoints(ctx, feed)
 		f, ok := feed.(cbgt.FeedPartitionCompletion)
 		if !ok {
 			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)

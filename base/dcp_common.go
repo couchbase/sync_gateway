@@ -86,6 +86,9 @@ func NewDCPCommon(
 }
 
 func (c *DCPCommon) dataUpdate(seq uint64, event sgbucket.FeedEvent) {
+	if !c.shouldProcessSequence(event.VbNo, seq) {
+		return
+	}
 	shouldPersistCheckpoint := c.callback(event)
 	c.updateSeq(event.VbNo, seq, true)
 	if c.persistCheckpoints && shouldPersistCheckpoint {
@@ -215,27 +218,36 @@ func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
 	return c.metaStore.SetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
 }
 
+// shouldProcessSequence checks the incoming sequence number against the expected end sequence number, and returns true
+// if this sequence number is expected.
+//
+// The expected sequences that should not be processed are sequences between the end sequence and any sequences to the end of that sequence's snapshot.
+func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
+	if c.endSeqNos == nil {
+		return true
+	}
+	// Check the expected maximum sequence number when running a one shot feed. Do not checkpoint if the incoming
+	// sequence is greater than the expected maximum sequence number.
+	//
+	// DCP will provide mutations that run to the end of the snapshot that contains the end sequence number.
+	endSeq, ok := c.endSeqNos[vBucketID]
+	if !ok {
+		AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets", vBucketID, c.endSeqNos)
+	}
+	return seq <= endSeq
+}
+
 // This updates the value stored in r.seqs with the given seq number for the given partition
 // Setting warnOnLowerSeqNo to true will check
 // if we are setting the seq number to a _lower_ value than we already have stored for that
 // vbucket and log a warning in that case.  The valid case for setting warnOnLowerSeqNo to
 // false is when it's a rollback scenario.  See https://github.com/couchbase/sync_gateway/issues/1098 for dev notes.
 func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool) {
+	if c.shouldProcessSequence(vbucketId, seq) {
+		return
+	}
 	c.m.Lock()
 	defer c.m.Unlock()
-
-	// Check the expected maximum sequence number when running a one shot feed. Do not checkpoint if the incoming
-	// sequence is greater than the expected maximum sequence number.
-	//
-	// DCP will provide mutations that run to the end of the snapshot that contains the end sequence number.
-	if c.endSeqNos != nil {
-		endSeq, ok := c.endSeqNos[vbucketId]
-		if !ok {
-			AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets", vbucketId, c.endSeqNos)
-		} else if seq > endSeq {
-			return
-		}
-	}
 
 	previousSequence := c.seqs[vbucketId]
 
