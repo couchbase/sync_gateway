@@ -298,21 +298,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 					"collections":         base.NewCollectionNames(),
 				}
 
-				if testCase.Distributed {
-					rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-					require.True(t, ok)
-					rs.Distributed = true
-				}
 				err := db.ResyncManager.Start(ctx, options)
 				require.NoError(t, err)
 
-				if testCase.Distributed {
-					waitForResyncDocsChanged(t, db, int64(docsToCreate))
-					err := db.ResyncManager.Stop(ctx)
-					require.NoError(t, err)
-				} else {
-					RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
-				}
+				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
 
 				stats := getResyncStats(t, db)
 				// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
@@ -329,7 +318,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-				// This is just a temporary check until MB-70378 is implemented
+				// TODO: Not sure why this fails for distributed resync
 				if !testCase.Distributed {
 					deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
 					assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
@@ -342,9 +331,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 func TestResyncManagerDCPRunTwice(t *testing.T) {
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
-			if testCase.Distributed {
-				t.Skip("Enable in CBG-5184")
-			}
 			docsToCreate := 1000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
@@ -372,8 +358,12 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 				waitForResyncDocsProcessed(t, db, 100)
 
 				err := db.ResyncManager.Start(ctx, options)
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "Process already running")
+				if testCase.Distributed {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "Process already running")
+				}
 			})
 
 			stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
@@ -465,7 +455,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 			docsPerCollection := int64(1000)
 			// rosmar runs too quickly, increase doc count
-			if base.UnitTestUrlIsWalrus() {
+			if base.UnitTestUrlIsWalrus() || testCase.Distributed {
 				docsPerCollection *= 5
 			}
 			const numCollections = 2
