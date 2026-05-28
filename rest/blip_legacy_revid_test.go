@@ -720,7 +720,7 @@ func TestDeltaSyncSendHistoryWithLegacyClient(t *testing.T) {
 		require.NotEmpty(t, history, "history must not be empty — rev tree history is required for legacy client conflict detection")
 		historyList := strings.Split(history, ",")
 		// The last two entries in history should be the rev tree: current revID then parent revID
-		require.GreaterOrEqual(t, len(historyList), 2, "history should contain at least the rev tree entries")
+		assert.Equal(t, len(historyList), 2, "history should rev tree entries only since hlv history is empty for this doc")
 		assert.Equal(t, docVersion2.RevTreeID, historyList[len(historyList)-2], "second to last history entry should be current revTreeID")
 		assert.Equal(t, docVersion1.RevTreeID, historyList[len(historyList)-1], "last history entry should be parent revTreeID")
 
@@ -775,7 +775,7 @@ func TestDeltaSyncSendHistoryWithLegacyClient(t *testing.T) {
 // legacy revision and the document has multi-source HLV history, the history property contains the HLV previous
 // versions followed by the rev tree.
 //
-// This extends the CBG-5106 coverage from TestDeltaSyncSendHistoryWithLegacyClient to the case where HLV history
+// This extends the coverage from TestDeltaSyncSendHistoryWithLegacyClient to the case where HLV history
 // is non-empty (the document was updated by a different peer before SGW created rev2).
 //
 // Setup:

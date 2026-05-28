@@ -602,7 +602,7 @@ type revHistoryInput struct {
 // (e.g. "2-abc") but no version vector. After a node upgrades, new writes get both a rev tree ID
 // and a CV (current version). The combination of local/remote legacy status produces four scenarios:
 //
-//		Scenario 1: Pre-HLV protocol (subprotocol < V4), post-HLV protocol (subprotocol >= V4) and both sides have legacy rev
+//		Scenario 1: Pre-HLV protocol (subprotocol < V4) or post-HLV protocol (subprotocol >= V4) and both sides have legacy rev
 //		┌─────────────────────────────────────────────────────┐
 //		│  history property:     [revTreeHistory...]          │
 //		│  revTreeHistory property:  (not sent)               │
