@@ -720,7 +720,7 @@ func TestDeltaSyncSendHistoryWithLegacyClient(t *testing.T) {
 		require.NotEmpty(t, history, "history must not be empty — rev tree history is required for legacy client conflict detection")
 		historyList := strings.Split(history, ",")
 		// The last two entries in history should be the rev tree: current revID then parent revID
-		require.Len(t, len(historyList), 2, "history should rev tree entries only since hlv history is empty for this doc")
+		require.Len(t, historyList, 2, "history should rev tree entries only since hlv history is empty for this doc")
 		assert.Equal(t, docVersion2.RevTreeID, historyList[len(historyList)-2], "second to last history entry should be current revTreeID")
 		assert.Equal(t, docVersion1.RevTreeID, historyList[len(historyList)-1], "last history entry should be parent revTreeID")
 
