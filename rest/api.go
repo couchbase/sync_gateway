@@ -378,7 +378,6 @@ func (h *handler) handlePostResync() error {
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]any{
-				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
 				"collections":         resyncPostReqBody.Scope,
 				"reset":               reset,
