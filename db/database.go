@@ -2081,6 +2081,7 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 	enabledDeltaSync := options.DeltaSyncOptions.Enabled
 	enabledImport := autoImport || options.EnableXattr
 	enabledViews := options.UseViews
+	enabledMetadataMigration := options.UseSystemMetadataCollection
 
 	var queryNames []string
 	if enabledViews {
@@ -2136,7 +2137,7 @@ func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, opti
 		}
 	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames, collections)
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, enabledMetadataMigration, queryNames, collections)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {

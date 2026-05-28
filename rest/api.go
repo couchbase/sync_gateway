@@ -182,6 +182,61 @@ func (h *handler) handleGetAttachmentMigration() error {
 	return nil
 }
 
+// handleMetadataMigration is the admin-API counterpart to the automatic, cluster-aware
+// metadata migration arming logic in DatabaseContext.armMetadataMigrationTask. The
+// migration normally arms itself the moment all nodes report the opted-in config
+// applied — this endpoint exists for operators who need to drive the lifecycle
+// directly (e.g. retry after a give-up, stop a runaway migration). It does NOT
+// gate on UseSystemMetadataCollection: a manual start against a DB that never
+// opted in will simply find the MetadataStore is not a dual-collection wrapper
+// and no-op through to the per-DB complete write.
+func (h *handler) handleMetadataMigration() error {
+	if h.db.MetadataMigrationManager == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "Metadata migration manager is not initialized for this database")
+	}
+
+	action := h.getQuery("action")
+	if action == "" {
+		action = string(db.BackgroundProcessActionStart)
+	}
+	reset := h.getBoolQuery("reset")
+
+	if action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
+	}
+
+	if action == string(db.BackgroundProcessActionStart) {
+		if err := h.db.MetadataMigrationManager.Start(h.ctx(), map[string]any{
+			"reset": reset,
+		}); err != nil {
+			return err
+		}
+	} else {
+		if err := h.db.MetadataMigrationManager.Stop(h.ctx()); err != nil {
+			return err
+		}
+	}
+
+	status, err := h.db.MetadataMigrationManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(status)
+	return nil
+}
+
+func (h *handler) handleGetMetadataMigration() error {
+	if h.db.MetadataMigrationManager == nil {
+		return base.HTTPErrorf(http.StatusNotFound, "Metadata migration manager is not initialized for this database")
+	}
+	status, err := h.db.MetadataMigrationManager.GetStatus(h.ctx())
+	if err != nil {
+		return err
+	}
+	h.writeRawJSON(status)
+	return nil
+}
+
 func (h *handler) handleCompact() error {
 	action := h.getQuery("action")
 	if action == "" {

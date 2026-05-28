@@ -2623,7 +2623,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 		replicationID := SafeDocumentName(t, t.Name())
 
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)

@@ -503,7 +503,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
 
 		id := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		replicationStats, err := stats.DBReplicatorStats(id)
 		require.NoError(t, err)
@@ -738,7 +738,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 				require.NoError(t, err)
 				replicationStats, err := stats.DBReplicatorStats(id)
 				require.NoError(t, err)
@@ -913,7 +913,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 				require.NoError(t, err)
 				replicationStats, err := stats.DBReplicatorStats(id)
 				require.NoError(t, err)
@@ -1069,7 +1069,7 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 
 		require.Equal(t, legacyInitRevRt1, legacyRevRt2)
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		replicationStats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -1144,7 +1144,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
 		legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		replicationStats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)

@@ -246,7 +246,14 @@ func TestMigrateMetadataMovesUserEmailAndSession(t *testing.T) {
 	assert.Equal(t, sessionBody, gotSession)
 	primarySessionExpiry, err := ms.Primary().GetExpiry(ctx, sessionKey)
 	require.NoError(t, err)
-	assert.Equal(t, seededSessionExpiry, primarySessionExpiry, "session expiry must round-trip through migration unchanged")
+	// Allow a small drift on the absolute epoch — gocb's InsertOptions take a
+	// time.Duration, so absolute expiries are round-tripped through
+	// time.Until(...) on read and re-derived from "now" on write. A few seconds
+	// of wall-time elapse between the fallback read and the primary write means
+	// primary lands marginally before fallback. The point of this assertion is
+	// "TTL preserved", not "epoch byte-equal" — anything within ~10s is fine
+	// for session TTLs measured in hours.
+	assert.InDelta(t, seededSessionExpiry, primarySessionExpiry, 10, "session expiry must round-trip through migration approximately unchanged")
 	_, _, err = ms.Fallback().GetRaw(ctx, sessionKey)
 	assert.True(t, base.IsDocNotFoundError(err), "fallback session shadow should be gone")
 }

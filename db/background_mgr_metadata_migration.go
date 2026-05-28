@@ -114,6 +114,18 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		return nil
 	}
 
+	// promStats is nil for databases that haven't opted into the system metadata
+	// collection (NewDBStats does not initialize the MigrationStats section in that
+	// case) and for test contexts that construct a manager without a full DbStats —
+	// every update site below must nil-guard before touching it.
+	var promStats *base.MigrationStats
+	if m.dbContext.DbStats != nil {
+		promStats = m.dbContext.DbStats.MetadataMigration()
+	}
+	if promStats != nil {
+		promStats.State.Set(base.MigrationStatsStateInProgress)
+	}
+
 	now := time.Now().UTC()
 	if err := m.dbContext.MetadataMigrationStatusUpdater(ctx, func(s *base.MetadataMigrationStatus) error {
 		entry, ok := s.Databases[metadataID]
@@ -154,8 +166,12 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		if err := migrateSeqCounter(runCtx, ms, base.NewMetadataKeys(metadataID).SyncSeqKey(), seqStats); err != nil {
 			return fmt.Errorf("[%s] seq counter migration: %w", metadataMigrationLoggingID, err)
 		}
-		if applied := seqStats.SeqPoisonPillApplied.Load(); applied > 0 {
+		applied := seqStats.SeqPoisonPillApplied.Load()
+		if applied > 0 {
 			base.InfofCtx(ctx, base.KeyAll, "[%s] seq counter pilled and promoted to primary", metadataMigrationLoggingID)
+		}
+		if promStats != nil && applied > 0 {
+			promStats.SeqPoisonPillApplied.Add(applied)
 		}
 
 		// The migration loop runs until either:
@@ -180,6 +196,17 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 			// Out-of-scope reflects what is left on the fallback, not work done - record
 			// the latest pass's view rather than accumulating across re-scans.
 			m.docsOutOfScope.Store(stats.DocsOutOfScope.Load())
+			if promStats != nil {
+				promStats.Passes.Add(1)
+				promStats.DocsScannedTotal.Add(stats.DocsScannedTotal.Load())
+				promStats.DocsMigrated.Add(stats.DocsMigrated.Load())
+				promStats.Errors.Add(stats.Errors.Load())
+				// Out-of-scope / unknown-prefix counters are last-pass snapshots, not
+				// cumulative — pass-over-pass they re-scan the same static fallback set,
+				// so Set() rather than Add() matches the gauge semantics on these stats.
+				promStats.DocsOutOfScope.Set(stats.DocsOutOfScope.Load())
+				promStats.DocsUnknownPrefix.Set(int64(remaining))
+			}
 			base.InfofCtx(ctx, base.KeyAll,
 				"[%s] pass %d: migrated=%d failed=%d out_of_scope=%d remaining=%d (cumulative: processed=%d failed=%d)",
 				metadataMigrationLoggingID, pass+1,
@@ -220,6 +247,10 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		return nil
 	}); err != nil {
 		return base.RedactErrorf("[%s] Failed to mark per-DB migration complete: %v", metadataMigrationLoggingID, err)
+	}
+
+	if promStats != nil {
+		promStats.State.Set(base.MigrationStatsStateComplete)
 	}
 
 	if m.dbContext.PostMetadataMigrationCompleteFunc != nil {

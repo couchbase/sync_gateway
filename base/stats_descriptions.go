@@ -406,6 +406,26 @@ const (
 	ImportFeedProcessedCountDesc = "The total number of documents processed by import feed."
 )
 
+// Metadata Migration stats descriptions (per-DB, only populated when the database
+// has opted into the system metadata collection).
+const (
+	MetadataMigrationDocsScannedDesc = "The total number of fallback keys observed by metadata migration range scans across all passes."
+
+	MetadataMigrationDocsMigratedDesc = "The total number of metadata docs successfully moved from the fallback collection to the primary collection (or deleted, for transient docs)."
+
+	MetadataMigrationDocsOutOfScopeDesc = "The number of fallback keys classified as out-of-scope on the most recent pass (sibling-DB or bucket-level docs not owned by this database)."
+
+	MetadataMigrationDocsUnknownPrefixDesc = "The number of fallback keys with an unrecognised prefix observed on the most recent pass — these are left in place and cause an additional pass."
+
+	MetadataMigrationErrorsDesc = "The total number of per-doc errors observed during metadata migration moves or deletes across all passes."
+
+	MetadataMigrationSeqPoisonPillAppliedDesc = "The total number of times this node applied the seq-counter poison pill to initiate fallback→primary sequence handoff. Typically 0 or 1 per migration run."
+
+	MetadataMigrationPassesDesc = "The total number of MigrateMetadata range-scan passes executed for this database."
+
+	MetadataMigrationStateDesc = "The current per-DB metadata migration state: 0 = idle/not started, 1 = in_progress, 2 = complete."
+)
+
 // DB Replicators stats descriptions (ISGR Specific)
 const (
 	SGRDocsCheckedSentDesc = "The total number of documents checked for changes since replication started. This represents the number " +

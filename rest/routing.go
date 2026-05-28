@@ -169,6 +169,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleAttachmentMigration)).Methods("POST")
 	dbr.Handle("/_attachment_migration",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetAttachmentMigration)).Methods("GET")
+	dbr.Handle("/_metadata_migration",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleMetadataMigration)).Methods("POST")
+	dbr.Handle("/_metadata_migration",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetMetadataMigration)).Methods("GET")
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).createUserSession)).Methods("POST")
 	dbr.Handle("/_session/{sessionid}",

@@ -146,6 +146,58 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
+// TestMetadataMigrationStatsNotInitialisedWithoutOptIn verifies that the per-DB
+// MigrationStats Prometheus section is omitted entirely for databases that have not
+// opted into the system metadata collection. Pairs with InitMigrationStats being
+// gated on the UseSystemMetadataCollection flag in NewDBStats.
+func TestMetadataMigrationStatsNotInitialisedWithoutOptIn(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	dbCtx := rt.GetDatabase()
+	require.NotNil(t, dbCtx.DbStats)
+	assert.Nil(t, dbCtx.DbStats.MetadataMigration(), "migration stats section must be omitted when UseSystemMobileMetadataCollection is unset")
+}
+
+// TestMetadataMigrationStatsInitialisedWithOptIn verifies that opting into the
+// system metadata collection wires up the per-DB MigrationStats Prometheus
+// section and that its state gauge starts at idle.
+func TestMetadataMigrationStatsInitialisedWithOptIn(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	dbCtx := rt.GetDatabase()
+	require.NotNil(t, dbCtx.DbStats)
+	migStats := dbCtx.DbStats.MetadataMigration()
+	require.NotNil(t, migStats, "migration stats must be initialized when UseSystemMobileMetadataCollection=true")
+	// Default counters all start at 0; state gauge starts idle.
+	assert.Equal(t, int64(0), migStats.DocsMigrated.Value())
+	assert.Equal(t, int64(0), migStats.Errors.Value())
+	assert.Equal(t, int64(0), migStats.Passes.Value())
+	assert.Equal(t, base.MigrationStatsStateIdle, migStats.State.Value())
+}
+
+// TestMetadataMigrationRESTGetReportsStatus verifies the new GET
+// /{db}/_metadata_migration endpoint returns the background-task status payload.
+func TestMetadataMigrationRESTGetReportsStatus(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	body := resp.Body.String()
+	// The payload is the BackgroundManager status JSON — assert on a couple of
+	// stable fields rather than the full shape so the test isn't brittle to
+	// additions to MigrationManagerResponse.
+	assert.Contains(t, body, "docs_processed")
+	assert.Contains(t, body, "passes")
+}
+
 // TestMetadataMigrationOptInIsIrreversibleViaREST verifies that, once a database has opted in
 // to the system metadata collection, a config update over the REST API that attempts to disable
 // the opt-in (set to false or omit it) is rejected.

@@ -2064,6 +2064,57 @@ Attachment-Migration-status:
     - docs_changed
     - docs_processed
   title: Attachment-Migration-status
+Metadata-Migration-status:
+  description: The status of a metadata migration operation, which moves a database's `_sync:`-rooted metadata from the legacy `_default._default` keyspace into the `_system._mobile` collection.
+  type: object
+  properties:
+    status:
+      description: The status of the current metadata migration operation.
+      type: string
+      enum:
+        - running
+        - completed
+        - stopping
+        - stopped
+        - error
+    start_time:
+      description: The ISO-8601 date and time the metadata migration operation was started.
+      type: string
+    last_error:
+      description: The last error that occurred in the metadata migration operation (if any).
+      type: string
+    migration_id:
+      description: The UUID given to the metadata migration operation.
+      type: string
+    docs_processed:
+      description: The cumulative count of docs successfully moved (or deleted, for transient docs like heartbeats) across all passes.
+      type: integer
+    docs_failed:
+      description: The cumulative count of per-doc errors observed during metadata migration moves or deletes across all passes.
+      type: integer
+    docs_attempted:
+      description: The sum of `docs_processed` and `docs_failed`.
+      type: integer
+    docs_out_of_scope:
+      description: |-
+        The number of fallback keys classified as out-of-scope on the most recent pass.
+
+        These are keys that belong to sibling databases in the same bucket, or to bucket-level docs that have their own migration logic. They are left in place rather than being moved.
+      type: integer
+    passes:
+      description: |-
+        The total number of range-scan passes executed against the fallback collection.
+
+        Most migrations complete in a single pass — additional passes are triggered when documents written under an in-flight scan were missed and need to be caught on a follow-up pass.
+      type: integer
+  required:
+    - status
+    - start_time
+    - last_error
+    - docs_processed
+    - docs_failed
+    - passes
+  title: Metadata-Migration-status
 Compact-status:
   description: The status returned from a compaction.
   type: object

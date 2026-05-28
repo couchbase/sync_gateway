@@ -1,0 +1,91 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+post:
+  summary: Manage a metadata migration operation
+  description: |-
+    This allows a metadata migration operation to be started on the database, or to stop an existing running metadata migration operation.
+
+    Metadata migration moves a database's `_sync:`-rooted metadata from the legacy `_default._default` keyspace into the `_system._mobile` collection. It is normally armed automatically the moment all nodes in the cluster have applied the database configuration that opts into the system metadata collection — this endpoint is provided for operators that need to drive the lifecycle directly (e.g. retry after a give-up, stop a runaway migration).
+
+    Metadata migration is a single-node process and only one node in the cluster can be running it at a time. Other nodes contend for a cluster-wide heartbeat lock.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - name: action
+      in: query
+      description: Defines whether a metadata migration operation is being started or stopped.
+      schema:
+        type: string
+        default: start
+        enum:
+          - start
+          - stop
+    - name: reset
+      in: query
+      description: |-
+        This forces a fresh metadata migration start instead of trying to resume the previous failed migration operation.
+      schema:
+        type: boolean
+  responses:
+    '200':
+      description: Started or stopped metadata migration operation successfully.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Metadata-Migration-status
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+    '404':
+      description: Metadata migration manager is not initialized for this database.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '503':
+      description: Cannot start metadata migration due to another migration operation still running.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Database Management
+  operationId: post_db-_metadata_migration
+get:
+  summary: Get the status of the most recent metadata migration operation
+  description: |-
+    This will retrieve the current status of the most recent metadata migration operation for the database.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: Metadata migration status retrieved successfully.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Metadata-Migration-status
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+    '404':
+      description: Metadata migration manager is not initialized for this database.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Database Management
+  operationId: get_db-_metadata_migration
