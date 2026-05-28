@@ -645,7 +645,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			// Send a second _resync request.  This must return a 400 since the first one is blocked processing
+			// Send a second _resync request. This must return a 503 since the first one is still processing.
 			rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
@@ -829,7 +829,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			// grab new resync status from rest run, assert the resync if is not the same as the first
+			// grab new resync status from rest run, assert the resync id is not the same as the first
 			// run and that the docs processed is equal to number of docs we have created
 			resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 			assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
