@@ -24,7 +24,14 @@ const MetadataMigrationStatusDocID = "_sync:metadata_migration_status"
 type MigrationState string
 
 const (
-	MigrationStateNotStarted MigrationState = "not_started"
+	// MigrationStatePending means migration has not yet been observed complete on this bucket.
+	// It does NOT imply "no one has tried" — multiple attempts may have run and failed/crashed;
+	// Bootstrap.Attempts and Bootstrap.LastAttemptedAt expose that history. The state machine
+	// for the bucket-level bootstrap block is two-valued: pending → complete.
+	MigrationStatePending MigrationState = "pending"
+	// MigrationStateInProgress is only used by per-DB entries, where a BackgroundManager
+	// heartbeat doc serialises execution to one node at a time, so in_progress meaningfully
+	// indicates a lease-holder. The bucket-level bootstrap block never uses this value.
 	MigrationStateInProgress MigrationState = "in_progress"
 	MigrationStateComplete   MigrationState = "complete"
 )
@@ -48,10 +55,16 @@ type DatabaseMigrationStatus struct {
 	CompletedAt *time.Time     `json:"completed_at,omitempty"`
 }
 
-// BootstrapMigrationStatus is the bucket-global state for bootstrap docs.
+// BootstrapMigrationStatus is the bucket-global state for bootstrap docs. State is two-valued
+// (pending / complete); Attempts and LastAttemptedAt are observability fields, not part of the
+// state machine — they're written by every node that runs the migration loop, regardless of
+// outcome, so operators can tell the difference between "no one has tried yet" and "we've been
+// retrying for an hour."
 type BootstrapMigrationStatus struct {
-	State       MigrationState `json:"state"`
-	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	State           MigrationState `json:"state"`
+	CompletedAt     *time.Time     `json:"completed_at,omitempty"`
+	LastAttemptedAt *time.Time     `json:"last_attempted_at,omitempty"`
+	Attempts        int            `json:"attempts,omitempty"`
 }
 
 // NewMetadataMigrationStatus returns a freshly-stamped status doc with an empty databases map and
@@ -61,7 +74,7 @@ func NewMetadataMigrationStatus() *MetadataMigrationStatus {
 	return &MetadataMigrationStatus{
 		BucketMigrationID: uuid.NewString(),
 		Databases:         map[string]*DatabaseMigrationStatus{},
-		Bootstrap:         BootstrapMigrationStatus{State: MigrationStateNotStarted},
+		Bootstrap:         BootstrapMigrationStatus{State: MigrationStatePending},
 	}
 }
 

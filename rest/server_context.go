@@ -2415,6 +2415,22 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 
 	base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: all per-DB entries complete, starting bootstrap copy", base.MD(bucketName))
 
+	// Record the attempt for observability. Counter is bumped relative to the latest
+	// stored value on each CAS-retry iteration, so concurrent nodes' attempts sum
+	// correctly. Skip the bump if a peer has already recorded completion since the
+	// outer read — the attempt would be redundant work.
+	attemptedAt := time.Now().UTC()
+	if _, err := sc.BootstrapContext.Connection.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		if s.Bootstrap.State == base.MigrationStateComplete {
+			return nil
+		}
+		s.Bootstrap.LastAttemptedAt = &attemptedAt
+		s.Bootstrap.Attempts++
+		return nil
+	}); err != nil {
+		return fmt.Errorf("record bootstrap-migration attempt on bucket %q: %w", bucketName, err)
+	}
+
 	docIDs := bootstrapDocKeysToMigrate(ctx, registry)
 	if err := sc.BootstrapContext.Connection.MigrateBootstrapDocs(ctx, bucketName, docIDs); err != nil {
 		return fmt.Errorf("migrate bootstrap docs on bucket %q: %w", bucketName, err)
