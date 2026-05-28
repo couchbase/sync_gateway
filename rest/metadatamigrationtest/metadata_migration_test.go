@@ -263,6 +263,109 @@ func TestMetadataMigrationPreservesJSONDatatypeForUserDocs(t *testing.T) {
 	assert.NotContains(t, resp.Body.String(), "binary datatype", "the migrated user doc must not be Binary-tagged on primary")
 }
 
+// TestMetadataMigrationSkipsPrimaryWriteWhenUpdatedUserAlreadyMigrated pins the
+// in-flight-update / stale-fallback-shadow race through the real auth path:
+//
+//  1. A user is created in legacy mode, so the user doc lands on the eventual fallback
+//     collection (_default._default).
+//  2. The opt-in is flipped, switching the MetadataStore to the dual-collection wrapper.
+//     At this point fallback still holds the original user body; primary is empty.
+//  3. The user is updated via the admin API *before* the migration runs.
+//     `auth.Authenticator.Update` → `MetadataStore.Update` is read-through-fallback /
+//     write-to-primary, so the fresh body lands on primary while the stale original
+//     stays on fallback as a shadow.
+//  4. Migration runs and walks the fallback. For the user key, moveFallbackDoc's
+//     Primary().Add returns (added=false, err=nil) because primary already holds the
+//     fresher copy. That outcome MUST be treated as success — not an error — and the
+//     stale fallback shadow MUST be deleted, leaving the fresh primary copy intact.
+//
+// What this would catch:
+//   - moveFallbackDoc surfacing the already-exists Add as a stats.Errors increment.
+//   - A naive migration that overwrote primary with the stale fallback bytes.
+//   - A migration that skipped the fallback delete on the already-exists branch, leaving
+//     a stale shadow that would resurrect on the next non-xattr read.
+func TestMetadataMigrationSkipsPrimaryWriteWhenUpdatedUserAlreadyMigrated(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	// 1. Legacy mode: user write lands on _default._default.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	const originalUser = `{"name":"alice","password":"letmein","admin_channels":["public"]}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", originalUser)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// 2. Flip the opt-in: MetadataStore becomes the dual-collection wrapper. The user
+	// doc lives on fallback (_default._default); primary (_system._mobile) is empty.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.UpsertDbConfig("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	ms, ok := rt.GetDatabase().MetadataStore.(*base.MetadataStore)
+	require.True(t, ok, "after opt-in the MetadataStore must be the dual-collection wrapper")
+	userKey := rt.GetDatabase().MetadataKeys.UserKey("alice")
+
+	// Sanity: before any update, the user body is only on fallback.
+	_, _, err := ms.Fallback().GetRaw(rt.Context(), userKey)
+	require.NoError(t, err, "user doc must be on fallback before the in-flight update")
+	primaryExists, err := ms.Primary().Exists(rt.Context(), userKey)
+	require.NoError(t, err)
+	require.False(t, primaryExists, "primary must be empty before the in-flight update")
+
+	// 3. Update the user before the migration runs. Authenticator.Update goes through
+	// MetadataStore.Update, which reads through fallback and writes the fresh body to
+	// primary. After this the fallback still holds the original body as a stale shadow.
+	const updatedUser = `{"name":"alice","admin_channels":["public","secrets"]}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", updatedUser)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	primaryBodyBeforeMigration, _, err := ms.Primary().GetRaw(rt.Context(), userKey)
+	require.NoError(t, err, "primary must hold the post-update user body after the in-flight Update")
+	require.Contains(t, string(primaryBodyBeforeMigration), `"secrets"`,
+		"primary should carry the updated admin_channels, fallback should still hold the original")
+	fallbackBodyBeforeMigration, _, err := ms.Fallback().GetRaw(rt.Context(), userKey)
+	require.NoError(t, err, "stale fallback shadow must still exist before migration runs")
+	require.NotEqual(t, primaryBodyBeforeMigration, fallbackBodyBeforeMigration,
+		"primary fresh body and fallback stale shadow must structurally differ — otherwise this test isn't exercising the race")
+
+	// 4. Drive the migration directly through the admin endpoint and assert it reaches
+	// completed with zero failures — the already-exists Add MUST NOT be classified as
+	// an error.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+		body := st.Body.String()
+		assert.NotContains(c, body, `"status":"error"`, "migration must not error on the already-exists branch — payload: %s", body)
+		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+		assert.Contains(c, body, `"docs_failed":0`, "already-exists Add must not be counted as a failure — payload: %s", body)
+	}, 30*time.Second, 200*time.Millisecond)
+
+	// 5a. Primary must still hold the FRESH body — the migration must not have
+	// overwritten it with the stale fallback shadow.
+	primaryBodyAfterMigration, _, err := ms.Primary().GetRaw(rt.Context(), userKey)
+	require.NoError(t, err, "primary must still hold the user post-migration")
+	assert.Equal(t, primaryBodyBeforeMigration, primaryBodyAfterMigration,
+		"primary body must be byte-identical to the pre-migration fresh write — a regression that overwrote with the stale fallback shadow would change this")
+
+	// 5b. Fallback shadow must be gone — the already-exists short-circuit must still
+	// run the cleanup delete. Leaving the shadow would resurrect the stale body on
+	// any subsequent non-xattr read path.
+	_, _, err = ms.Fallback().GetRaw(rt.Context(), userKey)
+	assert.True(t, base.IsDocNotFoundError(err),
+		"stale fallback shadow must be cleaned up even when primary already held a fresher copy — got err: %v", err)
+
+	// 5c. End-to-end: the public auth view of the user is the fresh post-update shape.
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"secrets"`,
+		"GET /_user/alice must reflect the in-flight update — not the pre-update fallback shadow")
+}
+
 // TestMetadataMigrationOptInIsIrreversibleViaREST verifies that, once a database has opted in
 // to the system metadata collection, a config update over the REST API that attempts to disable
 // the opt-in (set to false or omit it) is rejected.
