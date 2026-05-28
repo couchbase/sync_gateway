@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -243,6 +244,17 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 	return m.heartbeaterPrefix
 }
 
+// IsLegacyHeartbeaterKey reports whether key is a heartbeater timeout document written under
+// this MetadataKeys' heartbeater namespace. CouchbaseHeartbeater writes a single doc shape —
+// `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID).
+//
+// Matching the literal `heartbeat_timeout:` suffix matters because the default-mode
+// heartbeaterPrefix is bare `_sync:`, which would otherwise classify every unrecognised
+// `_sync:` key as a heartbeater and risk deletion during metadata migration.
+func (m *MetadataKeys) IsLegacyHeartbeaterKey(key string) bool {
+	return strings.HasPrefix(key, m.heartbeaterPrefix+"heartbeat_timeout:")
+}
+
 // SGCfgPrefix returns a document prefix to use for cfg documents (cbgt)
 //
 //	format: _sync:{m_$}:cfg[groupID:]   (collections)
@@ -433,6 +445,21 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 		return fmt.Sprintf("%s:%s.%s:%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName, groupID)
 	}
 	return fmt.Sprintf("%s:%s.%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName)
+}
+
+// SyncSeqMigrationPill is the body written to the fallback sequence counter document during
+// metadata migration. Replacing the numeric counter with this JSON payload causes the next
+// MetadataStore.Incr for that key to take the self-heal branch: read the pill, bootstrap the
+// primary counter at LastSeq, and remove the fallback doc.
+//
+// SGMetadataMigrationPill is the discriminator that distinguishes a deliberately-placed pill
+// from arbitrary JSON that might otherwise be unmarshalled into this struct with zero
+// values. The JSON key is namespaced so a stray body with a generic `migration: true` field
+// cannot be misidentified as a pill.
+type SyncSeqMigrationPill struct {
+	PilledAt                string `json:"pilled_at"`
+	LastSeq                 uint64 `json:"last_seq"`
+	SGMetadataMigrationPill bool   `json:"sg_metadata_migration_pill"`
 }
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection

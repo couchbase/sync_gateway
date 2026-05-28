@@ -11,6 +11,9 @@ package base
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
+	"strconv"
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -251,8 +254,81 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 	return casOut, err
 }
 
+// Incr runs an Incr op on Primary (with some fallback handling and required migration steps).
+//
+// The outer loop only ever re-enters when another SG node moves the counter to primary
+// between our fallback.Incr and our pill-read GetRaw - exactly one extra iteration in practice.
 func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
-	return ms.primary.Incr(ctx, k, amt, def, exp)
+	const maxAttempts = 2
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ms.migrationComplete.Load() {
+			return ms.primary.Incr(ctx, k, amt, def, exp)
+		}
+
+		// Happy-path (already migrated incr - don't allow creation of doc via MaxUint64 def)
+		result, primaryErr := ms.primary.Incr(ctx, k, amt, math.MaxUint64, exp)
+		if primaryErr == nil {
+			return result, nil
+		}
+		if !IsDocNotFoundError(primaryErr) {
+			return 0, primaryErr
+		}
+
+		// Primary missing - try fallback with the "don't-create" sentinel def.
+		result, fbIncrErr := ms.fallback.Incr(ctx, k, amt, math.MaxUint64, exp)
+		if fbIncrErr == nil {
+			// Legacy unmigrated counter - pass through. The migration manager (or a later
+			// wrapper call after the pill is written) will move it to primary.
+			return result, nil
+		}
+
+		// Brand-new counter, create on primary at the caller's default.
+		if IsDocNotFoundError(fbIncrErr) {
+			return ms.primary.Incr(ctx, k, amt, def, exp)
+		}
+		// any other errors bubble up
+		if !IsCounterNonNumeric(fbIncrErr) {
+			return 0, fbIncrErr
+		}
+
+		// Fallback returned DELTA_BADVAL - we're mid-migration of the seq - the doc has
+		// been poison pilled but not yet moved. We'll attempt to move it here in case the
+		// migration process failed part way through.
+
+		// 1. read pill counter value
+		raw, _, fbErr := ms.fallback.GetRaw(ctx, k)
+		if IsDocNotFoundError(fbErr) {
+			// Sibling node finished the move between our fallback.Incr (which saw the
+			// pill and returned non-numeric) and this GetRaw. Loop back to the top -
+			// primary now holds the counter so the happy-path branch wins on retry.
+			continue
+		}
+		if fbErr != nil {
+			return 0, fbErr
+		}
+		var pill SyncSeqMigrationPill
+		if jsonErr := JSONUnmarshal(raw, &pill); jsonErr != nil || !pill.SGMetadataMigrationPill {
+			return 0, fmt.Errorf("MetadataStore.Incr: unrecognised fallback body for counter %s during migration", UD(k))
+		}
+
+		// 2. insert primary at pill.LastSeq. AddRaw returns (added=false, err=nil) on
+		// duplicate (both gocb and rosmar paths swallow the duplicate explicitly) so a
+		// sibling node that already finished the move is benign; we still proceed to step
+		// 3 to clean up our fallback view. IsCasMismatch is defensive for backends /
+		// wrappers that may surface a CAS error instead.
+		counterBytes := []byte(strconv.FormatUint(pill.LastSeq, 10))
+		if _, addErr := ms.primary.AddRaw(ctx, k, 0, counterBytes); addErr != nil && !IsCasMismatch(addErr) {
+			return 0, addErr
+		}
+		// 3. delete fallback pill
+		if delErr := ms.fallback.Delete(ctx, k); delErr != nil && !IsDocNotFoundError(delErr) {
+			WarnfCtx(ctx, "MetadataStore.Incr: failed to clear migrated fallback counter %s: %v", UD(k), delErr)
+		}
+
+		// 4. retry the caller's Incr on the now migrated primary
+		return ms.primary.Incr(ctx, k, amt, def, exp)
+	}
+	return 0, fmt.Errorf("MetadataStore.Incr: gave up after %d self-heal attempts for counter %s", maxAttempts, UD(k))
 }
 
 // ---- XattrStore – read operations (primary with fallback) ----

@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,11 +22,13 @@ import (
 )
 
 type MetadataMigrationManager struct {
-	docsProcessed atomic.Int64
-	docsFailed    atomic.Int64
-	MigrationID   string
-	dbContext     *DatabaseContext
-	lock          sync.RWMutex
+	docsProcessed  atomic.Int64 // cumulative successful moves/deletes across all passes
+	docsFailed     atomic.Int64 // cumulative per-doc errors across all passes
+	docsOutOfScope atomic.Int64 // last-pass snapshot - same static set is re-scanned each pass
+	passes         atomic.Int64 // number of MigrateMetadata invocations attempted
+	MigrationID    string
+	dbContext      *DatabaseContext
+	lock           sync.RWMutex
 }
 
 const MetadataMigrationManagerName = "metadata_migration"
@@ -47,9 +50,12 @@ func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager 
 
 type MigrationManagerResponse struct {
 	BackgroundManagerStatus
-	DocsProcessed int64  `json:"docs_processed"`
-	DocsFailed    int64  `json:"docs_failed"`
-	MigrationID   string `json:"migration_id"`
+	DocsProcessed  int64  `json:"docs_processed"`    // cumulative successful moves/deletes
+	DocsFailed     int64  `json:"docs_failed"`       // cumulative per-doc errors
+	DocsAttempted  int64  `json:"docs_attempted"`    // docs_processed + docs_failed
+	DocsOutOfScope int64  `json:"docs_out_of_scope"` // last-pass snapshot
+	Passes         int64  `json:"passes"`            // number of MigrateMetadata invocations
+	MigrationID    string `json:"migration_id"`
 }
 
 type MigrationManagerStatusDoc struct {
@@ -77,8 +83,10 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		}
 		m.docsProcessed.Store(status.DocsProcessed)
 		m.docsFailed.Store(status.DocsFailed)
+		m.docsOutOfScope.Store(status.DocsOutOfScope)
+		m.passes.Store(status.Passes)
 		m.MigrationID = status.MigrationID
-		base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resuming migration run with migration ID: %s, docs processed: %d, docs failed: %d", m.MigrationID, status.DocsProcessed, status.DocsFailed)
+		base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resuming migration run with migration ID: %s, docs processed: %d, docs failed: %d, passes: %d", m.MigrationID, status.DocsProcessed, status.DocsFailed, status.Passes)
 		return nil
 	}
 	return newRunInit()
@@ -121,10 +129,84 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		return base.RedactErrorf("[%s] Failed to mark per-DB migration in_progress: %v", metadataMigrationLoggingID, err)
 	}
 
-	// CBG-5228 will implement the actual copy + verify here. For now the manager treats the
-	// in_progress → complete transition as a no-op so the bucket-level all-complete trigger can
-	// be exercised end-to-end without waiting on the data movement implementation.
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Per-DB copy step is stubbed (CBG-5228) — recording complete", metadataMigrationLoggingID)
+	// If the MetadataStore is not a dual-collection wrapper there is nothing to copy —
+	// fall through to the per-DB complete write so the bucket-level all-complete trigger
+	// can still fire and the entry doesn't wedge in in_progress.
+	if ms, ok := m.dbContext.MetadataStore.(*base.MetadataStore); ok {
+		// Bridge the terminator into context cancellation so long-running ops inside
+		// migrateSeqCounter (retry loop) and MigrateMetadata (range scan iteration) can
+		// observe stop requests without us having to thread *SafeTerminator through every
+		// function signature.
+		runCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go func() {
+			select {
+			case <-terminator.Done():
+				cancel()
+			case <-runCtx.Done():
+			}
+		}()
+
+		// One-shot setup: poison-pill the fallback seq counter and nudge the wrapper to
+		// promote it to primary. Runs once per migration attempt — it has no per-doc-write
+		// race to recover from, so it does not belong inside the pass loop below.
+		seqStats := &MigrationStats{}
+		if err := migrateSeqCounter(runCtx, ms, base.NewMetadataKeys(metadataID).SyncSeqKey(), seqStats); err != nil {
+			return fmt.Errorf("[%s] seq counter migration: %w", metadataMigrationLoggingID, err)
+		}
+		if applied := seqStats.SeqPoisonPillApplied.Load(); applied > 0 {
+			base.InfofCtx(ctx, base.KeyAll, "[%s] seq counter pilled and promoted to primary", metadataMigrationLoggingID)
+		}
+
+		// The migration loop runs until either:
+		// - there are no in-scope remaining docs
+		// - we hit the max retries limit and give up
+		//
+		// Each pass scans the fallback DataStore, and remaining are in-scope docs we didn't move on this pass
+		const maxPasses = 16
+		for pass := 0; ; pass++ {
+			if terminator.IsClosed() {
+				// Mid-run stop: leave the per-DB entry in in_progress so the next manager
+				// invocation resumes from where we left off.
+				base.InfofCtx(ctx, base.KeyAll, "[%s] terminated mid-run after %d pass(es)", metadataMigrationLoggingID, pass)
+				return nil
+			}
+
+			stats := &MigrationStats{}
+			remaining, err := MigrateMetadata(runCtx, ms, metadataID, stats)
+			m.passes.Add(1)
+			m.docsProcessed.Add(stats.DocsMigrated.Load())
+			m.docsFailed.Add(stats.Errors.Load())
+			// Out-of-scope reflects what is left on the fallback, not work done - record
+			// the latest pass's view rather than accumulating across re-scans.
+			m.docsOutOfScope.Store(stats.DocsOutOfScope.Load())
+			base.InfofCtx(ctx, base.KeyAll,
+				"[%s] pass %d: migrated=%d failed=%d out_of_scope=%d remaining=%d (cumulative: processed=%d failed=%d)",
+				metadataMigrationLoggingID, pass+1,
+				stats.DocsMigrated.Load(), stats.Errors.Load(), stats.DocsOutOfScope.Load(), remaining,
+				m.docsProcessed.Load(), m.docsFailed.Load())
+			persistClusterStatus()
+			if err != nil {
+				return err
+			}
+
+			if remaining == 0 {
+				// finished successfully
+				break
+			}
+
+			if pass+1 >= maxPasses {
+				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d in-scope docs remaining", metadataMigrationLoggingID, maxPasses, remaining)
+				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s) remain", ms.Fallback().GetName(), maxPasses, remaining)
+			}
+		}
+
+		ms.SetMigrationComplete()
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Metadata migration complete after %d pass(es): %d migrated, %d failed, %d out of scope",
+			metadataMigrationLoggingID, m.passes.Load(), m.docsProcessed.Load(), m.docsFailed.Load(), m.docsOutOfScope.Load())
+	} else {
+		base.InfofCtx(ctx, base.KeyAll, "[%s] MetadataStore not running in primary/fallback mode - nothing to migrate", metadataMigrationLoggingID)
+	}
 
 	completedAt := time.Now().UTC()
 	if err := m.dbContext.MetadataMigrationStatusUpdater(ctx, func(s *base.MetadataMigrationStatus) error {
@@ -153,6 +235,8 @@ func (m *MetadataMigrationManager) ResetStatus() {
 	defer m.lock.Unlock()
 	m.docsProcessed.Store(0)
 	m.docsFailed.Store(0)
+	m.docsOutOfScope.Store(0)
+	m.passes.Store(0)
 	m.MigrationID = ""
 }
 
@@ -163,10 +247,15 @@ func (m *MetadataMigrationManager) SetProcessStatus(ctx context.Context, previou
 func (m *MetadataMigrationManager) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) (statusOut []byte, meta []byte, err error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
+	processed := m.docsProcessed.Load()
+	failed := m.docsFailed.Load()
 	resp := MigrationManagerResponse{
 		BackgroundManagerStatus: status,
-		DocsProcessed:           m.docsProcessed.Load(),
-		DocsFailed:              m.docsFailed.Load(),
+		DocsProcessed:           processed,
+		DocsFailed:              failed,
+		DocsAttempted:           processed + failed,
+		DocsOutOfScope:          m.docsOutOfScope.Load(),
+		Passes:                  m.passes.Load(),
 		MigrationID:             m.MigrationID,
 	}
 	statusOut, err = base.JSONMarshal(resp)
