@@ -638,7 +638,7 @@ type revHistoryInput struct {
 //		│  history property:     [revTreeHistory...]          │
 //		│  revTreeHistory prop:  (not sent)                   │
 //		│                                                     │
-//		│  The remote has a HLV version. Append the rev tree  │
+//		│  The remote has a HLV version. Assign the rev tree  │
 //		│  to history so the remote can parse for conflict    │
 //		│  checks.                                            │
 //		└─────────────────────────────────────────────────────┘
