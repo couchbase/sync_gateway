@@ -80,6 +80,15 @@ func TestMetadataStoreIncrSelfHealsPill(t *testing.T) {
 
 	_, _, err = ms.Fallback().GetRaw(ctx, key)
 	assert.True(t, IsDocNotFoundError(err), "expected pill to be removed after self-heal, got %v", err)
+
+	// Regression check: the seeded counter must be readable via GetCounter, which goes
+	// through SGJSONTranscoder. If the seed wrote with the Binary datatype flag instead
+	// of as a counter, this fails on Couchbase Server with "you must encode raw JSON
+	// data in a byte array or string" — exactly the failure mode the migration manager
+	// hit before switching from AddRaw to Incr for the post-pill seed.
+	counterValue, err := GetCounter(ctx, ms.Primary(), key)
+	require.NoError(t, err, "post-self-heal counter must be readable via GetCounter")
+	assert.Equal(t, uint64(50), counterValue)
 }
 
 // TestPrimaryAddRawDuplicateContract pins the AddRaw-on-duplicate contract that the

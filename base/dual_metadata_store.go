@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -311,14 +310,16 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 			return 0, fmt.Errorf("MetadataStore.Incr: unrecognised fallback body for counter %s during migration", UD(k))
 		}
 
-		// 2. insert primary at pill.LastSeq. AddRaw returns (added=false, err=nil) on
-		// duplicate (both gocb and rosmar paths swallow the duplicate explicitly) so a
-		// sibling node that already finished the move is benign; we still proceed to step
-		// 3 to clean up our fallback view. IsCasMismatch is defensive for backends /
-		// wrappers that may surface a CAS error instead.
-		counterBytes := []byte(strconv.FormatUint(pill.LastSeq, 10))
-		if _, addErr := ms.primary.AddRaw(ctx, k, 0, counterBytes); addErr != nil && !IsCasMismatch(addErr) {
-			return 0, addErr
+		// 2. seed primary at pill.LastSeq via Incr(amt=0, def=pill.LastSeq). Using Incr
+		// rather than AddRaw matters on Couchbase Server: AddRaw writes the doc with
+		// the Binary datatype flag, which SGJSONTranscoder (used by GetCounter on
+		// later reads) refuses to decode — causing the sequence allocator to fail
+		// post-migration with "you must encode raw JSON data in a byte array or
+		// string". Incr creates counters with the proper datatype. Race-tolerant:
+		// if a sibling already promoted the counter, Incr(0, def, 0) returns the
+		// existing value without overwriting.
+		if _, seedErr := ms.primary.Incr(ctx, k, 0, pill.LastSeq, 0); seedErr != nil {
+			return 0, seedErr
 		}
 		// 3. delete fallback pill
 		if delErr := ms.fallback.Delete(ctx, k); delErr != nil && !IsDocNotFoundError(delErr) {
