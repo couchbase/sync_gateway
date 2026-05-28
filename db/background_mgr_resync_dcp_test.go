@@ -142,7 +142,6 @@ func TestResyncDCPInit(t *testing.T) {
 			}()
 
 			options := make(map[string]any)
-			options["database"] = db
 			options["collections"] = base.NewCollectionNames()
 			if testCase.forceReset {
 				options["reset"] = true
@@ -206,7 +205,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 			defer db.Close(ctx)
 
 			options := map[string]any{
-				"database":            db,
 				"regenerateSequences": false,
 				"collections":         base.NewCollectionNames(),
 			}
@@ -253,7 +251,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				collectionName := scopeAndCollectionName.CollectionName()
 
 				options := map[string]any{
-					"database":            db,
 					"regenerateSequences": false,
 					"collections":         base.NewCollectionNames(),
 				}
@@ -293,7 +290,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
 				options := map[string]any{
-					"database":            db,
 					"regenerateSequences": false,
 					"collections":         base.NewCollectionNames(),
 				}
@@ -346,7 +342,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 			defer db.Close(ctx)
 
 			options := map[string]any{
-				"database":            db,
 				"regenerateSequences": false,
 				"collections":         base.NewCollectionNames(),
 			}
@@ -396,7 +391,6 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 			defer db.Close(ctx)
 
 			options := map[string]any{
-				"database":            db,
 				"regenerateSequences": false,
 				"collections":         base.NewCollectionNames(),
 			}
@@ -501,7 +495,6 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 			}
 
 			options := map[string]any{
-				"database":            db,
 				"regenerateSequences": false,
 				"collections":         base.NewCollectionNames(dbCollections[0].dataStore),
 			}
@@ -696,7 +689,6 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 	log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
 	options := map[string]any{
-		"database":            db,
 		"regenerateSequences": false,
 		"collections":         base.NewCollectionNames(),
 	}
@@ -903,7 +895,6 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	rs.Distributed = true
 
 	options := map[string]any{
-		"database":            db,
 		"regenerateSequences": false,
 		"collections":         base.NewCollectionNames(),
 	}
@@ -949,7 +940,6 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 	dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	options := map[string]any{
-		"database":            db,
 		"regenerateSequences": true,
 		"collections":         base.NewCollectionNames(),
 	}

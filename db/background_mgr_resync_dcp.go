@@ -30,6 +30,7 @@ import (
 // =====================================================================
 
 type ResyncManagerDCP struct {
+	db                           *DatabaseContext
 	docsProcessedLocal           atomic.Int64  // number of documents processed locally on this node since the last start or resume of resync
 	docsChangedLocal             atomic.Int64  // number of documents changed locally on this node since the last start or resume of resync
 	docsErroredLocal             atomic.Int64  // number of documents that failed to resync locally on this node since the last start or resume of resync
@@ -42,7 +43,6 @@ type ResyncManagerDCP struct {
 	docsTargeted                 atomic.Uint64 // number of documents targeted for resync, computed once at the start of a new run
 	ResyncID                     string
 	VBUUIDs                      []uint64
-	useXattrs                    bool
 	ResyncedCollections          base.CollectionNames
 	resyncCollectionInfo
 	lock        sync.RWMutex
@@ -80,12 +80,12 @@ type resyncCollectionInfo struct {
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys *base.MetadataKeys) *BackgroundManager {
+func NewResyncManagerDCP(metadataStore base.DataStore, metaKeys *base.MetadataKeys, db *DatabaseContext) *BackgroundManager {
 	return &BackgroundManager{
 		name: "resync",
 		Process: &ResyncManagerDCP{
+			db:                db,
 			completedvBuckets: newvBucketTracker(),
-			useXattrs:         useXattrs,
 		},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
@@ -98,10 +98,6 @@ func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys 
 
 // Init processes the options to start a resync process and sets them as struct memebers.
 func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
-	db, ok := options["database"].(*Database)
-	if !ok {
-		return errors.New("database option is required and must be of type *Database")
-	}
 	resyncCollections, ok := options["collections"].(base.CollectionNames)
 	if !ok {
 		return errors.New("collections option is required and must be of type base.CollectionNames")
@@ -110,12 +106,12 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	var collections DatabaseCollections
 	if len(resyncCollections) > 0 {
 		var err error
-		collections, err = db.collections(resyncCollections)
+		collections, err = r.db.collections(resyncCollections)
 		if err != nil {
 			return err
 		}
 	} else {
-		collections = slices.Collect(maps.Values(db.CollectionByID))
+		collections = slices.Collect(maps.Values(r.db.CollectionByID))
 		r.hasAllCollections = true
 	}
 	// add collection list to manager for use in status call
@@ -142,7 +138,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	}
 
 	if statusDoc.ResyncID != "" {
-		err := r.purgeCheckpoints(ctx, db, statusDoc.ResyncID)
+		err := r.purgeCheckpoints(ctx, statusDoc.ResyncID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to delete checkpoints for previous resync ID %q: %v, these will be abandoned and unused", statusDoc.ResyncID, err)
 		}
@@ -178,12 +174,12 @@ func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint
 }
 
 // purgeCheckpoints removes checkpoints for a given resync run.
-func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, db *Database, resyncID string) error {
+func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, resyncID string) error {
 	return base.PurgeDCPCheckpoints(
 		ctx,
-		db.MetadataStore,
-		GetResyncDCPCheckpointPrefix(db.DatabaseContext, resyncID, r.Distributed),
-		db.distributedDCPFeedMode(),
+		r.db.MetadataStore,
+		GetResyncDCPCheckpointPrefix(r.db, resyncID, r.Distributed),
+		r.db.distributedDCPFeedMode(),
 	)
 }
 
@@ -196,17 +192,10 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 
 // Run starts a DCP feed to process documents for resync.
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
-	db, ok := options["database"].(*Database)
-	if !ok {
-		return errors.New("database option is required and must be of type *Database")
-	}
+	db := r.db
 	regenerateSequences, ok := options["regenerateSequences"].(bool)
 	if !ok {
 		return errors.New("regenerateSequences option is required and must be of type bool")
-	}
-	resyncCollections, ok := options["collections"].(base.CollectionNames)
-	if !ok {
-		return errors.New("collections option is required and must be of type CollectionNames")
 	}
 	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
@@ -250,8 +239,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "Resync: Received DCP event %d for doc %v", event.Opcode, base.UD(docID))
 
-		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
-		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
+		// Ignore documents without xattrs to avoid processing unnecessary documents
+		if event.DataType&base.MemcachedDataTypeXattr == 0 {
 			return true
 		}
 		// Don't want to process raw binary docs
@@ -299,7 +288,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	if r.hasAllCollections {
 		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
 	} else {
-		base.InfofCtx(ctx, base.KeyAll, "running resync against specified collections: %s", base.MD(resyncCollections))
+		base.InfofCtx(ctx, base.KeyAll, "running resync against specified collections: %s", base.MD(r.ResyncedCollections))
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting DCP resync")
@@ -322,7 +311,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
 
 		r.dcpDoneChan = make(chan error)
-		checkPointPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, r.ResyncID, true)
+		checkPointPrefix := GetResyncDCPCheckpointPrefix(db, r.ResyncID, true)
 		endSeqNos, err := base.GetHighSeqNos(ctx, db.Bucket)
 		if err != nil {
 			return err
@@ -408,10 +397,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		})
 	} else {
 
-		clientOptions := r.getDCPClientOptions(db.DatabaseContext, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
-
+		clientOptions := r.getDCPClientOptions(db, r.ResyncID, r.ResyncedCollections.ToCollectionNameSet(), callback, false)
 		var err error
-		dcpClient, err = base.NewDCPClient(ctx, db.DatabaseContext.Bucket, clientOptions)
+		dcpClient, err = base.NewDCPClient(ctx, db.Bucket, clientOptions)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
@@ -441,60 +429,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return err
 		}
 
-		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
-		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged() > 0) {
-			err := initializePrincipalDocsIndex(ctx, db)
-			if err != nil {
-				return err
-			}
-		}
-		if regenerateSequences && resyncCollections == nil {
-			err := db.updateAllPrincipalsSequences(ctx)
-
-			if err != nil {
-				return fmt.Errorf("Error updating principal sequences: %w", err)
-			}
-		}
-
-		if r.DocsChanged() > 0 {
-			endSeq, err := db.sequences.getSequence(ctx)
-			if err != nil {
-				return err
-			}
-
-			collectionNames := make(base.ScopeAndCollectionNames, 0)
-			for _, databaseCollection := range db.CollectionByID {
-				collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
-			}
-			err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
-			if err != nil {
-				return fmt.Errorf("Could not invalidate principal documents: %w", err)
-			}
-
+		if err := invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections, r.DocsChanged()); err != nil {
+			return err
 		}
 
 		// If we regenerated sequences, update syncInfo for all collections affected
 		if regenerateSequences {
-			updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(r.collectionIDs))
-			for _, collectionID := range r.collectionIDs {
-				dbc, ok := db.CollectionByID[collectionID]
-				if !ok {
-					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
-				}
-				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID, db.ClusterCompatVersion()); err != nil {
-					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
-				}
-				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
-			}
-			collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
-			for _, dsName := range db.RequireResync {
-				_, ok := updatedDsNames[dsName]
-				if !ok {
-					collectionsRequiringResync = append(collectionsRequiringResync, dsName)
-				}
-			}
-			db.RequireResync = collectionsRequiringResync
+			updateSyncInfo(ctx, db, r.collectionIDs)
 		}
 	case <-terminator.Done():
 
@@ -508,6 +449,67 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 
 	return nil
+}
+
+// invalidatePrincipals invalidates principal documents after documents have been resynced.
+func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, resyncAllCollections bool, docsChanged int64) error {
+	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
+	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
+	if !db.UseViews() && ((regenerateSequences && resyncAllCollections) || docsChanged > 0) {
+		err := initializePrincipalDocsIndex(ctx, db)
+		if err != nil {
+			return err
+		}
+	}
+	if regenerateSequences && resyncAllCollections {
+		err := db.updateAllPrincipalsSequences(ctx)
+		if err != nil {
+			return fmt.Errorf("Error updating principal sequences: %w", err)
+		}
+	}
+
+	if docsChanged > 0 {
+		endSeq, err := db.sequences.getSequence(ctx)
+		if err != nil {
+			return err
+		}
+
+		collectionNames := make(base.ScopeAndCollectionNames, 0)
+		for _, databaseCollection := range db.CollectionByID {
+			collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
+		}
+		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
+		if err != nil {
+			return fmt.Errorf("Could not invalidate principal documents: %w", err)
+		}
+	}
+	return nil
+}
+
+// updateSyncInfo updates the syncInfo metadata for all collections that were resynced and updates the
+// DatabaseContext.RequireResync attribute
+func updateSyncInfo(ctx context.Context, db *DatabaseContext, collectionIDs []uint32) {
+	updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(collectionIDs))
+	for _, collectionID := range collectionIDs {
+		dbc, ok := db.CollectionByID[collectionID]
+		if !ok {
+			base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
+			continue
+		}
+		if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.Options.MetadataID, db.ClusterCompatVersion()); err != nil {
+			base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
+			continue
+		}
+		updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
+	}
+	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+	for _, dsName := range db.RequireResync {
+		_, ok := updatedDsNames[dsName]
+		if !ok {
+			collectionsRequiringResync = append(collectionsRequiringResync, dsName)
+		}
+	}
+	db.RequireResync = collectionsRequiringResync
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
@@ -718,7 +720,7 @@ type ResyncManagerStatusDocDCP struct {
 }
 
 // initializePrincipalDocsIndex creates the metadata indexes required for resync
-func initializePrincipalDocsIndex(ctx context.Context, db *Database) error {
+func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) error {
 	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
 	if !ok {
 		return errors.New("Cannot create indexes on non-Couchbase data store.")
