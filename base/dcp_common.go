@@ -232,7 +232,8 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 	// DCP will provide mutations that run to the end of the snapshot that contains the end sequence number.
 	endSeq, ok := c.endSeqNos[vBucketID]
 	if !ok {
-		AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets", vBucketID, c.endSeqNos)
+		AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets. Processing this sequence anyway", vBucketID, c.endSeqNos)
+		return true
 	}
 	return seq <= endSeq
 }
