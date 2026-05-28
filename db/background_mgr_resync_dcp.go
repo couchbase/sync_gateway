@@ -395,60 +395,13 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return err
 		}
 
-		// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
-		// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-		if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged() > 0) {
-			err := initializePrincipalDocsIndex(ctx, db)
-			if err != nil {
-				return err
-			}
-		}
-		if regenerateSequences && resyncCollections == nil {
-			err := db.updateAllPrincipalsSequences(ctx)
-
-			if err != nil {
-				return fmt.Errorf("Error updating principal sequences: %w", err)
-			}
-		}
-
-		if r.DocsChanged() > 0 {
-			endSeq, err := db.sequences.getSequence(ctx)
-			if err != nil {
-				return err
-			}
-
-			collectionNames := make(base.ScopeAndCollectionNames, 0)
-			for _, databaseCollection := range db.CollectionByID {
-				collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
-			}
-			err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
-			if err != nil {
-				return fmt.Errorf("Could not invalidate principal documents: %w", err)
-			}
-
+		if err := r.invalidatePrincipals(ctx, db, regenerateSequences, resyncCollections); err != nil {
+			return err
 		}
 
 		// If we regenerated sequences, update syncInfo for all collections affected
 		if regenerateSequences {
-			updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(r.collectionIDs))
-			for _, collectionID := range r.collectionIDs {
-				dbc, ok := db.CollectionByID[collectionID]
-				if !ok {
-					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
-				}
-				if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID, db.ClusterCompatVersion()); err != nil {
-					base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
-				}
-				updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
-			}
-			collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
-			for _, dsName := range db.RequireResync {
-				_, ok := updatedDsNames[dsName]
-				if !ok {
-					collectionsRequiringResync = append(collectionsRequiringResync, dsName)
-				}
-			}
-			db.RequireResync = collectionsRequiringResync
+			r.updateSyncInfo(ctx, db)
 		}
 	case <-terminator.Done():
 
@@ -462,6 +415,66 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	}
 
 	return nil
+}
+
+// invalidatePrincipals ensures the principal docs index is ready, updates principal sequences if requested,
+// and invalidates all principals when documents were changed by the resync run.
+func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Database, regenerateSequences bool, resyncCollections base.CollectionNames) error {
+	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
+	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
+	if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged() > 0) {
+		err := initializePrincipalDocsIndex(ctx, db)
+		if err != nil {
+			return err
+		}
+	}
+	if regenerateSequences && resyncCollections == nil {
+		err := db.updateAllPrincipalsSequences(ctx)
+		if err != nil {
+			return fmt.Errorf("Error updating principal sequences: %w", err)
+		}
+	}
+
+	if r.DocsChanged() > 0 {
+		endSeq, err := db.sequences.getSequence(ctx)
+		if err != nil {
+			return err
+		}
+
+		collectionNames := make(base.ScopeAndCollectionNames, 0)
+		for _, databaseCollection := range db.CollectionByID {
+			collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
+		}
+		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
+		if err != nil {
+			return fmt.Errorf("Could not invalidate principal documents: %w", err)
+		}
+	}
+	return nil
+}
+
+// updateSyncInfo updates the syncInfo metadata for all collections that were resynced and removes them from
+// RequireResync.
+func (r *ResyncManagerDCP) updateSyncInfo(ctx context.Context, db *Database) {
+	updatedDsNames := make(map[base.ScopeAndCollectionName]struct{}, len(r.collectionIDs))
+	for _, collectionID := range r.collectionIDs {
+		dbc, ok := db.CollectionByID[collectionID]
+		if !ok {
+			base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v (not found)", collectionID)
+		}
+		if err := base.SetSyncInfoMetadataID(ctx, dbc.dataStore, db.DatabaseContext.Options.MetadataID, db.ClusterCompatVersion()); err != nil {
+			base.WarnfCtx(ctx, "Completed resync, but unable to update syncInfo for collection %v: %v", collectionID, err)
+		}
+		updatedDsNames[base.ScopeAndCollectionName{Scope: dbc.ScopeName, Collection: dbc.Name}] = struct{}{}
+	}
+	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
+	for _, dsName := range db.RequireResync {
+		_, ok := updatedDsNames[dsName]
+		if !ok {
+			collectionsRequiringResync = append(collectionsRequiringResync, dsName)
+		}
+	}
+	db.RequireResync = collectionsRequiringResync
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
