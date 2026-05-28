@@ -387,17 +387,18 @@ func CreateBootstrapConnectionFromStartupConfig(ctx context.Context, config *Sta
 }
 
 type bootstrapConnectionOpts struct {
-	server               string
-	username             string
-	password             string
-	x509CertPath         string
-	x509KeyPath          string
-	caCertPath           string
-	bucketConnectionMode base.BucketConnectionMode
-	isServerless         bool
-	bucketCredentials    base.PerBucketCredentialsConfig
-	tlsSkipVerify        *bool
-	useXattrConfig       bool
+	server                      string
+	username                    string
+	password                    string
+	x509CertPath                string
+	x509KeyPath                 string
+	caCertPath                  string
+	bucketConnectionMode        base.BucketConnectionMode
+	isServerless                bool
+	bucketCredentials           base.PerBucketCredentialsConfig
+	tlsSkipVerify               *bool
+	useXattrConfig              bool
+	useSystemMetadataCollection bool
 }
 
 // bootstrapConnectionOptsConfigs returns a bootstrapConnectionOpts struct with values populated from the startup and db configs.
@@ -420,6 +421,7 @@ func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, 
 	opts.bucketCredentials = config.BucketCredentials
 	opts.tlsSkipVerify = config.Bootstrap.ServerTLSSkipVerify
 	opts.useXattrConfig = base.ValDefault(config.Unsupported.UseXattrConfig, false)
+	opts.useSystemMetadataCollection = base.ValDefault(config.Bootstrap.UseSystemMetadataCollection, DefaultUseSystemMetadataCollection)
 }
 
 // setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.
@@ -436,7 +438,7 @@ func setBootstrapConnectionOptsFromDbConfig(opts *bootstrapConnectionOpts, dbCon
 
 func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnectionOpts) (base.BootstrapConnection, error) {
 	if base.ServerIsWalrus(opts.server) {
-		return base.NewRosmarCluster(opts.server)
+		return base.NewRosmarCluster(opts.server, opts.useSystemMetadataCollection)
 	}
 
 	var connStr string
@@ -462,6 +464,7 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 		opts.isServerless,
 		opts.bucketCredentials,
 		opts.useXattrConfig,
+		opts.useSystemMetadataCollection,
 		opts.bucketConnectionMode)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
