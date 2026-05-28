@@ -245,14 +245,34 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 }
 
 // IsLegacyHeartbeaterKey reports whether key is a heartbeater timeout document written under
-// this MetadataKeys' heartbeater namespace. CouchbaseHeartbeater writes a single doc shape —
-// `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID).
+// this MetadataKeys' heartbeater namespace. CouchbaseHeartbeater writes
+// `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID),
+// where heartbeaterPrefix is the value returned by HeartbeaterPrefix(groupID) — i.e. it
+// already includes the configured groupID when one is set. The full on-disk shape is
+// therefore `<m.heartbeaterPrefix>(<groupID>:)?heartbeat_timeout:<nodeUUID>`, where the
+// inner groupID segment is present only for EE-with-import deployments configured with a
+// non-empty groupID.
 //
-// Matching the literal `heartbeat_timeout:` suffix matters because the default-mode
+// Matching the literal `heartbeat_timeout:` token matters because the default-mode
 // heartbeaterPrefix is bare `_sync:`, which would otherwise classify every unrecognised
 // `_sync:` key as a heartbeater and risk deletion during metadata migration.
 func (m *MetadataKeys) IsLegacyHeartbeaterKey(key string) bool {
-	return strings.HasPrefix(key, m.heartbeaterPrefix+"heartbeat_timeout:")
+	if !strings.HasPrefix(key, m.heartbeaterPrefix) {
+		return false
+	}
+	rest := key[len(m.heartbeaterPrefix):]
+	// No groupID: matches immediately after the heartbeater prefix.
+	if strings.HasPrefix(rest, "heartbeat_timeout:") {
+		return true
+	}
+	// With groupID: one extra colon-terminated segment between the prefix and the
+	// `heartbeat_timeout:` token. The groupID itself cannot contain `:` (config-key
+	// shape — see DefaultGroupID constant), so taking everything up to the first `:`
+	// as the candidate groupID is safe.
+	if i := strings.IndexByte(rest, ':'); i > 0 {
+		return strings.HasPrefix(rest[i+1:], "heartbeat_timeout:")
+	}
+	return false
 }
 
 // SGCfgPrefix returns a document prefix to use for cfg documents (cbgt)

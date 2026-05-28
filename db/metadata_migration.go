@@ -136,6 +136,23 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 		return incrErr
 	}
 
+	// The wrapper's Incr self-heal branch deletes the fallback pill once it seeds
+	// primary — but if primary already held the counter (a prior partial migration
+	// got that far before stopping), the wrapper takes the happy path on primary and
+	// never touches fallback. Without this idempotent cleanup, the pill survives as
+	// `_sync:[m_<id>:]seq` and the next range-scan pass classifies it as
+	// unknown-prefix, wedging the migration. Re-reading and gating on the pill
+	// discriminator avoids deleting a legitimate counter that another process raced
+	// in between the pill phase and here.
+	if raw, _, getErr := ms.Fallback().GetRaw(ctx, seqKey); getErr == nil {
+		var existing base.SyncSeqMigrationPill
+		if jsonErr := base.JSONUnmarshal(raw, &existing); jsonErr == nil && existing.SGMetadataMigrationPill {
+			if delErr := ms.Fallback().Delete(ctx, seqKey); delErr != nil && !base.IsDocNotFoundError(delErr) {
+				base.WarnfCtx(ctx, "migrateSeqCounter: failed to clean up stale fallback pill for %s: %v", base.UD(seqKey), delErr)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -144,19 +161,31 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 // MetadataKeys prefix accessors so namespacing (the `m_<id>:` infix) is part of the prefix
 // match for namespaced metadataIDs. For the legacy `_default` metadataID, where each
 // inverted-form prefix (e.g. `_sync:user:`) overlaps with sibling DBs' inverted-form keys
-// (`_sync:user:m_<other>:…`), an additional `+ base.MetadataIdPrefix` HasPrefix check
-// excludes those sibling keys — for namespaced metadataIDs the additional check is a
-// no-op because the prefix already contains `m_<id>:`.
+// (`_sync:user:m_<other>:…`), isOurs additionally excludes the *full* sibling shape
+// (`prefix + m_<X>:`, requiring a `:` after the namespace) — this keeps a legacy default
+// user literally named `m_alice` correctly classified as ours.
 //
 // Anything that doesn't match a known family is split between out-of-scope (sibling-DB
-// standard form, bucket-level bootstrap docs) and genuinely unknown.
+// standard form, bucket-level bootstrap docs, `_sync:syncdata*` and `_sync:syncInfo`
+// which the design plan keeps in the source collection) and genuinely unknown.
 func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID, key string, stats *MigrationStats) {
-	// isOurs matches a prefix and, where the prefix doesn't already encode our DB's
-	// metadataID, defensively excludes sibling-DB inverted-form keys via the trailing
-	// `m_` guard. For namespaced metadataIDs the guard is a no-op (the
-	// keys.XxxKeyPrefix() already encodes the unique namespace).
+	// isOurs matches a prefix and excludes sibling-DB inverted-form keys. For namespaced
+	// metadataIDs the keys.XxxKeyPrefix() already encodes the unique `m_<id>:` segment
+	// so isSiblingInverted is structurally a no-op there. For the legacy default DB
+	// the discriminator is "starts with prefix+m_ AND has another colon" — that
+	// distinguishes `_sync:user:m_otherDB:alice` (sibling) from `_sync:user:m_alice`
+	// (our user whose username happens to start with `m_`).
 	isOurs := func(prefix string) bool {
-		return strings.HasPrefix(key, prefix) && !strings.HasPrefix(key, prefix+base.MetadataIdPrefix)
+		if !strings.HasPrefix(key, prefix) {
+			return false
+		}
+		rest := key[len(prefix):]
+		if !strings.HasPrefix(rest, base.MetadataIdPrefix) {
+			return true
+		}
+		// starts with `m_` — sibling shape only if there's another `:` separating the
+		// metadataID from the rest of the key.
+		return !strings.Contains(rest[len(base.MetadataIdPrefix):], ":")
 	}
 	// thisMetadataID is `_sync:m_<id>:` for namespaced metadataIDs — used to exclude OUR
 	// standard-form keys from the sibling-DB out-of-scope check. Empty for default mode
@@ -180,8 +209,18 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		isOurs(keys.BackgroundProcessStatusPrefix("")),
 		isOurs(keys.ResyncHeartbeaterPrefix()),
 		isOurs(keys.ResyncCfgPrefix()):
-		// move to primary (fetch, insert and delete)
-		moveFallbackDoc(ctx, ms, key, stats)
+		// JSON-bodied metadata. moveFallbackDoc(binary=false) preserves the JSON
+		// datatype flag so strict readers (auth, RawJSONTranscoder) can decode the
+		// migrated doc on primary.
+		moveFallbackDoc(ctx, ms, key, false, stats)
+
+	case
+		isOurs(keys.UnusedSeqPrefix()),
+		isOurs(keys.UnusedSeqRangePrefix()):
+		// Binary-bodied metadata (8/16-byte little-endian uint64 payload written by
+		// sequenceAllocator.releaseSequence / releaseSequenceRange). Must preserve
+		// the Binary datatype flag — change_listener.go relies on these docs.
+		moveFallbackDoc(ctx, ms, key, true, stats)
 
 	// Sibling DBs' standard form `_sync:m_<other>:…`, but NOT our own metadata ID
 	case
@@ -189,8 +228,19 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 			(thisMetadataID == "" || !strings.HasPrefix(key, thisMetadataID)):
 		stats.DocsOutOfScope.Add(1)
 
-	// Sibling DBs' inverted-form keys (per the migration design doc's `m_` convention)
-	// and bucket-level bootstrap docs.
+	case key == keys.SyncSeqKey():
+		// migrateSeqCounter handles the seq counter via the pill + self-heal +
+		// fallback-cleanup dance before the range-scan loop ever runs. If the range
+		// scan still sees it here (rare: migrateSeqCounter cleanup raced an
+		// in-progress write, or this is a re-run after a partial prior migration),
+		// treat it as out-of-scope rather than unknown — the seq counter has its own
+		// dedicated handling and the range scan is not the right path to move it.
+		stats.DocsOutOfScope.Add(1)
+
+	// Sibling DBs' inverted-form keys (per the migration design doc's `m_` convention),
+	// bucket-level bootstrap docs, and per-collection metadata (`_sync:syncdata*`,
+	// `_sync:syncInfo`) which the design plan keeps in the source collection — these
+	// are *not* part of the per-DB metadata migration.
 	case
 		strings.HasPrefix(key, base.SyncDocPrefix+"user:"+base.MetadataIdPrefix),
 		strings.HasPrefix(key, base.SyncDocPrefix+"role:"+base.MetadataIdPrefix),
@@ -199,7 +249,10 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		strings.HasPrefix(key, base.SyncDocPrefix+base.DCPCheckpointPrefix+base.MetadataIdPrefix),
 		key == base.SGRegistryKey,
 		strings.HasPrefix(key, base.PersistentConfigPrefixWithoutGroupID),
-		key == base.SGSyncInfo:
+		key == base.SGSyncInfo,
+		key == base.SyncFunctionKeyWithoutGroupID,
+		strings.HasPrefix(key, base.SyncFunctionKeyWithoutGroupID+":"),
+		strings.HasPrefix(key, base.CollectionSyncFunctionKeyWithoutGroupID+":"):
 		// ignore - either other DBs or bucket-level docs that require their own migration logic
 		stats.DocsOutOfScope.Add(1)
 
@@ -220,6 +273,15 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 // moveFallbackDoc moves a single doc from the fallback collection to the primary
 // collection and removes the fallback copy. Idempotent and safe to re-run.
 //
+// `binary` selects the datatype flag for the primary write: false routes through
+// `MetadataStore.Add` (SGJSONTranscoder, which writes []byte as JSON datatype 0x02);
+// true routes through `MetadataStore.AddRaw` (SGRawTranscoder, which writes []byte as
+// Binary datatype 0x03). Most SG metadata is JSON — only the `unusedSeq` / `unusedSeqs`
+// families are binary (8-/16-byte little-endian uint64 payloads written via AddRaw by
+// sequenceAllocator). Picking the wrong datatype here is silent at write time but
+// surfaces later: strict readers like the auth path's RawJSONTranscoder reject a
+// Binary-tagged user/role/session doc with "binary datatype is not supported".
+//
 // The range scan that drives the migration runs with IDsOnly=true, so we never receive
 // bodies on the scan path. The per-key fetch here is a single subdoc LookupIn that
 // carries the body and the document's expiry (`$document.exptime`) together, so the
@@ -230,9 +292,9 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 // Authenticator.Update() during an in-flight migration is "read-through fallback, write
 // to primary" (see base/dual_metadata_store.go Update), so a primary copy that beat us
 // here is fresher than ours and must not be overwritten — we just drop the stale
-// fallback shadow. AddRaw returns (added=false, err=nil) on duplicate; the
+// fallback shadow. Add/AddRaw both return (added=false, err=nil) on duplicate; the
 // IsCasMismatch check is defensive for backends that surface a CAS error instead.
-func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, stats *MigrationStats) {
+func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, binary bool, stats *MigrationStats) {
 	raw, expiry, err := fetchFallbackBodyAndExpiry(ctx, ms, key)
 	if base.IsDocNotFoundError(err) {
 		return
@@ -242,7 +304,17 @@ func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, st
 		stats.Errors.Add(1)
 		return
 	}
-	if _, addErr := ms.Primary().AddRaw(ctx, key, expiry, raw); addErr != nil && !base.IsCasMismatch(addErr) {
+	var addErr error
+	if binary {
+		_, addErr = ms.Primary().AddRaw(ctx, key, expiry, raw)
+	} else {
+		// `Add` with a `[]byte` value writes via SGJSONTranscoder, which routes
+		// `[]byte` through gocb.NewRawJSONTranscoder().Encode — i.e. raw bytes,
+		// JSON datatype flag (0x02). Matches what the auth code path produces on a
+		// fresh write and avoids the strict-transcoder rejection on read.
+		_, addErr = ms.Primary().Add(ctx, key, expiry, raw)
+	}
+	if addErr != nil && !base.IsCasMismatch(addErr) {
 		base.WarnfCtx(ctx, "metadata migration: primary add failed for %s: %v", base.UD(key), addErr)
 		stats.Errors.Add(1)
 		return
