@@ -327,9 +327,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 func TestResyncManagerDCPRunTwice(t *testing.T) {
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
-			if testCase.Distributed {
-				t.Skip("Enable in CBG-5419")
-			}
 			docsToCreate := 1000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
