@@ -932,7 +932,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	}
 
 	if redactedRev != nil {
-		localIsLegacyRev := base.IsRevTreeID(redactedRev.RevID)
+		localIsLegacyRev := redactedRev.CV == nil
 		var revTreeHistory []string
 		if !bsc.useHLV() || localIsLegacyRev || remoteIsLegacyRev || bsc.sendRevTreeProperty() {
 			var err error
