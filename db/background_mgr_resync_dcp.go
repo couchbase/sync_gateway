@@ -395,7 +395,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return err
 		}
 
-		if err := r.invalidatePrincipals(ctx, db, regenerateSequences, resyncCollections); err != nil {
+		if err := r.invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections); err != nil {
 			return err
 		}
 
@@ -419,16 +419,16 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 // invalidatePrincipals ensures the principal docs index is ready, updates principal sequences if requested,
 // and invalidates all principals when documents were changed by the resync run.
-func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Database, regenerateSequences bool, resyncCollections base.CollectionNames) error {
+func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Database, regenerateSequences bool, resyncAllCollections bool) error {
 	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-	if !db.UseViews() && ((regenerateSequences && resyncCollections == nil) || r.DocsChanged() > 0) {
+	if !db.UseViews() && ((regenerateSequences && resyncAllCollections) || r.DocsChanged() > 0) {
 		err := initializePrincipalDocsIndex(ctx, db)
 		if err != nil {
 			return err
 		}
 	}
-	if regenerateSequences && resyncCollections == nil {
+	if regenerateSequences && resyncAllCollections {
 		err := db.updateAllPrincipalsSequences(ctx)
 		if err != nil {
 			return fmt.Errorf("Error updating principal sequences: %w", err)
