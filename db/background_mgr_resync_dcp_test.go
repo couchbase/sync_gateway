@@ -196,7 +196,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 			docsToCreate := 1000
 			if base.UnitTestUrlIsWalrus() {
 				// rosmar runs too quickly, increase doc count
-				docsToCreate *= 3
+				docsToCreate *= 5
 			}
 			db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 				docsToCreate:                 docsToCreate,
@@ -234,7 +234,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
 			t.Run("Resync without updating sync function", func(t *testing.T) {
