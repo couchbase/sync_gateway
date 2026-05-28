@@ -1789,9 +1789,6 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 }
 
-// Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
-// SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
-// once we add the ability to take a bucket offline/online.
 func TestLongpollWithWildcard(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -1812,10 +1809,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
 	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
 	// otherwise the count for the user pseudo-channel will always be non-zero
-	db, err := rt.ServerContext().GetDatabase(ctx, "db")
-	require.NoError(t, err)
-	err = db.RestartListener(base.TestCtx(t))
-	require.NoError(t, err)
+	rt.GetDatabase().RestartChangeListener(t, false)
 	// Put a document to increment the counter for the * channel
 	rt.PutDoc("lost", `{"channel":["ABC"]}`)
 

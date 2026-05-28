@@ -540,6 +540,18 @@ func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
 	}, 30*time.Second, 100*time.Millisecond, "Database initialization did not complete within expected time")
 }
 
+// SetDistributedResync forces the ResyncManager into a single node or distributed resync mode. This should only be called before
+// resync is run for the first time and needs to be called each time a DatabaseContext is reinitialized.
+func (rt *RestTester) SetDistributedResync(useDistributed bool) {
+	rs, ok := rt.GetDatabase().ResyncManager.Process.(*db.ResyncManagerDCP)
+	require.True(rt.TB(), ok)
+	if useDistributed {
+		rs.Distributed = true
+	} else {
+		require.False(rt.TB(), rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
+	}
+}
+
 type RawDocResponse struct {
 	Xattrs RawDocXattrs `json:"_xattrs"`
 }

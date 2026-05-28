@@ -59,8 +59,7 @@ func TestReproduce2383(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter.Wait()
-	collection, _ := rt.GetSingleTestDatabaseCollection()
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
@@ -1967,9 +1966,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Initialize query count
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
@@ -2025,9 +2022,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	}
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Issue a since=0 changes request, with limit less than the number of PBS documents
 
@@ -2099,9 +2094,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
 	changesJSON := `{"since":15, "limit":50}`
@@ -2163,9 +2156,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Write some more docs to the bucket, with a gap before the first PBS sequence
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc11", `{"channels":["ABC"]}`)
@@ -2229,9 +2220,7 @@ func TestChangesViewBackfill(t *testing.T) {
 
 	cacheWaiter.AddAndWait(3)
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4", `{"channels":["PBS"]}`)
@@ -2286,9 +2275,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	cacheWaiter.Add(3)
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -2467,9 +2454,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 			}
 			cacheWaiter.AddAndWait(test.totalDocuments * 2)
 
-			collection, ctx := rt.GetSingleTestDatabaseCollection()
-			// Flush the channel cache
-			assert.NoError(t, collection.FlushChannelCache(ctx))
+			rt.GetDatabase().FlushChannelCache(t)
 			startQueryCount := testDb.GetChannelQueryCount()
 
 			// Issue a since=0 changes request.
@@ -2525,9 +2510,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 	cacheWaiter.AddAndWait(50)
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// 1. Issue a since=0 changes request, validate results
 	changesJSON := fmt.Sprintf(`{"since":0}`)
@@ -2540,7 +2523,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 
 	// 2. Same again, but with limit on the changes request
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 	require.Len(t, changes.Results, 25)
@@ -2582,9 +2565,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
 	cacheWaiter.AddAndWait(10)
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
@@ -2629,9 +2610,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	// Flush the channel cache
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -2953,9 +2932,8 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 		}
 	}
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	// Active only NO Limit, POST
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
@@ -2969,7 +2947,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, POST
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 5)
@@ -2982,7 +2960,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, GET
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "bernard")
 	require.Len(t, changes.Results, 5)
 	for _, entry := range changes.Results {
@@ -2993,7 +2971,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit set higher than number of revisions, POST
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
 	require.Len(t, changes.Results, 8)
@@ -3006,7 +2984,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// No limit active only, GET, followed by normal (https://github.com/couchbase/sync_gateway/issues/2955)
-	assert.NoError(t, collection.FlushChannelCache(ctx))
+	rt.GetDatabase().FlushChannelCache(t)
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard")
 	require.Len(t, changes.Results, 8)
 	for _, entry := range changes.Results {

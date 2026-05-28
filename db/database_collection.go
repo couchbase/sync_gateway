@@ -211,12 +211,6 @@ func (c *DatabaseCollection) GetRevisionCacheForTest() *collectionRevisionCache 
 	return &c.revisionCache
 }
 
-// FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
-func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
-	return c.dbCtx.changeCache.Clear(ctx)
-}
-
 // ForceAPIForbiddenErrors returns true if we return 403 vs empty docs. This is controlled at the database level.
 func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 	return c.dbCtx.Options.UnsupportedOptions != nil && c.dbCtx.Options.UnsupportedOptions.ForceAPIForbiddenErrors

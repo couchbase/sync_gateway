@@ -1170,3 +1170,48 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	}
 	return nil
 }
+
+// RestartChangeListener stops and restarts the changes feed. If flushCache is true, clear the cache.
+func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) {
+	ctx := db.AddDatabaseLogContext(base.TestCtx(t))
+	db.mutationListener.Stop(ctx)
+
+	if flushCache {
+		require.NoError(t, db.changeCache.Clear(ctx))
+	}
+	var err error
+	db.mutationListener, err = newChangeListener(db.Bucket.GetName(), db.Options.GroupID, db)
+	require.NoError(t, err)
+	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
+	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
+	require.NoError(t, db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore))
+}
+
+// FlushChannelCache stops the changes feed, clears the channel and change cache, and restarts the changes feed.
+func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
+	db.RestartChangeListener(t, true)
+}
+
+type ResyncTestCase struct {
+	Name        string // name of test case
+	Distributed bool   // use distributed resync
+}
+
+// ResyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
+func ResyncTestModes() []ResyncTestCase {
+	testCases := []ResyncTestCase{
+		{
+			Name:        "distributed=false",
+			Distributed: false,
+		},
+	}
+	/* CBG-5184 enable tests
+	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
+		testCases = append(testCases, ResyncTestCase{
+			Name:        "distributed=true",
+			Distributed: true,
+		})
+	}
+	*/
+	return testCases
+}

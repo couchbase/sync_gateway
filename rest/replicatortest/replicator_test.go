@@ -4791,7 +4791,6 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
-		ctx2 := passiveRT.Context()
 		ctx1 := activeRT.Context()
 
 		// Create doc1 on activeRT
@@ -4893,7 +4892,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, passiveRTCollection.FlushChannelCache(ctx2))
+		passiveRT.GetDatabase().FlushChannelCache(t)
 		passiveRT.GetDatabase().FlushRevisionCacheForTest()
 
 		require.NoError(t, ar.Start(ctx1))

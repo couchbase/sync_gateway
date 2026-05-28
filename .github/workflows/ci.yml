@@ -101,7 +101,7 @@ jobs:
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -118,7 +118,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
@@ -137,7 +137,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -154,7 +154,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -174,7 +174,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -191,7 +191,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -209,7 +209,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -226,7 +226,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -247,7 +247,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -264,7 +264,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -315,7 +315,7 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
         shell: bash
       - name: Test Summary
         if: always()
@@ -332,7 +332,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
@@ -353,7 +353,8 @@ jobs:
     name: Run govulncheck
     steps:
       - id: govulncheck
-        uses: golang/govulncheck-action@v1
+        # tag for repo at v1 is not updated
+        uses: golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
         with:
            go-version-input: *go_version
            go-package: ./...

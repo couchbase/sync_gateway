@@ -120,12 +120,15 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	assert.True(t, applied, "config should be fully applied once node B has applied the new version")
 	assert.Empty(t, missing)
 
-	// The armMetadataMigrationTask goroutine on node A polls every 10s. Once the gate is open it
-	// starts the migration; wait for that to happen.
+	// Either node can win the race to start the background migration job, so check both.
+	dbCtxB := rtB.GetDatabase()
+	require.NotNil(t, dbCtxB.MetadataMigrationManager)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		state := dbCtxA.MetadataMigrationManager.GetRunState()
-		assert.NotEqual(c, db.BackgroundProcessState(""), state,
-			"migration should have been started after all nodes applied the config")
+		stateA := dbCtxA.MetadataMigrationManager.GetRunState()
+		stateB := dbCtxB.MetadataMigrationManager.GetRunState()
+		started := stateA != db.BackgroundProcessState("") || stateB != db.BackgroundProcessState("")
+		assert.True(c, started,
+			"migration should have been started on at least one node after all nodes applied the config")
 	}, 30*time.Second, 100*time.Millisecond)
 }
 
