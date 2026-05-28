@@ -197,6 +197,72 @@ func TestMetadataMigrationRESTGetReportsStatus(t *testing.T) {
 	assert.Contains(t, body, "passes")
 }
 
+// TestMetadataMigrationPreservesJSONDatatypeForUserDocs is a regression test for the
+// AddRaw → SGRawTranscoder datatype regression: prior to the moveFallbackDoc datatype
+// fix, every user/role/session doc migrated to _system._mobile landed with the Binary
+// datatype flag (0x03000000), and subsequent reads through gocb.NewRawJSONTranscoder
+// (used by the auth path) failed with HTTP 500 "binary datatype is not supported by
+// RawJSONTranscoder". The seq-counter equivalent was fixed via Incr in CBG-5228;
+// this test pins the same invariant for the per-doc move.
+//
+// The test only exercises the regression on a Couchbase Server backing store: Rosmar's
+// transcoder handling is lax enough that the bug doesn't manifest in-memory. We rely on
+// CI to run the SG_TEST_BACKING_STORE=Couchbase variant — under Rosmar the test still
+// runs but the assertion is effectively trivial.
+func TestMetadataMigrationPreservesJSONDatatypeForUserDocs(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	// Create the database without the opt-in so the user write lands in
+	// _default._default (the eventual fallback collection). Authenticator.Update writes
+	// users with the JSON datatype on disk — this gives us a real pre-migration shadow.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	const userPayload = `{"name":"alice","password":"letmein","admin_channels":["public"]}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", userPayload)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Read alice back to capture the working pre-migration shape.
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`)
+
+	// Flip the opt-in on the existing database. This rebuilds the MetadataStore as a
+	// dual-collection wrapper with primary=_system._mobile, fallback=_default._default —
+	// so alice now lives on fallback exactly as she would after the upgrade in production.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.UpsertDbConfig("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Drive the migration directly through the admin endpoint — the auto-arming path
+	// gates on ConfigFullyAppliedFunc which depends on cluster-compat polling cycles we
+	// don't want to wait on for a single-node test. The POST returns the running status;
+	// poll the GET endpoint until it reports completed (or error, which fails the test).
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+		body := st.Body.String()
+		// "completed" is the happy path; bail out on "error" so we don't poll forever.
+		assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
+		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+	}, 30*time.Second, 200*time.Millisecond)
+
+	// THE regression check: reading alice goes through `auth.Authenticator.GetPrincipal`,
+	// which on Couchbase Server uses gocb.NewRawJSONTranscoder. A Binary-tagged primary
+	// doc surfaces here as a 500 with the message "binary datatype is not supported by
+	// RawJSONTranscoder" — exactly the failure mode this fix addresses. A JSON-tagged
+	// doc decodes cleanly and we get the user payload back at 200 OK.
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`, "post-migration user read must succeed — Binary datatype on the migrated doc would surface as a 500 here")
+	assert.NotContains(t, resp.Body.String(), "binary datatype", "the migrated user doc must not be Binary-tagged on primary")
+}
+
 // TestMetadataMigrationOptInIsIrreversibleViaREST verifies that, once a database has opted in
 // to the system metadata collection, a config update over the REST API that attempts to disable
 // the opt-in (set to false or omit it) is rejected.

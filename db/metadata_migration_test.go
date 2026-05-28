@@ -363,6 +363,38 @@ func TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted(t *testing.T
 	assert.True(t, base.IsDocNotFoundError(getErr), "heartbeat doc should be removed from fallback")
 }
 
+// TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch pins the fix
+// for EE-with-import heartbeater key matching: when a non-empty groupID is configured,
+// `HeartbeaterPrefix` returns `_sync:m_<id>:hb:<groupID>:`, so the heartbeater writes
+// `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` — i.e. the on-disk key has an extra
+// `<groupID>:` colon-segment between the namespace and the literal `heartbeat_timeout:`
+// token. The original `IsLegacyHeartbeaterKey` only matched the no-groupID form, so the
+// with-groupID heartbeat key fell into DocsUnknownPrefix and wedged the migration on
+// every real EE bucket.
+func TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	const metadataID = "testHbShapeGroup"
+	const groupID = "groupA"
+	keys := base.NewMetadataKeys(metadataID)
+	heartbeatKey := keys.HeartbeaterPrefix(groupID) + "heartbeat_timeout:nodeA"
+
+	ms := newMigrationTestStore(t, bucket)
+	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
+
+	stats := &MigrationStats{}
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	require.NoError(t, err)
+	assert.Equal(t, 0, remaining, "groupID-suffixed heartbeat must not surface as unknown-prefix")
+	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "groupID-suffixed heartbeat doc should be deleted via the shape match")
+	assert.Zero(t, stats.DocsUnknownPrefix.Load())
+
+	_, _, getErr := ms.Fallback().GetRaw(ctx, heartbeatKey)
+	assert.True(t, base.IsDocNotFoundError(getErr), "groupID-suffixed heartbeat doc should be removed from fallback")
+}
+
 // TestMigrateMetadataNamespacedHeartbeatDeletedViaShapeMatch verifies the same shape-based
 // heartbeater match works for namespaced metadataIDs, where the heartbeater prefix is
 // `_sync:m_<id>:hb:` and the doc shape is `<prefix>heartbeat_timeout:<nodeUUID>`.
@@ -442,4 +474,118 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 			assert.Zero(t, s.DocsOutOfScope.Load(), "%q is in-scope (default mode owns `_sync:…`) so should not be out-of-scope", k)
 		}
 	})
+
+	// LegacySiblingInvertedFormOutOfScope pins the sibling-side of the corner-case fix:
+	// the inverted-form keys for a real sibling DB (with a trailing `:` after the
+	// metadataID) must still be classified out-of-scope when the local DB is in legacy
+	// default mode. The ours-side counterpart — a legacy default user literally named
+	// `m_alice` — is covered end-to-end by TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername
+	// below (the dispatcher would call moveFallbackDoc on a real bucket for those).
+	t.Run("LegacySiblingInvertedFormOutOfScope", func(t *testing.T) {
+		for _, k := range []string{
+			"_sync:user:m_otherDB:alice",
+			"_sync:role:m_otherDB:admins",
+			"_sync:useremail:m_otherDB:alice@example.com",
+			"_sync:session:m_otherDB:tok1",
+		} {
+			s := classify(base.DefaultMetadataID, k)
+			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is a sibling-DB inverted-form key — must remain out-of-scope", k)
+		}
+	})
+
+	// SyncFunctionDocsOutOfScope pins the design-plan decision that the per-collection
+	// sync-function docs (`_sync:syncdata*`) stay in the source collection — they're
+	// classified out-of-scope rather than left as unknown-prefix (which would block the
+	// migration on every real DB, since every DB writes at least one syncdata doc).
+	t.Run("SyncFunctionDocsOutOfScope", func(t *testing.T) {
+		for _, k := range []string{
+			"_sync:syncdata",
+			"_sync:syncdata:groupA",
+			"_sync:syncdata_collection:scope1.coll1",
+			"_sync:syncdata_collection:scope1.coll1:groupA",
+		} {
+			s := classify("myDB", k)
+			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is per-collection sync-function doc — design plan keeps it in source collection", k)
+		}
+	})
+}
+
+// TestMigrateMetadataUnusedSeqMoves verifies the per-DB unused-sequence docs migrate
+// alongside the rest of the per-DB metadata. The bug this pins: prior to classification
+// these tripped DocsUnknownPrefix on every pass, sending the migration into the
+// bounded-pass give-up branch because both the singleton and range forms exist in the
+// wild whenever the sequence allocator has released anything (import races, write
+// conflicts).
+func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	const metadataID = "testUnusedSeq"
+	keys := base.NewMetadataKeys(metadataID)
+	ms := newMigrationTestStore(t, bucket)
+
+	// Both forms are written as binary docs (8-/16-byte little-endian uint64 payloads).
+	// AddRaw mirrors what sequenceAllocator.releaseSequence/releaseSequenceRange do in
+	// production — datatype matters for the round-trip assertions below.
+	singletonKey := keys.UnusedSeqKey(42)
+	singletonBody := make([]byte, 8)
+	binaryLE := func(v uint64) []byte {
+		b := make([]byte, 8)
+		for i := 0; i < 8; i++ {
+			b[i] = byte(v >> (8 * i))
+		}
+		return b
+	}
+	copy(singletonBody, binaryLE(42))
+	_, err := ms.Fallback().AddRaw(ctx, singletonKey, 0, singletonBody)
+	require.NoError(t, err, "seed fallback unusedSeq")
+
+	rangeKey := keys.UnusedSeqRangeKey(10, 20)
+	rangeBody := append(binaryLE(10), binaryLE(20)...)
+	_, err = ms.Fallback().AddRaw(ctx, rangeKey, 0, rangeBody)
+	require.NoError(t, err, "seed fallback unusedSeqs range")
+
+	stats := &MigrationStats{}
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	require.NoError(t, err)
+	assert.Equal(t, 0, remaining, "unused-seq docs must clear in a single pass")
+	assert.Equal(t, int64(2), stats.DocsMigrated.Load())
+	assert.Zero(t, stats.DocsUnknownPrefix.Load(), "unused-seq docs must not be classified as unknown")
+
+	for _, k := range []string{singletonKey, rangeKey} {
+		_, _, getErr := ms.Primary().GetRaw(ctx, k)
+		require.NoError(t, getErr, "primary should hold %s", k)
+		_, _, getErr = ms.Fallback().GetRaw(ctx, k)
+		assert.True(t, base.IsDocNotFoundError(getErr), "fallback should no longer hold %s", k)
+	}
+}
+
+// TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername is the end-to-end counterpart
+// to the classification subtest above: a default-mode DB whose user is literally named
+// `m_alice` must actually migrate end-to-end. Before the isOurs fix this user's doc
+// fell into the unknown-prefix branch and was left on fallback forever.
+func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	keys := base.NewMetadataKeys(base.DefaultMetadataID)
+	ms := newMigrationTestStore(t, bucket)
+
+	mUserKey := keys.UserKey("m_alice")
+	body := []byte(`{"name":"m_alice","legacy":true}`)
+	seedFallback(ctx, t, ms, mUserKey, body)
+
+	stats := &MigrationStats{}
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	require.NoError(t, err)
+	assert.Equal(t, 0, remaining)
+	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "m_alice user in default mode must be migrated, not skipped as a sibling-DB shape")
+
+	got, _, getErr := ms.Primary().GetRaw(ctx, mUserKey)
+	require.NoError(t, getErr)
+	assert.Equal(t, body, got)
+	_, _, getErr = ms.Fallback().GetRaw(ctx, mUserKey)
+	assert.True(t, base.IsDocNotFoundError(getErr))
 }
