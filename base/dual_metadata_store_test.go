@@ -91,6 +91,44 @@ func TestMetadataStoreIncrSelfHealsPill(t *testing.T) {
 	assert.Equal(t, uint64(50), counterValue)
 }
 
+// TestGetCounterHealsSeqMigrationPill is the regression for the crash-restart wedge
+// where a pill on the fallback seq counter outlives the wrapper's Incr self-heal. At
+// DB startup sequenceAllocator.lastSequence -> base.GetCounter is the first read of
+// the seq counter; before GetCounter routed through Incr, a fallback pill body
+// returned an UnmarshalTypeError into *uint64 and the database failed to start.
+// Routing through Incr(0,0,0) lets the wrapper self-heal transparently.
+func TestGetCounterHealsSeqMigrationPill(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	ms := newTestMetadataStore(t, bucket)
+	const key = "_sync:m_testGetCounterPill:seq"
+
+	pill := SyncSeqMigrationPill{LastSeq: 100, SGMetadataMigrationPill: true, PilledAt: "2026-05-27T00:00:00Z"}
+	payload, err := JSONMarshal(&pill)
+	require.NoError(t, err)
+	_, err = ms.Fallback().AddRaw(ctx, key, 0, payload)
+	require.NoError(t, err)
+
+	value, err := GetCounter(ctx, ms, key)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(100), value, "GetCounter must return pill.LastSeq via wrapper.Incr self-heal")
+
+	_, _, err = ms.Fallback().GetRaw(ctx, key)
+	assert.True(t, IsDocNotFoundError(err), "fallback pill must be cleared after self-heal, got %v", err)
+
+	primaryValue, err := GetCounter(ctx, ms.Primary(), key)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(100), primaryValue, "primary must hold the seeded counter")
+
+	// Idempotence: second invocation should return the same value with no further side
+	// effects (no second pill required, no error on the already-migrated counter).
+	again, err := GetCounter(ctx, ms, key)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(100), again)
+}
+
 // TestPrimaryAddRawDuplicateContract pins the AddRaw-on-duplicate contract that the
 // wrapper's Incr self-heal branch relies on: returning (added=false, err=nil) rather than
 // surfacing a duplicate-key error. Both the gocb path (collection_gocb.go) and the
