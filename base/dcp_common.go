@@ -244,7 +244,7 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 // vbucket and log a warning in that case.  The valid case for setting warnOnLowerSeqNo to
 // false is when it's a rollback scenario.  See https://github.com/couchbase/sync_gateway/issues/1098 for dev notes.
 func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool) {
-	if c.shouldProcessSequence(vbucketId, seq) {
+	if !c.shouldProcessSequence(vbucketId, seq) {
 		return
 	}
 	c.m.Lock()
