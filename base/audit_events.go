@@ -83,11 +83,14 @@ const (
 	AuditIDDatabaseFlush        AuditID = 54045
 
 	// User principal events
-	AuditIDUserCreate AuditID = 54100
-	AuditIDUserRead   AuditID = 54101
-	AuditIDUserUpdate AuditID = 54102
-	AuditIDUserDelete AuditID = 54103
-	AuditIDUsersAll   AuditID = 54104
+	AuditIDUserCreate               AuditID = 54100
+	AuditIDUserRead                 AuditID = 54101
+	AuditIDUserUpdate               AuditID = 54102
+	AuditIDUserDelete               AuditID = 54103
+	AuditIDUsersAll                 AuditID = 54104
+	AuditIDUserAccessHistoryRead    AuditID = 54105
+	AuditIDUserAccessHistoryCompact AuditID = 54106
+
 	// Role principal events
 	AuditIDRoleCreate AuditID = 54110
 	AuditIDRoleRead   AuditID = 54111
@@ -792,6 +795,29 @@ var AuditEvents = events{
 		},
 		OptionalFields: AuditFields{
 			AuditFieldLimit: 100,
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserAccessHistoryRead: {
+		Name:        "User Access History",
+		Description: "User access history was read",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserAccessHistoryCompact: {
+		Name:        "User Access History",
+		Description: "User access history was read",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			AuditFieldChannels: map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
 		},
 		EnabledByDefault:   true,
 		FilteringPermitted: true,
