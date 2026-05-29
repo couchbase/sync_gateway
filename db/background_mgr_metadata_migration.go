@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -34,6 +35,11 @@ type MetadataMigrationManager struct {
 const MetadataMigrationManagerName = "metadata_migration"
 
 var _ BackgroundManagerProcessI = &MetadataMigrationManager{}
+
+// errMetadataMigrationTerminated is the cancellation cause propagated to the run context when
+// the BackgroundManager terminator fires, so ops blocked on ctx (seq-counter retry loop, range
+// scan iteration) can distinguish an operator stop from a parent-context cancellation.
+var errMetadataMigrationTerminated = errors.New("metadata migration terminated by stop request")
 
 func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager {
 	return &BackgroundManager{
@@ -77,8 +83,15 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 	if clusterStatus != nil {
 		var status MigrationManagerStatusDoc
 		err := base.JSONUnmarshal(clusterStatus, &status)
-		// If the previous run completed, or there was an error during unmarshalling the status start again
-		if status.State == BackgroundProcessStateCompleted || err != nil {
+
+		reset, _ := options["reset"].(bool)
+		if reset {
+			base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resetting migration process. Will not resume any partially completed process")
+		}
+
+		// If the previous run completed, there was an error during unmarshalling the status, or
+		// the caller requested a reset, start again with a fresh migration ID and zeroed counters.
+		if status.State == BackgroundProcessStateCompleted || err != nil || reset {
 			return newRunInit()
 		}
 		m.docsProcessed.Store(status.DocsProcessed)
@@ -146,12 +159,12 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		// migrateSeqCounter (retry loop) and MigrateMetadata (range scan iteration) can
 		// observe stop requests without us having to thread *SafeTerminator through every
 		// function signature.
-		runCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		runCtx, cancel := context.WithCancelCause(ctx)
+		defer cancel(nil)
 		go func() {
 			select {
 			case <-terminator.Done():
-				cancel()
+				cancel(errMetadataMigrationTerminated)
 			case <-runCtx.Done():
 			}
 		}()
@@ -214,14 +227,22 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 				return err
 			}
 
-			if remaining == 0 {
-				// finished successfully
+			// Completion gates on a pass that is clean of BOTH unknown-prefix docs (remaining)
+			// AND per-doc move/delete errors. A failed in-scope move increments stats.Errors and
+			// leaves the doc on the fallback, but does not count toward remaining — so breaking on
+			// remaining == 0 alone could call SetMigrationComplete() with an un-migrated doc still
+			// on the fallback, which the wrapper would then permanently ignore (data loss). Errors
+			// are typically transient (CAS races), so a non-clean pass simply forces a retry; only
+			// a persistent failure reaches the maxPasses give-up below, which never completes.
+			passErrors := stats.Errors.Load()
+			if remaining == 0 && passErrors == 0 {
+				// finished successfully — fallback verified clear of in-scope metadata
 				break
 			}
 
 			if pass+1 >= maxPasses {
-				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d in-scope docs remaining", metadataMigrationLoggingID, maxPasses, remaining)
-				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s) remain", ms.Fallback().GetName(), maxPasses, remaining)
+				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d unknown-prefix doc(s) and %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, remaining, passErrors)
+				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s), %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, remaining, passErrors)
 			}
 		}
 
