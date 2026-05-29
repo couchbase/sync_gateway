@@ -1247,8 +1247,8 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 	var barrier sync.WaitGroup
 	barrier.Add(numResumeCallers + 1) // +1 for the Stop goroutine
 
-	// resumeErrs receives one result per Resume caller; buffered so goroutines never block.
-	resumeErrs := make(chan error, numResumeCallers)
+	// resumeErrors[i] holds the error returned by resumeManagers[i].Resume.
+	resumeErrors := make([]error, numResumeCallers)
 
 	var resumeWG sync.WaitGroup
 	for i := range numResumeCallers {
@@ -1257,7 +1257,7 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 			defer resumeWG.Done()
 			barrier.Done()
 			barrier.Wait()
-			resumeErrs <- resumeManagers[i].Resume(ctx)
+			resumeErrors[i] = resumeManagers[i].Resume(ctx)
 		}(i)
 	}
 
@@ -1270,13 +1270,6 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 
 	// Wait for all Resume callers to finish before reading their results.
 	resumeWG.Wait()
-	close(resumeErrs)
-
-	// Collect results.
-	var resumeErrors []error
-	for err := range resumeErrs {
-		resumeErrors = append(resumeErrors, err)
-	}
 
 	// Wait for mgr1 to reach a terminal state.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
