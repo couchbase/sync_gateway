@@ -674,7 +674,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
 	}
 
-	spec.UseGOCBFastFailRetry = base.ValDefault(serverConfig.Unsupported.UseGOCBFastFailRetry, false)
+	spec.FastFailOnInitialConnection = base.ValDefault(serverConfig.Unsupported.UseGOCBFastFailRetry, false)
 
 	if spec.BucketName == "" {
 		spec.BucketName = config.Name

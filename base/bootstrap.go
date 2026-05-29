@@ -273,12 +273,6 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 	return cbCluster, nil
 }
 
-// UseGOCBFastFailRetry returns whether gocb operations on this cluster should fail fast instead of using the
-// best-effort retry strategy.
-func (cc *CouchbaseCluster) UseGOCBFastFailRetry() bool {
-	return cc.useGOCBFastFailRetry
-}
-
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
 // Pass an authenticator to use that to connect instead of using the cluster credentials.
 func (cc *CouchbaseCluster) connect(auth *gocb.Authenticator) (*gocb.Cluster, error) {
@@ -297,7 +291,7 @@ func (cc *CouchbaseCluster) connect(auth *gocb.Authenticator) (*gocb.Cluster, er
 	err = cluster.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
-		RetryStrategy: goCBRetryStrategy(cc.useGOCBFastFailRetry),
+		RetryStrategy: gocbRetryStrategy(cc.useGOCBFastFailRetry),
 	})
 	if err != nil {
 		_ = cluster.Close(nil)
@@ -1059,7 +1053,7 @@ func (cc *CouchbaseCluster) connectToBucket(ctx context.Context, bucketName stri
 	b = connection.Bucket(bucketName)
 	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
-		RetryStrategy: goCBRetryStrategy(cc.useGOCBFastFailRetry),
+		RetryStrategy: gocbRetryStrategy(cc.useGOCBFastFailRetry),
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 	})
 	if err != nil {

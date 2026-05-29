@@ -98,6 +98,6 @@ func TestGoCBCoreAuthConfigInvalidPaths(t *testing.T) {
 }
 
 func TestGoCBRetryStrategy(t *testing.T) {
-	assert.IsType(t, &goCBv2FailFastRetryStrategy{}, goCBRetryStrategy(true))
-	assert.IsType(t, gocb.NewBestEffortRetryStrategy(nil), goCBRetryStrategy(false))
+	assert.IsType(t, &goCBv2FailFastRetryStrategy{}, gocbRetryStrategy(true))
+	assert.IsType(t, gocb.NewBestEffortRetryStrategy(nil), gocbRetryStrategy(false))
 }

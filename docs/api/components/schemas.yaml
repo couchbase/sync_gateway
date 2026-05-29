@@ -2494,7 +2494,7 @@ Startup-config:
           type: boolean
           default: false
         use_gocb_fast_fail_retry:
-          description: When true, gocb cluster/bucket readiness checks and index lookups (on both the bootstrap and per-database connections) fail on the first error instead of retrying. When false, they use the best-effort retry strategy, retrying until their timeout when Couchbase Server is unavailable or failing over.
+          description: When true, errors on initial connection to Couchbase Server will fail instantaneously. Enabling this will surface authentication errors quickly, but can cause some Sync Gateway operations to shut down databases with intermittent Couchbase Server connection errors.
           type: boolean
           default: false
       readOnly: true

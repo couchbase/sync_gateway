@@ -67,7 +67,6 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 				gocbBucket.BucketName(),
 				store.ScopeName(),
 				store.CollectionName(),
-				gocbBucket.Spec.UseGOCBFastFailRetry,
 			)
 			require.NoError(t, err)
 			indexesMeta, err = base.GetSystemCollectionIndexesMeta(ctx, n1qlStore, base.SystemScope, base.SystemCollectionMobile, expectedIndexes)

@@ -36,17 +36,15 @@ type ClusterOnlyN1QLStore struct {
 	collectionName           string // Used to build keyspace for query when not otherwise set
 	supportsCollections      bool
 	supportsIfNotExistsInDDL bool // 7.1.0+ MB-38737
-	useGOCBFastFailRetry     bool // When true, index lookups fail fast instead of using the best-effort retry strategy
 }
 
-func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, collectionName string, useGOCBFastFailRetry bool) (*ClusterOnlyN1QLStore, error) {
+func NewClusterOnlyN1QLStore(cluster *gocb.Cluster, bucketName, scopeName, collectionName string) (*ClusterOnlyN1QLStore, error) {
 
 	clusterOnlyn1qlStore := &ClusterOnlyN1QLStore{
-		cluster:              cluster,
-		bucketName:           bucketName,
-		scopeName:            scopeName,
-		collectionName:       collectionName,
-		useGOCBFastFailRetry: useGOCBFastFailRetry,
+		cluster:        cluster,
+		bucketName:     bucketName,
+		scopeName:      scopeName,
+		collectionName: collectionName,
 	}
 
 	major, minor, err := GetClusterVersion(cluster)
@@ -211,11 +209,10 @@ func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.Que
 
 func (cl *ClusterOnlyN1QLStore) indexManager(scopeName, collectionName string) *indexManager {
 	return &indexManager{
-		cluster:              cl.cluster.QueryIndexes(),
-		bucketName:           cl.bucketName,
-		scopeName:            scopeName,
-		collectionName:       collectionName,
-		useGOCBFastFailRetry: cl.useGOCBFastFailRetry,
+		cluster:        cl.cluster.QueryIndexes(),
+		bucketName:     cl.bucketName,
+		scopeName:      scopeName,
+		collectionName: collectionName,
 	}
 }
 

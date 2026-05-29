@@ -2102,7 +2102,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 					Password:   "invalid_password",
 					BucketName: testBucket.BucketSpec.BucketName,
 				}
-				testBucket.BucketSpec.UseGOCBFastFailRetry = fastFail
+				testBucket.BucketSpec.FastFailOnInitialConnection = fastFail
 				if tls {
 					testBucket.BucketSpec.Server = strings.ReplaceAll(testBucket.BucketSpec.Server, "couchbase://", "couchbases://")
 					testBucket.BucketSpec.TLSSkipVerify = true // test env isn't always using valid certs

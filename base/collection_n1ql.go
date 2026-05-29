@@ -64,10 +64,9 @@ func (c *Collection) BucketName() string {
 
 func (c *Collection) indexManager() *indexManager {
 	m := &indexManager{
-		bucketName:           c.BucketName(),
-		collectionName:       c.CollectionName(),
-		scopeName:            c.ScopeName(),
-		useGOCBFastFailRetry: c.Bucket.Spec.UseGOCBFastFailRetry,
+		bucketName:     c.BucketName(),
+		collectionName: c.CollectionName(),
+		scopeName:      c.ScopeName(),
 	}
 	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		m.cluster = c.Bucket.cluster.QueryIndexes()
