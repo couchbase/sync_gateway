@@ -777,6 +777,13 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
 	}
 
+	// System-scoped metadata relies on N1QL principal queries against _system._mobile and is not
+	// supported with views. Reject the combination at config validation rather than letting a
+	// post-migration principal listing fail at query time.
+	if base.ValDefault(dbConfig.UseSystemMobileMetadataCollection, false) && base.ValDefault(dbConfig.UseViews, false) {
+		multiError = multiError.Append(fmt.Errorf("use_system_metadata_collection is not supported with use_views=true"))
+	}
+
 	if dbConfig.CacheConfig != nil {
 
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
