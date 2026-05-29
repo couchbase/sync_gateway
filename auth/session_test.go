@@ -419,8 +419,7 @@ func TestAuthenticateCookieOneTimeSession(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
-		req.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: sessionID})
-
+		req.AddCookie(&http.Cookie{Name: a.SessionCookieName, Value: sessionID})
 		recorder := httptest.NewRecorder()
 		authedUser, err := a.AuthenticateCookie(req, recorder)
 		require.NoError(t, err)
@@ -443,8 +442,7 @@ func TestAuthenticateCookieOneTimeSession(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodGet, "", nil)
 		require.NoError(t, err)
-		req.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: sessionID})
-
+		req.AddCookie(&http.Cookie{Name: a.SessionCookieName, Value: sessionID})
 		recorder := httptest.NewRecorder()
 		authedUser, err := a.AuthenticateCookie(req, recorder)
 		require.NoError(t, err)
