@@ -322,7 +322,7 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 }
 
 // GetCounter returns a uint64 result for the given counter key.
-// If the given key is not found in the bucket, this function returns a result of zero.
+// If the given key is not found in the bucket, the counter is created at zero and zero is returned.
 //
 // Implemented via Incr(amt=0, def=0): on a hit the counter is returned unchanged, on a
 // miss the doc is created at 0. This routes through MetadataStore.Incr's pill-self-heal
