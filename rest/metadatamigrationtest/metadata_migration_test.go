@@ -12,6 +12,7 @@ package metadatamigrationtest
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -237,10 +238,11 @@ func TestMetadataMigrationPreservesJSONDatatypeForUserDocs(t *testing.T) {
 	resp = rt.UpsertDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Drive the migration directly through the admin endpoint — the auto-arming path
-	// gates on ConfigFullyAppliedFunc which depends on cluster-compat polling cycles we
-	// don't want to wait on for a single-node test. The POST returns the running status;
-	// poll the GET endpoint until it reports completed (or error, which fails the test).
+	// The manual start endpoint gates on ConfigFullyAppliedFunc just like the auto-arming path,
+	// so flush this node's registry entry to record its applied config version — even a
+	// single-node cluster must report the opt-in config applied before it can start. Then drive
+	// the migration and poll the GET endpoint until it reports completed (or error).
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -331,9 +333,10 @@ func TestMetadataMigrationSkipsPrimaryWriteWhenUpdatedUserAlreadyMigrated(t *tes
 	require.NotEqual(t, primaryBodyBeforeMigration, fallbackBodyBeforeMigration,
 		"primary fresh body and fallback stale shadow must structurally differ — otherwise this test isn't exercising the race")
 
-	// 4. Drive the migration directly through the admin endpoint and assert it reaches
-	// completed with zero failures — the already-exists Add MUST NOT be classified as
-	// an error.
+	// 4. Flush this node's applied config version (the manual start gates on config-fully-applied),
+	// then drive the migration through the admin endpoint and assert it reaches completed with zero
+	// failures — the already-exists Add MUST NOT be classified as an error.
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -394,4 +397,344 @@ func TestMetadataMigrationOptInIsIrreversibleViaREST(t *testing.T) {
 	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 	resp = rt.ReplaceDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+}
+
+func TestMetadataMigrationLegacyDefaultDBSiblingClassifiesAsUnknown(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollection = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	// dbdefault: only _default._default → metadataID="_default", keys unprefixed.
+	const dbDefaultName = "dbdefault"
+	dbDefaultCfg := rt.NewDbConfig()
+	dbDefaultCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				base.DefaultCollection: {},
+			},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+
+	// Real legacy user key for dbdefault — `_sync:user:alice` lands in _default._default.
+	resp := rt.SendAdminRequest(http.MethodPut, "/"+dbDefaultName+"/_user/alice",
+		`{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// dbnamed: only _default.sg_test_0 → metadataID is the db name (non-default).
+	// Start in legacy mode (opt-in=false) so dbnamed's own metadata also lands in
+	// _default._default alongside dbdefault's. This matches the production pre-migration
+	// state for a namespaced DB about to be upgraded.
+	const dbNamedName = "dbnamed"
+	dbNamedCfg := rt.NewDbConfig()
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				namedCollection: {},
+			},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	// Real per-DB user key for dbnamed — `_sync:user:m_<id>:bob` lands in _default._default.
+	resp = rt.SendAdminRequest(http.MethodPut, "/"+dbNamedName+"/_user/bob",
+		`{"name":"bob","password":"letmein","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Sanity-check that the topology actually matches the test's premise.
+	dbDefaultCtx, err := rt.ServerContext().GetDatabase(ctx, dbDefaultName)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultMetadataID, dbDefaultCtx.Options.MetadataID,
+		"dbdefault must use the legacy default metadataID (this is what makes its keys land unprefixed in _default._default)")
+
+	dbNamedCtx, err := rt.ServerContext().GetDatabase(ctx, dbNamedName)
+	require.NoError(t, err)
+	require.NotEqual(t, base.DefaultMetadataID, dbNamedCtx.Options.MetadataID,
+		"dbnamed must have a non-default metadataID (this is what gives its keys the m_<id>: prefix)")
+	require.NotEmpty(t, dbNamedCtx.Options.MetadataID)
+
+	// Sanity-check that both DBs' legacy keys are actually colocated in _default._default
+	// — that's the precondition for the dispatcher classification scenario we're testing.
+	defaultDS := tb.Bucket.DefaultDataStore(ctx)
+	aliceKey := base.DefaultMetadataKeys.UserKey("alice")
+	exists, err := defaultDS.Exists(ctx, aliceKey)
+	require.NoError(t, err)
+	require.True(t, exists, "dbdefault's user key %q must exist in _default._default before migration", aliceKey)
+
+	bobKey := dbNamedCtx.MetadataKeys.UserKey("bob")
+	exists, err = defaultDS.Exists(ctx, bobKey)
+	require.NoError(t, err)
+	require.True(t, exists, "dbnamed's user key %q must exist in _default._default before migration", bobKey)
+
+	// Flip dbnamed's opt-in. The MetadataStore is rebuilt as the dual-collection wrapper
+	// with primary=_system._mobile, fallback=_default._default. dbnamed's own legacy keys
+	// are still on fallback exactly as they would be after a production opt-in upgrade.
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	// Flush this node's applied config versions so the manual start passes the config-fully-applied
+	// gate, then drive dbnamed's migration through the admin endpoint.
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Poll until the migration reaches a terminal state. maxPasses=16 of range scans
+	// over a tiny bucket should be fast, but give the test a generous deadline.
+	var finalBody string
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st := rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_metadata_migration", "")
+		finalBody = st.Body.String()
+		terminal := strings.Contains(finalBody, `"status":"completed"`) ||
+			strings.Contains(finalBody, `"status":"error"`) ||
+			strings.Contains(finalBody, `"status":"stopped"`)
+		assert.True(c, terminal, "migration should reach a terminal state — payload: %s", finalBody)
+	}, 90*time.Second, 500*time.Millisecond)
+	t.Logf("dbnamed final migration status: %s", finalBody)
+
+	// Whatever the dispatcher decides about classification, the test must never cause
+	// data loss in dbdefault — dbdefault's user MUST still be on _default._default and
+	// MUST still be readable through dbdefault's admin API.
+	exists, err = defaultDS.Exists(ctx, aliceKey)
+	require.NoError(t, err)
+	assert.True(t, exists, "dbdefault's user key %q must still exist after dbnamed's migration", aliceKey)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`,
+		"dbdefault's user must still be readable through its own admin API after dbnamed's migration")
+
+	// The hypothesis assertion. If dbnamed's migration completes cleanly the hypothesis is
+	// disproven and the test fails — fix the code review note. If it errors, the hypothesis
+	// is confirmed and the error message should reference the maxPasses give-up.
+	assert.Contains(t, finalBody, `"status":"completed"`,
+		"HYPOTHESIS: dbnamed's migration should NOT complete cleanly — dbdefault's legacy keys "+
+			"should be classified as DocsUnknownPrefix and trigger the maxPasses=16 give-up. "+
+			"If this assertion fails the hypothesis is wrong and the code review note can be retracted. "+
+			"Final payload: %s", finalBody)
+	assert.NotContains(t, finalBody, `"status":"error"`,
+		"HYPOTHESIS: dbnamed's migration should error out with the maxPasses give-up. Final payload: %s", finalBody)
+}
+
+// TestMetadataMigrationOptInRejectedWithViews verifies the DbConfig.validateVersion guard:
+// system-scoped metadata relies on N1QL principal queries, so explicitly opting in while
+// use_views is enabled is rejected at config-validation time rather than failing later at query
+// time. Runs on any backing store — the config is rejected before the database starts.
+func TestMetadataMigrationOptInRejectedWithViews(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseViews = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "use_system_metadata_collection is not supported with use_views=true")
+}
+
+// TestMetadataMigrationListsPrincipalsAfterCompletion is a regression test for the
+// post-completion principal-listing path. Single-principal reads (GET /{db}/_user/alice) are
+// KV lookups the dual-collection wrapper handles, but *listing* runs an N1QL query. Before the
+// fix the wrapper was passed straight to N1QLQueryWithStats once migration completed, which
+// failed with "Cannot perform N1QL query on non-Couchbase bucket" because the wrapper is
+// intentionally not an N1QLStore. The query functions now target the wrapper's primary
+// collection directly once migration is complete.
+//
+// Couchbase-Server-only: system-scoped metadata is a GSI feature (principal listing under
+// use_views was never supported with the dual store — and Rosmar only ever uses views), so this
+// regression relies on the Couchbase Server (N1QL) test path.
+func TestMetadataMigrationListsPrincipalsAfterCompletion(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("system-scoped metadata principal listing is a GSI/N1QL path; not supported under views (Rosmar)")
+	}
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	// Legacy mode: principals (and the seq counter created alongside them) land in
+	// _default._default, so the new-DB fast path does not fire and the migration runs.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bob", `{"name":"bob","password":"hunter2","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/observer", `{"name":"observer","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Opt in, flush this node's applied config version so the manual start passes the
+	// config-fully-applied gate, then drive the migration to completion.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.UpsertDbConfig("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+		body := st.Body.String()
+		assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
+		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+	}, 30*time.Second, 200*time.Millisecond)
+
+	// Regression check: after completion the principals live in _system._mobile and fallback
+	// reads are disabled. Listing must query the primary and still return every principal.
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_user/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "alice", "alice must be listable after migration completes")
+	assert.Contains(t, resp.Body.String(), "bob", "bob must be listable after migration completes")
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_role/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "observer", "roles must be listable after migration completes")
+}
+
+// TestMetadataMigrationEndToEndBucketComplete is a full end-to-end check of the bucket-level
+// completion handoff: migrate a single database's metadata (a user doc), then assert that once
+// it is the last database in the bucket to finish, PostMetadataMigrationCompleteFunc migrates
+// the bucket bootstrap docs (registry/dbconfig/cfg) and the bucket-level bootstrap state in
+// _sync:metadata_migration_status flips to complete.
+func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
+	ctx := base.TestCtx(t)
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	dbCtx := rt.GetDatabase()
+	metadataID := dbCtx.Options.MetadataID
+	require.NotEmpty(t, metadataID)
+	bucketName := rt.Bucket().GetName()
+
+	// Opt in, flush this node's applied config version so the manual start passes the
+	// config-fully-applied gate, then drive the migration to completion.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.UpsertDbConfig("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+		body := st.Body.String()
+		assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
+		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+	}, 30*time.Second, 200*time.Millisecond)
+
+	// End-to-end assertion on the durable status doc: the per-DB entry is complete AND, because
+	// this is the only (hence last) database in the bucket, the bucket bootstrap migration has
+	// also completed.
+	conn := rt.ServerContext().BootstrapContext.Connection
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		require.NoError(c, err)
+		require.NotNil(c, status)
+		entry, ok := status.Databases[metadataID]
+		require.True(c, ok, "status doc must have a per-DB entry for %q", metadataID)
+		assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
+	}, 30*time.Second, 200*time.Millisecond)
+}
+
+// TestMetadataMigrationRESTStartRejectedWithoutOptIn verifies a manual start via the admin API is
+// rejected for a database that has not enabled use_system_metadata_collection — its MetadataStore
+// is not a dual-collection wrapper, so there is nothing to migrate.
+func TestMetadataMigrationRESTStartRejectedWithoutOptIn(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "use_system_metadata_collection is not enabled")
+}
+
+// TestMetadataMigrationRESTStartRejectedBeforeConfigApplied verifies the manual REST start path
+// (POST /{db}/_metadata_migration?action=start) is gated on cluster config convergence, exactly
+// like the auto-arming path (DatabaseContext.tryStartMetadataMigration). Starting while a peer
+// node has not yet applied the opt-in config would let that peer keep writing metadata to
+// _default._default while this node migrates it to _system._mobile — splitting or losing those
+// writes. The POST must be rejected until every node has applied the config.
+func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.Ptr("metadata_migration_cluster"),
+	}
+	rtA := rest.NewRestTester(t, rtConfig)
+	defer rtA.Close()
+	rtB := rest.NewRestTester(t, rtConfig)
+	defer rtB.Close()
+
+	// Create db on node A with migration disabled, let node B pick it up, register both nodes.
+	dbConfig := rtA.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	rest.RequireStatus(t, rtA.CreateDatabase("db", dbConfig), http.StatusCreated)
+	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
+	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
+	rtB.ServerContext().ForceClusterCompatRefresh(t, ctx)
+
+	// Seed a legacy seq counter so the new-DB fast path doesn't auto-complete the migration (see
+	// TestMetadataMigrationStartsAfterAllNodesApplyConfig for the rationale on using Incr).
+	_, err := tb.Bucket.DefaultDataStore(ctx).Incr(ctx, rtA.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 0, 0)
+	require.NoError(t, err)
+
+	// Opt in on node A and flush its registry entry. Node B has NOT applied the new config version.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rtA.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
+
+	// Sanity: the gate the handler consults reports not-applied, with node B outstanding.
+	applied, missing, err := rtA.GetDatabase().ConfigFullyAppliedFunc(ctx)
+	require.NoError(t, err)
+	require.False(t, applied, "config must not be fully applied while node B is behind")
+	require.Contains(t, missing, rtB.ServerContext().NodeUID)
+
+	// Manual REST start must be rejected while node B is behind, and migration must not start.
+	resp := rtA.SendAdminRequest(http.MethodPost, "/db/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+	assert.Contains(t, resp.Body.String(), "has been applied on all nodes")
+	assert.Equal(t, db.BackgroundProcessState(""), rtA.GetDatabase().MetadataMigrationManager.GetRunState(),
+		"migration must not start via the REST API while a peer node has not applied the opt-in config")
+
+	// Node B applies the config; the cluster has now converged.
+	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
+	rtB.ServerContext().ForceClusterCompatRefresh(t, ctx)
+
+	applied, _, err = rtA.GetDatabase().ConfigFullyAppliedFunc(ctx)
+	require.NoError(t, err)
+	require.True(t, applied, "config should be fully applied once node B has applied the new version")
+
+	// Manual REST start now succeeds.
+	resp = rtA.SendAdminRequest(http.MethodPost, "/db/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
 }
