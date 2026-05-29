@@ -22,25 +22,25 @@ type DatabaseState struct {
 }
 
 type DatabaseStateMgr struct {
-	CAS             uint64
-	dbStateID       string
-	metadataStore   base.DataStore
-	pollingInterval time.Duration
-	resumeFunc      func(ctx context.Context) error
-	lock            sync.Mutex
-	terminator      chan struct{}
-	done            chan struct{}
+	CAS              uint64
+	dbStateID        string
+	metadataStore    base.DataStore
+	pollingInterval  time.Duration
+	resumeResyncFunc func(ctx context.Context) error
+	lock             sync.Mutex
+	terminator       chan struct{}
+	done             chan struct{}
 }
 
-// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeFunc is called by the polling loop
+// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeResyncFunc is called by the polling loop
 // when a state change is detected with ResyncRunning set to true; it should resume the resync process.
-func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeFunc func(ctx context.Context) error) *DatabaseStateMgr {
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResyncFunc func(ctx context.Context) error) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
-		dbStateID:       dbStateID,
-		CAS:             0,
-		metadataStore:   metadataStore,
-		pollingInterval: 10 * time.Second,
-		resumeFunc:      resumeFunc,
+		dbStateID:        dbStateID,
+		CAS:              0,
+		metadataStore:    metadataStore,
+		pollingInterval:  10 * time.Second,
+		resumeResyncFunc: resumeResyncFunc,
 	}
 }
 
@@ -112,41 +112,45 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	}()
 }
 
-// poll checks whether the resync handler should be invoked and, if so, calls it.
-// It delegates the state-change decision to ShouldRunResyncHandler.
+// poll checks whether the state document has been updated and, if ResyncRunning is true, invokes
+// resumeResyncFunc. The locally held CAS is only advanced after resumeResyncFunc succeeds (or when no handler
+// action is required), so a transient resumeResyncFunc error leaves the CAS stale and the next tick retries.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	if ok, state := dbMgr.ShouldRunResyncHandler(ctx); ok {
-		if state.ResyncRunning != nil && *state.ResyncRunning {
-			if err := dbMgr.resumeFunc(ctx); err != nil && !errors.Is(err, errBackgroundManagerStatusNotRunning) {
-				base.WarnfCtx(ctx, "failed to resume resync: %v", err)
-			}
+	newCAS, state, ok := dbMgr.isUpdated(ctx)
+	if !ok {
+		return
+	}
+	if state.ResyncRunning != nil && *state.ResyncRunning {
+		err := dbMgr.resumeResyncFunc(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
+			return // leave CAS stale so next tick retries
 		}
 	}
-}
-
-// ShouldRunResyncHandler reads the current state document and determines whether the resync handler
-// should be invoked. It returns (true, state) when the store CAS differs from the locally held CAS
-// and ResyncRunning is non-nil. It returns (false, nil) when the CAS is unchanged, the document is
-// not found, or ResyncRunning is nil. On any other store error it logs a warning and returns (false, nil).
-// When a CAS change is detected the locally held CAS is updated regardless of whether the handler fires.
-func (dbMgr *DatabaseStateMgr) ShouldRunResyncHandler(ctx context.Context) (bool, *DatabaseState) {
-	state, cas, err := dbMgr.GetState(ctx)
 	dbMgr.lock.Lock()
 	defer dbMgr.lock.Unlock()
+	dbMgr.CAS = newCAS
+}
+
+// isUpdated reads the current state document and reports whether it has changed since the last
+// successful poll. It returns (newCAS, state, true) when the store CAS differs from the locally
+// held CAS, or (0, nil, false) when the CAS is unchanged, the document is not found, or a store
+// error occurs. The locally held CAS is never modified here; callers are responsible for advancing
+// it after they have successfully acted on the change.
+func (dbMgr *DatabaseStateMgr) isUpdated(ctx context.Context) (uint64, *DatabaseState, bool) {
+	state, cas, err := dbMgr.GetState(ctx)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)
 		}
-		return false, nil
+		return 0, nil, false
 	}
+	dbMgr.lock.Lock()
+	defer dbMgr.lock.Unlock()
 	if cas == dbMgr.CAS {
-		return false, nil
+		return 0, nil, false
 	}
-	dbMgr.CAS = cas
-	if state.ResyncRunning == nil {
-		return false, nil
-	}
-	return true, state
+	return cas, state, true
 }
 
 // StopPolling signals the background polling goroutine started by StartPolling to exit.

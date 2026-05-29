@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -96,7 +97,7 @@ func TestGetState(t *testing.T) {
 }
 
 // TestDatabaseStateMgrPolling verifies StartPolling and StopPolling behaviour:
-// the registered resumeFunc is invoked on CAS changes when ResyncRunning is true, skipped
+// the registered resumeResyncFunc is invoked on CAS changes when ResyncRunning is true, skipped
 // when the CAS is unchanged, and driven automatically by the polling goroutine.
 func TestDatabaseStateMgrPolling(t *testing.T) {
 	ctx := base.TestCtx(t)
@@ -104,7 +105,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 	defer tBucket.Close(ctx)
 	metadataStore := tBucket.GetMetadataStore()
 
-	t.Run("resumeFunc invoked when doc exists and CAS changed", func(t *testing.T) {
+	t.Run("resumeResyncFunc invoked when doc exists and CAS changed", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		var callCount atomic.Int32
 		mgr := NewDatabaseStateMgr(metadataStore, docID, func(_ context.Context) error {
@@ -140,10 +141,35 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.Equal(t, int32(0), callCount.Load())
 	})
 
+	t.Run("retries resumeResyncFunc after transient error", func(t *testing.T) {
+		// Regression: when resumeResyncFunc returns an error the CAS must be reset so
+		// the next polling tick sees a mismatch and retries, rather than treating
+		// the state change as already handled.
+		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
+		var callCount atomic.Int32
+		mgr := NewDatabaseStateMgr(metadataStore, docID, func(_ context.Context) error {
+			if callCount.Add(1) == 1 {
+				return errors.New("transient error")
+			}
+			return nil
+		})
+		mgr.pollingInterval = 10 * time.Millisecond
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		mgr.CAS = 0 // simulate stale CAS so the poller sees a change on first tick
+
+		mgr.StartPolling(ctx)
+		defer mgr.StopPolling(ctx)
+
+		// The first call returns an error; the poller must retry and reach a second call.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.GreaterOrEqual(c, callCount.Load(), int32(2))
+		}, 2*time.Second, 10*time.Millisecond)
+	})
+
 	t.Run("StopPolling halts the goroutine", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 
-		// Register a resumeFunc that signals a channel on each call.
+		// Register a resumeResyncFunc that signals a channel on each call.
 		// The select/default prevents blocking if the channel is already full.
 		called := make(chan struct{}, 1)
 		var callCount atomic.Int32
@@ -161,7 +187,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr.StartPolling(ctx)
 
 		// Write a state document directly via the datastore (bypassing mgr.CAS) so that
-		// the poller sees a CAS mismatch and invokes the resumeFunc.
+		// the poller sees a CAS mismatch and invokes the resumeResyncFunc.
 		_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: base.Ptr(true)})
 			if err != nil {
@@ -171,7 +197,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Confirm the goroutine is running by waiting for the resumeFunc to fire.
+		// Confirm the goroutine is running by waiting for the resumeResyncFunc to fire.
 		base.RequireChanRecvWithTimeout(t, called, 2*time.Second)
 		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback before stopping")
 
@@ -179,7 +205,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		mgr.StopPolling(ctx)
 
 		// Write a new state change (ResyncRunning=false) directly to the store. The goroutine
-		// must not invoke resumeFunc because ResyncRunning is false, and it must not run at all
+		// must not invoke resumeResyncFunc because ResyncRunning is false, and it must not run at all
 		// because the poller has been stopped.
 		_, err = metadataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: base.Ptr(false)})

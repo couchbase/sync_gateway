@@ -162,7 +162,7 @@ func (b *BackgroundManager) Resume(ctx context.Context) error {
 	}
 	if clusterState != BackgroundProcessStateRunning {
 		b.callUpdateDatabaseState(ctx, false)
-		return errBackgroundManagerStatusNotRunning
+		return nil
 	}
 
 	optionsBytes, _, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, b.clusterAwareOptions.StatusDocID(), "meta.options")
@@ -615,7 +615,6 @@ func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error 
 	default:
 		return fmt.Errorf("unknown background manager mode: %v", b.mode())
 	}
-	b.callUpdateDatabaseState(ctx, b.GetRunState() == BackgroundProcessStateRunning)
 	return err
 }
 

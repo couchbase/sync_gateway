@@ -675,7 +675,10 @@ func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
-	require.ErrorIs(t, mgr2.Resume(ctx), errBackgroundManagerStatusNotRunning)
+	require.NoError(t, mgr2.Resume(ctx))
+	mgr2State, err := mgr2.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, mgr.GetRunState(), mgr2State)
 }
 
 // TestBackgroundManagerResumeLocalModeError verifies that Resume returns an error for a local-mode manager
@@ -878,7 +881,7 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T
 	}
 
 	err := observer.Resume(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	require.NoError(t, err)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
@@ -1105,11 +1108,11 @@ func TestUpdateDatabaseStateResumeOverwritesRunningState(t *testing.T) {
 	assertResyncRunningEventually(t, dbStateMgr, true, ctx)
 }
 
-// TestDatabaseStateMgrShouldRunResyncHandlerConcurrentWithUpdateState stress-tests the interaction
-// between ShouldRunResyncHandler (which reads CAS outside the lock) and concurrent UpdateState calls.
+// TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState stress-tests the interaction between
+// isUpdated (which reads CAS outside the lock) and concurrent UpdateState calls.
 // The test verifies no data races and that the handler fires at least once per logical state change.
 // Run with -race.
-func TestDatabaseStateMgrShouldRunResyncHandlerConcurrentWithUpdateState(t *testing.T) {
+func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1137,14 +1140,19 @@ func TestDatabaseStateMgrShouldRunResyncHandlerConcurrentWithUpdateState(t *test
 		}(w)
 	}
 
-	// Readers: call ShouldRunResyncHandler, count triggers.
+	// Readers: call isUpdated and advance CAS on detection, mirroring what poll does.
 	for range workers / 2 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for range iters {
-				if ok, state := dbStateMgr.ShouldRunResyncHandler(ctx); ok && state != nil && state.ResyncRunning != nil && *state.ResyncRunning {
-					handlerFires.Add(1)
+				if newCAS, state, ok := dbStateMgr.isUpdated(ctx); ok {
+					if state != nil && state.ResyncRunning != nil && *state.ResyncRunning {
+						handlerFires.Add(1)
+					}
+					dbStateMgr.lock.Lock()
+					dbStateMgr.CAS = newCAS
+					dbStateMgr.lock.Unlock()
 				}
 			}
 		}()
@@ -1171,9 +1179,9 @@ func TestUpdateDatabaseStateConcurrentStartStopWithPoller(t *testing.T) {
 
 	mgr, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "poller-start-stop", &ResumableMockProcess{})
 
-	// Wire a resumeFunc that records any call where the cluster status is not actually running.
+	// Wire a resumeResyncFunc that records any call where the cluster status is not actually running.
 	// A correct implementation should only call resume when the cluster IS running.
-	dbStateMgr.resumeFunc = func(pollCtx context.Context) error {
+	dbStateMgr.resumeResyncFunc = func(pollCtx context.Context) error {
 		clusterState, err := mgr.getClusterStatusState(pollCtx)
 		if err != nil || clusterState != BackgroundProcessStateRunning {
 			badResumeCalls.Add(1)
@@ -1273,10 +1281,12 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 
 	// Wait for mgr1 to reach a terminal state.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := mgr1.getClusterStatusState(ctx)
+		require.NoError(c, err)
 		assert.Contains(c, []BackgroundProcessState{
 			BackgroundProcessStateStopped,
 			BackgroundProcessStateCompleted,
-		}, mgr1.GetRunState())
+		}, state)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Stop any resume callers that managed to start running.
