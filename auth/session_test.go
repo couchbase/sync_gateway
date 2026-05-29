@@ -367,6 +367,92 @@ func TestUserDeleteAllSessions(t *testing.T) {
 	require.EqualError(t, err, "401 Session no longer valid for user")
 }
 
+// TestAuthenticateCookieOneTimeSession verifies one-time session behaviour in AuthenticateCookie:
+//   - The session is consumed on first use and rejected on the second.
+//   - No Set-Cookie header is ever written, including when the normal TTL-refresh branch would
+//     fire for a regular session (sessionTimeElapsed > 10% of TTL).
+func TestAuthenticateCookieOneTimeSession(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+	a := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+
+	const username = "Alice"
+	user, err := a.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
+
+	t.Run("one-time session authenticates once then is deleted", func(t *testing.T) {
+		session, err := a.CreateSession(ctx, user, 2*time.Hour, true)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+		req.AddCookie(a.MakeSessionCookie(session, false, false, http.SameSiteDefaultMode))
+
+		authedUser, err := a.AuthenticateCookie(req, httptest.NewRecorder())
+		require.NoError(t, err)
+		require.NotNil(t, authedUser)
+		assert.Equal(t, username, authedUser.Name())
+
+		_, err = a.AuthenticateCookie(req, httptest.NewRecorder())
+		require.Error(t, err)
+		assert.Equal(t, http.StatusUnauthorized, err.(*base.HTTPError).Status)
+	})
+
+	t.Run("one-time session does not set cookie even when TTL refresh would trigger", func(t *testing.T) {
+		// Expiration=now+2h with Ttl=24h means sessionTimeElapsed≈22h > tenPercentOfTtl≈2.4h,
+		// so a regular session would call http.SetCookie here — a one-time session must not.
+		oneTime := true
+		sessionID, err := base.GenerateRandomSecret()
+		require.NoError(t, err)
+		session := &LoginSession{
+			ID:          sessionID,
+			Username:    username,
+			Expiration:  time.Now().Add(2 * time.Hour),
+			Ttl:         24 * time.Hour,
+			SessionUUID: user.GetSessionUUID(),
+			OneTime:     &oneTime,
+		}
+		require.NoError(t, dataStore.Set(ctx, a.DocIDForSession(sessionID), base.DurationToCbsExpiry(24*time.Hour), nil, session))
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: sessionID})
+
+		recorder := httptest.NewRecorder()
+		authedUser, err := a.AuthenticateCookie(req, recorder)
+		require.NoError(t, err)
+		require.NotNil(t, authedUser)
+		assert.Empty(t, recorder.Header().Get("Set-Cookie"), "one-time session must not set a cookie even when TTL refresh would trigger")
+	})
+
+	t.Run("regular session refreshes cookie when TTL threshold met", func(t *testing.T) {
+		// Same setup without OneTime — the refresh branch should fire and Set-Cookie should be present.
+		sessionID, err := base.GenerateRandomSecret()
+		require.NoError(t, err)
+		session := &LoginSession{
+			ID:          sessionID,
+			Username:    username,
+			Expiration:  time.Now().Add(2 * time.Hour),
+			Ttl:         24 * time.Hour,
+			SessionUUID: user.GetSessionUUID(),
+		}
+		require.NoError(t, dataStore.Set(ctx, a.DocIDForSession(sessionID), base.DurationToCbsExpiry(24*time.Hour), nil, session))
+
+		req, err := http.NewRequest(http.MethodGet, "", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: DefaultCookieName, Value: sessionID})
+
+		recorder := httptest.NewRecorder()
+		authedUser, err := a.AuthenticateCookie(req, recorder)
+		require.NoError(t, err)
+		require.NotNil(t, authedUser)
+		assert.NotEmpty(t, recorder.Header().Get("Set-Cookie"), "regular session should refresh cookie when TTL threshold is met")
+	})
+}
+
 func TestCreateOneTimeSession(t *testing.T) {
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
