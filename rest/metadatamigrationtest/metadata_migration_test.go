@@ -399,7 +399,7 @@ func TestMetadataMigrationOptInIsIrreversibleViaREST(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
-func TestMetadataMigrationLegacyDefaultDBSiblingClassifiesAsUnknown(t *testing.T) {
+func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.T) {
 	base.TestRequiresCollections(t)
 
 	ctx := base.TestCtx(t)
@@ -518,16 +518,18 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiesAsUnknown(t *testing.T
 	assert.Contains(t, resp.Body.String(), `"name":"alice"`,
 		"dbdefault's user must still be readable through its own admin API after dbnamed's migration")
 
-	// The hypothesis assertion. If dbnamed's migration completes cleanly the hypothesis is
-	// disproven and the test fails — fix the code review note. If it errors, the hypothesis
-	// is confirmed and the error message should reference the maxPasses give-up.
+	// dbnamed's migration completes cleanly in a single pass. dbdefault's colocated legacy keys
+	// carry a metadata prefix that doesn't match dbnamed's metadataID, so the dispatcher
+	// classifies them as out-of-scope (DocsOutOfScope) and leaves them in place. They are NOT
+	// treated as an unrecognised prefix (DocsUnknownPrefix) — that would keep remaining>0 and
+	// stall the run until the maxPasses=16 give-up.
 	assert.Contains(t, finalBody, `"status":"completed"`,
-		"HYPOTHESIS: dbnamed's migration should NOT complete cleanly — dbdefault's legacy keys "+
-			"should be classified as DocsUnknownPrefix and trigger the maxPasses=16 give-up. "+
-			"If this assertion fails the hypothesis is wrong and the code review note can be retracted. "+
+		"dbnamed's migration should complete cleanly — dbdefault's colocated legacy keys are "+
+			"classified out-of-scope, not as an unrecognised prefix that would stall the run. "+
 			"Final payload: %s", finalBody)
 	assert.NotContains(t, finalBody, `"status":"error"`,
-		"HYPOTHESIS: dbnamed's migration should error out with the maxPasses give-up. Final payload: %s", finalBody)
+		"dbnamed's migration should not error — its own keys migrate and the sibling DB's "+
+			"out-of-scope keys are skipped. Final payload: %s", finalBody)
 }
 
 // TestMetadataMigrationOptInRejectedWithViews verifies the DbConfig.validateVersion guard:
