@@ -322,13 +322,14 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 }
 
 // GetCounter returns a uint64 result for the given counter key.
-// If the given key is not found in the bucket, this function returns a result of zero.
-func GetCounter(ctx context.Context, datastore DataStore, k string) (result uint64, err error) {
-	_, err = datastore.Get(ctx, k, &result)
-	if IsDocNotFoundError(err) {
-		return 0, nil
-	}
-	return result, err
+// If the given key is not found in the bucket, the counter is created at zero and zero is returned.
+//
+// Implemented via Incr(amt=0, def=0): on a hit the counter is returned unchanged, on a
+// miss the doc is created at 0. This routes through MetadataStore.Incr's pill-self-heal
+// when the wrapper is in use, so a metadata-migration pill body on the fallback seq
+// counter no longer crashes callers with a JSON-into-uint64 unmarshal error.
+func GetCounter(ctx context.Context, datastore DataStore, k string) (uint64, error) {
+	return datastore.Incr(ctx, k, 0, 0, 0)
 }
 
 func IsCasMismatch(err error) bool {

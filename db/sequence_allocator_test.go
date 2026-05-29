@@ -35,7 +35,7 @@ func TestSequenceAllocator(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -105,7 +105,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -182,7 +182,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -217,7 +217,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
@@ -254,7 +254,7 @@ func TestNextSequenceGreaterThanSingleNode(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -335,9 +335,9 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 	// Set sequenceBatchSize=10 to test variations of batching
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	statsA, err := stats.NewDBStats("A", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	statsB, err := stats.NewDBStats("B", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbStatsA := statsA.DatabaseStats
 	dbStatsB := statsB.DatabaseStats
@@ -413,7 +413,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 	ds := bucket.GetSingleDataStore()
@@ -494,7 +494,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 	ds := bucket.GetSingleDataStore()
@@ -575,9 +575,9 @@ func TestSyncSeqRollbackMultiNode(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	statsA, err := stats.NewDBStats("A", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	statsB, err := stats.NewDBStats("B", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbStatsA := statsA.DatabaseStats
 	dbStatsB := statsB.DatabaseStats
@@ -665,15 +665,15 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	statsA, err := stats.NewDBStats("A", false, false, false, nil, nil)
+	statsA, err := stats.NewDBStats("A", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsB, err := stats.NewDBStats("B", false, false, false, nil, nil)
+	statsB, err := stats.NewDBStats("B", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsC, err := stats.NewDBStats("C", false, false, false, nil, nil)
+	statsC, err := stats.NewDBStats("C", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsD, err := stats.NewDBStats("D", false, false, false, nil, nil)
+	statsD, err := stats.NewDBStats("D", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	statsE, err := stats.NewDBStats("E", false, false, false, nil, nil)
+	statsE, err := stats.NewDBStats("E", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbStatsA := statsA.DatabaseStats
 	dbStatsB := statsB.DatabaseStats
@@ -777,7 +777,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 
-	importStats, err := stats.NewDBStats("import", false, false, false, nil, nil)
+	importStats, err := stats.NewDBStats("import", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
 	importFeedAllocator, err := newSequenceAllocator(ctx, dataStore, importStats.DatabaseStats, base.DefaultMetadataKeys)
@@ -799,7 +799,7 @@ func TestVariableRateAllocators(t *testing.T) {
 	clientAllocators := make([]*sequenceAllocator, 0)
 	clientAllocatorCount := 10
 	for i := 0; i <= clientAllocatorCount; i++ {
-		clientStats, err := stats.NewDBStats(fmt.Sprintf("client%d", i), false, false, false, nil, nil)
+		clientStats, err := stats.NewDBStats(fmt.Sprintf("client%d", i), false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		clientAllocator, err := newSequenceAllocator(ctx, dataStore, clientStats.DatabaseStats, base.DefaultMetadataKeys)
 		require.NoError(t, err)

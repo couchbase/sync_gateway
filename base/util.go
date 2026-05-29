@@ -612,6 +612,13 @@ func CreateMaxDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int, maxS
 
 }
 
+// CreateIndefiniteSleeperFunc waits a fixed interval before retrying - without any upper bound on number of attempts.
+func CreateIndefiniteSleeperFunc(timeToSleepMs int) RetrySleeper {
+	return func(_ int) (bool, int) {
+		return true, timeToSleepMs
+	}
+}
+
 // CreateIndefiniteMaxDoublingSleeperFunc is similar to CreateMaxDoublingSleeperFunc, with the exception that there is no number of maximum retries.
 func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPerRetryMs int) RetrySleeper {
 	timeToSleepMs := initialTimeToSleepMs
