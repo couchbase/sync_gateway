@@ -186,10 +186,10 @@ func (h *handler) handleGetAttachmentMigration() error {
 // metadata migration arming logic in DatabaseContext.armMetadataMigrationTask. The
 // migration normally arms itself the moment all nodes report the opted-in config
 // applied — this endpoint exists for operators who need to drive the lifecycle
-// directly (e.g. retry after a give-up, stop a runaway migration). It does NOT
-// gate on UseSystemMetadataCollection: a manual start against a DB that never
-// opted in will simply find the MetadataStore is not a dual-collection wrapper
-// and no-op through to the per-DB complete write.
+// directly (e.g. retry after a give-up, stop a runaway migration). A manual start is
+// rejected unless the database has enabled use_system_metadata_collection (nothing to
+// migrate otherwise) and every node has applied that opted-in config (so peers aren't
+// still writing metadata to the legacy collection mid-migration).
 func (h *handler) handleMetadataMigration() error {
 	if h.db.MetadataMigrationManager == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "Metadata migration manager is not initialized for this database")
@@ -206,6 +206,27 @@ func (h *handler) handleMetadataMigration() error {
 	}
 
 	if action == string(db.BackgroundProcessActionStart) {
+		// Migration only makes sense once the database has opted in to the system metadata
+		// collection. Without it the MetadataStore is not a dual-collection wrapper and there is
+		// nothing to migrate, so reject the start rather than silently no-op'ing.
+		if !h.db.Options.UseSystemMetadataCollection {
+			return base.HTTPErrorf(http.StatusBadRequest, "cannot start metadata migration: use_system_metadata_collection is not enabled for this database")
+		}
+		// Gate a manual start on the same cluster-readiness check the auto-arming path uses
+		// (DatabaseContext.tryStartMetadataMigration). Starting before every node has applied the
+		// opted-in config would let peers still on the old config keep writing metadata to
+		// _default._default while this node migrates it to _system._mobile, splitting or losing
+		// those writes. ConfigFullyAppliedFunc is nil only outside persistent-config mode, where
+		// there is no cluster to coordinate, so a nil func skips the gate.
+		if h.db.ConfigFullyAppliedFunc != nil {
+			applied, missing, err := h.db.ConfigFullyAppliedFunc(h.ctx())
+			if err != nil {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "unable to verify the database config has been applied across the cluster before starting metadata migration: %v", err)
+			}
+			if !applied {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "cannot start metadata migration until the opted-in database config has been applied on all nodes (waiting on: %v)", missing)
+			}
+		}
 		if err := h.db.MetadataMigrationManager.Start(h.ctx(), map[string]any{
 			"reset": reset,
 		}); err != nil {
