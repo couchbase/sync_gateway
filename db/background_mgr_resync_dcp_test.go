@@ -191,7 +191,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.Distributed {
-				t.Skip("Enable in CBG-5184")
+				t.Skip("Enable in CBG-5419")
 			}
 			docsToCreate := 1000
 			if base.UnitTestUrlIsWalrus() {
@@ -237,7 +237,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			t.Run("Resync without updating sync function", func(t *testing.T) {
 				if testCase.Distributed {
-					t.Skip("Enable in CBG-5184")
+					t.Skip("Enable in CBG-5419")
 				}
 				docsToCreate := 100
 				db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
@@ -296,21 +296,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 					"collections":         base.NewCollectionNames(),
 				}
 
-				if testCase.Distributed {
-					rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-					require.True(t, ok)
-					rs.Distributed = true
-				}
 				err := db.ResyncManager.Start(ctx, options)
 				require.NoError(t, err)
 
-				if testCase.Distributed {
-					waitForResyncDocsChanged(t, db, int64(docsToCreate))
-					err := db.ResyncManager.Stop(ctx)
-					require.NoError(t, err)
-				} else {
-					RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
-				}
+				RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
 
 				stats := getResyncStats(t, db)
 				// If there are tombstones from older docs which have been deleted from the bucket, processed docs will
@@ -328,7 +317,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-				// This is just a temporary check until MB-70378 is implemented
+				// CBG-5418: debug flake of why distributed resync sometimes processes more documents than expected
 				if !testCase.Distributed {
 					deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
 					assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
@@ -342,7 +331,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.Distributed {
-				t.Skip("Enable in CBG-5184")
+				t.Skip("Enable in CBG-5419")
 			}
 			docsToCreate := 1000
 			// rosmar runs too quickly, increase doc count
@@ -392,9 +381,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	for _, testCase := range ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
-			if testCase.Distributed {
-				t.Skip("Enable in CBG-5184")
-			}
 			docsToCreate := 5000
 			// rosmar runs too quickly, increase doc count
 			if base.UnitTestUrlIsWalrus() {
@@ -464,7 +450,8 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 			docsPerCollection := int64(1000)
 			// rosmar runs too quickly, increase doc count
-			if base.UnitTestUrlIsWalrus() {
+			if base.UnitTestUrlIsWalrus() || testCase.Distributed {
+				// Evalute in CBG-5419 whether increasing doc count is necessary
 				docsPerCollection *= 5
 			}
 			const numCollections = 2
@@ -740,16 +727,15 @@ func waitForResyncDocsProcessed(t testing.TB, db *Database, count int64) {
 		var stats ResyncManagerResponseDCP
 		assert.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
 		assert.Greater(c, stats.DocsProcessed, count)
-	}, 1*time.Minute, 100*time.Millisecond)
+	}, 1*time.Minute, 10*time.Millisecond)
 }
 
 func waitForResyncDocsChanged(t testing.TB, db *Database, count int64) {
-
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats := getResyncStats(t, db)
 		assert.Equal(c, stats.DocsChanged, count)
 		assert.GreaterOrEqual(c, stats.DocsProcessed, count)
-	}, 5*time.Minute, 100*time.Millisecond)
+	}, 5*time.Minute, 10*time.Millisecond)
 }
 
 func TestResyncCheckpointPrefix(t *testing.T) {

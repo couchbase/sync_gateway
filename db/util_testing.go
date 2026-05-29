@@ -1205,7 +1205,7 @@ func ResyncTestModes() []ResyncTestCase {
 			Distributed: false,
 		},
 	}
-	/* CBG-5184 enable tests
+	/* CBG-5419 enable tests
 	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
 		testCases = append(testCases, ResyncTestCase{
 			Name:        "distributed=true",

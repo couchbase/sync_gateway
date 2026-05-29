@@ -276,18 +276,16 @@ func getImportDestFactory(
 ) (cbgt.Dest, error) {
 	ctx = base.CorrelationIDLogCtx(ctx, base.DCPImportFeedID)
 	return func(janitorRollback func()) (cbgt.Dest, error) {
-		importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
-		importPartitionStat := dbContext.DbStats.SharedBucketImport().ImportPartitions
-		persistCheckpoints := true
-
 		return base.NewDCPDest(
 			ctx,
-			callback,
-			dbContext.MetadataStore,
-			dbContext.numVBuckets,
-			persistCheckpoints,
-			importFeedStatsMap.Map,
-			importPartitionStat,
-			checkpointPrefix)
+			base.DCPDestOptions{
+				Callback:           callback,
+				MetadataStore:      dbContext.MetadataStore,
+				MaxVbNo:            dbContext.numVBuckets,
+				PersistCheckpoints: true,
+				DcpStats:           dbContext.DbStats.Database().ImportFeedMapStats.Map,
+				PartitionStat:      dbContext.DbStats.SharedBucketImport().ImportPartitions,
+				CheckpointPrefix:   checkpointPrefix,
+			})
 	}
 }
