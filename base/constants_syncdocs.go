@@ -244,7 +244,7 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 	return m.heartbeaterPrefix
 }
 
-// IsLegacyHeartbeaterKey reports whether key is a heartbeater timeout document written under
+// IsHeartbeaterKey reports whether key is a heartbeater timeout document written under
 // this MetadataKeys' heartbeater namespace. CouchbaseHeartbeater writes
 // `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID),
 // where heartbeaterPrefix is the value returned by HeartbeaterPrefix(groupID) — i.e. it
@@ -256,7 +256,7 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 // Matching the literal `heartbeat_timeout:` token matters because the default-mode
 // heartbeaterPrefix is bare `_sync:`, which would otherwise classify every unrecognised
 // `_sync:` key as a heartbeater and risk deletion during metadata migration.
-func (m *MetadataKeys) IsLegacyHeartbeaterKey(key string) bool {
+func (m *MetadataKeys) IsHeartbeaterKey(key string) bool {
 	if !strings.HasPrefix(key, m.heartbeaterPrefix) {
 		return false
 	}
@@ -272,6 +272,29 @@ func (m *MetadataKeys) IsLegacyHeartbeaterKey(key string) bool {
 	if i := strings.IndexByte(rest, ':'); i > 0 {
 		return strings.HasPrefix(rest[i+1:], "heartbeat_timeout:")
 	}
+	return false
+}
+
+func IsHeartbeaterKey(key string) bool {
+	if !strings.HasPrefix(key, "_sync:") {
+		return false
+	}
+
+	parts := strings.Split(key, ":")
+	if len(parts) >= 2 && parts[1] == "heartbeat_timeout" {
+		// no group id or metadata id
+		return true
+	} else if len(parts) >= 3 && parts[2] == "heartbeat_timeout" {
+		// group id
+		return true
+	} else if len(parts) >= 4 && parts[3] == "heartbeat_timeout" {
+		// metadata id - m_:hb:
+		return true
+	} else if len(parts) >= 5 && parts[4] == "heartbeat_timeout" {
+		// metadata id + group id
+		return true
+	}
+
 	return false
 }
 

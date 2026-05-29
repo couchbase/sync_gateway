@@ -196,6 +196,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 	}
 
 	switch {
+	// matching sync docs for this database
 	case
 		isOurs(keys.UserKeyPrefix()),
 		isOurs(keys.RoleKeyPrefix()),
@@ -214,6 +215,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		// migrated doc on primary.
 		moveFallbackDoc(ctx, ms, key, false, stats)
 
+	// matching binary sync docs for this database
 	case
 		isOurs(keys.UnusedSeqPrefix()),
 		isOurs(keys.UnusedSeqRangePrefix()):
@@ -222,47 +224,46 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		// the Binary datatype flag — change_listener.go relies on these docs.
 		moveFallbackDoc(ctx, ms, key, true, stats)
 
-	// Sibling DBs' standard form `_sync:m_<other>:…`, but NOT our own metadata ID
+	// heartbeater - don't migrate just cleanup
+	case
+		keys.IsHeartbeaterKey(key):
+		deleteFallbackDoc(ctx, ms, key, stats)
+
+	// never migrate using range scan
+	case key == keys.SyncSeqKey(),
+		key == base.SyncDocPrefix+"seq",
+		key == base.SGRegistryKey,
+		key == base.SGSyncInfo,
+		strings.HasPrefix(key, base.PersistentConfigPrefixWithoutGroupID):
+		stats.DocsOutOfScope.Add(1)
+
+	// non-matching sync docs (metadata prefix before sync doc type - formatInvertedMetadataKey)
 	case
 		strings.HasPrefix(key, base.SyncDocMetadataPrefix) &&
-			(thisMetadataID == "" || !strings.HasPrefix(key, thisMetadataID)):
+			(thisMetadataID == "" || !strings.HasPrefix(key, thisMetadataID)),
+		// inverted but default ("") metadata prefix
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDCPCheckpoint.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUserPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyRolePrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUserEmailPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySessionPrefix.String()):
 		stats.DocsOutOfScope.Add(1)
 
-	case key == keys.SyncSeqKey():
-		// migrateSeqCounter handles the seq counter via the pill + self-heal +
-		// fallback-cleanup dance before the range-scan loop ever runs. If the range
-		// scan still sees it here (rare: migrateSeqCounter cleanup raced an
-		// in-progress write, or this is a re-run after a partial prior migration),
-		// treat it as out-of-scope rather than unknown — the seq counter has its own
-		// dedicated handling and the range scan is not the right path to move it.
-		stats.DocsOutOfScope.Add(1)
-
-	// Sibling DBs' inverted-form keys (per the migration design doc's `m_` convention),
-	// bucket-level bootstrap docs, and per-collection metadata (`_sync:syncdata*`,
-	// `_sync:syncInfo`) which the design plan keeps in the source collection — these
-	// are *not* part of the per-DB metadata migration.
+	// non-matching sync docs (from other databases - metadata _after_ sync doc type - formatMetadataKey)
 	case
-		strings.HasPrefix(key, base.SyncDocPrefix+"user:"+base.MetadataIdPrefix),
-		strings.HasPrefix(key, base.SyncDocPrefix+"role:"+base.MetadataIdPrefix),
-		strings.HasPrefix(key, base.SyncDocPrefix+"useremail:"+base.MetadataIdPrefix),
-		strings.HasPrefix(key, base.SyncDocPrefix+"session:"+base.MetadataIdPrefix),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.DCPCheckpointPrefix+base.MetadataIdPrefix),
-		key == base.SGRegistryKey,
-		strings.HasPrefix(key, base.PersistentConfigPrefixWithoutGroupID),
-		key == base.SGSyncInfo,
-		key == base.SyncFunctionKeyWithoutGroupID,
-		strings.HasPrefix(key, base.SyncFunctionKeyWithoutGroupID+":"),
-		strings.HasPrefix(key, base.CollectionSyncFunctionKeyWithoutGroupID+":"):
-		// ignore - either other DBs or bucket-level docs that require their own migration logic
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySeq.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUnusedSeq.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUnusedSeqRange.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySGRStatus.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyHeartbeaterPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySGCfg.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyBackgroundProcessHeartbeatPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyBackgroundProcessStatusPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncHeartBeaterPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncCfgPrefix.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDatabaseState.String()),
+		base.IsHeartbeaterKey(key):
 		stats.DocsOutOfScope.Add(1)
-
-	case
-		// Heartbeater keys are matched on their full shape rather than just the
-		// heartbeater prefix — in default mode that prefix is bare `_sync:` and a
-		// HasPrefix would swallow every unrecognised in-scope key.
-		keys.IsLegacyHeartbeaterKey(key):
-		// delete from fallback (don't move)
-		deleteFallbackDoc(ctx, ms, key, stats)
 
 	default:
 		base.WarnfCtx(ctx, "metadata migration: unrecognised prefix, leaving on fallback: %s", base.UD(key))

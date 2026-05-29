@@ -647,3 +647,36 @@ func TestDecodeSyncInfo(t *testing.T) {
 		})
 	}
 }
+
+func TestIsHeartbeaterKey(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{
+			"not_heartbeat_timeout",
+			false,
+		},
+		{
+			"_sync:heartbeat_timeout:nodeuid",
+			true,
+		},
+		{
+			"_sync:group_id:heartbeat_timeout:nodeuid",
+			true,
+		},
+		{
+			"_sync:m_id:hb:heartbeat_timeout:nodeuid",
+			true,
+		},
+		{
+			"_sync:m_id:hb:group_id:heartbeat_timeout:nodeuid",
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			assert.Equalf(t, tt.want, IsHeartbeaterKey(tt.key), "IsHeartbeaterKey(%v)", tt.key)
+		})
+	}
+}

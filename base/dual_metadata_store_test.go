@@ -153,8 +153,6 @@ func TestPrimaryAddRawDuplicateContract(t *testing.T) {
 }
 
 // TestMetadataStoreIncrAfterMigrationCompleteBypassesFallback verifies that once
-
-// TestMetadataStoreIncrAfterMigrationCompleteBypassesFallback verifies that once
 // SetMigrationComplete has been called the wrapper short-circuits to primary, even if a
 // fallback doc still exists (it should be invisible).
 func TestMetadataStoreIncrAfterMigrationCompleteBypassesFallback(t *testing.T) {

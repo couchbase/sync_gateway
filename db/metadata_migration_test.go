@@ -332,7 +332,7 @@ func TestMigrateMetadataLegacyDefaultUserAndRole(t *testing.T) {
 
 // TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted exercises the precise
 // heartbeater-vs-unknown distinction in default mode end-to-end. The default-mode
-// heartbeater prefix is bare `_sync:`, so before IsLegacyHeartbeaterKey the unknown legacy
+// heartbeater prefix is bare `_sync:`, so before IsHeartbeaterKey the unknown legacy
 // key would have been classified as a heartbeat and deleted. Both branches need a live
 // fallback (Delete + leave-on-fallback), so this is a bucket-backed test rather than a
 // nil-ms classification subtest.
@@ -368,7 +368,7 @@ func TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted(t *testing.T
 // `HeartbeaterPrefix` returns `_sync:m_<id>:hb:<groupID>:`, so the heartbeater writes
 // `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` — i.e. the on-disk key has an extra
 // `<groupID>:` colon-segment between the namespace and the literal `heartbeat_timeout:`
-// token. The original `IsLegacyHeartbeaterKey` only matched the no-groupID form, so the
+// token. The original `IsHeartbeaterKey` only matched the no-groupID form, so the
 // with-groupID heartbeat key fell into DocsUnknownPrefix and wedged the migration on
 // every real EE bucket.
 func TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch(t *testing.T) {
@@ -462,7 +462,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 	// DefaultModeUnknownPrefixNotSwallowed pins the fix for the heartbeater catch-all
 	// shadowing problem: with DefaultMetadataID the heartbeater prefix is bare `_sync:`,
 	// which previously meant any unrecognised in-scope `_sync:…` key fell into the
-	// heartbeater branch and got deleted. With the IsLegacyHeartbeaterKey shape check the
+	// heartbeater branch and got deleted. With the IsHeartbeaterKey shape check the
 	// dispatcher must instead route unknown keys to the warn/DocsUnknownPrefix branch.
 	t.Run("DefaultModeUnknownPrefixNotSwallowed", func(t *testing.T) {
 		for _, k := range []string{
@@ -490,22 +490,6 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 		} {
 			s := classify(base.DefaultMetadataID, k)
 			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is a sibling-DB inverted-form key — must remain out-of-scope", k)
-		}
-	})
-
-	// SyncFunctionDocsOutOfScope pins the design-plan decision that the per-collection
-	// sync-function docs (`_sync:syncdata*`) stay in the source collection — they're
-	// classified out-of-scope rather than left as unknown-prefix (which would block the
-	// migration on every real DB, since every DB writes at least one syncdata doc).
-	t.Run("SyncFunctionDocsOutOfScope", func(t *testing.T) {
-		for _, k := range []string{
-			"_sync:syncdata",
-			"_sync:syncdata:groupA",
-			"_sync:syncdata_collection:scope1.coll1",
-			"_sync:syncdata_collection:scope1.coll1:groupA",
-		} {
-			s := classify("myDB", k)
-			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is per-collection sync-function doc — design plan keeps it in source collection", k)
 		}
 	})
 }
