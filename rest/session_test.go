@@ -755,6 +755,49 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
 }
 
+// TestSessionCreationCookieBehavior verifies that POST /_session sets a cookie for regular sessions
+// and does not set a cookie for one-time sessions (whose ID is delivered via the JSON body instead).
+func TestSessionCreationCookieBehavior(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	username := "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	dbName := rt.GetDatabase().Name
+
+	t.Run("regular session sets cookie", func(t *testing.T) {
+		resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+		RequireStatus(t, resp, http.StatusOK)
+
+		cookie, err := http.ParseSetCookie(resp.Header().Get("Set-Cookie"))
+		require.NoError(t, err)
+		assert.Equal(t, auth.DefaultCookieName, cookie.Name)
+		assert.NotEmpty(t, cookie.Value)
+		assert.Equal(t, "/"+dbName, cookie.Path)
+		assert.True(t, cookie.Expires.After(time.Now()), "cookie expiration should be in the future")
+
+		var body struct {
+			OneTimeSessionID string `json:"one_time_session_id"`
+		}
+		require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+		assert.Empty(t, body.OneTimeSessionID, "regular session response must not include one_time_session_id")
+	})
+
+	t.Run("one-time session sets no cookie", func(t *testing.T) {
+		resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+		RequireStatus(t, resp, http.StatusOK)
+
+		assert.Empty(t, resp.Header().Get("Set-Cookie"), "one-time session creation must not set a cookie")
+
+		var body struct {
+			OneTimeSessionID string `json:"one_time_session_id"`
+		}
+		require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+		assert.NotEmpty(t, body.OneTimeSessionID, "one-time session response must include one_time_session_id")
+	})
+}
+
 func TestOneTimeSessionWithCookie(t *testing.T) {
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -764,9 +807,16 @@ func TestOneTimeSessionWithCookie(t *testing.T) {
 
 	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
 	RequireStatus(t, resp, http.StatusOK)
+	assert.Empty(t, resp.Header().Get("Set-Cookie"), "one-time session creation must not set a cookie")
+
+	var sessionResp struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &sessionResp))
+	require.NotEmpty(t, sessionResp.SessionID)
 
 	headers := map[string]string{
-		"Cookie": resp.Header().Get("Set-Cookie"),
+		"Cookie": auth.DefaultCookieName + "=" + sessionResp.SessionID,
 	}
 
 	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)

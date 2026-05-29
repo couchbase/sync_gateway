@@ -58,7 +58,8 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	// SessionTimeElapsed and tenPercentOfTtl use Nanoseconds for more precision when converting to int
 	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Nanoseconds())
 	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
-	if sessionTimeElapsed > tenPercentOfTtl {
+	// One-time sessions must not refresh the cookie — they will be deleted on this request.
+	if sessionTimeElapsed > tenPercentOfTtl && (session.OneTime == nil || !*session.OneTime) {
 		session.Expiration = time.Now().Add(duration)
 		if err = auth.datastore.Set(auth.LogCtx, auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
 			return nil, err
