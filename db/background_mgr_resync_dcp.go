@@ -394,6 +394,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		if regenerateSequences {
 			updateSyncInfo(ctx, db, r.collectionIDs)
 		}
+		// resync finished, drop back to 0
+		db.DbStats.Database().ResyncDocsTargeted.Set(0)
 	case <-terminator.Done():
 
 		base.DebugfCtx(ctx, base.KeyAll, "Terminator closed. Ending Resync process.")
