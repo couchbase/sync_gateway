@@ -70,6 +70,10 @@ type BackgroundManager struct {
 	clusterAwareOptions                    *ClusterAwareBackgroundManagerOptions
 	lock                                   sync.Mutex
 	Process                                BackgroundManagerProcessI
+	// updateDatabaseState, when non-nil, is called from UpdateStatusClusterAware and from Resume
+	// (when the cluster is not running) to mirror the local run state into the DatabaseState document.
+	// running is true when the process is locally active, false otherwise.
+	updateDatabaseState func(ctx context.Context, running bool) error
 }
 
 const (
@@ -127,6 +131,51 @@ type updateStatusCallbackFunc func(ctx context.Context) error
 // GetName returns name of the background manager
 func (b *BackgroundManager) GetName() string {
 	return b.name
+}
+
+// callUpdateDatabaseState invokes updateDatabaseState if it is set, logging any error.
+func (b *BackgroundManager) callUpdateDatabaseState(ctx context.Context, running bool) {
+	if b.updateDatabaseState == nil {
+		return
+	}
+	if err := b.updateDatabaseState(ctx, running); err != nil {
+		base.WarnfCtx(ctx, "failed to update database state: %v", err)
+	}
+}
+
+// Resume joins an already-running multi-node background process on this node using the options stored in
+// the status document.  It only starts the local process when the cluster state is
+// BackgroundProcessStateRunning; any other state (including no status document) returns
+// errBackgroundManagerStatusNotRunning.  Only supported for multi-node background managers.
+func (b *BackgroundManager) Resume(ctx context.Context) error {
+	if b.mode() != backgroundManagerModeMultiNode {
+		return fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
+	}
+
+	clusterState, err := b.getClusterStatusState(ctx)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			b.callUpdateDatabaseState(ctx, false)
+			return errBackgroundManagerStatusNotRunning
+		}
+		return fmt.Errorf("failed to read cluster state for background process %q: %w", b.name, err)
+	}
+	if clusterState != BackgroundProcessStateRunning {
+		b.callUpdateDatabaseState(ctx, false)
+		return errBackgroundManagerStatusNotRunning
+	}
+
+	optionsBytes, _, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, b.clusterAwareOptions.StatusDocID(), "meta.options")
+	if err != nil {
+		return fmt.Errorf("failed to read meta.options for background process %q: %w", b.name, err)
+	}
+
+	var options map[string]any
+	if err := base.JSONUnmarshal(optionsBytes, &options); err != nil {
+		return fmt.Errorf("failed to unmarshal meta.options for background process %q: %w", b.name, err)
+	}
+
+	return b.Start(ctx, options)
 }
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) error {
@@ -555,16 +604,19 @@ func (b *BackgroundManager) SetError(err error) {
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
 func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error {
+	var err error
 	switch b.mode() {
 	case backgroundManagerModeSingleNode:
-		return b.UpdateSingleNodeClusterAwareStatus(ctx)
+		err = b.UpdateSingleNodeClusterAwareStatus(ctx)
 	case backgroundManagerModeMultiNode:
-		return b.updateMultiNodeClusterAwareStatus(ctx)
+		err = b.updateMultiNodeClusterAwareStatus(ctx)
 	case backgroundManagerModeLocal:
 		return nil
 	default:
 		return fmt.Errorf("unknown background manager mode: %v", b.mode())
 	}
+	b.callUpdateDatabaseState(ctx, b.GetRunState() == BackgroundProcessStateRunning)
+	return err
 }
 
 // UpdateSingleNodeClusterAwareStatus gets the current local status from the running process and updates the status document in
@@ -594,7 +646,7 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 	return err
 }
 
-// updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
+// updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return.
 func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
@@ -634,6 +686,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 		return err
 	}
 	b.Process.SetProcessStatus(ctx, previousStatus, newStatus)
+	b.callUpdateDatabaseState(ctx, b.GetRunState() == BackgroundProcessStateRunning)
 	return nil
 }
 

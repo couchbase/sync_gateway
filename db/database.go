@@ -627,7 +627,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, metaKeys, dbContext)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
-	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), dbContext.ResyncManager.Resume)
 
 	return dbContext, nil
 }
@@ -2707,8 +2707,6 @@ func (db *DatabaseContext) NumVBuckets() uint16 {
 // while it is offline. The polling mechanism watches the metadata store for updates to the database state
 // document and invokes registered handlers when changes are detected.
 func (db *DatabaseContext) InitializeOfflineMode() {
-	// TODO: Add the appropriate handler function to handle this - CBG-5183
-	db.DBStateManager.SetResyncFunc(TempResyncHandler)
 	db.DBStateManager.StartPolling(db.CancelContext)
 }
 

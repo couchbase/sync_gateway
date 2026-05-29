@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -20,30 +21,26 @@ type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
 }
 
-type ResyncHandler func(resume bool)
-
-func TempResyncHandler(resume bool) {
-	return
-}
-
 type DatabaseStateMgr struct {
 	CAS             uint64
 	dbStateID       string
 	metadataStore   base.DataStore
 	pollingInterval time.Duration
-	resyncHandler   ResyncHandler
+	resumeFunc      func(ctx context.Context) error
 	lock            sync.Mutex
 	terminator      chan struct{}
 	done            chan struct{}
 }
 
-// NewDatabaseStateMgr creates an OfflineDatabaseStateMgr for the given database.
-func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string) *DatabaseStateMgr {
+// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeFunc is called by the polling loop
+// when a state change is detected with ResyncRunning set to true; it should resume the resync process.
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeFunc func(ctx context.Context) error) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
 		CAS:             0,
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
+		resumeFunc:      resumeFunc,
 	}
 }
 
@@ -61,6 +58,9 @@ func (dbMgr *DatabaseStateMgr) UpdateState(ctx context.Context, newState Databas
 			}
 		}
 		if newState.ResyncRunning != nil {
+			if state.ResyncRunning != nil && *state.ResyncRunning == *newState.ResyncRunning {
+				return nil, nil, false, base.ErrUpdateCancel
+			}
 			state.ResyncRunning = newState.ResyncRunning
 		}
 		bodyBytes, err := base.JSONMarshal(state)
@@ -69,6 +69,9 @@ func (dbMgr *DatabaseStateMgr) UpdateState(ctx context.Context, newState Databas
 		}
 		return bodyBytes, nil, false, nil
 	})
+	if errors.Is(err, base.ErrUpdateCancel) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -88,15 +91,8 @@ func (dbMgr *DatabaseStateMgr) GetState(ctx context.Context) (*DatabaseState, ui
 	return &state, cas, nil
 }
 
-// SetResyncFunc registers the callback that is invoked by the polling loop when a state change is detected.
-// The callback receives true if a resync should resume, or false if the state document was removed (resync complete).
-func (dbMgr *DatabaseStateMgr) SetResyncFunc(resyncFunc ResyncHandler) {
-	dbMgr.resyncHandler = resyncFunc
-}
-
 // StartPolling launches a background goroutine that periodically calls poll() at dbMgr.pollingInterval.
-// The goroutine exits when StopPolling is called (via the terminator). SetResyncFunc must be called before
-// StartPolling so that state change notifications have a registered handler.
+// The goroutine exits when StopPolling is called (via the terminator).
 func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	dbMgr.terminator = make(chan struct{})
 	dbMgr.done = make(chan struct{})
@@ -116,12 +112,14 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	}()
 }
 
-// poll checks whether the resync handler should be invoked and, if so, calls it with the current
-// ResyncRunning value. It delegates the state-change decision to ShouldRunResyncHandler.
+// poll checks whether the resync handler should be invoked and, if so, calls it.
+// It delegates the state-change decision to ShouldRunResyncHandler.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if ok, state := dbMgr.ShouldRunResyncHandler(ctx); ok {
-		if state.ResyncRunning != nil {
-			dbMgr.resyncHandler(*state.ResyncRunning)
+		if state.ResyncRunning != nil && *state.ResyncRunning {
+			if err := dbMgr.resumeFunc(ctx); err != nil && !errors.Is(err, errBackgroundManagerStatusNotRunning) {
+				base.WarnfCtx(ctx, "failed to resume resync: %v", err)
+			}
 		}
 	}
 }

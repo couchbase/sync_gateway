@@ -44,6 +44,7 @@ type ResyncManagerDCP struct {
 	ResyncID                     string
 	VBUUIDs                      []uint64
 	ResyncedCollections          base.CollectionNames
+	startOptions                 map[string]any // options from the most recent Start call, persisted to meta for Resume
 	resyncCollectionInfo
 	lock        sync.RWMutex
 	Distributed bool
@@ -67,6 +68,12 @@ func NewResyncManagerDCP(metadataStore base.DataStore, metaKeys *base.MetadataKe
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),
+		updateDatabaseState: func(ctx context.Context, running bool) error {
+			if db.DBStateManager == nil {
+				return nil
+			}
+			return db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+		},
 	}
 }
 
@@ -76,6 +83,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	if !ok {
 		return errors.New("collections option is required and must be of type base.CollectionNames")
 	}
+	r.setStartOptions(options)
 
 	var collections DatabaseCollections
 	if len(resyncCollections) > 0 {
@@ -155,6 +163,13 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, resyncID string
 		GetResyncDCPCheckpointPrefix(r.db, resyncID, r.Distributed),
 		r.db.distributedDCPFeedMode(),
 	)
+}
+
+// setStartOptions stores the options used to start the current run so that Resume can reconstruct them.
+func (r *ResyncManagerDCP) setStartOptions(options map[string]any) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.startOptions = options
 }
 
 // SetVBUUIDs updates vbuuids in the manager.
@@ -586,6 +601,7 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 	meta := ResyncManagerMeta{
 		VBUUIDs:       r.VBUUIDs,
 		CollectionIDs: r.collectionIDs,
+		Options:       r.startOptions,
 	}
 
 	statusJSON, err := base.JSONMarshal(response)
@@ -619,8 +635,9 @@ func (r *ResyncManagerDCP) DocsErrored() int64 {
 }
 
 type ResyncManagerMeta struct {
-	VBUUIDs       []uint64 `json:"vbuuids"`
-	CollectionIDs []uint32 `json:"collection_ids,omitempty"`
+	VBUUIDs       []uint64       `json:"vbuuids"`
+	CollectionIDs []uint32       `json:"collection_ids,omitempty"`
+	Options       map[string]any `json:"options,omitempty"` // start options, persisted for Resume
 }
 
 type ResyncManagerStatusDocDCP struct {

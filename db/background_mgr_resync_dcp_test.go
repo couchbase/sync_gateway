@@ -965,3 +965,97 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 	require.NotEmpty(t, raw)
 	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "expected V1 prefix byte from resync write at ccv 4.1")
 }
+
+// TestResyncManagerOptionsStoredInMeta verifies that the options passed when starting a resync are embedded
+// in the "options" field of the meta returned by GetProcessStatus, so that BackgroundManager.Resume can
+// read them back from the status document.
+func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
+	inputCollections := base.CollectionNames{"scope1": []string{"col1", "col2"}}
+
+	r := &ResyncManagerDCP{}
+	r.setStartOptions(map[string]any{
+		"regenerateSequences": false,
+		"collections":         inputCollections,
+		"reset":               true,
+	})
+
+	_, metaBytes, err := r.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateStopped}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, metaBytes)
+
+	// BackgroundManager.Resume reads "options" directly from the meta subdoc.
+	var metaDoc struct {
+		Options map[string]any `json:"options"`
+	}
+	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
+	require.NotNil(t, metaDoc.Options)
+
+	require.Equal(t, false, metaDoc.Options["regenerateSequences"])
+	require.Equal(t, true, metaDoc.Options["reset"])
+
+	// collections round-trips through JSON as map[string]interface{}; re-marshal and unmarshal to recover the typed value.
+	collectionsRaw, err := base.JSONMarshal(metaDoc.Options["collections"])
+	require.NoError(t, err)
+	var recoveredCollections base.CollectionNames
+	require.NoError(t, base.JSONUnmarshal(collectionsRaw, &recoveredCollections))
+	require.Equal(t, inputCollections, recoveredCollections)
+}
+
+// TestResyncDCPInitStoresOptionsInMeta verifies that Init stores the options it receives in the meta returned
+// by GetProcessStatus.  This ensures that BackgroundManager.Resume can read options back from the bucket after
+// a Start call.
+func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	// Use all collections by passing an empty CollectionNames — avoids hard-coding scope/collection names
+	// that might not match the test bucket configuration.
+	options := map[string]any{
+		"collections":         base.NewCollectionNames(),
+		"regenerateSequences": false,
+		"reset":               false,
+	}
+
+	require.NoError(t, db.ResyncManager.Process.Init(ctx, options, nil))
+
+	_, metaBytes, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateStopped}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, metaBytes)
+
+	var metaDoc ResyncManagerMeta
+	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
+	require.NotNil(t, metaDoc.Options, "Init must call setStartOptions so that Resume can recover the options")
+	require.Equal(t, false, metaDoc.Options["regenerateSequences"])
+	require.Equal(t, false, metaDoc.Options["reset"])
+}
+
+// TestNewResyncManagerDCPUpdateDatabaseState verifies that NewResyncManagerDCP wires updateDatabaseState
+// to DatabaseStateMgr.UpdateState: calling the hook with running=true/false must persist the corresponding
+// ResyncRunning value in the state document.
+func TestNewResyncManagerDCPUpdateDatabaseState(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-resync-update-db-state")
+
+	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
+	db := &DatabaseContext{DBStateManager: dbStateMgr}
+
+	mgr := NewResyncManagerDCP(metadataStore, metaKeys, db)
+	require.NotNil(t, mgr.updateDatabaseState, "NewResyncManagerDCP must set updateDatabaseState")
+
+	// Calling with running=true must write ResyncRunning=true to the state document.
+	require.NoError(t, mgr.updateDatabaseState(ctx, true))
+	state, _, err := dbStateMgr.GetState(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, state.ResyncRunning)
+	require.True(t, *state.ResyncRunning)
+
+	// Calling with running=false must write ResyncRunning=false to the state document.
+	require.NoError(t, mgr.updateDatabaseState(ctx, false))
+	state, _, err = dbStateMgr.GetState(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, state.ResyncRunning)
+	require.False(t, *state.ResyncRunning)
+}
