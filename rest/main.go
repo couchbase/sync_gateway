@@ -399,7 +399,7 @@ type bootstrapConnectionOpts struct {
 	tlsSkipVerify               *bool
 	useXattrConfig              bool
 	useSystemMetadataCollection bool
-	useGOCBFastFailRetry bool
+	useGOCBFastFailRetry        bool
 }
 
 // bootstrapConnectionOptsConfigs returns a bootstrapConnectionOpts struct with values populated from the startup and db configs.

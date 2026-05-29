@@ -119,7 +119,7 @@ type CouchbaseCluster struct {
 	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint). Values
 	// are bucketBootstrapTarget; absence of an entry means "fall back to the connection-wide flag."
 	bucketBootstrapTargets sync.Map
-	useGOCBFastFailRetry    bool                    // When true, readiness checks fail fast instead of using the best-effort retry strategy
+	useGOCBFastFailRetry   bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // bucketBootstrapTarget records where bootstrap docs (registry, dbconfig, cbgt cfg) live for a
@@ -258,7 +258,7 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 		clusterOptions:              clusterOptions,
 		bucketConnectionMode:        bucketMode,
 		useSystemMetadataCollection: useSystemMetadataCollection,
-		useGOCBFastFailRetry: clusterSpec.UseGOCBFastFailRetry,
+		useGOCBFastFailRetry:        clusterSpec.UseGOCBFastFailRetry,
 	}
 
 	if bucketMode == CachedClusterConnections {
