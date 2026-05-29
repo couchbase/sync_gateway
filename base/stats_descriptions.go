@@ -318,6 +318,10 @@ const (
 
 	ResyncNumChangedDesc = "The total number of changed documents for resync on this database."
 
+	ResyncDocsTargetedDesc = "The number of documents targeted for resync for the current or most recent resync run on this database."
+
+	ResyncErrorsTotalDesc = "The total number of documents that failed during resync on this database."
+
 	NumPublicRestRequestsDesc = "The total number of requests sent over the public REST api."
 
 	TotalSyncTimeDesc = "The total total sync time is a proxy for websocket connections. Tracking long lived and potentially idle connections. " +

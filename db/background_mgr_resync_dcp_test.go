@@ -179,6 +179,7 @@ func TestResyncDCPInit(t *testing.T) {
 				assert.Equal(t, testCase.initialClusterState.DocsProcessed, response.DocsProcessed)
 			}
 			assert.Equal(t, testCase.expectedDocsTargeted, response.DocsTargeted)
+			assert.Equal(t, testCase.expectedDocsTargeted, uint64(db.DbStats.Database().ResyncDocsTargeted.Value()))
 
 			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumChanged.Value())
 			assert.Equal(t, int64(0), db.DbStats.Database().ResyncNumProcessed.Value())
@@ -260,6 +261,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
 				assert.Equal(t, int64(0), stats.DocsChanged)
 				assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
+				assert.GreaterOrEqual(t, int64(0), db.DbStats.Database().ResyncDocsTargeted.Value()) // resync finished so reset back to 0
 
 				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(0))
@@ -316,6 +318,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 				assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 				assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
+				assert.Equal(t, int64(0), db.DbStats.Database().ResyncDocsTargeted.Value()) // resync finished so reset back to 0
 
 				assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 				assert.Equal(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
@@ -426,6 +429,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 			assert.Less(t, stats.DocsChanged, int64(docsToCreate))
 			// DocsTargeted is computed once at run start and should be >= docsToCreate
 			assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
+			assert.GreaterOrEqual(t, uint64(db.DbStats.Database().ResyncDocsTargeted.Value()), uint64(docsToCreate))
 			initialDocsTargeted := stats.DocsTargeted
 
 			assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
@@ -441,6 +445,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 			assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 			// DocsTargeted is preserved from the original run start, even after resume
 			assert.Equal(t, initialDocsTargeted, stats.DocsTargeted)
+			assert.Equal(t, int64(0), db.DbStats.Database().ResyncDocsTargeted.Value()) // resync finished so reset back to 0
 
 			assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 			assert.Equal(t, int64(docsToCreate), db.DbStats.Database().ResyncNumChanged.Value())

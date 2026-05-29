@@ -695,6 +695,10 @@ type DatabaseStats struct {
 	ResyncNumProcessed *SgwIntStat `json:"resync_num_processed"`
 	// The total number of changed documents for resync on this database.
 	ResyncNumChanged *SgwIntStat `json:"resync_num_changed"`
+	// The number of documents targeted for resync for the current or most recent resync run on this database.
+	ResyncDocsTargeted *SgwIntStat `json:"resync_docs_targeted"`
+	// The total number of documents that failed during resync on this database.
+	ResyncErrorsTotal *SgwIntStat `json:"resync_errors_total"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1934,6 +1938,14 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ResyncDocsTargeted, err = NewIntStat(SubsystemDatabaseKey, "resync_docs_targeted", StatUnitNoUnits, ResyncDocsTargetedDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ResyncErrorsTotal, err = NewIntStat(SubsystemDatabaseKey, "resync_errors_total", StatUnitNoUnits, ResyncErrorsTotalDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -2017,6 +2029,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 	prometheus.Unregister(d.DatabaseStats.ResyncNumProcessed)
 	prometheus.Unregister(d.DatabaseStats.ResyncNumChanged)
+	prometheus.Unregister(d.DatabaseStats.ResyncDocsTargeted)
+	prometheus.Unregister(d.DatabaseStats.ResyncErrorsTotal)
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
