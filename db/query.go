@@ -597,16 +597,24 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
-	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
-	// LIMIT is handled internally by dualMetadataN1QLQuery; do not append it to the statement.
-	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
-		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	// N1QL Query. context.MetadataStore is a dual-collection wrapper for an opted-in database.
+	// While its migration is in flight, query both keystores and merge in SG (LIMIT is handled
+	// internally by dualMetadataN1QLQuery). Once complete — or for a database that never opted in
+	// — all metadata lives in a single collection, so target it directly: the wrapper's primary
+	// (the migration is complete by the time we reach here) or the plain store. The wrapper itself
+	// cannot run a query.
+	metadataStore := context.MetadataStore
+	if ms, ok := metadataStore.(*base.MetadataStore); ok {
+		if !ms.MigrationComplete() {
+			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+		}
+		metadataStore = ms.Primary()
 	}
 
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, metadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Query to retrieve user details, using the syncDocs or users index
@@ -617,14 +625,17 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
-	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
-	// LIMIT is handled internally by dualMetadataN1QLQuery; build the statement without it.
-	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
-		queryStatement, params := context.BuildUsersQuery(startKey, 0)
-		return dualMetadataN1QLQuery[QueryUsersRow](ctx, ms, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
+	metadataStore := context.MetadataStore
+	if ms, ok := metadataStore.(*base.MetadataStore); ok {
+		if !ms.MigrationComplete() {
+			queryStatement, params := context.BuildUsersQuery(startKey, 0)
+			return dualMetadataN1QLQuery[QueryUsersRow](ctx, ms, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+		}
+		metadataStore = ms.Primary()
 	}
 	queryStatement, params := context.BuildUsersQuery(startKey, limit)
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, metadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
@@ -664,14 +675,17 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
-	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
-	// LIMIT is handled internally by dualMetadataN1QLQuery; build the statement without it.
-	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
-		queryStatement, params := context.BuildRolesQuery(startKey, 0)
-		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
+	metadataStore := context.MetadataStore
+	if ms, ok := metadataStore.(*base.MetadataStore); ok {
+		if !ms.MigrationComplete() {
+			queryStatement, params := context.BuildRolesQuery(startKey, 0)
+			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+		}
+		metadataStore = ms.Primary()
 	}
 	queryStatement, params := context.BuildRolesQuery(startKey, limit)
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, metadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
@@ -716,16 +730,19 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	params := make(map[string]any)
 	params[QueryParamStartKey] = startKey
 
-	// N1QL Query — when a dual MetadataStore is active query both keystores and merge.
-	// LIMIT is handled internally by dualMetadataN1QLQuery; do not append it to the statement.
-	if ms, ok := context.MetadataStore.(*base.MetadataStore); ok && !ms.MigrationComplete() {
-		return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
+	metadataStore := context.MetadataStore
+	if ms, ok := metadataStore.(*base.MetadataStore); ok {
+		if !ms.MigrationComplete() {
+			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
+		}
+		metadataStore = ms.Primary()
 	}
 
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-	return N1QLQueryWithStats(ctx, context.MetadataStore, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, metadataStore, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 type AllDocsViewQueryRow struct {
