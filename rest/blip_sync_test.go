@@ -117,6 +117,7 @@ func TestOneTimeSessionBlipSyncAuthentication(t *testing.T) {
 		secWebSocketProtocolHeader: blipSessionIDPrefix + sessionResp.SessionID,
 	})
 	RequireStatus(t, resp, http.StatusUpgradeRequired)
+	assert.Empty(t, resp.Header().Get("Set-Cookie"), "one-time session auth must not set a session cookie")
 
 	// one time token is expired
 	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
