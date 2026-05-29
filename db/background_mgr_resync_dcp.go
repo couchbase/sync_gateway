@@ -128,6 +128,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 		base.WarnfCtx(ctx, "Failed to count total documents for resync: %v, continuing resync", err)
 	}
 	r.docsTargeted.Store(docsTargeted)
+	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(docsTargeted))
 
 	r.ResyncID = newID.String()
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
@@ -250,6 +251,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			databaseCollection.collectionStats.ResyncNumChanged.Add(1)
 		} else if err != base.ErrUpdateCancel {
 			r.docsErroredLocal.Add(1)
+			db.DbStats.Database().ResyncErrorsTotal.Add(1)
 			base.WarnfCtx(ctx, "Resync: Error updating doc %q: %v", base.UD(docID), err)
 			return false
 		}
@@ -494,6 +496,7 @@ func (r *ResyncManagerDCP) initializeFromPreviousStatus(statusDoc ResyncManagerS
 	r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
 	r.docsErroredLocal.Store(statusDoc.DocsErrored)
 	r.docsTargeted.Store(statusDoc.DocsTargeted)
+	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(statusDoc.DocsTargeted))
 }
 
 // setCollectionStatus sets the active collections being resynced.
