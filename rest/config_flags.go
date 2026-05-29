@@ -168,6 +168,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.rosmar_bucket_management": {
 			config: &config.Unsupported.RosmarBucketManagement, flagValue: fs.Bool("unsupported.rosmar_bucket_management", false, "Allow API to manage rosmar buckets"),
 		},
+		"unsupported.use_gocb_fast_fail_retry": {config: &config.Unsupported.UseGOCBFastFailRetry, flagValue: fs.Bool("unsupported.use_gocb_fast_fail_retry", false, "When true, errors on initial connection to Couchbase Server will fail instantaneously. Enabling this will surface authentication errors quickly, but can cause some Sync Gateway operations to shut down databases with intermittent Couchbase Server connection errors.")},
 		// Note: These flags are X.509-only. Username/passwords are rejected if specified, as we are not allowing them to be used in the command line flags, only the config file.
 		"database_credentials": {config: &config.DatabaseCredentials, flagValue: fs.String("database_credentials", "null", "JSON-encoded per-database credentials (X.509 only), that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {config: &config.BucketCredentials, flagValue: fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials (X.509 only), that can be used instead of the bootstrap ones.")},

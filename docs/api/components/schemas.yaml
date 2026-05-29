@@ -2493,6 +2493,10 @@ Startup-config:
           description: Store database configurations in system xattrs
           type: boolean
           default: false
+        use_gocb_fast_fail_retry:
+          description: When true, errors on initial connection to Couchbase Server will fail instantaneously. Enabling this will surface authentication errors quickly, but can cause some Sync Gateway operations to shut down databases with intermittent Couchbase Server connection errors.
+          type: boolean
+          default: false
       readOnly: true
     couchbase_keepalive_interval:
       description: TCP keep-alive interval between SG and Couchbase server. This is unused.

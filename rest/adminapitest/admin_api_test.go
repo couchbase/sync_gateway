@@ -2973,15 +2973,33 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
-	defer rt.Close()
+	for _, fastFail := range []bool{true, false} {
+		t.Run(fmt.Sprintf("fastFail=%v", fastFail), func(t *testing.T) {
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+				MutateStartupConfig: func(config *rest.StartupConfig) {
+					config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+				},
+			})
+			defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
-	rest.RequireStatus(t, resp, http.StatusForbidden)
-	assert.Contains(t, resp.Body.String(), "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
-	resp = rt.SendAdminRequest(http.MethodPut, "/nonexistentbucket/", `{}`)
-	rest.RequireStatus(t, resp, http.StatusForbidden)
-	assert.Contains(t, resp.Body.String(), "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
+			assertNonExistentBucket := func(resp *rest.TestResponse) {
+				if fastFail {
+					// Fail-fast surfaces the bucket auth failure directly as a 403.
+					rest.RequireStatus(t, resp, http.StatusForbidden)
+					assert.Contains(t, resp.Body.String(), "The specified bucket/scope/collection does not exist, or the provided credentials do not have access to it")
+				} else {
+					// Best-effort retry waits for the missing bucket until the bootstrap connection's
+					// WaitUntilReady times out, which is classified as a connection error (502).
+					rest.RequireStatus(t, resp, http.StatusBadGateway)
+					assert.Contains(t, resp.Body.String(), "Unable to connect to Couchbase Server")
+				}
+			}
+
+			assertNonExistentBucket(rt.SendAdminRequest(http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`))
+			assertNonExistentBucket(rt.SendAdminRequest(http.MethodPut, "/nonexistentbucket/", `{}`))
+		})
+	}
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
@@ -3119,64 +3137,68 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 }
 
 func TestLegacyCredentialInheritance(t *testing.T) {
-	base.LongRunningTest(t) // 30s timeout on bad 'No credentials' request
+	base.LongRunningTest(t) // bad credential requests fail fast (auth error) or take ~30s (best-effort retry timeout)
 	rest.RequireBucketSpecificCredentials(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	// explicitly start with persistent config disabled
-	sc, err := rest.SetupServerContext(ctx, &config, false)
-	require.NoError(t, err)
+	// With fast-fail retry, missing/wrong credentials surface as a clean auth error (403). With the
+	// default best-effort retry, the readiness check instead retries until it times out, which is
+	// classified as a connection error (502).
+	for _, fastFail := range []bool{true, false} {
+		t.Run(fmt.Sprintf("fastFail=%v", fastFail), func(t *testing.T) {
+			expectedFailStatus := http.StatusForbidden
+			if !fastFail {
+				expectedFailStatus = http.StatusBadGateway
+			}
 
-	serverErr := make(chan error)
+			ctx := base.TestCtx(t)
+			config := rest.BootstrapStartupConfigForTest(t)
+			config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+			// explicitly start with persistent config disabled
+			sc, err := rest.SetupServerContext(ctx, &config, false)
+			require.NoError(t, err)
 
-	closeFn := func() {
-		sc.Close(ctx)
-		assert.NoError(t, <-serverErr)
+			serverErr := make(chan error)
+			defer func() {
+				sc.Close(ctx)
+				assert.NoError(t, <-serverErr)
+			}()
+			go func() {
+				serverErr <- rest.StartServer(ctx, &config, sc)
+			}()
+
+			require.NoError(t, sc.WaitForRESTAPIs(ctx))
+
+			// Get a test bucket, and use it to create the database.
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
+
+			// No credentials should fail
+			resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
+				fmt.Sprintf(
+					`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+					tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+				),
+			)
+			resp.RequireStatus(expectedFailStatus)
+
+			// Wrong credentials should fail
+			resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
+				`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
+			)
+			resp.RequireStatus(expectedFailStatus)
+
+			// Proper credentials should pass
+			resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db3/",
+				fmt.Sprintf(
+					`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
+					tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+				),
+			)
+			resp.RequireStatus(http.StatusCreated)
+		})
 	}
-
-	started := false
-	defer func() {
-		if !started {
-			closeFn()
-		}
-
-	}()
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-
-	require.NoError(t, sc.WaitForRESTAPIs(ctx))
-
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	// No credentials should fail
-	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-		),
-	)
-	resp.RequireStatus(http.StatusForbidden)
-
-	// Wrong credentials should fail
-	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
-		`{"bucket": "`+tb.GetName()+`", "username": "test", "password": "invalid_password"}`,
-	)
-	resp.RequireStatus(http.StatusForbidden)
-
-	// Proper credentials should pass
-	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db3/",
-		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
-		),
-	)
-	resp.RequireStatus(http.StatusCreated)
 }
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
@@ -3840,62 +3862,78 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 
 // Make sure per DB credentials override per bucket credentials
 func TestPerDBCredsOverride(t *testing.T) {
-	ctx := base.TestCtx(t)
 	rest.RequireBucketSpecificCredentials(t)
 
-	// Get test bucket
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close(ctx)
+	// With fast-fail retry, the invalid per-database credentials surface as a clean auth error (403).
+	// With the default best-effort retry, the readiness check instead retries until it times out, which
+	// is classified as a connection error (502).
+	for _, fastFail := range []bool{true, false} {
+		t.Run(fmt.Sprintf("fastFail=%v", fastFail), func(t *testing.T) {
+			base.LongRunningTest(t) // invalid creds take ~30s to time out under best-effort retry
 
-	config := rest.BootstrapStartupConfigForTest(t)
-	config.BucketCredentials = map[string]*base.CredentialsConfig{
-		tb1.GetName(): {
-			Username: base.TestClusterUsername(),
-			Password: base.TestClusterPassword(),
-		},
+			expectedFailStatus := http.StatusForbidden
+			if !fastFail {
+				expectedFailStatus = http.StatusBadGateway
+			}
+
+			ctx := base.TestCtx(t)
+
+			// Get test bucket
+			tb1 := base.GetTestBucket(t)
+			defer tb1.Close(ctx)
+
+			config := rest.BootstrapStartupConfigForTest(t)
+			config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+			config.BucketCredentials = map[string]*base.CredentialsConfig{
+				tb1.GetName(): {
+					Username: base.TestClusterUsername(),
+					Password: base.TestClusterPassword(),
+				},
+			}
+			config.DatabaseCredentials = map[string]*base.CredentialsConfig{
+				"db": {
+					Username: "invalid",
+					Password: "invalid",
+				},
+			}
+
+			sc, closeFn := rest.StartServerWithConfig(t, &config)
+			defer closeFn()
+
+			bootstrapConnection, err := rest.CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
+			require.NoError(t, err)
+			sc.BootstrapContext.Connection = bootstrapConnection
+
+			dbConfig := `{
+				"bucket": "` + tb1.GetName() + `",
+				"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
+				"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+				"num_index_replicas": 0
+			}`
+
+			res := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
+			// Make sure request failed as it could not authenticate with the bucket
+			assert.Equal(t, expectedFailStatus, res.StatusCode())
+
+			// Allow database to be created successfully
+			sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
+			res = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
+			assert.Equal(t, http.StatusCreated, res.StatusCode())
+
+			// Confirm fetch configs causes bucket credentials to be overrode
+			sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{
+				"db": {
+					Username: "invalidUsername",
+					Password: "invalidPassword",
+				},
+			}
+			configs, err := sc.FetchConfigs(ctx, false)
+			require.NoError(t, err)
+			require.NotNil(t, configs["db"])
+			assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
+			assert.Equal(t, "invalidPassword", configs["db"].BucketConfig.Password)
+		})
 	}
-	config.DatabaseCredentials = map[string]*base.CredentialsConfig{
-		"db": {
-			Username: "invalid",
-			Password: "invalid",
-		},
-	}
-
-	sc, closeFn := rest.StartServerWithConfig(t, &config)
-	defer closeFn()
-
-	bootstrapConnection, err := rest.CreateBootstrapConnectionFromStartupConfig(ctx, sc.Config, base.PerUseClusterConnections)
-	require.NoError(t, err)
-	sc.BootstrapContext.Connection = bootstrapConnection
-
-	dbConfig := `{
-		"bucket": "` + tb1.GetName() + `",
-		"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-		"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-		"num_index_replicas": 0
-	}`
-
-	res := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
-	// Make sure request failed as it could authenticate with the bucket
-	assert.Equal(t, http.StatusForbidden, res.StatusCode())
-
-	// Allow database to be created successfully
-	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{}
-	res = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
-	assert.Equal(t, http.StatusCreated, res.StatusCode())
-
-	// Confirm fetch configs causes bucket credentials to be overrode
-	sc.Config.DatabaseCredentials = map[string]*base.CredentialsConfig{
-		"db": {
-			Username: "invalidUsername",
-			Password: "invalidPassword",
-		},
-	}
-	configs, err := sc.FetchConfigs(ctx, false)
-	require.NoError(t, err)
-	require.NotNil(t, configs["db"])
-	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
-	assert.Equal(t, "invalidPassword", configs["db"].BucketConfig.Password)
 }
 
 // Can be used to reproduce connections left open after database close.  Manually deleting the bucket used by the test
