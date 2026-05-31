@@ -152,34 +152,60 @@ func (b *BackgroundManager) Resume(ctx context.Context) error {
 		return fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
 	}
 
-	clusterState, err := b.getClusterStatusState(ctx)
+	docID := b.clusterAwareOptions.StatusDocID()
+	raw, _, err := b.clusterAwareOptions.metadataStore.GetRaw(ctx, docID)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			b.callUpdateDatabaseState(ctx, false)
 			return errBackgroundManagerStatusNotRunning
 		}
-		return fmt.Errorf("failed to read cluster state for background process %q: %w", b.name, err)
+		return fmt.Errorf("failed to read status doc for background process %q: %w", b.name, err)
 	}
-	if clusterState != BackgroundProcessStateRunning {
+
+	previousStatus, err := unmarshalBackgroundManagerStatus(raw)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal status doc %q for background process %q: %w", docID, b.name, err)
+	}
+	if previousStatus.State != BackgroundProcessStateRunning {
 		b.callUpdateDatabaseState(ctx, false)
 		return nil
 	}
 
-	optionsBytes, _, err := b.clusterAwareOptions.metadataStore.GetSubDocRaw(ctx, b.clusterAwareOptions.StatusDocID(), "meta.options")
-	if err != nil {
-		return fmt.Errorf("failed to read meta.options for background process %q: %w", b.name, err)
+	var doc struct {
+		Meta struct {
+			Options map[string]any `json:"options"`
+		} `json:"meta"`
+	}
+	if err := base.JSONUnmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("failed to unmarshal meta for background process %q: %w", b.name, err)
 	}
 
-	var options map[string]any
-	if err := base.JSONUnmarshal(optionsBytes, &options); err != nil {
-		return fmt.Errorf("failed to unmarshal meta.options for background process %q: %w", b.name, err)
-	}
-
-	return b.Start(ctx, options)
+	return b.start(ctx, doc.Meta.Options, raw)
 }
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) error {
-	err := b.markStart(ctx)
+	var processClusterStatus []byte
+	if b.mode() != backgroundManagerModeLocal {
+		var err error
+		processClusterStatus, _, err = b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.StatusDocID())
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return pkgerrors.Wrap(err, "Failed to get current process status")
+		}
+	}
+	return b.start(ctx, options, processClusterStatus)
+}
+
+func (b *BackgroundManager) start(ctx context.Context, options map[string]any, processClusterStatus []byte) error {
+	var previousStatus BackgroundManagerStatus
+	if processClusterStatus != nil {
+		var err error
+		previousStatus, err = unmarshalBackgroundManagerStatus(processClusterStatus)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyAll, "Could not unmarshal the cluster status before calling BackgroundManager.Run %v", err)
+		}
+	}
+
+	err := b.markStart(ctx, previousStatus)
 	if err != nil {
 		if b.mode() == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return nil
@@ -187,30 +213,12 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 		return err
 	}
 
-	var processClusterStatus []byte
-	if b.mode() != backgroundManagerModeLocal {
-		processClusterStatus, _, err = b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.StatusDocID())
-		if err != nil && !base.IsDocNotFoundError(err) {
-			return pkgerrors.Wrap(err, "Failed to get current process status")
-		}
-	}
-
 	b.resetStatus()
 	b.setStartTime(time.Now().UTC())
 
-	// If we're resuming a cluster-aware process, try to reuse the previous start time
-	if processClusterStatus != nil {
-		var clusterStatus struct {
-			Status BackgroundManagerStatus `json:"status"`
-		}
-
-		err := base.JSONUnmarshal(processClusterStatus, &clusterStatus)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyAll, "Could not unmarshal the cluster status before calling BackgroundManager.Run %v", err)
-		}
-		if clusterStatus.Status.State == BackgroundProcessStateRunning && !clusterStatus.Status.StartTime.IsZero() {
-			b.setStartTime(clusterStatus.Status.StartTime)
-		}
+	// If we're resuming a cluster-aware process, try to reuse the previous start time.
+	if previousStatus.State == BackgroundProcessStateRunning && !previousStatus.StartTime.IsZero() {
+		b.setStartTime(previousStatus.StartTime)
 	}
 
 	err = b.Process.Init(ctx, options, processClusterStatus)
@@ -284,7 +292,12 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 	return nil
 }
 
-func (b *BackgroundManager) markStart(ctx context.Context) error {
+// markStart changes the local status to started.
+//
+// If local or single node process and the bucket status is running, return errBackgroundManagerProcessAlreadyRunning.
+// If the status is stopping, return errBackgroundManagerStatusAlreadyStopping
+// that should be stopping or is already stopped.
+func (b *BackgroundManager) markStart(ctx context.Context, previousStatus BackgroundManagerStatus) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -327,7 +340,7 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
-		if b.clusterStateIs(ctx, BackgroundProcessStateStopping) {
+		if previousStatus.State == BackgroundProcessStateStopping {
 			return errBackgroundManagerStatusAlreadyStopping
 		}
 	}
@@ -347,18 +360,6 @@ func (b *BackgroundManager) markStart(ctx context.Context) error {
 	return nil
 }
 
-// clusterStateIs returns if the state matches the serialized state in the bucket. If the document is not present, it will not match.
-func (b *BackgroundManager) clusterStateIs(ctx context.Context, state BackgroundProcessState) bool {
-	clusterState, err := b.getClusterStatusState(ctx)
-	if err != nil {
-		if !base.IsDocNotFoundError(err) {
-			base.TracefCtx(ctx, base.KeyAll, "Error getting cluster status: %v, assuming no status", err)
-		}
-		return false
-	}
-	return clusterState == state
-}
-
 // getClusterStatusState gets the current background process state of the cluster.
 func (b *BackgroundManager) getClusterStatusState(ctx context.Context) (BackgroundProcessState, error) {
 	docID := b.clusterAwareOptions.StatusDocID()
@@ -366,7 +367,7 @@ func (b *BackgroundManager) getClusterStatusState(ctx context.Context) (Backgrou
 	if err != nil {
 		return "", err
 	}
-	state, err := getBackgroundManagerState(statusRaw)
+	state, err := unmarshalBackgroundProcessState(statusRaw)
 	if err != nil {
 		return "", fmt.Errorf("could not get background manager state from cluster status doc %q: %w", docID, err)
 	}
@@ -374,13 +375,24 @@ func (b *BackgroundManager) getClusterStatusState(ctx context.Context) (Backgrou
 
 }
 
-// getBackgroundManagerState returns the getBackgroundManagerState from raw bytes of the status document.
-func getBackgroundManagerState(statusRaw []byte) (BackgroundProcessState, error) {
+// unmarshalBackgroundProcessState returns the BackgroundProcessState from raw bytes of the status document.
+func unmarshalBackgroundProcessState(statusRaw []byte) (BackgroundProcessState, error) {
 	var clusterStatus struct {
 		Status BackgroundProcessState `json:"status"`
 	}
 	if err := base.JSONUnmarshal(statusRaw, &clusterStatus); err != nil {
 		return "", err
+	}
+	return clusterStatus.Status, nil
+}
+
+// unmarshalBackgroundManagerStatus returns the BackgroundManagerStatus from raw bytes of the status document.
+func unmarshalBackgroundManagerStatus(statusRaw []byte) (BackgroundManagerStatus, error) {
+	var clusterStatus struct {
+		Status BackgroundManagerStatus `json:"status"`
+	}
+	if err := base.JSONUnmarshal(statusRaw, &clusterStatus); err != nil {
+		return BackgroundManagerStatus{}, err
 	}
 	return clusterStatus.Status, nil
 }
@@ -662,7 +674,7 @@ func (b *BackgroundManager) updateMultiNodeClusterAwareStatus(ctx context.Contex
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
 			if status, ok := output["status"]; ok {
-				bucketState, err := getBackgroundManagerState(status)
+				bucketState, err := unmarshalBackgroundProcessState(status)
 				if err != nil {
 					return nil, nil, false, err
 				}
