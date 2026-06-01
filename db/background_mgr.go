@@ -573,25 +573,21 @@ func (b *BackgroundManager) UpdateSingleNodeClusterAwareStatus(ctx context.Conte
 	if b.clusterAwareOptions == nil {
 		return nil
 	}
-	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value any) {
-		status, metadata, err := b.getStatusLocalWithoutPrevious()
-		if err != nil {
-			return true, err, nil
-		}
+	status, metadata, err := b.getStatusLocalWithoutPrevious()
+	if err != nil {
+		return err
+	}
+	doc, err := base.JSONMarshal(map[string]json.RawMessage{
+		"status": status,
+		"meta":   metadata,
+	})
+	if err != nil {
+		return fmt.Errorf("Could not marshal status document: %w", err)
+	}
 
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "status", 0, status)
-		if err != nil {
-			return true, err, nil
-		}
-
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
-		if err != nil {
-			return true, err, nil
-		}
-
-		return false, nil, nil
-	}, base.CreateSleeperFunc(5, 100))
-	return err
+	exp := uint32(0)
+	var opts *sgbucket.UpsertOptions
+	return b.clusterAwareOptions.metadataStore.Set(ctx, b.clusterAwareOptions.StatusDocID(), exp, opts, doc)
 }
 
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return. The caller is responsible for taking appropriate action.
