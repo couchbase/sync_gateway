@@ -115,14 +115,16 @@ const (
 	AuditIDISGRAllRead   AuditID = 54421
 
 	// Documents events
-	AuditIDDocumentCreate       AuditID = 55000
-	AuditIDDocumentRead         AuditID = 55001
-	AuditIDDocumentUpdate       AuditID = 55002
-	AuditIDDocumentDelete       AuditID = 55003
-	AuditIDDocumentMetadataRead AuditID = 55004
-	AuditIDDocumentImport       AuditID = 55005
-	AuditIDDocumentResync       AuditID = 55006
-	AuditIDDocumentRevoke       AuditID = 55007
+	AuditIDDocumentCreate                AuditID = 55000
+	AuditIDDocumentRead                  AuditID = 55001
+	AuditIDDocumentUpdate                AuditID = 55002
+	AuditIDDocumentDelete                AuditID = 55003
+	AuditIDDocumentMetadataRead          AuditID = 55004
+	AuditIDDocumentImport                AuditID = 55005
+	AuditIDDocumentResync                AuditID = 55006
+	AuditIDDocumentRevoke                AuditID = 55007
+	AuditIDDocumentChannelHistoryCompact AuditID = 55008
+
 	// Document attachments events
 	AuditIDAttachmentCreate AuditID = 55010
 	AuditIDAttachmentRead   AuditID = 55011
@@ -1178,6 +1180,25 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupKeyspace,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentChannelHistoryCompact: {
+		Name:        "Compact document channel history",
+		Description: "Document channel history was compacted",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID:    "document id",
+			AuditFieldChannels: []string{"list", "of", "channels"},
+			AuditFieldSequence: "sequence",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupAuthenticated,
+			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,
