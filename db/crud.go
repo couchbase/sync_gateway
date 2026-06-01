@@ -376,7 +376,9 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		base.MouXattrName:  rawMouXattr,
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
-	return compactedChannels.ToArray(), err
+	compactedChannelArray := compactedChannels.ToArray()
+	slices.Sort(compactedChannelArray)
+	return compactedChannelArray, err
 }
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
