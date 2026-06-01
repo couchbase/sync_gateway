@@ -677,11 +677,8 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 func (c *RosmarCluster) CachedBootstrapTargets() map[string]string {
 	targets := make(map[string]string)
 	c.bucketBootstrapTargets.Range(func(key, value any) bool {
-		switch value.(bucketBootstrapTarget) {
-		case bucketTargetSystemMobile:
-			targets[key.(string)] = "system_mobile"
-		case bucketTargetDefault:
-			targets[key.(string)] = "default"
+		if s := value.(bucketBootstrapTarget).String(); s != "" {
+			targets[key.(string)] = s
 		}
 		return true
 	})

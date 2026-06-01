@@ -4194,6 +4194,8 @@ func TestRetrieveMetadataMigrationStatusInClusterInfo(t *testing.T) {
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
+	metadID := rt.GetDatabase().Options.MetadataID
+
 	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -4220,7 +4222,7 @@ func TestRetrieveMetadataMigrationStatusInClusterInfo(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &clusterInfoResponse)
 	require.NoError(t, err)
 	require.NotNil(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus)
-	assert.Equal(t, base.MigrationStateComplete, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus.Databases["db"].State)
+	assert.Equal(t, base.MigrationStateComplete, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus.Databases[metadID].State)
 }
 
 // TestRetrieveMetadataStoreModeInStatus tests the three-state metadata_store_mode signal on /_status:

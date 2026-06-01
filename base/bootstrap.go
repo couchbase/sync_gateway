@@ -134,6 +134,17 @@ const (
 	bucketTargetSystemMobile                              // _system._mobile primary; _default._default fallback until migration complete
 )
 
+func (t bucketBootstrapTarget) String() string {
+	switch t {
+	case bucketTargetSystemMobile:
+		return "system_mobile"
+	case bucketTargetDefault:
+		return "default"
+	default:
+		return ""
+	}
+}
+
 type BucketConnectionMode int
 
 const (
@@ -444,11 +455,8 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
 	targets := make(map[string]string)
 	cc.bucketBootstrapTargets.Range(func(key, value any) bool {
-		switch value.(bucketBootstrapTarget) {
-		case bucketTargetSystemMobile:
-			targets[key.(string)] = "system_mobile"
-		case bucketTargetDefault:
-			targets[key.(string)] = "default"
+		if s := value.(bucketBootstrapTarget).String(); s != "" {
+			targets[key.(string)] = s
 		}
 		return true
 	})

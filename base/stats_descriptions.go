@@ -427,8 +427,12 @@ const (
 
 	MetadataMigrationPassesDesc = "The total number of MigrateMetadata range-scan passes executed for this database."
 
-	MetadataMigrationAbandonedRunsDesc = "The total number of metadata migration runs that the orchestrator gave up on after the migration bounded pass exhausted itself without a clean pass. Runs that exit early via a hard error from MigrateMetadata, " +
-		"or are stopped cooperatively via the terminator, are not counted here. this stat is specifically the we hit the retry ceiling failure mode, useful for distinguishing transient/abortive errors from buckets that need operator intervention."
+	MetadataMigrationAbandonedRunsDesc = "The total number of metadata migration runs that the " +
+		"orchestrator gave up on after the bounded pass loop exhausted itself without a clean pass. " +
+		"Runs that exit early via a hard error from MigrateMetadata, or are stopped cooperatively via " +
+		"the terminator, are not counted here. This stat specifically captures the \"hit the retry " +
+		"ceiling\" failure mode, useful for distinguishing transient/abortive errors from buckets that " +
+		"need operator intervention."
 )
 
 // DB Replicators stats descriptions (ISGR Specific)

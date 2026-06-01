@@ -2507,14 +2507,14 @@ func (h *handler) handleGetClusterInfo() error {
 				EnableCrossClusterVersioning: eccv[bucketName],
 			}
 
-			// grab metadata migration status for bucket, if it exists, and add to response
+			// Grab metadata migration status for bucket, if it exists, and add to response
 			migrationStatus, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
 			if err != nil && !base.IsDocNotFoundError(err) {
 				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
 			}
 			bucketInfo.MigrationStatus = migrationStatus
 
-			// if there's a cached bootstrap target for this bucket, add it to the response
+			// If there's a cached bootstrap target for this bucket, add it to the response
 			if target, ok := cachedTargets[bucketName]; ok {
 				bucketInfo.BootstrapTarget = target
 			}
