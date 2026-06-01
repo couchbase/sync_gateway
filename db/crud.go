@@ -222,18 +222,18 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
-type ChannelHistory map[string]map[uint64]bool
+type ChannelHistory map[string]map[uint64]struct{}
 
 func (ch ChannelHistory) addChannelHistoryEntry(name string, seq uint64) {
 	if _, ok := ch[name]; !ok {
-		ch[name] = make(map[uint64]bool)
+		ch[name] = make(map[uint64]struct{})
 	}
 	if _, ok := ch[name][seq]; !ok {
-		ch[name][seq] = true
+		ch[name][seq] = struct{}{}
 	}
 }
 
-func (ch ChannelHistory) getChannelHistoryResponse() map[string][]uint64 {
+func (ch ChannelHistory) getChannelHistoryAsMap() map[string][]uint64 {
 	response := make(map[string][]uint64)
 	for chanName, chanEntry := range ch {
 		response[chanName] = make([]uint64, 0)
@@ -273,7 +273,7 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 		}
 	}
 
-	return chanHistory.getChannelHistoryResponse(), nil
+	return chanHistory.getChannelHistoryAsMap(), nil
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
