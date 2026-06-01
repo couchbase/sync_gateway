@@ -2076,13 +2076,13 @@ func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
 			})
 
 			for _, docID := range tc.docIDs {
-				requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID)
+				requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID, "1", []any{})
 			}
 		})
 	}
 }
 
-func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID string) {
+func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID, expectedSeq string, expectedChannels []any) {
 	t.Helper()
 	events := jsonLines(t, output)
 	countFound := 0
@@ -2090,9 +2090,12 @@ func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.Audit
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		if event[base.AuditFieldDocID] == docID {
-			countFound++
+		if event[base.AuditFieldDocID] != docID {
+			continue
 		}
+		countFound++
+		require.Equal(t, expectedSeq, event[base.AuditFieldSequence])
+		require.Equal(t, expectedChannels, event[base.AuditFieldChannels])
 	}
 	require.Equal(t, 1, countFound, "expected exactly 1 %s event for doc %q, got %d",
 		base.AuditEvents[eventID].Name, docID, countFound)
