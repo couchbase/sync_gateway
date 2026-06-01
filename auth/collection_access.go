@@ -65,6 +65,9 @@ type CollectionChannelAPI interface {
 
 	// Returns the CollectionAccess map
 	GetCollectionsAccess() map[string]map[string]*CollectionAccess
+
+	// Returns the ColelctionAccessHistory map
+	GetCollectionAccessHistory() CollectionAccessHistory
 }
 
 // UserCollectionChannelAPI defines the interface for managing channel access that is supported by users but not roles.

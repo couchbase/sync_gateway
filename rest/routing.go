@@ -190,6 +190,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putUser)).Methods("PUT")
 	dbr.Handle("/_user/{name}",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUser)).Methods("DELETE")
+	dbr.Handle("/_user/{name}/_access_history",
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).getUserChannelHistory)).Methods("GET")
+	dbr.Handle("/_user/{name}/_access_history/compact",
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).compactUserChannelHistory)).Methods("POST")
 
 	dbr.Handle("/_user/{name}/_session",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSessions)).Methods("DELETE")
