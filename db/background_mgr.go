@@ -196,6 +196,9 @@ func (b *BackgroundManager) Start(ctx context.Context, options map[string]any) e
 }
 
 func (b *BackgroundManager) start(ctx context.Context, options map[string]any, processClusterStatus []byte) error {
+	if b.mode() != backgroundManagerModeMultiNode && b.updateDatabaseState != nil {
+		return fmt.Errorf("updateDatabaseState should only be set for multi-node background managers")
+	}
 	var previousStatus BackgroundManagerStatus
 	if processClusterStatus != nil {
 		var err error

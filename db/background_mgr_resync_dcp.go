@@ -58,23 +58,30 @@ type resyncCollectionInfo struct {
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore, metaKeys *base.MetadataKeys, db *DatabaseContext) *BackgroundManager {
-	return &BackgroundManager{
+// NewResyncManagerDCP returns a new instance of ResyncManagerDCP wrapped in a BackgroundManager. If distributed is
+// true, the manager will be set up to run in a distributed manner across multiple nodes, otherwise it will run on a
+// single node.
+func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManager {
+	b := &BackgroundManager{
 		name:    "resync",
-		Process: &ResyncManagerDCP{db: db},
+		Process: &ResyncManagerDCP{db: db, Distributed: distributed},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			metadataStore: metadataStore,
-			metaKeys:      metaKeys,
+			metadataStore: db.MetadataStore,
+			metaKeys:      db.MetadataKeys,
 			processSuffix: "resync",
+			multiNode:     distributed,
 		},
 		terminator: base.NewSafeTerminator(),
-		updateDatabaseState: func(ctx context.Context, running bool) error {
+	}
+	if distributed {
+		b.updateDatabaseState = func(ctx context.Context, running bool) error {
 			if db.DBStateManager == nil {
 				return nil
 			}
 			return db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
-		},
+		}
 	}
+	return b
 }
 
 // Init processes the options to start a resync process and sets them as struct memebers.

@@ -716,6 +716,7 @@ func TestBackgroundManagerUpdateDatabaseStateRunning(t *testing.T) {
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
 			processSuffix: "update-db-state-running",
+			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
 		updateDatabaseState: func(_ context.Context, running bool) error {
@@ -757,6 +758,7 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
 			processSuffix: "update-db-state-done",
+			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
 		updateDatabaseState: func(_ context.Context, running bool) error {

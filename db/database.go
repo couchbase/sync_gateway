@@ -624,7 +624,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, metaKeys, dbContext)
+	distributedResync := false // when ready, this will flip to  db.useShardedDCP()
+	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), dbContext.ResyncManager.Resume)

@@ -295,9 +295,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				}
 
 				if testCase.Distributed {
-					rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-					require.True(t, ok)
-					rs.Distributed = true
+					db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
 				}
 				err := db.ResyncManager.Start(ctx, options)
 				require.NoError(t, err)
@@ -477,7 +475,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 			require.True(t, ok)
 
 			if testCase.Distributed {
-				rs.Distributed = true
+				db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
 			} else {
 				require.False(t, rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
 			}
@@ -573,7 +571,7 @@ function sync(doc, oldDoc){
 	require.True(t, ok)
 
 	if opts.distributed {
-		rs.Distributed = true
+		db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
 	} else {
 		require.False(t, rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
 	}
@@ -1042,7 +1040,8 @@ func TestNewResyncManagerDCPUpdateDatabaseState(t *testing.T) {
 	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
 	db := &DatabaseContext{DBStateManager: dbStateMgr}
 
-	mgr := NewResyncManagerDCP(metadataStore, metaKeys, db)
+	distributedResync := true
+	mgr := NewResyncManagerDCP(db, distributedResync)
 	require.NotNil(t, mgr.updateDatabaseState, "NewResyncManagerDCP must set updateDatabaseState")
 
 	// Calling with running=true must write ResyncRunning=true to the state document.
