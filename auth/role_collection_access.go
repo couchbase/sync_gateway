@@ -9,6 +9,9 @@
 package auth
 
 import (
+	"maps"
+	"slices"
+
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -232,4 +235,29 @@ func (role *roleImpl) initChannels(scopeName, collectionName string, channels ba
 
 func (role *roleImpl) GetCollectionsAccess() map[string]map[string]*CollectionAccess {
 	return role.CollectionsAccess
+}
+
+// CollectionAccessHistory maps scope names to collections, each holding the list of channel names with revocation history.
+// Shape: scope → collection → []channel
+type CollectionAccessHistory map[string]map[string][]string
+
+func (role *roleImpl) GetCollectionAccessHistory() CollectionAccessHistory {
+
+	collectionAccess := role.GetCollectionsAccess()
+	collectionAccessHistoryMap := make(CollectionAccessHistory)
+	for scope, cols := range collectionAccess {
+		collectionAccessHistoryMap[scope] = make(map[string][]string)
+		for col, colVal := range cols {
+			collectionAccessHistoryMap[scope][col] = slices.Collect(maps.Keys(colVal.ChannelHistory()))
+		}
+	}
+
+	// Always include the default collection's top-level channel history, without clobbering
+	// any named collections already recorded under the default scope.
+	if collectionAccessHistoryMap[base.DefaultScope] == nil {
+		collectionAccessHistoryMap[base.DefaultScope] = make(map[string][]string)
+	}
+	collectionAccessHistoryMap[base.DefaultScope][base.DefaultCollection] = slices.Collect(maps.Keys(role.ChannelHistory()))
+
+	return collectionAccessHistoryMap
 }

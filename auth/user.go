@@ -692,15 +692,6 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 	return output
 }
 
-func (user *userImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
-	chanHistory := user.CollectionChannelHistory(scope, collection)
-	if chanHistory == nil {
-		return []string{}
-	}
-	compactedChannels := chanHistory.PruneHistoryByKey(channels)
-	return compactedChannels
-}
-
 // ////// MARSHALING:
 
 // JSON encoding/decoding -- these functions are ugly hacks to work around the current

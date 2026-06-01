@@ -2338,6 +2338,75 @@ func (h *handler) handleGetClusterInfo() error {
 	return nil
 }
 
+type GetUserAccessHistoryResponse struct {
+	Channels auth.CollectionAccessHistory `json:"channels"`
+}
+
+type CompactUserAccessHistoryResponse struct {
+	CompactedChannels auth.CollectionAccessHistory `json:"compacted_channels"`
+}
+
+func (h *handler) getUserChannelHistory() error {
+	h.assertAdminOnly()
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator(h.ctx()).GetUser(username)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return kNotFoundError
+	}
+
+	collectionAccessHistory := user.GetCollectionAccessHistory()
+
+	userChannelHistory := GetUserAccessHistoryResponse{
+		Channels: collectionAccessHistory,
+	}
+
+	h.writeJSON(userChannelHistory)
+
+	return err
+}
+
+func (h *handler) compactUserChannelHistory() error {
+	h.assertAdminOnly()
+	var reqUserChannelHistory GetUserAccessHistoryResponse
+	err := h.readJSONInto(&reqUserChannelHistory)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid request payload: %v", err)
+	}
+
+	username := internalUserName(mux.Vars(h.rq)["name"])
+	authenticator := h.db.Authenticator(h.ctx())
+	user, err := authenticator.GetUser(username)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return kNotFoundError
+	}
+
+	colAccessHistoryMap := make(map[string]map[string][]string)
+	for scope, cols := range reqUserChannelHistory.Channels {
+		colAccessHistoryMap[scope] = make(map[string][]string)
+		for col, colVal := range cols {
+			colAccessHistoryMap[scope][col] = user.CompactChannelHistory(scope, col, colVal)
+		}
+	}
+
+	userCompactedChannelHistory := CompactUserAccessHistoryResponse{
+		CompactedChannels: colAccessHistoryMap,
+	}
+
+	err = authenticator.Save(user)
+	if err != nil {
+		return err
+	}
+
+	h.writeJSON(userCompactedChannelHistory)
+	return nil
+}
+
 // databaseLoadErrorAsHTTPError converts an error loading a database into an error with an http status code. Pulled into a function so we can duplicate persistent and non persistent config logic.
 func databaseLoadErrorAsHTTPError(err error) error {
 	var httpErr *base.HTTPError

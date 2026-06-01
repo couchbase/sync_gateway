@@ -34,12 +34,12 @@ post:
       content:
         application/json:
           schema:
-            $ref: ../../components/schemas.yaml#/UserHistory
+            $ref: ../../components/schemas.yaml#/CompactedUserHistory
           example:
-            channels:
+            compacted_channels:
               scope1:
                 collection1:
-                  - scoped_channel2
+                  - scoped_channel1
     '400':
       description: Bad request. Invalid channel names or malformed request body.
       content:
