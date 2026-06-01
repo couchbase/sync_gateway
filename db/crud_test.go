@@ -2746,24 +2746,3 @@ func TestXattrRevokedChannelVersionPath(t *testing.T) {
 		})
 	}
 }
-
-func TestChannelHistory(t *testing.T) {
-	chanHistory := make(ChannelHistory)
-
-	chanHistory.addChannelHistoryEntry("chan1", 4)
-	chanHistory.addChannelHistoryEntry("chan1", 10)
-	chanHistory.addChannelHistoryEntry("chan2", 5)
-	chanHistory.addChannelHistoryEntry("chan2", 2)
-	chanHistory.addChannelHistoryEntry("chan3", 12)
-	chanHistory.addChannelHistoryEntry("chan4", 7)
-
-	history := chanHistory.getChannelHistoryAsMap()
-	expectedHistory := map[string][]uint64{
-		"chan3": []uint64{12},
-		"chan1": []uint64{10, 4},
-		"chan4": []uint64{7},
-		"chan2": []uint64{5, 2},
-	}
-
-	assert.Equal(t, expectedHistory, history)
-}

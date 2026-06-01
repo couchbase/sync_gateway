@@ -934,6 +934,10 @@ func (h *handler) isReadOnlyGuest() bool {
 func (h *handler) handleGetDocChannelHistory() error {
 	h.assertAdminOnly()
 
+	if !h.collection.UseXattrs() {
+		return fmt.Errorf("xattrs not enabled")
+	}
+
 	docid := h.PathVar("docid")
 
 	chanHistory, err := h.collection.GetDocChannelHistory(h.ctx(), docid)
@@ -955,6 +959,10 @@ type CompactDocChannelHistoryRequest struct {
 // channel names for that document.
 func (h *handler) handleCompactDocChannelHistory() error {
 	h.assertAdminOnly()
+
+	if !h.collection.UseXattrs() {
+		return fmt.Errorf("xattrs not enabled")
+	}
 
 	var req CompactDocChannelHistoryRequest
 
