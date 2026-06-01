@@ -289,6 +289,7 @@ func (b *BackgroundManager) start(ctx context.Context, options map[string]any, p
 		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
+			return err
 		}
 	}
 

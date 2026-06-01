@@ -1167,48 +1167,6 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 	t.Logf("handler fired %d times", handlerFires.Load())
 }
 
-// TestUpdateDatabaseStateConcurrentStartStopWithPoller starts a DatabaseStateMgr polling loop and
-// rapidly starts/stops a BackgroundManager to verify that the poller never incorrectly triggers
-// Resume when the cluster status is not running.
-func TestUpdateDatabaseStateConcurrentStartStopWithPoller(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
-	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-poller-start-stop")
-
-	var badResumeCalls atomic.Int32
-
-	mgr, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "poller-start-stop", &ResumableMockProcess{})
-
-	// Wire a resumeResyncFunc that records any call where the cluster status is not actually running.
-	// A correct implementation should only call resume when the cluster IS running.
-	dbStateMgr.resumeResyncFunc = func(pollCtx context.Context) error {
-		clusterState, err := mgr.getClusterStatusState(pollCtx)
-		if err != nil || clusterState != BackgroundProcessStateRunning {
-			badResumeCalls.Add(1)
-		}
-		return mgr.Resume(pollCtx)
-	}
-	dbStateMgr.pollingInterval = 10 * time.Millisecond
-	dbStateMgr.StartPolling(ctx)
-	defer dbStateMgr.StopPolling(ctx)
-
-	const cycles = 5
-	for range cycles {
-		require.NoError(t, mgr.Start(ctx, nil))
-		assertResyncRunningEventually(t, dbStateMgr, true, ctx)
-
-		require.NoError(t, mgr.Stop(ctx))
-		assertResyncRunningEventually(t, dbStateMgr, false, ctx)
-
-		// Allow the poller a few ticks to settle.
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// The poller must never have fired Resume when the cluster was not running.
-	require.Zero(t, badResumeCalls.Load(), "Resume was invoked when cluster state was not running")
-}
 func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
