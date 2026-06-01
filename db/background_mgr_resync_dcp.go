@@ -598,7 +598,7 @@ func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus 
 	if len(previousStatus) > 0 {
 		var previousStatusDoc ResyncManagerStatusDocDCP
 		if err := base.JSONUnmarshal(previousStatus, &previousStatusDoc); err != nil {
-			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %w", string(previousStatus), err)
+			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %v", string(previousStatus), err)
 			return
 		}
 		previousStats = previousStatusDoc.resyncStats
