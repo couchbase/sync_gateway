@@ -85,4 +85,5 @@ const (
 	AuditFieldDocIDs      = "doc_ids"
 	AuditFieldFeedType    = "feed_type"
 	AuditFieldIncludeDocs = "include_docs"
+	AuditFieldSequence    = "seq"
 )
