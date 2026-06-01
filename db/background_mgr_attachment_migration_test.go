@@ -263,7 +263,7 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			name:          "default collection, group ID=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
-			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg:att_migration:1234" ),
+			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg:att_migration:1234"),
 		},
 		{
 			name:          "default collection + collection 1, no group id",
