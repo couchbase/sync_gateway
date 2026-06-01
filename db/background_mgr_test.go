@@ -1307,6 +1307,11 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 				continue
 			}
 			state := resumeManagers[i].GetRunState()
+			if state == "" {
+				// Resume returned nil but the process never started: the cluster transitioned
+				// out of "running" before this node called start(). Nothing to wait for.
+				continue
+			}
 			assert.Contains(c, []BackgroundProcessState{
 				BackgroundProcessStateStopped,
 				BackgroundProcessStateCompleted,

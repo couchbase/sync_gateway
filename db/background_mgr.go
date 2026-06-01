@@ -571,7 +571,9 @@ func (b *BackgroundManager) markStop(ctx context.Context) error {
 		return errBackgroundManagerStatusAlreadyStopping
 	}
 
-	if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, currentState) {
+	// Treat the initial zero state ("") the same as a terminal state: the process was never
+	// started on this node, so there is nothing to stop.
+	if currentState == "" || slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, currentState) {
 		return errBackgroundManagerProcessAlreadyStopped
 	}
 	b.setRunState(BackgroundProcessStateStopping)
