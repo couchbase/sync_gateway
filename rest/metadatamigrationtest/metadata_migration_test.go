@@ -667,6 +667,13 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 		assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
 		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
 	}, 30*time.Second, 200*time.Millisecond)
+
+	var clusterInfoResponse rest.ClusterInfo
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Equal(t, "system_mobile", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 }
 
 // TestMetadataMigrationRESTStartRejectedWithoutOptIn verifies a manual start via the admin API is

@@ -86,6 +86,9 @@ type BootstrapConnection interface {
 	// information about whether a new DB on this bucket has opted in (e.g., PUT /<db>/ with
 	// use_system_metadata_collection: true) so the very first bootstrap doc lands correctly.
 	SetBucketBootstrapTargetHint(ctx context.Context, bucket string, optInHint bool) error
+	// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+	// The snapshot is not guaranteed to be consistent across concurrent updates.
+	CachedBootstrapTargets() map[string]string
 	// Close releases any long-lived connections
 	Close()
 }
@@ -434,6 +437,22 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 	return nil
+}
+
+// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+// The snapshot is not guaranteed to be consistent across concurrent updates.
+func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
+	targets := make(map[string]string)
+	cc.bucketBootstrapTargets.Range(func(key, value any) bool {
+		switch value.(bucketBootstrapTarget) {
+		case bucketTargetSystemMobile:
+			targets[key.(string)] = "system_mobile"
+		case bucketTargetDefault:
+			targets[key.(string)] = "default"
+		}
+		return true
+	})
+	return targets
 }
 
 // probeRegistryLocation checks both collections for an existing _sync:registry doc. Returns

@@ -242,6 +242,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 
 			if pass+1 >= maxPasses {
 				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d unknown-prefix doc(s) and %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, remaining, passErrors)
+				m.dbContext.DbStats.MetadataMigration().AbandonedRuns.Add(1)
 				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s), %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, remaining, passErrors)
 			}
 		}

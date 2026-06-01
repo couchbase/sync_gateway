@@ -31,6 +31,89 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestProbeLegacyMetadataRaceDuringMigration reproduces a race condition where a new SG node
+// joining mid-migration concludes there is no legacy metadata and marks its MetadataStore
+// wrapper migration-complete, even though user/role/session docs have not been moved yet.
+//
+// The scenario:
+//  1. Node A starts migration — migrateSeqCounter moves _sync:seq from fallback to primary
+//     and deletes the fallback copy. User/role docs remain on fallback (the range-scan pass
+//     hasn't run yet).
+//  2. Node B joins the cluster, creates a fresh MetadataStore, and calls
+//     probeLegacyPerDBMetadata (the same check _getOrAddDatabaseFromConfig performs). The
+//     seq is gone from fallback, so the probe returns false.
+//  3. Node B calls SetMigrationComplete(). All subsequent reads skip the fallback.
+//  4. A read for a user doc that is still on the fallback returns key-not-found — data loss.
+func TestProbeLegacyMetadataRaceDuringMigration(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	primary, err := bucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	fallback := bucket.DefaultDataStore(ctx)
+
+	const metadataID = "test-probe-race"
+	metaKeys := base.NewMetadataKeys(metadataID)
+	seqKey := metaKeys.SyncSeqKey()
+
+	// Seed legacy metadata on fallback: a seq counter plus user/role/session docs.
+	_, err = fallback.Incr(ctx, seqKey, 0, 42, 0)
+	require.NoError(t, err)
+	legacyDocs := map[string][]byte{
+		metaKeys.UserKey("alice"):      []byte(`{"name":"alice"}`),
+		metaKeys.RoleKey("admin"):      []byte(`{"name":"admin"}`),
+		metaKeys.SessionKey("sess123"): []byte(`{"session_id":"sess123"}`),
+	}
+	for k, v := range legacyDocs {
+		_, err := fallback.AddRaw(ctx, k, 0, v)
+		require.NoError(t, err)
+	}
+
+	// --- Node A starts migration: migrate only the seq counter ---
+	nodeAStore := base.NewMetadataStore(primary, fallback)
+	db.MigrateSeqCounterForTest(t, ctx, nodeAStore, seqKey)
+
+	// Verify: seq is now on primary, gone from fallback (the precondition for the race).
+	seqOnFallback, err := fallback.Exists(ctx, seqKey)
+	require.NoError(t, err)
+	require.False(t, seqOnFallback, "seq counter must be gone from fallback after migration")
+
+	seqOnPrimary, err := primary.Exists(ctx, seqKey)
+	require.NoError(t, err)
+	require.True(t, seqOnPrimary, "seq counter must be on primary after migration")
+
+	// --- Node B joins: creates its own MetadataStore and runs the probe ---
+	// This replicates what _getOrAddDatabaseFromConfig does at server_context.go:820.
+	nodeBStore := base.NewMetadataStore(primary, fallback)
+
+	// Call the actual function under test.
+	hasLegacy := probeLegacyPerDBMetadata(ctx, fallback, metadataID)
+
+	// BUG: probe returns false because migrateSeqCounter already moved the seq doc,
+	// even though user/role/session docs are still on fallback.
+	require.False(t, hasLegacy, "probe sees no legacy seq — this is the root cause of the race")
+
+	// Node B marks migration complete (matching server_context.go:821 behaviour).
+	if !hasLegacy {
+		nodeBStore.SetMigrationComplete()
+	}
+
+	// --- Demonstrate the data loss: reads through Node B's wrapper miss fallback docs ---
+	for k := range legacyDocs {
+		_, _, getErr := nodeBStore.GetRaw(ctx, k)
+		assert.True(t, base.IsDocNotFoundError(getErr),
+			"Node B should fail to find %s because it skips fallback after SetMigrationComplete, got err=%v", k, getErr)
+	}
+
+	// Sanity: the docs are still physically on the fallback, just invisible to Node B.
+	for k, want := range legacyDocs {
+		got, _, getErr := fallback.GetRaw(ctx, k)
+		require.NoError(t, getErr, "doc %s should still exist on fallback", k)
+		assert.Equal(t, want, got)
+	}
+}
+
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
 	// Reset this to 0

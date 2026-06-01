@@ -672,6 +672,22 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 	return nil
 }
 
+// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+// The snapshot is not guaranteed to be consistent across concurrent updates.
+func (c *RosmarCluster) CachedBootstrapTargets() map[string]string {
+	targets := make(map[string]string)
+	c.bucketBootstrapTargets.Range(func(key, value any) bool {
+		switch value.(bucketBootstrapTarget) {
+		case bucketTargetSystemMobile:
+			targets[key.(string)] = "system_mobile"
+		case bucketTargetDefault:
+			targets[key.(string)] = "default"
+		}
+		return true
+	})
+	return targets
+}
+
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections
 func (c *RosmarCluster) Close() {
 }

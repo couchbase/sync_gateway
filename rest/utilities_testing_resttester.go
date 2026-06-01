@@ -448,6 +448,29 @@ func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, d
 	return resyncStatus
 }
 
+func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcessState) db.MigrationManagerResponse {
+	return rt.waitForMetadataMigrationStatus(status, "{{.db}}")
+}
+
+func (rt *RestTester) waitForMetadataMigrationStatus(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
+	timeout := 10 * time.Second
+	pollInterval := 10 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
+
+	var migrationStatus db.MigrationManagerResponse
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		response := rt.SendAdminRequest("GET", "/"+dbName+"/_metadata_migration", "")
+		RequireStatus(rt.TB(), response, http.StatusOK)
+		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &migrationStatus))
+
+		assert.Equal(c, status, migrationStatus.State)
+	}, timeout, pollInterval)
+	return migrationStatus
+}
+
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
 func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
 	updatedDbConfig := DatabaseConfig{}

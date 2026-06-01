@@ -3044,6 +3044,17 @@ Status:
                       host:
                         description: The nodes host name.
                         type: string
+          metadata_store_mode:
+            type: string
+            enum:
+              - fallback_active
+              - fallback_inactive
+            description: |-
+              Classification of this database's dual metadata store. `fallback_active` means
+              the dual store is in place and reads fall back to `_default._default` (migration
+              not yet complete); `fallback_inactive` means the dual store is in place but
+              migration has completed and fallback reads are skipped. Omitted when this
+              database does not use a dual metadata store.
     version:
       description: |-
         The product version including the build number and edition (ie. `EE` or `CE`).
@@ -3512,9 +3523,94 @@ BucketInfo:
   properties:
     registry:
       $ref: '#/GatewayRegistry'
+    migration_status:
+      allOf:
+        - $ref: '#/MetadataMigrationStatus'
+      description: |-
+        Bucket-level metadata-migration status. Omitted when the status doc does not yet exist
+        on the bucket (no migration has been observed or initiated).
     enable_cross_cluster_versioning:
       description: Indicates if cross-cluster versioning is enabled for this bucket.
       type: boolean
+    bootstrap_target:
+      type: string
+      enum:
+        - system_mobile
+        - default
+      description: |-
+        Cached location of this bucket's bootstrap documents (registry, dbconfig, cbgt cfg) on
+        this node. `system_mobile` means bootstrap docs live in `_system._mobile`; `default`
+        means they live in `_default._default` (legacy registry or no opt-in). Omitted when the
+        target has not yet been resolved on this node.
+
+MetadataMigrationStatus:
+  type: object
+  description: |-
+    Per-bucket metadata-migration lifecycle. One document per bucket, tracking bucket-global
+    bootstrap state and per-database completion. Per-database entries are keyed by metadata ID
+    so database renames do not break tracking.
+  properties:
+    bucket_migration_id:
+      type: string
+      description: Stable identifier for this bucket's migration lifecycle.
+    databases:
+      type: object
+      description: Map of database metadata ID to per-database migration state.
+      additionalProperties:
+        x-additionalPropertiesName: metadataid
+        $ref: '#/DatabaseMigrationStatus'
+    bootstrap:
+      $ref: '#/BootstrapMigrationStatus'
+
+DatabaseMigrationStatus:
+  type: object
+  description: Per-database entry in the bucket migration status document.
+  properties:
+    state:
+      type: string
+      enum:
+        - pending
+        - in_progress
+        - complete
+      description: |-
+        Per-database migration state. `in_progress` indicates a node currently holds the
+        BackgroundManager heartbeat lease for this database.
+    started_at:
+      type: string
+      format: date-time
+      description: Time the per-database migration was first observed in progress.
+    completed_at:
+      type: string
+      format: date-time
+      description: Time the per-database migration reached the complete state.
+
+BootstrapMigrationStatus:
+  type: object
+  description: |-
+    Bucket-global bootstrap migration state covering `_sync:registry`, `_sync:dbconfig:*`, and
+    cbgt cfg documents. `attempts` and `last_attempted_at` are observability fields written by
+    every node that runs the migration loop, so operators can distinguish "no one has tried" from
+    repeated failure.
+  properties:
+    state:
+      type: string
+      enum:
+        - pending
+        - complete
+      description: |-
+        Bucket-level bootstrap state. The bucket-level block transitions from `pending` to
+        `complete` only after every per-database entry is complete; it never reports `in_progress`.
+    completed_at:
+      type: string
+      format: date-time
+      description: Time the bootstrap migration reached the complete state.
+    last_attempted_at:
+      type: string
+      format: date-time
+      description: Time the migration loop most recently ran on this bucket, regardless of outcome.
+    attempts:
+      type: integer
+      description: Number of times the migration loop has run on this bucket.
 
 GatewayRegistry:
   type: object
