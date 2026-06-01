@@ -12,6 +12,7 @@ import os
 import pathlib
 import sys
 import unittest
+import unittest.mock
 
 import password_remover
 import pytest
@@ -78,6 +79,30 @@ def test_add_file_task(tmp_path, tag_userdata):
         assert expected in fh.read()
 
 
+def test_add_file_task_zero_size(tmp_path):
+    filename = "empty.json"
+    empty_file = tmp_path / filename
+    empty_file.write_text("")
+    task = tasks.add_file_task(
+        sourcefile_path=empty_file,
+        output_path=empty_file.name,
+    )
+    task.no_header = True
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    runner = tasks.TaskRunner(
+        verbosity=VERBOSE,
+        default_name="sg.log",
+        tmp_dir=output_dir,
+    )
+    runner.run(task)
+    runner.close_all_files()
+
+    output_path = pathlib.Path(runner.tmpdir) / filename
+    assert output_path.exists()
+    assert os.path.getsize(output_path) == 0
+
+
 def test_make_curl_task(tmpdir, httpserver):
     output = "curltask"
     httpserver.expect_request("/").respond_with_json(json.loads(INPUT_CONFIG))
@@ -103,6 +128,33 @@ def test_make_curl_task(tmpdir, httpserver):
 
     with open(pathlib.Path(runner.tmpdir) / output) as fh:
         assert REDACTED_OUTPUT in fh.read()
+
+    httpserver.check()
+
+
+def test_make_curl_task_zero_size(tmpdir, httpserver):
+    output = "curltask_empty"
+    httpserver.expect_request("/").respond_with_data("")
+    task = tasks.make_curl_task(
+        "curltask_empty",
+        httpserver.url_for("/"),
+        auth_headers={},
+        log_file=output,
+    )
+    task.no_header = True
+
+    output_dir = tmpdir.mkdir("output")
+    runner = tasks.TaskRunner(
+        verbosity=VERBOSE,
+        default_name="sg.log",
+        tmp_dir=output_dir,
+    )
+    runner.run(task)
+    runner.close_all_files()
+
+    output_path = pathlib.Path(runner.tmpdir) / output
+    assert output_path.exists()
+    assert os.path.getsize(output_path) == 0
 
     httpserver.check()
 

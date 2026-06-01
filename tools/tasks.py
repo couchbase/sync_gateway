@@ -229,6 +229,9 @@ class PythonTask(object):
         print("log_file: {0}. ".format(self.log_file))
         try:
             result = self.callable()
+            if not result:
+                return 0
+
             try:
                 fp.write(result.encode())
             except (UnicodeEncodeError, AttributeError):
