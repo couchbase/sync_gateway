@@ -2018,7 +2018,7 @@ func TestAuditUserAccessHistoryCompact(t *testing.T) {
 	const username = "alice"
 	rt.CreateUser(username, []string{"*"})
 
-	body := `{"channels":{}}`
+	body := `{"channels":{"_default":{"_default":["A","B"]}}}`
 	output := base.AuditLogContents(t, func(t testing.TB) {
 		RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_user/"+username+"/_access_history/compact", body), http.StatusOK)
 	})
@@ -2028,7 +2028,7 @@ func TestAuditUserAccessHistoryCompact(t *testing.T) {
 	assert.Equal(t, float64(base.AuditIDUserAccessHistoryCompact), event[base.AuditFieldID])
 	assert.Equal(t, "db", event[base.AuditFieldDatabase])
 	assert.Equal(t, username, event[base.AuditFieldUserName])
-	assert.Contains(t, event, base.AuditFieldChannels)
+	assert.Equal(t, map[string]any{base.DefaultScope: map[string]any{base.DefaultCollection: []any{"A", "B"}}}, event[base.AuditFieldChannels])
 }
 
 // getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129

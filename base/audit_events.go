@@ -801,7 +801,7 @@ var AuditEvents = events{
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserAccessHistoryRead: {
-		Name:        "Read User Access History",
+		Name:        "Read user access history",
 		Description: "User access history was read",
 		MandatoryFields: AuditFields{
 			AuditFieldUserName: "username",
@@ -812,7 +812,7 @@ var AuditEvents = events{
 		EventType:          eventTypeAdmin,
 	},
 	AuditIDUserAccessHistoryCompact: {
-		Name:        "Compact User Access History",
+		Name:        "Compact user access history",
 		Description: "User access history was compacted",
 		MandatoryFields: AuditFields{
 			AuditFieldUserName: "username",

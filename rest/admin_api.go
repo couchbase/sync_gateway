@@ -2588,10 +2588,14 @@ func (h *handler) compactUserChannelHistory() error {
 		return err
 	}
 
+	chanHistory := reqUserChannelHistory.Channels
+	if chanHistory == nil {
+		chanHistory = auth.CollectionAccessHistory{}
+	}
 	base.Audit(h.ctx(), base.AuditIDUserAccessHistoryCompact, base.AuditFields{
 		base.AuditFieldDatabase: h.db.Name,
 		base.AuditFieldUserName: username,
-		base.AuditFieldChannels: reqUserChannelHistory.Channels,
+		base.AuditFieldChannels: chanHistory,
 	})
 
 	h.writeJSON(userCompactedChannelHistory)
