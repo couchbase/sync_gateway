@@ -292,9 +292,8 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 
 // getCheckpointPrefix returns the checkpoint prefix for attachment migration checkpoints.
 func (a *AttachmentMigrationManager) getCheckpointPrefix(migrationID string) string {
-	return fmt.Sprintf("%s:sg-%v:att_migration:%v",
+	return fmt.Sprintf("%s:sg:att_migration:%v",
 		a.databaseCtx.MetadataKeys.DCPCheckpointPrefix(a.databaseCtx.Options.GroupID),
-		base.ProductAPIVersion,
 		migrationID,
 	)
 }

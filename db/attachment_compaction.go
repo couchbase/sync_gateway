@@ -583,9 +583,8 @@ func getCompactionDCPClientOptions(db *Database, compactionID string, collection
 // compaction.
 func GetAttachmentCompactionDCPCheckpointPrefix(db *DatabaseContext, compactionID string, phase attachmentCompactionPhase) string {
 	return fmt.Sprintf(
-		"%s:sg-%v:att_compaction:%v_%v",
+		"%s:sg:att_compaction:%v_%v",
 		db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
-		base.ProductAPIVersion,
 		compactionID,
 		phase,
 	)
