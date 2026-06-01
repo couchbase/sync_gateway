@@ -1967,6 +1967,70 @@ func TestDatabaseAuditChanges(t *testing.T) {
 	}
 }
 
+// TestAuditUserAccessHistoryRead verifies that AuditIDUserAccessHistoryRead is emitted with
+// the expected db and username fields when the user access history endpoint is called.
+func TestAuditUserAccessHistoryRead(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDUserAccessHistoryRead),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	output := base.AuditLogContents(t, func(t testing.TB) {
+		RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/_user/"+username+"/_access_history", ""), http.StatusOK)
+	})
+	events := jsonLines(t, output)
+	require.Len(t, events, 1)
+	event := events[0]
+	assert.Equal(t, float64(base.AuditIDUserAccessHistoryRead), event[base.AuditFieldID])
+	assert.Equal(t, "db", event[base.AuditFieldDatabase])
+	assert.Equal(t, username, event[base.AuditFieldUserName])
+}
+
+// TestAuditUserAccessHistoryCompact verifies that AuditIDUserAccessHistoryCompact is emitted
+// with the expected db, username, and channels fields when the compact endpoint is called.
+func TestAuditUserAccessHistoryCompact(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDUserAccessHistoryCompact),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	body := `{"channels":{"_default":{"_default":["A","B"]}}}`
+	output := base.AuditLogContents(t, func(t testing.TB) {
+		RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_user/"+username+"/_access_history/compact", body), http.StatusOK)
+	})
+	events := jsonLines(t, output)
+	require.Len(t, events, 1)
+	event := events[0]
+	assert.Equal(t, float64(base.AuditIDUserAccessHistoryCompact), event[base.AuditFieldID])
+	assert.Equal(t, "db", event[base.AuditFieldDatabase])
+	assert.Equal(t, username, event[base.AuditFieldUserName])
+	assert.Equal(t, map[string]any{base.DefaultScope: map[string]any{base.DefaultCollection: []any{"A", "B"}}}, event[base.AuditFieldChannels])
+}
+
 // getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129
 func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 	return base.LoggingConfig{
