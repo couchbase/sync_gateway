@@ -109,9 +109,7 @@ type indexManager struct {
 }
 
 func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
-	opts := &gocb.GetAllQueryIndexesOptions{
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
-	}
+	opts := &gocb.GetAllQueryIndexesOptions{}
 
 	if im.collection != nil {
 		return im.collection.GetAllIndexes(opts)

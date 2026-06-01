@@ -155,6 +155,7 @@ func init() {
 // SGFeedSourceParams is a wrapper for cbgt's parameters.
 type SGFeedSourceParams struct {
 	cbgt.DCPFeedParams
+	cbgt.StopAfterSourceParams
 
 	// Used to pass the SG database name to SGFeed* shims
 	DbName string `json:"sg_dbname,omitempty"`
@@ -165,20 +166,27 @@ type SGFeedIndexParams struct {
 	DestKey string `json:"destKey,omitempty"`
 }
 
-// cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
-// Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(ctx context.Context, collections CollectionNames, dbName string) (string, error) {
+// cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string. This contains information to for a given information , to be passed as feedparams during cbgt.Manager init.
+func cbgtFeedParams(ctx context.Context, opts ShardedDCPOptions) (string, error) {
 	feedParams := &SGFeedSourceParams{
-		DbName: dbName,
+		DbName: opts.DBName,
 		DCPFeedParams: cbgt.DCPFeedParams{
 			AutoReconnectAfterRollback: true,
 			IncludeXAttrs:              true,
 		},
 	}
-	if len(collections) > 1 {
-		return "", RedactErrorf("cbgtFeedParams: multiple scopes not supported, got %v", MD(collections))
-	} else if len(collections) > 0 {
-		for s, c := range collections {
+	if opts.EndSeqNos != nil {
+		feedParams.StopAfterSourceParams.StopAfter = "markReached"
+		seqMap := make(map[string]cbgt.UUIDSeq, len(opts.EndSeqNos))
+		for vbNo, seqNo := range opts.EndSeqNos {
+			seqMap[cbgtVbNoToPartition(vbNo)] = cbgt.UUIDSeq{Seq: seqNo}
+		}
+		feedParams.StopAfterSourceParams.MarkPartitionSeqs = seqMap
+	}
+	if len(opts.Collections) > 1 {
+		return "", RedactErrorf("cbgtFeedParams: multiple scopes not supported, got %v", MD(opts.Collections))
+	} else if len(opts.Collections) > 0 {
+		for s, c := range opts.Collections {
 			feedParams.Scope = s
 			feedParams.Collections = c
 		}
@@ -300,4 +308,24 @@ func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
 	creds, found := cbgtCredentials[dbName]
 	cbgtGlobalsLock.Unlock() // cbgtCreds is not a pointer type, safe to unlock
 	return creds, found
+}
+
+// GetHighSeqNos retrieves the maximum sequence numbers for each vbucket.
+func GetHighSeqNos(ctx context.Context, bucket Bucket) (map[uint16]uint64, error) {
+	b, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		return nil, fmt.Errorf("GetHighSeqNos: bucket is not a GocbV2Bucket: %w", err)
+	}
+	numVbuckets, err := bucket.GetMaxVbno(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: extending to be per collection requires an enhancement in gocbcore to support 0x48 memcached command
+	// for a non dcp agent, see gocbcore.DCPAgent.GetVBucketSeqNos
+	_, highSeqNos, err := b.GetStatsVbSeqno(numVbuckets, true)
+	if err != nil {
+		return nil, fmt.Errorf("unable to obtain high seqnos: %w", err)
+	}
+	return highSeqNos, nil
 }

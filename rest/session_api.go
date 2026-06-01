@@ -150,9 +150,11 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration, oneTi
 	if err != nil {
 		return "", err
 	}
-	cookie := auth.MakeSessionCookie(session, h.db.Options.SecureCookieOverride, h.db.Options.SessionCookieHttpOnly, h.db.SameSiteCookieMode)
-	base.AddDbPathToCookie(h.rq, cookie)
-	http.SetCookie(h.response, cookie)
+	if !oneTime {
+		cookie := auth.MakeSessionCookie(session, h.db.Options.SecureCookieOverride, h.db.Options.SessionCookieHttpOnly, h.db.SameSiteCookieMode)
+		base.AddDbPathToCookie(h.rq, cookie)
+		http.SetCookie(h.response, cookie)
+	}
 	return session.ID, nil
 }
 

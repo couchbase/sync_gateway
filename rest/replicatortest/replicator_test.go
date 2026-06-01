@@ -3349,7 +3349,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -3405,7 +3405,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create a new replicator using the same config, which should use the checkpoint set from the first.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err = stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -3508,7 +3508,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		arConfig.SetCheckpointPrefix(t, "cluster1:")
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -3572,7 +3572,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		ctx2 := edge2.Context()
 
 		// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, nil, nil)
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err = stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -3603,7 +3603,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		rt2.WaitForPendingChanges()
 
 		// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, nil, nil)
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err = stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -3947,7 +3947,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+				stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
 				require.NoError(t, err)
 				replicationStats, err := stats.DBReplicatorStats(t.Name())
 				require.NoError(t, err)
@@ -4189,7 +4189,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, err)
 
 				replicationID := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+				stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 				require.NoError(t, err)
 				dbstats, err := stats.DBReplicatorStats(replicationID)
 				require.NoError(t, err)
@@ -4331,7 +4331,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		rt1.WaitForPendingChanges()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -4410,7 +4410,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -4483,7 +4483,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -4656,7 +4656,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -4719,7 +4719,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		require.NoError(t, err)
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 		arConfig.RemoteDBURL = passiveDBURL
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, nil, nil)
+		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err = stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -4801,7 +4801,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		activeRT.WaitForPendingChanges()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -4943,7 +4943,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -5035,7 +5035,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -5128,7 +5128,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(replicationID)
 		require.NoError(t, err)
@@ -5326,7 +5326,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 						id, err := base.GenerateRandomID()
 						require.NoError(t, err)
-						sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+						sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 						require.NoError(t, err)
 						dbstats, err := sgwStats.DBReplicatorStats(id)
 						require.NoError(t, err)
@@ -5414,7 +5414,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 		id, err := base.GenerateRandomID()
 		require.NoError(t, err)
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(id)
 		require.NoError(t, err)
@@ -5734,7 +5734,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				id := rest.SafeDocumentName(t, t.Name())
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				dbstats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+				dbstats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 				require.NoError(t, err)
 				replicationStats, err := dbstats.DBReplicatorStats(id)
 				require.NoError(t, err)
@@ -6690,7 +6690,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		require.NoError(t, err)
 
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := sgwStats.DBReplicatorStats(id)
 		require.NoError(t, err)
@@ -6768,7 +6768,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 		// Set-up replicator //
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, nil, nil)
+		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := sgwStats.DBReplicatorStats(id)
 		require.NoError(t, err)
@@ -7076,7 +7076,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		require.NoError(t, err)
 		ctx := rt.Context()
 
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
+		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		dbstats, err := stats.DBReplicatorStats(t.Name())
 		require.NoError(t, err)
@@ -7962,7 +7962,7 @@ func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 }
 
 func dbReplicatorStats(t *testing.T) *base.DbReplicatorStats {
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)

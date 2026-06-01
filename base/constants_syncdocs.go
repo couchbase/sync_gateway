@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -243,6 +244,60 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 	return m.heartbeaterPrefix
 }
 
+// IsHeartbeaterKey reports whether key is a heartbeater timeout document written under
+// this MetadataKeys' heartbeater namespace. CouchbaseHeartbeater writes
+// `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID),
+// where heartbeaterPrefix is the value returned by HeartbeaterPrefix(groupID) — i.e. it
+// already includes the configured groupID when one is set. The full on-disk shape is
+// therefore `<m.heartbeaterPrefix>(<groupID>:)?heartbeat_timeout:<nodeUUID>`, where the
+// inner groupID segment is present only for EE-with-import deployments configured with a
+// non-empty groupID.
+//
+// Matching the literal `heartbeat_timeout:` token matters because the default-mode
+// heartbeaterPrefix is bare `_sync:`, which would otherwise classify every unrecognised
+// `_sync:` key as a heartbeater and risk deletion during metadata migration.
+func (m *MetadataKeys) IsHeartbeaterKey(key string) bool {
+	if !strings.HasPrefix(key, m.heartbeaterPrefix) {
+		return false
+	}
+	rest := key[len(m.heartbeaterPrefix):]
+	// No groupID: matches immediately after the heartbeater prefix.
+	if strings.HasPrefix(rest, "heartbeat_timeout:") {
+		return true
+	}
+	// With groupID: one extra colon-terminated segment between the prefix and the
+	// `heartbeat_timeout:` token. The groupID itself cannot contain `:` (config-key
+	// shape — see DefaultGroupID constant), so taking everything up to the first `:`
+	// as the candidate groupID is safe.
+	if i := strings.IndexByte(rest, ':'); i > 0 {
+		return strings.HasPrefix(rest[i+1:], "heartbeat_timeout:")
+	}
+	return false
+}
+
+func IsHeartbeaterKey(key string) bool {
+	if !strings.HasPrefix(key, "_sync:") {
+		return false
+	}
+
+	parts := strings.Split(key, ":")
+	if len(parts) >= 2 && parts[1] == "heartbeat_timeout" {
+		// no group id or metadata id
+		return true
+	} else if len(parts) >= 3 && parts[2] == "heartbeat_timeout" {
+		// group id
+		return true
+	} else if len(parts) >= 4 && parts[3] == "heartbeat_timeout" {
+		// metadata id - m_:hb:
+		return true
+	} else if len(parts) >= 5 && parts[4] == "heartbeat_timeout" {
+		// metadata id + group id
+		return true
+	}
+
+	return false
+}
+
 // SGCfgPrefix returns a document prefix to use for cfg documents (cbgt)
 //
 //	format: _sync:{m_$}:cfg[groupID:]   (collections)
@@ -433,6 +488,21 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 		return fmt.Sprintf("%s:%s.%s:%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName, groupID)
 	}
 	return fmt.Sprintf("%s:%s.%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName)
+}
+
+// SyncSeqMigrationPill is the body written to the fallback sequence counter document during
+// metadata migration. Replacing the numeric counter with this JSON payload causes the next
+// MetadataStore.Incr for that key to take the self-heal branch: read the pill, bootstrap the
+// primary counter at LastSeq, and remove the fallback doc.
+//
+// SGMetadataMigrationPill is the discriminator that distinguishes a deliberately-placed pill
+// from arbitrary JSON that might otherwise be unmarshalled into this struct with zero
+// values. The JSON key is namespaced so a stray body with a generic `migration: true` field
+// cannot be misidentified as a pill.
+type SyncSeqMigrationPill struct {
+	PilledAt                string `json:"pilled_at"`
+	LastSeq                 uint64 `json:"last_seq"`
+	SGMetadataMigrationPill bool   `json:"sg_metadata_migration_pill"`
 }
 
 // SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection

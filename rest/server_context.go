@@ -674,6 +674,8 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
 	}
 
+	spec.FastFailOnInitialConnection = base.ValDefault(serverConfig.Unsupported.UseGOCBFastFailRetry, false)
+
 	if spec.BucketName == "" {
 		spec.BucketName = config.Name
 	}
@@ -817,7 +819,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		metaStore := base.NewMetadataStore(primaryMetadataStore, fallbackStore)
 		if !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID) {
 			metaStore.SetMigrationComplete()
-			base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+			// Same SetMigrationComplete action covers two distinct cases — log them
+			// separately so operators don't see "new-database fast path" against a DB
+			// that just finished migrating.
+			primarySeqKey := base.NewMetadataKeys(config.MetadataID).SyncSeqKey()
+			if primaryHasSeq, _ := primaryMetadataStore.Exists(ctx, primarySeqKey); primaryHasSeq {
+				base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — marking per-DB MetadataStore wrapper migration-complete", base.MD(dbName))
+			} else {
+				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+			}
 		}
 		contextOptions.MetadataStore = metaStore
 	} else {

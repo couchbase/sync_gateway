@@ -44,6 +44,7 @@ const (
 	SubsystemReplicationPush    = "replication_push"
 	SubsystemSecurity           = "security"
 	SubsystemSharedBucketImport = "shared_bucket_import"
+	SubsystemMetadataMigration  = "metadata_migration"
 
 	DatabaseLabelKey    = "database"
 	ReplicationLabelKey = "replication"
@@ -434,6 +435,7 @@ type DbStats struct {
 	DbReplicatorStats       map[string]*DbReplicatorStats `json:"replications,omitempty"`
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
+	MigrationStats          *MigrationStats               `json:"metadata_migration,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
 	dbReplicatorStatsMutex  sync.Mutex
 }
@@ -695,6 +697,10 @@ type DatabaseStats struct {
 	ResyncNumProcessed *SgwIntStat `json:"resync_num_processed"`
 	// The total number of changed documents for resync on this database.
 	ResyncNumChanged *SgwIntStat `json:"resync_num_changed"`
+	// The number of documents targeted for resync for the current or most recent resync run on this database.
+	ResyncDocsTargeted *SgwIntStat `json:"resync_docs_targeted"`
+	// The total number of documents that failed during resync on this database.
+	ResyncErrorsTotal *SgwIntStat `json:"resync_errors_total"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -899,6 +905,29 @@ type SharedBucketImportStats struct {
 	ImportPartitions *SgwIntStat `json:"import_partitions"`
 	// The total number of documents processed by the import feed.
 	ImportFeedProcessedCount *SgwIntStat `json:"import_feed_processed_count"`
+}
+
+// MigrationStats are per-DB Prometheus-backed counters for the metadata-migration
+// background task. Only initialized for databases that have opted into the system
+// metadata collection — for all other databases this section is absent from the
+// per-DB stats payload. Lifecycle state (running/stopped/error) is owned by the
+// BackgroundManager and surfaced via the _metadata_migration REST endpoint, not
+// here.
+type MigrationStats struct {
+	// Cumulative count of fallback keys observed by range scans across all passes.
+	DocsScannedTotal *SgwIntStat `json:"docs_scanned_total"`
+	// Cumulative count of fallback docs successfully moved to primary (or deleted, for transient docs).
+	DocsMigrated *SgwIntStat `json:"docs_migrated"`
+	// Number of out-of-scope keys observed on the most recent pass (sibling-DB or bucket-level docs).
+	DocsOutOfScope *SgwIntStat `json:"docs_out_of_scope"`
+	// Number of unknown-prefix keys observed on the most recent pass.
+	DocsUnknownPrefix *SgwIntStat `json:"docs_unknown_prefix"`
+	// Cumulative per-doc error count.
+	Errors *SgwIntStat `json:"errors"`
+	// Cumulative count of seq-counter poison-pill applications. Typically 0 or 1 per migration run.
+	SeqPoisonPillApplied *SgwIntStat `json:"seq_poison_pill_applied"`
+	// Cumulative count of MigrateMetadata pass invocations.
+	Passes *SgwIntStat `json:"passes"`
 }
 
 type SgwStatWrapper interface {
@@ -1295,7 +1324,7 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
+func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, metadataMigrationEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	dbStats := &DbStats{
@@ -1339,6 +1368,13 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 
 	if importEnabled {
 		err = dbStats.InitSharedBucketImportStats()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if metadataMigrationEnabled {
+		err = dbStats.InitMigrationStats()
 		if err != nil {
 			return nil, err
 		}
@@ -1390,6 +1426,10 @@ func (s *SgwStats) ClearDBStats(name string) {
 
 	if s.DbStats[name].SharedBucketImportStats != nil {
 		s.DbStats[name].unregisterSharedBucketImportStats()
+	}
+
+	if s.DbStats[name].MigrationStats != nil {
+		s.DbStats[name].unregisterMigrationStats()
 	}
 
 	s.DbStats[name].unregisterQueryStats()
@@ -1934,6 +1974,14 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ResyncDocsTargeted, err = NewIntStat(SubsystemDatabaseKey, "resync_docs_targeted", StatUnitNoUnits, ResyncDocsTargetedDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ResyncErrorsTotal, err = NewIntStat(SubsystemDatabaseKey, "resync_errors_total", StatUnitNoUnits, ResyncErrorsTotalDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.NumPublicRestRequests, err = NewIntStat(SubsystemDatabaseKey, "num_public_rest_requests", StatUnitNoUnits, NumPublicRestRequestsDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -2017,6 +2065,8 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 	prometheus.Unregister(d.DatabaseStats.ResyncNumProcessed)
 	prometheus.Unregister(d.DatabaseStats.ResyncNumChanged)
+	prometheus.Unregister(d.DatabaseStats.ResyncDocsTargeted)
+	prometheus.Unregister(d.DatabaseStats.ResyncErrorsTotal)
 	prometheus.Unregister(d.DatabaseStats.NumPublicRestRequests)
 	prometheus.Unregister(d.DatabaseStats.TotalSyncTime)
 	prometheus.Unregister(d.DatabaseStats.PublicRestBytesRead)
@@ -2484,6 +2534,65 @@ func (d *DbStats) unregisterSharedBucketImportStats() {
 
 func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
 	return d.SharedBucketImportStats
+}
+
+// InitMigrationStats wires up the per-DB metadata migration stat section. Callers
+// should only invoke this for databases that have opted into the system metadata
+// collection — for all others MigrationStats stays nil so the section is omitted
+// from the per-DB stats payload entirely.
+func (d *DbStats) InitMigrationStats() error {
+	if d.MigrationStats != nil {
+		return nil
+	}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
+
+	resUtil := &MigrationStats{}
+	var err error
+	resUtil.DocsScannedTotal, err = NewIntStat(SubsystemMetadataMigration, "docs_scanned_total", StatUnitNoUnits, MetadataMigrationDocsScannedDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.DocsMigrated, err = NewIntStat(SubsystemMetadataMigration, "docs_migrated", StatUnitNoUnits, MetadataMigrationDocsMigratedDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.DocsOutOfScope, err = NewIntStat(SubsystemMetadataMigration, "docs_out_of_scope", StatUnitNoUnits, MetadataMigrationDocsOutOfScopeDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.DocsUnknownPrefix, err = NewIntStat(SubsystemMetadataMigration, "docs_unknown_prefix", StatUnitNoUnits, MetadataMigrationDocsUnknownPrefixDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.Errors, err = NewIntStat(SubsystemMetadataMigration, "errors", StatUnitNoUnits, MetadataMigrationErrorsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.SeqPoisonPillApplied, err = NewIntStat(SubsystemMetadataMigration, "seq_poison_pill_applied", StatUnitNoUnits, MetadataMigrationSeqPoisonPillAppliedDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.Passes, err = NewIntStat(SubsystemMetadataMigration, "passes", StatUnitNoUnits, MetadataMigrationPassesDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	d.MigrationStats = resUtil
+	return nil
+}
+
+func (d *DbStats) unregisterMigrationStats() {
+	prometheus.Unregister(d.MigrationStats.DocsScannedTotal)
+	prometheus.Unregister(d.MigrationStats.DocsMigrated)
+	prometheus.Unregister(d.MigrationStats.DocsOutOfScope)
+	prometheus.Unregister(d.MigrationStats.DocsUnknownPrefix)
+	prometheus.Unregister(d.MigrationStats.Errors)
+	prometheus.Unregister(d.MigrationStats.SeqPoisonPillApplied)
+	prometheus.Unregister(d.MigrationStats.Passes)
+}
+
+func (d *DbStats) MetadataMigration() *MigrationStats {
+	return d.MigrationStats
 }
 
 func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) error {

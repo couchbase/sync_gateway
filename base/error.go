@@ -220,6 +220,27 @@ func CouchHTTPErrorName(status int) string {
 	return fmt.Sprintf("%d", status)
 }
 
+// IsCounterNonNumeric returns true if err indicates a counter Incr/Decr was attempted
+// against a document whose body isn't a numeric counter. Two shapes are recognised:
+//
+//   - gocb / Couchbase Server: memcached StatusBadDelta (DELTA_BADVAL).
+//   - Rosmar (until updated): a json.UnmarshalTypeError surfaced when the SDK tries to
+//     decode the body as a uint64.
+//
+// The migration manager's poison pill replaces the seq counter with a JSON pill body,
+// which trips this predicate on the wrapper's fallback.Incr and routes execution into the
+// self-heal branch.
+func IsCounterNonNumeric(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isKVError(pkgerrors.Cause(err), memd.StatusBadDelta) {
+		return true
+	}
+	var jsonTypeErr *json.UnmarshalTypeError
+	return errors.As(err, &jsonTypeErr)
+}
+
 // IsDocNotFoundError returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
 	if err == nil {

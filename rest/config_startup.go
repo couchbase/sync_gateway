@@ -173,6 +173,7 @@ type UnsupportedConfig struct {
 	EffectiveUserHeaderName *string                  `json:"effective_user_header_name,omitempty" help:"HTTP header name to get effective user id from"`
 	AuditInfoProvider       *AuditInfoProviderConfig `json:"audit_info_provider,omitempty"     help:"Configuration for audit info provider"`
 	RosmarBucketManagement  *bool                    `json:"rosmar_bucket_management,omitempty" help:"Enable Rosmar bucket management REST API"`
+	UseGOCBFastFailRetry    *bool                    `json:"use_gocb_fast_fail_retry,omitempty" help:"When true, errors on initial connection to Couchbase Server will fail instantaneously. Enabling this will surface authentication errors quickly, but can cause some Sync Gateway operations to shut down databases with intermittent Couchbase Server connection errors."`
 }
 
 type AuditInfoProviderConfig struct {
