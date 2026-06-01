@@ -1,0 +1,62 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
+get:
+  summary: Get Channel History of Document
+  description: |-
+    Returns the channel revocation history for the specified document as a map of channel
+    names to the array of sequences at which the document was removed from each channel. Only channels
+    that have been revoked at least once are included; channels the document is currently
+    assigned may be included if they were previously revoked.
+
+    Multiple sequences for a given channel indicate that the document has lost access to that channel
+    more than once — each sequence represents a point in time at which the document was removed from
+    the channel.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      description: |-
+        Successfully retrieved the channel revocation history for the specified document.
+        Returns a JSON object mapping each channel name to an array of sequences at which
+        the document was removed from that channel.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: integer
+                format: int64
+                minimum: 1
+              description: Sequences at which the document was removed from this channel.
+            description: Map of channel names to their revocation sequences.
+            example:
+              channel1:
+                - 3
+                - 7
+              channel2:
+                - 5
+    '404':
+      description: Document not found.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+
+  tags:
+    - Document
+  operationId: get_keyspace-_channel_history
