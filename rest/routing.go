@@ -155,6 +155,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRevTree)).Methods("GET")
 	keyspace.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
+	keyspace.Handle("/_channel_history/{docid:"+docRegex+"}",
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetDocChannelHistory)).Methods("GET")
+	keyspace.Handle("/_channel_history/{docid:"+docRegex+"}/compact",
+		makeHandler(sc, adminPrivs, []Permission{PermWriteAppData}, nil, (*handler).handleCompactDocChannelHistory)).Methods("POST")
 
 	// Database handlers (multi collection):
 	dbr.Handle("/_resync",

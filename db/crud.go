@@ -222,6 +222,62 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+type ChannelHistory map[string]map[uint64]struct{}
+
+func (ch ChannelHistory) addChannelHistoryEntry(name string, seq uint64) {
+	if _, ok := ch[name]; !ok {
+		ch[name] = make(map[uint64]struct{})
+	}
+	if _, ok := ch[name][seq]; !ok {
+		ch[name][seq] = struct{}{}
+	}
+}
+
+func (ch ChannelHistory) getChannelHistoryAsMap() map[string][]uint64 {
+	response := make(map[string][]uint64)
+	for chanName, chanEntry := range ch {
+		response[chanName] = make([]uint64, 0)
+		for seq, _ := range chanEntry {
+			response[chanName] = append(response[chanName], seq)
+		}
+		slices.Sort(response[chanName])
+		slices.Reverse(response[chanName])
+	}
+	return response
+}
+
+// GetDocChannelHistory returns the channel revocation history for the given document as a map
+// from channel name to the sequences at which the document was removed from that channel.
+// It collects revocation sequences from the active Channels map, the ChannelSet, and the
+// ChannelSetHistory (overflow). Only channels that have been revoked at least once appear in
+// the result; active memberships with no revocation history are omitted, even though a currently
+// assigned channel can still appear if it was revoked and later re-added.
+func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string][]uint64, error) {
+
+	chanHistory := make(ChannelHistory)
+	syncData, err := c.GetDocSyncData(ctx, docid)
+	if err != nil {
+		return nil, err
+	}
+	for chanName, chanVal := range syncData.Channels {
+		if chanVal != nil && chanVal.Seq != 0 {
+			chanHistory.addChannelHistoryEntry(chanName, chanVal.Seq)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSet {
+		if chanSetEntry.End != 0 {
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSetHistory {
+		if chanSetEntry.End != 0 {
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+
+	return chanHistory.getChannelHistoryAsMap(), nil
+}
+
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
 // This is used to prune stale channel assignment history to reduce storage overhead.
 func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
@@ -258,12 +314,12 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		cas = doc.Cas
 	}
 
-	compactedChannels := make([]string, 0)
+	compactedChannels := make(base.Set)
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
 		del := channel.End <= seq
 		if del {
-			compactedChannels = append(compactedChannels, channel.Name)
+			compactedChannels.Add(channel.Name)
 		}
 		return del
 	})
@@ -271,14 +327,14 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
 		del := channel.End != 0 && channel.End <= seq
 		if del {
-			compactedChannels = append(compactedChannels, channel.Name)
+			compactedChannels.Add(channel.Name)
 		}
 		return del
 	})
 
 	for chanName, chanEntry := range doc.SyncData.Channels {
 		if chanEntry != nil && chanEntry.Seq <= seq {
-			compactedChannels = append(compactedChannels, chanName)
+			compactedChannels.Add(chanName)
 			delete(doc.SyncData.Channels, chanName)
 		}
 	}
@@ -320,7 +376,9 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		base.MouXattrName:  rawMouXattr,
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
-	return compactedChannels, err
+	compactedChannelArray := compactedChannels.ToArray()
+	slices.Sort(compactedChannelArray)
+	return compactedChannelArray, err
 }
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
