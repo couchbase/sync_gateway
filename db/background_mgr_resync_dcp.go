@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"sort"
@@ -45,11 +46,9 @@ type ResyncManagerDCP struct {
 	VBUUIDs                      []uint64
 	ResyncedCollections          base.CollectionNames
 	resyncCollectionInfo
-	lock        sync.RWMutex
-	Distributed bool
-	dcpDoneChan chan error // mark when the DCP feed is completed
-	// TODO: put this into data set by GetProcessStatus / SetProcessStatus so this can be determined for other nodes
-	// running resync
+	lock              sync.RWMutex
+	Distributed       bool
+	dcpDoneChan       chan error      // mark when the DCP feed is completed
 	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
 }
 
@@ -70,6 +69,22 @@ func (v *vBucketTracker) clear() {
 	v.lock.Lock()
 	defer v.lock.Unlock()
 	v.m = make(map[string]struct{})
+}
+
+// union returns a slice containing all vBuckets from v and other (deduplicated).
+func (v *vBucketTracker) union(other iter.Seq[string]) []string {
+	v.lock.RLock()
+	defer v.lock.RUnlock()
+	result := make(map[string]struct{}, len(v.m))
+	for vb := range v.m {
+		result[vb] = struct{}{}
+	}
+	if other != nil {
+		for vb := range other {
+			result[vb] = struct{}{}
+		}
+	}
+	return slices.Collect(maps.Keys(result))
 }
 
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
@@ -578,18 +593,20 @@ type resyncStats struct {
 func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus []byte, newStatus []byte) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+	// previousStatus is the full status document ({"status":{...},"meta":{...}}) from the bucket before this update.
 	var previousStats resyncStats
 	if len(previousStatus) > 0 {
-		err := base.JSONUnmarshal(previousStatus, &previousStats)
-		if err != nil {
+		var previousStatusDoc ResyncManagerStatusDocDCP
+		if err := base.JSONUnmarshal(previousStatus, &previousStatusDoc); err != nil {
 			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %w", string(previousStatus), err)
 			return
 		}
+		previousStats = previousStatusDoc.resyncStats
 	}
+	// newStatus is the flat status subdoc (output of GetProcessStatus) just written to the bucket.
 	var newStats resyncStats
 	if len(newStatus) > 0 {
-		err := base.JSONUnmarshal(newStatus, &newStats)
-		if err != nil {
+		if err := base.JSONUnmarshal(newStatus, &newStats); err != nil {
 			base.AssertfCtx(ctx, "Could not process current status: %q, resync will lose track of its stats: %s", string(newStatus), err)
 			return
 		}
@@ -601,18 +618,28 @@ func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus 
 	r.docsProcessedLocalSerialized.Add(newStats.DocsProcessed - previousStats.DocsProcessed)
 	r.docsChangedLocalSerialized.Add(newStats.DocsChanged - previousStats.DocsChanged)
 	r.docsErroredLocalSerialized.Add(newStats.DocsErrored - previousStats.DocsErrored)
+
+	// Mark any vBuckets completed by other nodes (from the previous bucket state) on this node's tracker.
+	prevVBuckets, err := getCompletedVBucketsFromMeta(previousStatus)
+	if err != nil {
+		base.WarnfCtx(ctx, "Could not get completed vBuckets from previous status: %v", err)
+	} else {
+		r.markVBucketsCompleted(ctx, slices.Values(prevVBuckets), r.db.numVBuckets)
+	}
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
+	// previousStatus is the full status document ({"status":{...},"meta":{...}}) from the bucket.
 	var previousStats resyncStats
 	if len(previousStatus) > 0 {
-		err := base.JSONUnmarshal(previousStatus, &previousStats)
-		if err != nil {
+		var previousStatusDoc ResyncManagerStatusDocDCP
+		if err := base.JSONUnmarshal(previousStatus, &previousStatusDoc); err != nil {
 			return nil, nil, fmt.Errorf("Could not process previous status: %q", string(previousStatus))
 		}
+		previousStats = previousStatusDoc.resyncStats
 	}
 
 	response := ResyncManagerResponseDCP{
@@ -639,6 +666,12 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		CollectionIDs: r.collectionIDs,
 	}
 
+	prevVBuckets, err := getCompletedVBucketsFromMeta(previousStatus)
+	if err != nil {
+		return nil, nil, err
+	}
+	meta.CompletedVBuckets = r.completedvBuckets.union(slices.Values(prevVBuckets))
+
 	statusJSON, err := base.JSONMarshal(response)
 	if err != nil {
 		return nil, nil, err
@@ -649,6 +682,19 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		return nil, nil, err
 	}
 	return statusJSON, metaJSON, err
+}
+
+// getCompletedVBucketsFromMeta extracts the completed vBuckets list from a serialized ResyncManagerStatusDocDCP.
+// Returns an empty slice with no error when statusBytes is empty.
+func getCompletedVBucketsFromMeta(statusBytes []byte) ([]string, error) {
+	if len(statusBytes) == 0 {
+		return []string{}, nil
+	}
+	var statusDoc ResyncManagerStatusDocDCP
+	if err := base.JSONUnmarshal(statusBytes, &statusDoc); err != nil {
+		return nil, fmt.Errorf("Failed on %q: %w", string(statusBytes), err)
+	}
+	return statusDoc.CompletedVBuckets, nil
 }
 
 // writeSharededDCPCheckpoints writes any outstanding DCP checkpoints.
@@ -673,13 +719,13 @@ func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuck
 			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)
 			return
 		}
-		r.markVBucketsCompleted(ctx, f.CompletedPartitions(), totalVBuckets)
+		r.markVBucketsCompleted(ctx, maps.Keys(f.CompletedPartitions()), totalVBuckets)
 	}
 }
 
 // markVBucketsCompleted marks the provided vBuckets as completed, and if all vBuckets are completed, closes doneChan to
 // allow the resync process to complete. This function is thread safe and can be called multiple times.
-func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, completedPartitions map[string]struct{}, totalVbuckets uint16) {
+func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, vbNos iter.Seq[string], totalVbuckets uint16) {
 	r.completedvBuckets.lock.Lock()
 	defer r.completedvBuckets.lock.Unlock()
 
@@ -688,7 +734,7 @@ func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, completedP
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
 		return
 	}
-	for vbNo := range completedPartitions {
+	for vbNo := range vbNos {
 		r.completedvBuckets.m[vbNo] = struct{}{}
 	}
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
@@ -714,9 +760,14 @@ func (r *ResyncManagerDCP) DocsErrored() int64 {
 	return r.docsErroredCrossNode.Load() + r.docsErroredLocal.Load() - r.docsErroredLocalSerialized.Load()
 }
 
+type resyncManagerCompletedVBuckets struct {
+	CompletedVBuckets []string `json:"completed_vbuckets,omitempty"`
+}
+
 type ResyncManagerMeta struct {
 	VBUUIDs       []uint64 `json:"vbuuids"`
 	CollectionIDs []uint32 `json:"collection_ids,omitempty"`
+	resyncManagerCompletedVBuckets
 }
 
 type ResyncManagerStatusDocDCP struct {
