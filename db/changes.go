@@ -256,7 +256,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				base.WarnfCtx(ctx, "[%s] Unexpected panic building revoked feed: \n %s", panicked, debug.Stack())
+				base.WarnfCtx(ctx, "Unexpected panic building revoked feed: %v\n%s", panicked, debug.Stack())
 			}
 			close(feed)
 		}()
@@ -462,7 +462,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 	go func() {
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				base.WarnfCtx(ctx, "[%s] Unexpected panic building changes feed: \n %s", panicked, debug.Stack())
+				base.WarnfCtx(ctx, "Unexpected panic building changes feed: %v\n%s", panicked, debug.Stack())
 			}
 			close(feed)
 		}()
