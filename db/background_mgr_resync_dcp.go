@@ -462,9 +462,14 @@ func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Databas
 	}
 
 	for {
+		// start a loop to invalidate principals on a single node
+		// one node will return with err = nil, all other nodes will return errBackgroundManagerProcessAlreadyRunning
 		if err := r.invalidatePrincipalsManager.Start(ctx, nil); err != nil && !errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return err
 		}
+		// wait for background manager process to complete, if it moves to Stopped restart loop on another node
+		//
+		// if Completed, return from function
 		done, err := r.waitInvalidatePrincipals(ctx, terminator)
 		if err != nil || done {
 			return err
@@ -490,7 +495,11 @@ func (r *ResyncManagerDCP) waitInvalidatePrincipals(ctx context.Context, termina
 	for {
 		select {
 		case <-ticker.C:
-			switch r.invalidatePrincipalsManager.GetRunState() {
+			state, err := r.invalidatePrincipalsManager.getClusterStatusState(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "Could not get invalidate principals status: %v, continuing to poll", err)
+			}
+			switch state {
 			case BackgroundProcessStateCompleted:
 				return true, nil
 			case BackgroundProcessStateError:
@@ -501,6 +510,7 @@ func (r *ResyncManagerDCP) waitInvalidatePrincipals(ctx context.Context, termina
 				// still in progress, keep polling
 			}
 		case <-terminator.Done():
+			// if ResyncManager.Stop was called, stop the principal invalidation
 			if err := r.invalidatePrincipalsManager.Stop(ctx); err != nil {
 				base.WarnfCtx(ctx, "Failed to stop invalidate principals manager: %v", err)
 			}
