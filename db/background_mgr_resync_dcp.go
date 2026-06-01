@@ -762,16 +762,14 @@ func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string, distribu
 	var checkpointPrefix string
 	if distributed {
 		checkpointPrefix = fmt.Sprintf(
-			"%s:sg-%v:resync-distributed:%v",
+			"%s:sg:resync-distributed:%v",
 			db.MetadataKeys.DCPCheckpointPrefix(""),
-			base.ProductAPIVersion,
 			resyncID,
 		)
 	} else {
 		checkpointPrefix = fmt.Sprintf(
-			"%s:sg-%v:resync:%v",
+			"%s:sg:resync:%v",
 			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
-			base.ProductAPIVersion,
 			resyncID,
 		)
 	}
