@@ -2363,6 +2363,11 @@ func (h *handler) getUserChannelHistory() error {
 		Channels: collectionAccessHistory,
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUserAccessHistoryRead, base.AuditFields{
+		base.AuditFieldDatabase: h.db.Name,
+		base.AuditFieldUserName: username,
+	})
+
 	h.writeJSON(userChannelHistory)
 
 	return err
@@ -2402,6 +2407,16 @@ func (h *handler) compactUserChannelHistory() error {
 	if err != nil {
 		return err
 	}
+
+	chanHistory := reqUserChannelHistory.Channels
+	if chanHistory == nil {
+		chanHistory = auth.CollectionAccessHistory{}
+	}
+	base.Audit(h.ctx(), base.AuditIDUserAccessHistoryCompact, base.AuditFields{
+		base.AuditFieldDatabase: h.db.Name,
+		base.AuditFieldUserName: username,
+		base.AuditFieldChannels: chanHistory,
+	})
 
 	h.writeJSON(userCompactedChannelHistory)
 	return nil
