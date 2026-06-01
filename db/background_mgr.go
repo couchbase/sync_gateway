@@ -543,6 +543,13 @@ func (b *BackgroundManager) setStartTime(startTime time.Time) {
 	b.status.StartTime = startTime
 }
 
+// getLastError returns the last error recorded by the manager.
+func (b *BackgroundManager) getLastError() error {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return b.lastError
+}
+
 // SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
 func (b *BackgroundManager) SetError(err error) {
 	b.lock.Lock()

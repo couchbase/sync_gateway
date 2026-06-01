@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -50,7 +51,9 @@ type ResyncManagerDCP struct {
 	dcpDoneChan chan error // mark when the DCP feed is completed
 	// TODO: put this into data set by GetProcessStatus / SetProcessStatus so this can be determined for other nodes
 	// running resync
-	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
+	completedvBuckets            *vBucketTracker // tracks the number of completed vBuckets for the local
+	invalidatePrincipalsManager  *BackgroundManager
+	invalidatePrincipalsPollWait time.Duration // how long to wait between GetRunState polls; defaults to 500ms, overridable in tests
 }
 
 // vBucketTracker tracks completed vBuckets in a thread safe way. It is used to determine when all vBuckets have
@@ -431,13 +434,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return err
 		}
 
-		if err := invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections, r.DocsChanged()); err != nil {
+		if err := r.invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections, terminator); err != nil {
 			return err
-		}
-
-		// If we regenerated sequences, update syncInfo for all collections affected
-		if regenerateSequences {
-			updateSyncInfo(ctx, db, r.collectionIDs)
 		}
 		// resync finished, drop back to 0
 		db.DbStats.Database().ResyncDocsTargeted.Set(0)
@@ -455,7 +453,62 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 	return nil
 }
 
-// invalidatePrincipals invalidates principal documents after documents have been resynced.
+// invalidatePrincipals starts the invalidate principals background manager and polls until it completes.
+// If the manager is stopped before completing (e.g. due to a node failure), it is restarted. The loop exits
+// when the manager completes successfully, returns an error, or the resync terminator fires.
+func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, hasAllCollections bool, terminator *base.SafeTerminator) error {
+	if r.invalidatePrincipalsManager == nil {
+		r.invalidatePrincipalsManager = newInvalidatePrincipalsManager(db, regenerateSequences, hasAllCollections, r.DocsChanged(), r.collectionIDs)
+	}
+
+	for {
+		if err := r.invalidatePrincipalsManager.Start(ctx, nil); err != nil && !errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
+			return err
+		}
+		done, err := r.waitInvalidatePrincipals(ctx, terminator)
+		if err != nil || done {
+			return err
+		}
+	}
+}
+
+// waitInvalidatePrincipals polls GetRunState until the manager reaches a terminal state. Returns (true, nil)
+// when the manager completes or the resync terminator fires, (false, nil) when the manager is stopped and
+// should be restarted, and (false, err) on error.
+//
+// We poll GetRunState rather than blocking on the manager's internal terminator because Start may return
+// errBackgroundManagerProcessAlreadyRunning (the manager is already running on this node). In that case we
+// have no reliable way to obtain the exact terminator channel that belongs to the running goroutine without a
+// data race, so it is simpler and safer to poll the public GetRunState API instead.
+func (r *ResyncManagerDCP) waitInvalidatePrincipals(ctx context.Context, terminator *base.SafeTerminator) (done bool, err error) {
+	pollWait := r.invalidatePrincipalsPollWait
+	if pollWait == 0 {
+		pollWait = 500 * time.Millisecond
+	}
+	ticker := time.NewTicker(pollWait)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			switch r.invalidatePrincipalsManager.GetRunState() {
+			case BackgroundProcessStateCompleted:
+				return true, nil
+			case BackgroundProcessStateError:
+				return false, r.invalidatePrincipalsManager.getLastError()
+			case BackgroundProcessStateStopped:
+				return false, nil
+			case BackgroundProcessStateRunning, BackgroundProcessStateStopping:
+				// still in progress, keep polling
+			}
+		case <-terminator.Done():
+			if err := r.invalidatePrincipalsManager.Stop(ctx); err != nil {
+				base.WarnfCtx(ctx, "Failed to stop invalidate principals manager: %v", err)
+			}
+			return true, nil
+		}
+	}
+}
+
 func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, resyncAllCollections bool, docsChanged int64) error {
 	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
