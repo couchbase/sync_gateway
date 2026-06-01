@@ -240,6 +240,8 @@ func (ch ChannelHistory) getChannelHistoryAsMap() map[string][]uint64 {
 		for seq, _ := range chanEntry {
 			response[chanName] = append(response[chanName], seq)
 		}
+		slices.Sort(response[chanName])
+		slices.Reverse(response[chanName])
 	}
 	return response
 }
