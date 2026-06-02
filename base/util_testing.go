@@ -1079,9 +1079,8 @@ func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 // KV range scan reads from a per-vBucket snapshot view rather than from in-memory mutations,
 // so a scan issued immediately after a write can miss the just-written doc until the
 // vBucket's scan view catches up. Tests that seed docs and then exercise range-scan-backed
-// code (e.g. metadata migration) must call this between the seed and the scan, otherwise the
-// scan can observe zero docs and the test flakes. The wait is independent of the on-disk
-// storage engine (couchstore vs magma) and is not about persistence to disk.
+// code must call this between the seed and the scan, otherwise the
+// scan can observe zero docs and the test flakes.
 //
 // The datastore must support range scan; the test fails if it does not. On Rosmar (in-memory)
 // docs are visible immediately, so this returns on the first poll.
