@@ -12,6 +12,8 @@ package db
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -173,6 +175,11 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 		require.NoError(t, err, "seed fallback %s", k)
 	}
 
+	// A first-pass range scan that misses the just-seeded docs would migrate nothing and
+	// complete with DocsProcessed=0, failing the assertions below. Wait for the seeds to be
+	// visible to scan before starting.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+
 	dbCtx := &DatabaseContext{
 		Name:                           "test",
 		terminator:                     make(chan bool),
@@ -230,6 +237,13 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 	stuckKey := base.SyncDocPrefix + base.MetadataIdPrefix + metadataID + ":wat"
 	_, err = ms.Fallback().AddRaw(ctx, stuckKey, 0, []byte(`{"body":"stuck"}`))
 	require.NoError(t, err, "seed in-scope unknown-prefix fallback doc")
+
+	// KV range scan reads from a per-vBucket snapshot view, so a scan issued immediately
+	// after the write can miss the seeded doc until the vBucket's scan view catches up. If this
+	// occurs and the migration's first pass doesn't see the doc, it reports remaining=0 and completes
+	// immediately instead of hitting the bounded-pass error path, flaking this test. Wait for the
+	// seed to be visible to scan before starting.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{stuckKey})
 
 	dbCtx := &DatabaseContext{
 		Name:                           "test",

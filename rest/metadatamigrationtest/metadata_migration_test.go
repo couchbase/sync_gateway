@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +69,11 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          base.Ptr("metadata_migration_cluster"),
+		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
+		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
+		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
+		// create ("Duplicate database name").
+		GroupID: base.Ptr(uuid.NewString()),
 	}
 
 	rtA := rest.NewRestTester(t, rtConfig)
@@ -690,7 +695,11 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          base.Ptr("metadata_migration_cluster"),
+		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
+		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
+		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
+		// create ("Duplicate database name").
+		GroupID: base.Ptr(uuid.NewString()),
 	}
 	rtA := rest.NewRestTester(t, rtConfig)
 	defer rtA.Close()

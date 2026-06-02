@@ -10,6 +10,8 @@ package db
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -95,6 +97,9 @@ func TestMigrateMetadataUnknownPrefixCountedAsRemaining(t *testing.T) {
 	unknownKey := base.SyncDocPrefix + base.MetadataIdPrefix + metadataID + ":wat"
 	seedFallback(ctx, t, ms, unknownKey, []byte(`{"body":"unknown"}`))
 
+	// Wait for the fallback doc to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{unknownKey})
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
 	require.NoError(t, err)
@@ -119,6 +124,9 @@ func TestMigrateMetadataNamespacedExcludesSiblingDB(t *testing.T) {
 	// `_sync:m_<other>:` (different namespace).
 	const siblingKey = "_sync:m_otherDB:hb:groupA"
 	seedFallback(ctx, t, ms, siblingKey, []byte(`{"heartbeat":"sibling"}`))
+
+	// Wait for the fallback doc to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{siblingKey})
 
 	stats := &MigrationStats{}
 	_, err := MigrateMetadata(ctx, ms, "myDB", stats)
@@ -178,6 +186,9 @@ func TestMigrateMetadataMovesUserAndRoleDocs(t *testing.T) {
 		seedFallback(ctx, t, ms, k, v)
 	}
 
+	// Wait for fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
 	require.NoError(t, err)
@@ -225,6 +236,9 @@ func TestMigrateMetadataMovesUserEmailAndSession(t *testing.T) {
 	seededSessionExpiry, err := ms.Fallback().GetExpiry(ctx, sessionKey)
 	require.NoError(t, err)
 	require.NotZero(t, seededSessionExpiry, "fallback should have a non-zero absolute expiry after a TTL write")
+
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{emailKey, sessionKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
@@ -278,6 +292,9 @@ func TestMigrateMetadataUserDocPrimaryWinsOnConflict(t *testing.T) {
 	require.NoError(t, err)
 	seedFallback(ctx, t, ms, key, stalerFallback)
 
+	// Wait for fallback doc ot be visible to range scans before running the migration, to reliably trigger the conflict scenario.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{key})
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
 	require.NoError(t, err)
@@ -313,6 +330,9 @@ func TestMigrateMetadataLegacyDefaultUserAndRole(t *testing.T) {
 		seedFallback(ctx, t, ms, k, v)
 	}
 
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
 	require.NoError(t, err)
@@ -347,6 +367,9 @@ func TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted(t *testing.T
 	const heartbeatKey = "_sync:heartbeat_timeout:nodeA"
 	seedFallback(ctx, t, ms, unknownKey, []byte(`{"unknown":"shape"}`))
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
+
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{unknownKey, heartbeatKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
@@ -384,6 +407,9 @@ func TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch(t *te
 	ms := newMigrationTestStore(t, bucket)
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
+	// Wait for the fallback doc to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{heartbeatKey})
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
 	require.NoError(t, err)
@@ -409,6 +435,9 @@ func TestMigrateMetadataNamespacedHeartbeatDeletedViaShapeMatch(t *testing.T) {
 
 	ms := newMigrationTestStore(t, bucket)
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
+
+	// Wait for the fallback doc to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{heartbeatKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
@@ -530,6 +559,9 @@ func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
 	_, err = ms.Fallback().AddRaw(ctx, rangeKey, 0, rangeBody)
 	require.NoError(t, err, "seed fallback unusedSeqs range")
 
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{singletonKey, rangeKey})
+
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
 	require.NoError(t, err)
@@ -560,6 +592,9 @@ func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
 	mUserKey := keys.UserKey("m_alice")
 	body := []byte(`{"name":"m_alice","legacy":true}`)
 	seedFallback(ctx, t, ms, mUserKey, body)
+
+	// Wait for the fallback doc to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{mUserKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
