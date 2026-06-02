@@ -4055,7 +4055,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 
 	// Step 7: Update the document body directly in the datastore to simulate external modification
 	// Read current document body
-	docBytesRaw, _, err := dataStore.GetRaw(ctx, nonImportedDocID)
+	docBytesRaw, _, err := dataStore.GetRaw(nonImportedDocID)
 	require.NoError(t, err)
 	var docBody map[string]any
 	err = json.Unmarshal(docBytesRaw, &docBody)
@@ -4069,7 +4069,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write modified body back to datastore
-	err = dataStore.SetRaw(ctx, nonImportedDocID, 0, nil, modifiedDocBytes)
+	err = dataStore.SetRaw(nonImportedDocID, 0, nil, modifiedDocBytes)
 	require.NoError(t, err)
 
 	// Step 8: Call CompactDocChannelHistory - this will trigger the auto-import check
@@ -4100,7 +4100,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	assert.Equal(t, mouCAS, cas)
 
 	// Step 10: Verify document is still accessible and intact
-	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
+	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(nonImportedDocID)
 	require.NoError(t, err)
 	require.NotNil(t, docFromBucket)
 
