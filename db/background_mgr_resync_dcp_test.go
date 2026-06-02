@@ -1131,7 +1131,7 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 	inputCollections := base.CollectionNames{"scope1": []string{"col1", "col2"}}
 
-	r := &ResyncManagerDCP{}
+	r := &ResyncManagerDCP{db: &DatabaseContext{}, completedvBuckets: newvBucketTracker()}
 	r.setStartOptions(map[string]any{
 		"regenerateSequences": false,
 		"collections":         inputCollections,
