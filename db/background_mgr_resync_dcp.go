@@ -49,8 +49,8 @@ type ResyncManagerDCP struct {
 	resyncCollectionInfo
 	lock              sync.RWMutex
 	Distributed       bool
-	dcpDoneChan       chan error      // mark when the DCP feed is completed
-	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
+	dcpDoneChan       atomic.Pointer[chan error] // mark when the DCP feed is completed; nil if Run() has not been called
+	completedvBuckets *vBucketTracker            // tracks the number of completed vBuckets for the local
 }
 
 // vBucketTracker tracks completed vBuckets in a thread safe way. It is used to determine when all vBuckets have
@@ -350,7 +350,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
 
-		r.dcpDoneChan = make(chan error)
+		dcpDoneChan := make(chan error)
+		r.dcpDoneChan.Store(&dcpDoneChan)
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db, r.ResyncID, true)
 		endSeqNos, err := base.GetHighSeqNos(ctx, db.Bucket)
 		if err != nil {
@@ -444,15 +445,16 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
 		}
-		r.dcpDoneChan, err = dcpClient.Start()
+		dcpDoneChan, err := dcpClient.Start()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to start resync DCP feed! %v", err)
 			_ = dcpClient.Close()
 			return err
 		}
+		r.dcpDoneChan.Store(&dcpDoneChan)
 		dcpClientClose.append(func() error {
 			_ = dcpClient.Close()
-			err := <-r.dcpDoneChan
+			err := <-*r.dcpDoneChan.Load()
 			return err
 		})
 
@@ -461,7 +463,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
 	select {
-	case <-r.dcpDoneChan:
+	case <-*r.dcpDoneChan.Load():
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
 		err := dcpClientClose.shutdown()
 		if err != nil {
@@ -762,7 +764,9 @@ func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, vbNos iter
 		r.completedvBuckets.m[vbNo] = struct{}{}
 	}
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
-		close(r.dcpDoneChan)
+		if chPtr := r.dcpDoneChan.Load(); chPtr != nil {
+			close(*chPtr)
+		}
 	}
 }
 

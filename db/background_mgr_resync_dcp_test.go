@@ -1092,6 +1092,59 @@ func TestResyncManagerDCPCompletedVBucketsStatus(t *testing.T) {
 	})
 }
 
+// TestResyncManagerDCPStopOnNonRunningNode exercises the scenario where two SG nodes share the
+// same distributed resync metadata: node 1 runs the resync to completion while node 2 (which
+// never ran) calls Stop unconditionally — simulating DatabaseContext.Close.
+//
+// In production, DBStateManager polling on node 2 calls Resume when it detects ResyncRunning=true;
+// Resume calls start which sets state=Running. DatabaseContext.Close then calls Stop. Stop sees
+// state=Running, calls stopProcess → UpdateStatusClusterAware → SetProcessStatus → markVBucketsCompleted.
+// The completed status doc (all vBuckets) causes markVBucketsCompleted to close dcpDoneChan, but
+// dcpDoneChan is nil because Run() was never called on node 2 → panic.
+func TestResyncManagerDCPStopOnNonRunningNode(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Distributed resync requires EE")
+	}
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Distributed resync not supported for rosmar")
+	}
+	AllowDistributedResync(t)
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+		docsToCreate:                 10,
+		updateSyncFuncAfterDocsAdded: true,
+		distributed:                  true,
+	})
+	defer db.Close(ctx)
+
+	options := map[string]any{
+		"regenerateSequences": false,
+		"collections":         base.NewCollectionNames(),
+	}
+
+	// Node 1 runs the resync and completes (writes all vBuckets to the cluster status doc).
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+	waitForResyncState(t, db, BackgroundProcessStateCompleted)
+
+	// Simulate a second SG node (node 2) that shares the same metadata store but never ran
+	// the resync. In production, DBStateManager polling calls Resume which puts the manager
+	// into Running state; DatabaseContext.Close then calls Stop unconditionally.
+	node2 := NewResyncManagerDCP(db.DatabaseContext, true)
+	_, err := node2.GetStatus(ctx)
+	require.NoError(t, err)
+
+	// Without this, markStop returns errBackgroundManagerProcessAlreadyStopped for state ""
+	// and the stopProcess/UpdateStatusClusterAware path is never reached.
+	node2.statusLock.Lock()
+	node2.status.State = BackgroundProcessStateRunning
+	node2.statusLock.Unlock()
+
+	// Stop must not panic. Previously it would: Stop → stopProcess → UpdateStatusClusterAware →
+	// SetProcessStatus → markVBucketsCompleted → close(nil dcpDoneChan).
+	assert.NotPanics(t, func() {
+		require.NoError(t, node2.Stop(ctx))
+	})
+}
+
 // TestResyncManagerDCPWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
 // DatabaseContext.ClusterCompatVersion through ResyncManagerDCP.Run into
 // base.SetSyncInfoMetadataID — when ccv>=4.1 the syncInfo doc is written with the V1
