@@ -1342,8 +1342,10 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				var version2 db.DocVersion
 				updatedVersion := make(chan DocVersion)
 
+				ctx := rt.Context()
 				// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 				changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
+					base.DebugfCtx(ctx, base.KeySGTest, "ChangeEntryCallbackFn: found %s / %s , looking for %#+v", changeEntryDocID, changeEntryRevID, version2)
 					if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
 						base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 					}
@@ -1357,26 +1359,28 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 				}
 				client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 				defer client.Close()
-				ctx := t.Context()
 
 				// add doc from a different source to rest tester
 				agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
 				_ = agent.InsertWithHLV(ctx, docID, db.Body{"channels": "alice"})
 
-				// import doc
+				// 1. populate version1 on SG
+				// 2. replicate version1 on blip tester
+				// 3. stop replication before version2 is written
+				// 4. write version2 on SG
+				// 5. start pull replication
+
 				version1, _ := rt.GetDoc(docID)
 
 				rt.WaitForPendingChanges()
-				if tc.filteredChannels != "" {
-					btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Channels: tc.filteredChannels, Continuous: true})
-				} else {
-					btcRunner.StartPull(client.id)
-				}
+				btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Channels: tc.filteredChannels, Continuous: false})
 				btcRunner.WaitForVersion(client.id, docID, version1)
 
 				// create rev 2
 				version2 = rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
 				rt.WaitForPendingChanges()
+
+				btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Channels: tc.filteredChannels, Continuous: false})
 
 				// block until we've written the update and got the new version to use in assertions
 				version3 := base.RequireChanRecv(t, updatedVersion)
@@ -1432,8 +1436,10 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		var version2 db.DocVersion
 		updatedVersion := make(chan DocVersion)
 
+		ctx := rt.Context()
 		// underneath the client's response to changes - we'll update the document so the requested rev is not available by the time SG receives the changes response.
 		changesEntryCallbackFn := func(changeEntryDocID, changeEntryRevID string) {
+			base.DebugfCtx(ctx, base.KeySGTest, "ChangeEntryCallbackFn: found %s / %s , looking for %#+v", changeEntryDocID, changeEntryRevID, version2)
 			if changeEntryDocID == docID && changeEntryRevID == version2.RevTreeID || changeEntryRevID == version2.CV.String() {
 				base.RequireChanSend(t, updatedVersion, rt.UpdateDoc(docID, version2, `{"foo":"buzz","channels":["alice"]}`))
 			}
@@ -1446,7 +1452,6 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 		}
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
 		defer client.Close()
-		ctx := t.Context()
 
 		// add doc from a different source to rest tester
 		agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "mySource", base.VvXattrName)
@@ -1454,14 +1459,21 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 
 		// import doc
 		version1, _ := rt.GetDoc(docID)
+		rt.WaitForPendingChanges()
 
-		btcRunner.StartPull(client.id)
+		// 1. populate version1 on SG
+		// 2. replicate version1 on blip tester
+		// 3. stop replication before version2 is written
+		// 4. write version2 on SG
+		// 5. start pull replication
+		btcRunner.StartOneshotPull(client.id)
 		btcRunner.WaitForVersion(client.id, docID, version1)
 
 		// create rev 2
 		version2 = rt.UpdateDoc(docID, version1, `{"foo": "bar", "version": "2", "channels": ["alice"]}`)
 		rt.WaitForPendingChanges()
 
+		btcRunner.StartPull(client.id)
 		// block until we've written the update and got the new version to use in assertions
 		version3 := base.RequireChanRecv(t, updatedVersion)
 
