@@ -31,6 +31,8 @@ type AttachmentCompactionManager struct {
 	VBUUIDs           []uint64
 	dryRun            bool
 	lock              sync.Mutex
+	// runFunctionStartedCallback is a test seam: if set, it is called at the top of Run before any compaction phases execute.
+	runFunctionStartedCallback func(context.Context, map[string]any, updateStatusCallbackFunc, *base.SafeTerminator)
 }
 
 var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
@@ -103,6 +105,10 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 }
 
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	if a.runFunctionStartedCallback != nil {
+		a.runFunctionStartedCallback(ctx, options, persistClusterStatusCallback, terminator)
+		a.runFunctionStartedCallback = nil
+	}
 	database := options["database"].(*Database)
 
 	// Attachment compaction only needs to operate the default scope/collection,
