@@ -543,10 +543,11 @@ func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
 // SetDistributedResync forces the ResyncManager into a single node or distributed resync mode. This should only be called before
 // resync is run for the first time and needs to be called each time a DatabaseContext is reinitialized.
 func (rt *RestTester) SetDistributedResync(useDistributed bool) {
-	rs, ok := rt.GetDatabase().ResyncManager.Process.(*db.ResyncManagerDCP)
+	database := rt.GetDatabase()
+	rs, ok := database.ResyncManager.Process.(*db.ResyncManagerDCP)
 	require.True(rt.TB(), ok)
 	if useDistributed {
-		rs.Distributed = true
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(database, true)
 	} else {
 		require.False(rt.TB(), rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
 	}
