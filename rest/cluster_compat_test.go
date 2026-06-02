@@ -1607,7 +1607,9 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 	require.Equal(t, base.NewClusterCompatVersion(4, 0), *got, "mixed-version min should be 4.0")
 
 	// Resolve the production-wired accessor and feed its result to SetSyncInfoMetadataID
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	ccv := dbCtx.ClusterCompatVersion()
+	t.Logf("dbtx CCV: %v, got CCV: %v", ccv.String(), got.String())
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err := ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)
@@ -1624,7 +1626,9 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 
 	// Same accessor, called again — must resolve to the new value at call time, not the value
 	// captured during phase 1.
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	ccv = dbCtx.ClusterCompatVersion()
+	t.Logf("dbtx CCV: %v, got CCV: %v", ccv.String(), got.String())
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err = ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)
