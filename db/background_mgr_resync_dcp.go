@@ -454,8 +454,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 }
 
 // invalidatePrincipals starts the invalidate principals background manager and polls until it completes.
-// If the manager is stopped before completing (e.g. due to a node failure), it is restarted. The loop exits
-// when the manager completes successfully, returns an error, or the resync terminator fires.
+// The cluster-aware background manager handling ensures that only a single node will be running invalidate principals - the rest wait for completion using waitInvalidatePrincipals.
+// If the process is stopped before completing (e.g. due to a node failure), all remaining nodes will detect the process status going to stopped, and will attempt to restart.  The loop exits
+// when the manager completes successfully, returns error, or is stopped by the parent resync terminator.
 func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, hasAllCollections bool, terminator *base.SafeTerminator) error {
 	if r.invalidatePrincipalsManager == nil {
 		r.invalidatePrincipalsManager = newInvalidatePrincipalsManager(db, regenerateSequences, hasAllCollections, r.DocsChanged(), r.collectionIDs)
@@ -463,11 +464,11 @@ func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Databas
 
 	for {
 		// start a loop to invalidate principals on a single node
-		// one node will return with err = nil, all other nodes will return errBackgroundManagerProcessAlreadyRunning
+		// All nodes race to start - one node will successfully start (with err = nil), all other nodes will return errBackgroundManagerProcessAlreadyRunning
 		if err := r.invalidatePrincipalsManager.Start(ctx, nil); err != nil && !errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return err
 		}
-		// wait for background manager process to complete, if it moves to Stopped restart loop on another node
+		// wait for background manager process to complete.  If it moves to stopped without error, it indicates the node running the process has stopped.  All remaining nodes will restart the loop and race to restart the principal invalidation.
 		//
 		// if Completed, return from function
 		done, err := r.waitInvalidatePrincipals(ctx, terminator)
