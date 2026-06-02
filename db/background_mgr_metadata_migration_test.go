@@ -178,7 +178,7 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 	// A first-pass range scan that misses the just-seeded docs would migrate nothing and
 	// complete with DocsProcessed=0, failing the assertions below. Wait for the seeds to be
 	// visible to scan before starting.
-	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
 
 	dbCtx := &DatabaseContext{
 		Name:                           "test",
@@ -243,7 +243,7 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 	// occurs and the migration's first pass doesn't see the doc, it reports remaining=0 and completes
 	// immediately instead of hitting the bounded-pass error path, flaking this test. Wait for the
 	// seed to be visible to scan before starting.
-	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{stuckKey})
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{stuckKey})
 
 	dbCtx := &DatabaseContext{
 		Name:                           "test",

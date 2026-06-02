@@ -1084,8 +1084,9 @@ func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 //
 // The datastore must support range scan; the test fails if it does not. On Rosmar (in-memory)
 // docs are visible immediately, so this returns on the first poll.
-func RequireDocsVisibleToRangeScan(t testing.TB, ctx context.Context, dataStore sgbucket.DataStore, docIDs []string) {
+func RequireDocsVisibleToRangeScan(t testing.TB, dataStore sgbucket.DataStore, docIDs []string) {
 	t.Helper()
+	ctx := TestCtx(t)
 	rss, ok := AsRangeScanStore(dataStore)
 	require.True(t, ok, "datastore does not support range scan")
 
