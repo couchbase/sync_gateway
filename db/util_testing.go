@@ -1208,8 +1208,9 @@ type ResyncTestCase struct {
 // AllowDistributedResync sets allowDistributedResync to true for the duration of the test. Call this before
 // creating any DatabaseContext that should use distributed resync.
 func AllowDistributedResync(t testing.TB) {
+	orig := allowDistributedResync
 	allowDistributedResync = true
-	t.Cleanup(func() { allowDistributedResync = false })
+	t.Cleanup(func() { allowDistributedResync = orig })
 }
 
 // ResyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
