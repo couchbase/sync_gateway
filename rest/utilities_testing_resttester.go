@@ -540,7 +540,6 @@ func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
 	}, 30*time.Second, 100*time.Millisecond, "Database initialization did not complete within expected time")
 }
 
-
 type RawDocResponse struct {
 	Xattrs RawDocXattrs `json:"_xattrs"`
 }
