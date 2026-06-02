@@ -927,6 +927,171 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 		"expected %d pindexes matching ResyncPartitions", numPartitions)
 }
 
+// TestResyncManagerDCPCompletedVBucketsStatus verifies that completed vBuckets are correctly serialized in the
+// "meta" section by GetProcessStatus and correctly merged (append-only) by SetProcessStatus.
+func TestResyncManagerDCPCompletedVBucketsStatus(t *testing.T) {
+	t.Run("GetProcessStatus serializes local completed vBuckets in meta", func(t *testing.T) {
+		r := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		r.completedvBuckets.m["0"] = struct{}{}
+		r.completedvBuckets.m["1"] = struct{}{}
+
+		_, metaBytes, err := r.GetProcessStatus(BackgroundManagerStatus{}, nil)
+		require.NoError(t, err)
+
+		var meta ResyncManagerMeta
+		require.NoError(t, base.JSONUnmarshal(metaBytes, &meta))
+		assert.ElementsMatch(t, []string{"0", "1"}, meta.CompletedVBuckets)
+	})
+
+	t.Run("GetProcessStatus with no completed vBuckets omits field from meta", func(t *testing.T) {
+		r := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+
+		_, metaBytes, err := r.GetProcessStatus(BackgroundManagerStatus{}, nil)
+		require.NoError(t, err)
+
+		var meta ResyncManagerMeta
+		require.NoError(t, base.JSONUnmarshal(metaBytes, &meta))
+		assert.Empty(t, meta.CompletedVBuckets)
+	})
+
+	t.Run("GetProcessStatus unions local and previous-doc vBuckets in meta", func(t *testing.T) {
+		r := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		r.completedvBuckets.m["0"] = struct{}{}
+		r.completedvBuckets.m["1"] = struct{}{}
+
+		// Simulate a full bucket doc written by another node with different vBuckets.
+		prevDoc := ResyncManagerStatusDocDCP{
+			ResyncManagerMeta: ResyncManagerMeta{
+				resyncManagerCompletedVBuckets: resyncManagerCompletedVBuckets{
+					CompletedVBuckets: []string{"2", "3"},
+				},
+			},
+		}
+		prevDocBytes, err := base.JSONMarshal(prevDoc)
+		require.NoError(t, err)
+
+		_, metaBytes, err := r.GetProcessStatus(BackgroundManagerStatus{}, prevDocBytes)
+		require.NoError(t, err)
+
+		var meta ResyncManagerMeta
+		require.NoError(t, base.JSONUnmarshal(metaBytes, &meta))
+		assert.ElementsMatch(t, []string{"0", "1", "2", "3"}, meta.CompletedVBuckets)
+
+		// Local state must be unchanged — GetProcessStatus must not mutate completedvBuckets.
+		r.completedvBuckets.lock.RLock()
+		defer r.completedvBuckets.lock.RUnlock()
+		assert.Equal(t, map[string]struct{}{"0": {}, "1": {}}, r.completedvBuckets.m)
+	})
+
+	t.Run("SetProcessStatus merges vBuckets from previous doc into local set", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		r := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		r.completedvBuckets.m["0"] = struct{}{}
+		r.completedvBuckets.m["1"] = struct{}{}
+
+		prevDoc := ResyncManagerStatusDocDCP{
+			ResyncManagerMeta: ResyncManagerMeta{
+				resyncManagerCompletedVBuckets: resyncManagerCompletedVBuckets{
+					CompletedVBuckets: []string{"2", "3"},
+				},
+			},
+		}
+		prevDocBytes, err := base.JSONMarshal(prevDoc)
+		require.NoError(t, err)
+
+		r.SetProcessStatus(ctx, prevDocBytes, nil)
+
+		r.completedvBuckets.lock.RLock()
+		defer r.completedvBuckets.lock.RUnlock()
+		assert.Equal(t, map[string]struct{}{"0": {}, "1": {}, "2": {}, "3": {}}, r.completedvBuckets.m)
+	})
+
+	t.Run("SetProcessStatus never removes existing vBuckets", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		r := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		r.completedvBuckets.m["0"] = struct{}{}
+		r.completedvBuckets.m["1"] = struct{}{}
+
+		// Previous doc has no completed vBuckets (e.g. from a node that hasn't finished any yet).
+		prevDoc := ResyncManagerStatusDocDCP{}
+		prevDocBytes, err := base.JSONMarshal(prevDoc)
+		require.NoError(t, err)
+
+		r.SetProcessStatus(ctx, prevDocBytes, nil)
+
+		r.completedvBuckets.lock.RLock()
+		defer r.completedvBuckets.lock.RUnlock()
+		assert.Equal(t, map[string]struct{}{"0": {}, "1": {}}, r.completedvBuckets.m)
+	})
+
+	t.Run("cross-node accumulation: two simulated nodes converge on full vBucket set", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		// Simulate node A completing vBuckets 0-4 and node B completing vBuckets 5-9.
+		// Verify that after status propagation each node's meta contains all 10 vBuckets.
+
+		nodeA := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		for i := range 5 {
+			nodeA.completedvBuckets.m[fmt.Sprintf("%d", i)] = struct{}{}
+		}
+		nodeB := &ResyncManagerDCP{
+			completedvBuckets: newvBucketTracker(),
+			db:                &DatabaseContext{},
+		}
+		for i := 5; i < 10; i++ {
+			nodeB.completedvBuckets.m[fmt.Sprintf("%d", i)] = struct{}{}
+		}
+
+		// Node A writes status with no prior doc.
+		_, metaA, err := nodeA.GetProcessStatus(BackgroundManagerStatus{}, nil)
+		require.NoError(t, err)
+
+		// Build a full bucket doc as the background manager would ({"status":..., "meta":...}).
+		docFromA, err := base.JSONMarshal(map[string]json.RawMessage{
+			"status": json.RawMessage("{}"),
+			"meta":   metaA,
+		})
+		require.NoError(t, err)
+
+		// Node B reads node A's doc: GetProcessStatus should union A's and B's vBuckets.
+		_, metaB, err := nodeB.GetProcessStatus(BackgroundManagerStatus{}, docFromA)
+		require.NoError(t, err)
+
+		var parsedMetaB ResyncManagerMeta
+		require.NoError(t, base.JSONUnmarshal(metaB, &parsedMetaB))
+		assert.Len(t, parsedMetaB.CompletedVBuckets, 10, "meta should contain all 10 vBuckets")
+		for i := range 10 {
+			assert.Contains(t, parsedMetaB.CompletedVBuckets, fmt.Sprintf("%d", i))
+		}
+
+		// Node B's SetProcessStatus should also merge A's vBuckets into B's local tracker.
+		nodeB.SetProcessStatus(ctx, docFromA, nil)
+
+		nodeB.completedvBuckets.lock.RLock()
+		localB := maps.Clone(nodeB.completedvBuckets.m)
+		nodeB.completedvBuckets.lock.RUnlock()
+
+		assert.Len(t, localB, 10, "node B local tracker should contain all 10 vBuckets after merge")
+	})
+}
+
 // TestResyncManagerDCPWritesV1SyncInfoAtCcv41 verifies the end-to-end wiring from
 // DatabaseContext.ClusterCompatVersion through ResyncManagerDCP.Run into
 // base.SetSyncInfoMetadataID — when ccv>=4.1 the syncInfo doc is written with the V1
@@ -966,7 +1131,7 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 	inputCollections := base.CollectionNames{"scope1": []string{"col1", "col2"}}
 
-	r := &ResyncManagerDCP{}
+	r := &ResyncManagerDCP{db: &DatabaseContext{}, completedvBuckets: newvBucketTracker()}
 	r.setStartOptions(map[string]any{
 		"regenerateSequences": false,
 		"collections":         inputCollections,

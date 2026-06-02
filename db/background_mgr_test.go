@@ -387,12 +387,16 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	nodeA := &ResyncManagerDCP{
-		ResyncID:    "resync1",
-		Distributed: true,
+		ResyncID:          "resync1",
+		Distributed:       true,
+		db:                &DatabaseContext{},
+		completedvBuckets: newvBucketTracker(),
 	}
 	nodeB := &ResyncManagerDCP{
-		ResyncID:    "resync1",
-		Distributed: true,
+		ResyncID:          "resync1",
+		Distributed:       true,
+		db:                &DatabaseContext{},
+		completedvBuckets: newvBucketTracker(),
 	}
 
 	// 1. Initial state: bucket is empty.
@@ -440,7 +444,7 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 	require.NoError(t, err)
 
 	// The cluster aware status doc stores the response JSON in its own fields
-	previousStatusForB := base.MustJSONMarshal(t, statusDocB.ResyncManagerResponseDCP)
+	previousStatusForB := base.MustJSONMarshal(t, statusDocB)
 
 	statusB, _, err := nodeB.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateRunning}, previousStatusForB)
 	require.NoError(t, err)
