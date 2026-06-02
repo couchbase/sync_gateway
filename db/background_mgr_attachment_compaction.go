@@ -28,13 +28,13 @@ import (
 type runFunctionStartedCallbackFunc func(context.Context, map[string]any, updateStatusCallbackFunc, *base.SafeTerminator)
 
 type AttachmentCompactionManager struct {
-	MarkedAttachments base.AtomicInt
-	PurgedAttachments base.AtomicInt
-	CompactID         string
-	Phase             string
-	VBUUIDs           []uint64
-	dryRun            bool
-	lock              sync.Mutex
+	MarkedAttachments          base.AtomicInt
+	PurgedAttachments          base.AtomicInt
+	CompactID                  string
+	Phase                      string
+	VBUUIDs                    []uint64
+	dryRun                     bool
+	lock                       sync.Mutex
 	runFunctionStartedCallback atomic.Pointer[runFunctionStartedCallbackFunc]
 }
 
