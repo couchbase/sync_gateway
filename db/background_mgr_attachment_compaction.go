@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -23,6 +24,9 @@ import (
 // Attachment Compaction Implementation of Background Manager Process
 // =====================================================================
 
+// runFunctionStartedCallbackFunc is a test seam called at the top of Run before any compaction phases execute.
+type runFunctionStartedCallbackFunc func(context.Context, map[string]any, updateStatusCallbackFunc, *base.SafeTerminator)
+
 type AttachmentCompactionManager struct {
 	MarkedAttachments base.AtomicInt
 	PurgedAttachments base.AtomicInt
@@ -31,8 +35,7 @@ type AttachmentCompactionManager struct {
 	VBUUIDs           []uint64
 	dryRun            bool
 	lock              sync.Mutex
-	// runFunctionStartedCallback is a test seam: if set, it is called at the top of Run before any compaction phases execute.
-	runFunctionStartedCallback func(context.Context, map[string]any, updateStatusCallbackFunc, *base.SafeTerminator)
+	runFunctionStartedCallback atomic.Pointer[runFunctionStartedCallbackFunc]
 }
 
 var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
@@ -105,9 +108,9 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 }
 
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	if a.runFunctionStartedCallback != nil {
-		a.runFunctionStartedCallback(ctx, options, persistClusterStatusCallback, terminator)
-		a.runFunctionStartedCallback = nil
+	if cb := a.runFunctionStartedCallback.Load(); cb != nil {
+		(*cb)(ctx, options, persistClusterStatusCallback, terminator)
+		a.runFunctionStartedCallback.Store(nil)
 	}
 	database := options["database"].(*Database)
 
