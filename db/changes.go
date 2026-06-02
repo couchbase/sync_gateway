@@ -258,8 +258,8 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 			if panicked := recover(); panicked != nil {
 				base.WarnfCtx(ctx, "Unexpected panic building revoked feed: %v\n%s", panicked, debug.Stack())
 				select {
-					case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
-					case <-options.ChangesCtx.Done():
+				case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
+				case <-options.ChangesCtx.Done():
 				}
 			}
 			close(feed)
