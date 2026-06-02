@@ -407,6 +407,9 @@ func TestSyncFnTimeout(t *testing.T) {
 func TestResyncRegenerateSequences(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			ctx := base.TestCtx(t)
 			syncFn := `
@@ -484,7 +487,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
 			RequireStatus(t, response, http.StatusOK)
-			rt.SetDistributedResync(testCase.Distributed)
 
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 			RequireStatus(t, response, http.StatusOK)
@@ -540,6 +542,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 func TestResyncPersistence(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			tb := base.GetTestBucket(t)
 			noCloseTB := tb.NoCloseClone()
@@ -560,8 +565,6 @@ func TestResyncPersistence(t *testing.T) {
 
 			// Start resync
 			rt1.TakeDbOffline()
-			rt1.SetDistributedResync(testCase.Distributed)
-			rt2.SetDistributedResync(testCase.Distributed)
 
 			resp := rt1.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 			RequireStatus(t, resp, http.StatusOK)

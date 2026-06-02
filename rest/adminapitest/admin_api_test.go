@@ -625,6 +625,9 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			syncFn := `
 	function(doc) {
@@ -640,7 +643,6 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 			assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
@@ -659,6 +661,9 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 	base.TestRequiresCollections(t)
 	for _, distributedTestCase := range db.ResyncTestModes() {
 		t.Run(distributedTestCase.Name, func(t *testing.T) {
+			if distributedTestCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			testCases := []struct {
 				name              string
@@ -695,7 +700,6 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 					}
 
 					rt.TakeDbOffline()
-					rt.SetDistributedResync(distributedTestCase.Distributed)
 
 					if !testCase.specifyCollection {
 						resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -719,6 +723,9 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 func TestResyncUsingDCPStream(t *testing.T) {
 	for _, distributedTestCase := range db.ResyncTestModes() {
 		t.Run(distributedTestCase.Name, func(t *testing.T) {
+			if distributedTestCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			testCases := []struct {
 				docsCreated int
@@ -759,7 +766,6 @@ func TestResyncUsingDCPStream(t *testing.T) {
 					rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 
 					rt.TakeDbOffline()
-					rt.SetDistributedResync(distributedTestCase.Distributed)
 
 					response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 					rest.RequireStatus(t, response, http.StatusOK)
@@ -789,6 +795,9 @@ func TestResyncUsingDCPStream(t *testing.T) {
 func TestResyncUsingDCPStreamReset(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			syncFn := `
 	function(doc) {
@@ -810,7 +819,6 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 			}
 
 			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
 
 			// start a resync run
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -859,6 +867,9 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
@@ -887,7 +898,6 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 			}
 
 			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
 
 			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
 			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
@@ -921,6 +931,9 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			syncFn := `
 	function(doc) {
@@ -955,7 +968,6 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 			rest.RequireStatus(t, response, http.StatusBadRequest)
 
 			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
 
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
@@ -1451,6 +1463,9 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 func TestResyncStopUsingDCPStream(t *testing.T) {
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			syncFn := `
 	function(doc) {
@@ -1481,7 +1496,6 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 			require.Equal(t, int64(numOfDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)

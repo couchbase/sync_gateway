@@ -21,16 +21,23 @@ type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
 }
 
+// resumeResyncFunc can be a function used to resume the resync process.
+type resumeResyncFunc func(ctx context.Context) error
+
 type DatabaseStateMgr struct {
 	CAS              uint64
 	dbStateID        string
 	metadataStore    base.DataStore
 	pollingInterval  time.Duration
-	resumeResyncFunc func(ctx context.Context) error
+	resumeResyncFunc resumeResyncFunc // optional callback invoked by the polling loop when a state change is detected.
 	lock             sync.Mutex
 	terminator       chan struct{}
 	done             chan struct{}
 }
+
+// databaseStatePollingInterval is the default polling interval for DatabaseStateMgr. It can be overridden in tests
+// via UpdateDatabaseStatePolling.
+var databaseStatePollingInterval = 10 * time.Second
 
 // NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeResyncFunc is called by the polling loop
 // when a state change is detected with ResyncRunning set to true; it should resume the resync process.
@@ -39,7 +46,7 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeR
 		dbStateID:        dbStateID,
 		CAS:              0,
 		metadataStore:    metadataStore,
-		pollingInterval:  10 * time.Second,
+		pollingInterval:  databaseStatePollingInterval,
 		resumeResyncFunc: resumeResyncFunc,
 	}
 }

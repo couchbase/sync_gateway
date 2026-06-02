@@ -173,6 +173,9 @@ func TestRequireResync(t *testing.T) {
 	}
 	for _, testCase := range db.ResyncTestModes() {
 		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.Distributed {
+				db.AllowDistributedResync(t)
+			}
 
 			base.TestRequiresCollections(t)
 			base.RequireNumTestDataStores(t, 2)
@@ -209,7 +212,6 @@ func TestRequireResync(t *testing.T) {
 
 			resp := rt.CreateDatabase(db1Name, dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
-			rt.SetDistributedResync(testCase.Distributed)
 
 			// Write documents to collection 1 and 2
 			ks_db1_c1 := db1Name + "." + scope + "." + collection1
@@ -225,7 +227,6 @@ func TestRequireResync(t *testing.T) {
 			dbConfig.Scopes = scopesConfigC2Only
 			resp = rt.ReplaceDbConfig(db1Name, dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
-			rt.SetDistributedResync(testCase.Distributed)
 
 			// Validate that doc can still be retrieved from collection 2
 			resp = rt.SendAdminRequest("GET", "/"+ks_db1_c2+"/testDoc2", "")
@@ -237,15 +238,6 @@ func TestRequireResync(t *testing.T) {
 
 			resp = rt.CreateDatabase(db2Name, db2Config)
 			rest.RequireStatus(t, resp, http.StatusCreated)
-			for _, database := range rt.ServerContext().AllDatabases() {
-				rs, ok := database.ResyncManager.Process.(*db.ResyncManagerDCP)
-				require.True(rt.TB(), ok)
-				if testCase.Distributed {
-					rs.Distributed = true
-				} else {
-					require.False(rt.TB(), rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
-				}
-			}
 
 			dbConfigCas1 := getDBConfigCas(rt, db2Name)
 

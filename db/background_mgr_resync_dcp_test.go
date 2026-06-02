@@ -296,9 +296,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 					"collections":         base.NewCollectionNames(),
 				}
 
-				if testCase.Distributed {
-					db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
-				}
 				err := db.ResyncManager.Start(ctx, options)
 				require.NoError(t, err)
 
@@ -460,6 +457,9 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 			const numCollections = 2
 			totalDocCount := docsPerCollection * numCollections
 
+			if testCase.Distributed {
+				AllowDistributedResync(t)
+			}
 			tb := base.GetTestBucket(t)
 			defer tb.Close(base.TestCtx(t))
 			dbOptions := DatabaseContextOptions{}
@@ -467,15 +467,6 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 
 			db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 			defer db.Close(ctx)
-
-			rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-			require.True(t, ok)
-
-			if testCase.Distributed {
-				db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
-			} else {
-				require.False(t, rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
-			}
 
 			dbCollections := make([]*DatabaseCollectionWithUser, numCollections)
 			for i, scName := range db.DataStoreNames() {
@@ -558,21 +549,15 @@ type testDBForResyncOptions struct {
 
 // setupTestDBForResyncWithDocs creates a databases and seeds it with documents for setupTestDBForResyncWithDocs
 func setupTestDBForResyncWithDocs(t testing.TB, opts testDBForResyncOptions) (*Database, context.Context) {
+	if opts.distributed {
+		AllowDistributedResync(t)
+	}
 	db, ctx := setupTestDB(t)
 	syncFn := `
 function sync(doc, oldDoc){
 	channel("channel.ABC");
 }
 `
-	rs, ok := db.ResyncManager.Process.(*ResyncManagerDCP)
-	require.True(t, ok)
-
-	if opts.distributed {
-		db.ResyncManager = NewResyncManagerDCP(db.DatabaseContext, true)
-	} else {
-		require.False(t, rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
-	}
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	_, err := collection.UpdateSyncFun(ctx, syncFn)

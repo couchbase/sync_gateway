@@ -91,6 +91,10 @@ var (
 	BypassReleasedSequenceWait atomic.Bool // Used to optimize single-node testing, see DisableSequenceWaitOnDbRestart
 )
 
+// allowDistributedResync controls whether NewDatabaseContext creates a distributed ResyncManagerDCP.
+// Toggle via AllowDistributedResync in test code only.
+var allowDistributedResync bool
+
 const (
 	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
 	CompactIntervalMaxDays = float32(60)   // 60 Days in days
@@ -624,11 +628,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	distributedResync := false // when ready, this will flip to  db.useShardedDCP()
-	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
+	useDistributedResync := allowDistributedResync && dbContext.useShardedDCP()
+	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, useDistributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
-	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), dbContext.ResyncManager.Resume)
+	var resumeResync resumeResyncFunc
+	if useDistributedResync {
+		resumeResync = dbContext.ResyncManager.Resume
+	}
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), resumeResync)
 
 	return dbContext, nil
 }

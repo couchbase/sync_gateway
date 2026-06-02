@@ -1192,12 +1192,28 @@ func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
 	db.RestartChangeListener(t, true)
 }
 
+// UpdateDatabaseStatePolling overrides the polling interval used by NewDatabaseStateMgr and restores the original
+// value via t.Cleanup.
+func UpdateDatabaseStatePolling(t testing.TB, pollInterval time.Duration) {
+	orig := databaseStatePollingInterval
+	databaseStatePollingInterval = pollInterval
+	t.Cleanup(func() { databaseStatePollingInterval = orig })
+}
+
 type ResyncTestCase struct {
 	Name        string // name of test case
 	Distributed bool   // use distributed resync
 }
 
+// AllowDistributedResync sets allowDistributedResync to true for the duration of the test. Call this before
+// creating any DatabaseContext that should use distributed resync.
+func AllowDistributedResync(t testing.TB) {
+	allowDistributedResync = true
+	t.Cleanup(func() { allowDistributedResync = false })
+}
+
 // ResyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
+// Set SG_TEST_DISTRIBUTED_RESYNC=true to include the distributed=true case (CBG-5419).
 func ResyncTestModes() []ResyncTestCase {
 	testCases := []ResyncTestCase{
 		{
@@ -1205,13 +1221,12 @@ func ResyncTestModes() []ResyncTestCase {
 			Distributed: false,
 		},
 	}
-	/* CBG-5419 enable tests
-	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
+	if strings.EqualFold(os.Getenv(base.TestEnvDistributedResync), "true") &&
+		!base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
 		testCases = append(testCases, ResyncTestCase{
 			Name:        "distributed=true",
 			Distributed: true,
 		})
 	}
-	*/
 	return testCases
 }

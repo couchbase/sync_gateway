@@ -62,6 +62,10 @@ const (
 	// Can be used to set a global log level for all tests at runtime.
 	TestEnvGlobalLogLevel = "SG_TEST_LOG_LEVEL"
 
+	// TestEnvDistributedResync if set to true enables distributed resync test cases (CBG-5419).
+	// Requires Couchbase Server and Enterprise Edition.
+	TestEnvDistributedResync = "SG_TEST_DISTRIBUTED_RESYNC"
+
 	// Should x509 tests deploy certs to local macOS Couchbase Server?
 	TestEnvX509Local = "SG_TEST_X509_LOCAL"
 
