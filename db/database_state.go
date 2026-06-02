@@ -127,6 +127,9 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if !ok {
 		return
 	}
+	if dbMgr.resumeResyncFunc == nil {
+		return
+	}
 	if state.ResyncRunning != nil && *state.ResyncRunning {
 		err := dbMgr.resumeResyncFunc(ctx)
 		if err != nil {
