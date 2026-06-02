@@ -1609,7 +1609,6 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 	// Resolve the production-wired accessor and feed its result to SetSyncInfoMetadataID
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	ccv := dbCtx.ClusterCompatVersion()
-	t.Logf("dbtx CCV: %v, got CCV: %v", ccv.String(), got.String())
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err := ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)
@@ -1628,7 +1627,6 @@ func TestSyncInfoUpgradeGate(t *testing.T) {
 	// captured during phase 1.
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	ccv = dbCtx.ClusterCompatVersion()
-	t.Logf("dbtx CCV: %v, got CCV: %v", ccv.String(), got.String())
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, metadataID, ccv))
 	raw, _, err = ds.GetRaw(ctx, base.SGSyncInfo)
 	require.NoError(t, err)
