@@ -2493,8 +2493,6 @@ func (h *handler) handleGetClusterInfo() error {
 			Buckets: make(map[string]BucketInfo, len(bucketNames)),
 		}
 
-		cachedTargets := h.server.BootstrapContext.Connection.CachedBootstrapTargets()
-
 		for _, bucketName := range bucketNames {
 			registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
 			if err != nil {
@@ -2514,7 +2512,9 @@ func (h *handler) handleGetClusterInfo() error {
 			}
 			bucketInfo.MigrationStatus = migrationStatus
 
-			// If there's a cached bootstrap target for this bucket, add it to the response
+			// If there's a cached bootstrap target for this bucket, add it to the response. getGatewayRegistry above
+			// can populate the cache, so we need to refresh for each iteration.
+			cachedTargets := h.server.BootstrapContext.Connection.CachedBootstrapTargets()
 			if target, ok := cachedTargets[bucketName]; ok {
 				bucketInfo.BootstrapTarget = target
 			}
