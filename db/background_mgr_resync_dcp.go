@@ -133,7 +133,7 @@ func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManag
 	return b
 }
 
-// Init processes the options to start a resync process and sets them as struct memebers.
+// Init processes the options to start a resync process and sets them as struct members.
 func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clusterStatus []byte) error {
 	r.setStartOptions(options)
 
