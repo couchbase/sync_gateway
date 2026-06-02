@@ -447,9 +447,9 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback = func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
-		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Process already running")
+		startErr := testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
+		assert.Error(t, startErr)
+		assert.Contains(t, startErr.Error(), "Process already running")
 	}
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
