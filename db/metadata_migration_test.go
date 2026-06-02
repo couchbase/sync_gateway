@@ -292,7 +292,7 @@ func TestMigrateMetadataUserDocPrimaryWinsOnConflict(t *testing.T) {
 	require.NoError(t, err)
 	seedFallback(ctx, t, ms, key, stalerFallback)
 
-	// Wait for fallback doc ot be visible to range scans before running the migration, to reliably trigger the conflict scenario.
+	// Wait for fallback doc to be visible to range scans before running the migration, to reliably trigger the conflict scenario.
 	base.RequireDocsVisibleToRangeScan(t, ctx, ms.Fallback(), []string{key})
 
 	stats := &MigrationStats{}
