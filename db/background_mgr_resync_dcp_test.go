@@ -141,10 +141,9 @@ func TestResyncDCPInit(t *testing.T) {
 				db.ResyncManager.resetStatus()
 			}()
 
-			options := make(map[string]any)
-			options["collections"] = base.NewCollectionNames()
-			if testCase.forceReset {
-				options["reset"] = true
+			options := ResyncOptions{
+				Collections: base.NewCollectionNames(),
+				Reset:       testCase.forceReset,
 			}
 
 			var clusterData []byte
@@ -205,9 +204,8 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 			})
 			defer db.Close(ctx)
 
-			options := map[string]any{
-				"regenerateSequences": false,
-				"collections":         base.NewCollectionNames(),
+			options := ResyncOptions{
+				Collections: base.NewCollectionNames(),
 			}
 
 			err := db.ResyncManager.Start(ctx, options)
@@ -251,9 +249,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				scopeName := scopeAndCollectionName.ScopeName()
 				collectionName := scopeAndCollectionName.CollectionName()
 
-				options := map[string]any{
-					"regenerateSequences": false,
-					"collections":         base.NewCollectionNames(),
+				options := ResyncOptions{
+					Collections: base.NewCollectionNames(),
 				}
 				require.NoError(t, db.ResyncManager.Start(ctx, options))
 				stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
@@ -291,9 +288,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 				initialStats := getResyncStats(t, db)
 				log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-				options := map[string]any{
-					"regenerateSequences": false,
-					"collections":         base.NewCollectionNames(),
+				options := ResyncOptions{
+					Collections: base.NewCollectionNames(),
 				}
 
 				if testCase.Distributed {
@@ -347,9 +343,8 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 			})
 			defer db.Close(ctx)
 
-			options := map[string]any{
-				"regenerateSequences": false,
-				"collections":         base.NewCollectionNames(),
+			options := ResyncOptions{
+				Collections: base.NewCollectionNames(),
 			}
 
 			err := db.ResyncManager.Start(ctx, options)
@@ -396,9 +391,8 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 			})
 			defer db.Close(ctx)
 
-			options := map[string]any{
-				"regenerateSequences": false,
-				"collections":         base.NewCollectionNames(),
+			options := ResyncOptions{
+				Collections: base.NewCollectionNames(),
 			}
 
 			err := db.ResyncManager.Start(ctx, options)
@@ -502,9 +496,8 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 				dbCollections[i] = col
 			}
 
-			options := map[string]any{
-				"regenerateSequences": false,
-				"collections":         base.NewCollectionNames(dbCollections[0].dataStore),
+			options := ResyncOptions{
+				Collections: base.NewCollectionNames(dbCollections[0].dataStore),
 			}
 
 			err := db.ResyncManager.Start(ctx, options)
@@ -530,7 +523,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 			firstDocsChanged := stats.DocsChanged
 
 			require.GreaterOrEqual(t, len(dbCollections), 2)
-			options["collections"] = db.collectionNames()
+			options.Collections = db.collectionNames()
 
 			// Resume process
 			err = db.ResyncManager.Start(ctx, options)
@@ -696,9 +689,8 @@ func runResync(t *testing.T, ctx context.Context, db *Database, collection *Data
 	initialStats := getResyncStats(t, db)
 	log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-	options := map[string]any{
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
+	options := ResyncOptions{
+		Collections: base.NewCollectionNames(),
 	}
 
 	require.NoError(t, db.ResyncManager.Start(ctx, options))
@@ -902,9 +894,8 @@ func TestResyncImportPartitionsPassthrough(t *testing.T) {
 	require.True(t, ok)
 	rs.Distributed = true
 
-	options := map[string]any{
-		"regenerateSequences": false,
-		"collections":         base.NewCollectionNames(),
+	options := ResyncOptions{
+		Collections: base.NewCollectionNames(),
 	}
 	require.NoError(t, db.ResyncManager.Start(ctx, options))
 	defer func() {
@@ -1112,9 +1103,9 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 
 	dbc, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	options := map[string]any{
-		"regenerateSequences": true,
-		"collections":         base.NewCollectionNames(),
+	options := ResyncOptions{
+		Collections:         base.NewCollectionNames(),
+		RegenerateSequences: true,
 	}
 	require.NoError(t, db.ResyncManager.Start(ctx, options))
 	RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
@@ -1132,32 +1123,22 @@ func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 	inputCollections := base.CollectionNames{"scope1": []string{"col1", "col2"}}
 
 	r := &ResyncManagerDCP{db: &DatabaseContext{}, completedvBuckets: newvBucketTracker()}
-	r.setStartOptions(map[string]any{
-		"regenerateSequences": false,
-		"collections":         inputCollections,
-		"reset":               true,
+	r.setStartOptions(ResyncOptions{
+		Collections: inputCollections,
+		Reset:       true,
 	})
 
 	_, metaBytes, err := r.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateStopped}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, metaBytes)
 
-	// BackgroundManager.Resume reads "options" directly from the meta subdoc.
-	var metaDoc struct {
-		Options map[string]any `json:"options"`
-	}
+	// BackgroundManager.Resume reads "options" from the meta subdoc, deserialising into ResyncOptions.
+	var metaDoc ResyncManagerMeta
 	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
-	require.NotNil(t, metaDoc.Options)
 
-	require.Equal(t, false, metaDoc.Options["regenerateSequences"])
-	require.Equal(t, true, metaDoc.Options["reset"])
-
-	// collections round-trips through JSON as map[string]interface{}; re-marshal and unmarshal to recover the typed value.
-	collectionsRaw, err := base.JSONMarshal(metaDoc.Options["collections"])
-	require.NoError(t, err)
-	var recoveredCollections base.CollectionNames
-	require.NoError(t, base.JSONUnmarshal(collectionsRaw, &recoveredCollections))
-	require.Equal(t, inputCollections, recoveredCollections)
+	require.Equal(t, false, metaDoc.Options.RegenerateSequences)
+	require.Equal(t, true, metaDoc.Options.Reset)
+	require.Equal(t, inputCollections, metaDoc.Options.Collections)
 }
 
 // TestResyncDCPInitStoresOptionsInMeta verifies that Init stores the options it receives in the meta returned
@@ -1169,10 +1150,8 @@ func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
 
 	// Use all collections by passing an empty CollectionNames — avoids hard-coding scope/collection names
 	// that might not match the test bucket configuration.
-	options := map[string]any{
-		"collections":         base.NewCollectionNames(),
-		"regenerateSequences": false,
-		"reset":               false,
+	options := ResyncOptions{
+		Collections: base.NewCollectionNames(),
 	}
 
 	require.NoError(t, db.ResyncManager.Process.Init(ctx, options, nil))
@@ -1183,9 +1162,85 @@ func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
 
 	var metaDoc ResyncManagerMeta
 	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
-	require.NotNil(t, metaDoc.Options, "Init must call setStartOptions so that Resume can recover the options")
-	require.Equal(t, false, metaDoc.Options["regenerateSequences"])
-	require.Equal(t, false, metaDoc.Options["reset"])
+	// Verify Init stored the options so that Resume can recover them via the meta subdoc.
+	require.Equal(t, false, metaDoc.Options.RegenerateSequences)
+	require.Equal(t, false, metaDoc.Options.Reset)
+}
+
+// TestResyncManagerDCPResumeRoundTripsOptions verifies that ResyncOptions survive the full serialisation
+// round-trip performed by BackgroundManager.Resume: options are written to the cluster status document by
+// the first manager and then read back into a fresh ResyncManagerDCP via Resume, without ever being passed
+// to the second manager's Start call directly.
+//
+// The BackgroundManagers are constructed with multiNode=true (required for Resume) but with
+// ResyncManagerDCP.Distributed=false so the non-CBGT DCP path is used, which is compatible with Rosmar.
+func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	newMgr := func() *BackgroundManager[ResyncOptions] {
+		return &BackgroundManager[ResyncOptions]{
+			name: "resync",
+			Process: &ResyncManagerDCP{
+				db:                db.DatabaseContext,
+				completedvBuckets: newvBucketTracker(),
+				Distributed:       false,
+			},
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				metadataStore: db.MetadataStore,
+				metaKeys:      db.MetadataKeys,
+				processSuffix: "resync",
+				multiNode:     true,
+			},
+			terminator: base.NewSafeTerminator(),
+		}
+	}
+
+	mgr1 := newMgr()
+	defer func() {
+		_ = mgr1.Stop(ctx)
+		mgr1.resetStatus()
+	}()
+
+	// Empty Collections means "all collections" (no per-collection lookup in Init).
+	// RegenerateSequences and Reset are both non-zero so a silent field drop would be caught.
+	inputOptions := ResyncOptions{
+		Collections:         base.NewCollectionNames(),
+		RegenerateSequences: true,
+		Reset:               true,
+	}
+
+	require.NoError(t, mgr1.Start(ctx, inputOptions))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// Flush options into the cluster status document before the second manager calls Resume.
+	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
+
+	// A second manager sharing the same metadata store calls Resume: it must recover inputOptions from the
+	// status document without ever having been given them directly.
+	// Init is called synchronously inside Resume before Run is spawned, so startOptions is already set
+	// by the time Resume returns.
+	mgr2 := newMgr()
+	defer func() {
+		_ = mgr2.Stop(ctx)
+		mgr2.resetStatus()
+	}()
+
+	require.NoError(t, mgr2.Resume(ctx))
+
+	// Read startOptions from mgr2's process. The field is unexported but accessible within the package.
+	resync2 := mgr2.Process.(*ResyncManagerDCP)
+	resync2.lock.RLock()
+	got := resync2.startOptions
+	resync2.lock.RUnlock()
+
+	require.Equal(t, inputOptions.RegenerateSequences, got.RegenerateSequences)
+	require.Equal(t, inputOptions.Reset, got.Reset)
+	// Empty collections (meaning "all collections") marshals with omitempty and round-trips as nil;
+	// both nil and an empty map are semantically identical in ResyncManagerDCP.Init.
+	require.Empty(t, got.Collections)
 }
 
 // TestNewResyncManagerDCPUpdateDatabaseState verifies that NewResyncManagerDCP wires updateDatabaseState

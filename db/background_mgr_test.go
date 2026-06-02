@@ -117,7 +117,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 	for _, mode := range modes {
 		t.Run(mode.name, func(t *testing.T) {
 			process := &MockProcess{}
-			mgr := &BackgroundManager{
+			mgr := &BackgroundManager[map[string]any]{
 				name:                "test-mgr-" + mode.name,
 				clusterAwareOptions: mode.clusterAwareOptions,
 				Process:             process,
@@ -160,7 +160,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager{
+	mgr1 := &BackgroundManager[map[string]any]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
@@ -177,7 +177,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 
 	// 3. Start mgr2 (should succeed because it's MultiNode)
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager{
+	mgr2 := &BackgroundManager[map[string]any]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
@@ -226,12 +226,12 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 	}
 
 	numNodes := 5
-	managers := make([]*BackgroundManager, numNodes)
+	managers := make([]*BackgroundManager[map[string]any], numNodes)
 	processes := make([]*MockProcess, numNodes)
 
 	for i := 0; i < numNodes; i++ {
 		processes[i] = &MockProcess{}
-		managers[i] = &BackgroundManager{
+		managers[i] = &BackgroundManager[map[string]any]{
 			name:                fmt.Sprintf("mgr%d", i),
 			clusterAwareOptions: options,
 			Process:             processes[i],
@@ -290,7 +290,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager{
+	mgr1 := &BackgroundManager[map[string]any]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
@@ -315,7 +315,7 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr1)
 
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager{
+	mgr2 := &BackgroundManager[map[string]any]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
@@ -342,7 +342,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager{
+	mgr1 := &BackgroundManager[map[string]any]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
@@ -367,7 +367,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 
 	// 2. Start mgr2 (MultiNode)
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager{
+	mgr2 := &BackgroundManager[map[string]any]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
@@ -516,7 +516,7 @@ func TestBackgroundManagerResume(t *testing.T) {
 	}
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:                "test-resume-mgr",
 		Process:             process,
 		clusterAwareOptions: clusterOpts,
@@ -533,7 +533,7 @@ func TestBackgroundManagerResume(t *testing.T) {
 
 	// While cluster state is running, a second manager sharing the same status document should join via Resume.
 	process2 := &ResumableMockProcess{}
-	mgr2 := &BackgroundManager{
+	mgr2 := &BackgroundManager[map[string]any]{
 		name:                "test-resume-mgr2",
 		Process:             process2,
 		clusterAwareOptions: clusterOpts,
@@ -559,7 +559,7 @@ func TestBackgroundManagerResumeNoDoc(t *testing.T) {
 	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-resume-no-doc")
 
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-resume-no-doc-mgr",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -584,7 +584,7 @@ func TestBackgroundManagerResumeSingleNodeError(t *testing.T) {
 	metaKeys := base.NewMetadataKeys("test-resume-single-node")
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-resume-single-node-mgr",
 		Process: process,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -610,7 +610,7 @@ func TestBackgroundManagerResumeWhileRunning(t *testing.T) {
 	metaKeys := base.NewMetadataKeys("test-resume-running")
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-resume-running-mgr",
 		Process: process,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -652,7 +652,7 @@ func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
 		multiNode:     true,
 	}
 
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:                "test-resume-not-running-mgr",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
@@ -673,7 +673,7 @@ func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Cluster state is now stopped; a second manager must not be able to Resume.
-	mgr2 := &BackgroundManager{
+	mgr2 := &BackgroundManager[map[string]any]{
 		name:                "test-resume-not-running-mgr2",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
@@ -690,7 +690,7 @@ func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
 func TestBackgroundManagerResumeLocalModeError(t *testing.T) {
 	ctx := base.TestCtx(t)
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:       "test-resume-local-mgr",
 		Process:    process,
 		terminator: base.NewSafeTerminator(),
@@ -713,7 +713,7 @@ func TestBackgroundManagerUpdateDatabaseStateRunning(t *testing.T) {
 	var dbStateCalls []bool
 	var mu sync.Mutex
 
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-update-db-state-running",
 		Process: &MockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -755,7 +755,7 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 
 	calledWithFalse := make(chan struct{}, 1)
 
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-update-db-state-done",
 		Process: &MockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -803,7 +803,7 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenNotRunning(t *testin
 	var dbStateCalls []bool
 	var mu sync.Mutex
 
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-resume-db-state-not-running",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -851,7 +851,7 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T
 	}
 
 	// Start and then stop a manager so the cluster status doc shows Stopped.
-	starter := &BackgroundManager{
+	starter := &BackgroundManager[map[string]any]{
 		name:                "test-resume-db-state-stopped-starter",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
@@ -873,7 +873,7 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T
 	// A fresh manager observing the same (stopped) cluster state should call updateDatabaseState(false).
 	var dbStateCalls []bool
 	var mu sync.Mutex
-	observer := &BackgroundManager{
+	observer := &BackgroundManager[map[string]any]{
 		name:                "test-resume-db-state-stopped-observer",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
@@ -917,9 +917,9 @@ func (m *immediateCallbackProcess) Run(ctx context.Context, _ map[string]any, cb
 
 // newTestManagerWithStateDoc returns a multi-node BackgroundManager whose updateDatabaseState is wired
 // to a DatabaseStateMgr backed by the given metadata store.
-func newTestManagerWithStateDoc(metadataStore base.DataStore, metaKeys *base.MetadataKeys, suffix string, proc BackgroundManagerProcessI) (*BackgroundManager, *DatabaseStateMgr) {
+func newTestManagerWithStateDoc(metadataStore base.DataStore, metaKeys *base.MetadataKeys, suffix string, proc BackgroundManagerProcessI[map[string]any]) (*BackgroundManager[map[string]any], *DatabaseStateMgr) {
 	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
-	mgr := &BackgroundManager{
+	mgr := &BackgroundManager[map[string]any]{
 		name:    "test-" + suffix,
 		Process: proc,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -1007,9 +1007,9 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
 
 	const numNodes = 5
-	managers := make([]*BackgroundManager, numNodes)
+	managers := make([]*BackgroundManager[map[string]any], numNodes)
 	for i := range numNodes {
-		managers[i] = &BackgroundManager{
+		managers[i] = &BackgroundManager[map[string]any]{
 			name:    fmt.Sprintf("test-concurrent-shared-%d", i),
 			Process: &ResumableMockProcess{},
 			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -1088,7 +1088,7 @@ func TestUpdateDatabaseStateResumeOverwritesRunningState(t *testing.T) {
 	// "not running" by stopping the cluster state doc before B calls Resume.
 	// In practice this can happen when B reads the status doc during a brief window between
 	// an old run completing and a new one starting.
-	mgrB := &BackgroundManager{
+	mgrB := &BackgroundManager[map[string]any]{
 		name:    "test-resume-overwrite-observer",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -1188,7 +1188,7 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 	startOptions := map[string]any{"key": "value"}
 
 	// mgr1 is the "originating" node that starts the process and then stops it.
-	mgr1 := &BackgroundManager{
+	mgr1 := &BackgroundManager[map[string]any]{
 		name:                "test-resume-race-mgr1",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
@@ -1205,9 +1205,9 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 	const numResumeCallers = 10
 
 	// Build a fleet of managers that will all call Resume concurrently.
-	resumeManagers := make([]*BackgroundManager, numResumeCallers)
+	resumeManagers := make([]*BackgroundManager[map[string]any], numResumeCallers)
 	for i := range numResumeCallers {
-		resumeManagers[i] = &BackgroundManager{
+		resumeManagers[i] = &BackgroundManager[map[string]any]{
 			name:                fmt.Sprintf("test-resume-race-caller%d", i),
 			Process:             &ResumableMockProcess{},
 			clusterAwareOptions: clusterOpts,

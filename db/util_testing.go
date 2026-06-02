@@ -947,7 +947,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 // After a background manager state transition to completed, stopped, error is followed by immediate removal of the
 // heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
 // for a small race if you try to stop and immediately restart a background manager.
-func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundManager) {
+func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *BackgroundManager[O]) {
 	if mgr.mode() != backgroundManagerModeSingleNode {
 		return
 	}
@@ -961,7 +961,7 @@ func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundMa
 }
 
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
-func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
+func RequireBackgroundManagerState[O any](t testing.TB, mgr *BackgroundManager[O], expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
 	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
 		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.

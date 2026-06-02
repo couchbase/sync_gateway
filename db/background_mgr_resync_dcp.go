@@ -45,7 +45,7 @@ type ResyncManagerDCP struct {
 	ResyncID                     string
 	VBUUIDs                      []uint64
 	ResyncedCollections          base.CollectionNames
-	startOptions                 map[string]any // options from the most recent Start call, persisted to meta for Resume
+	startOptions                 ResyncOptions // options from the most recent Start call, persisted to meta for Resume
 	resyncCollectionInfo
 	lock              sync.RWMutex
 	Distributed       bool
@@ -94,13 +94,20 @@ type resyncCollectionInfo struct {
 	hasAllCollections bool
 }
 
-var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
+// ResyncOptions are used to initialize a resync process.
+type ResyncOptions struct {
+	Collections         base.CollectionNames `json:"collections,omitempty"`
+	Reset               bool                 `json:"reset,omitempty"`
+	RegenerateSequences bool                 `json:"regenerateSequences,omitempty"`
+}
+
+var _ BackgroundManagerProcessI[ResyncOptions] = &ResyncManagerDCP{}
 
 // NewResyncManagerDCP returns a new instance of ResyncManagerDCP wrapped in a BackgroundManager. If distributed is
 // true, the manager will be set up to run in a distributed manner across multiple nodes, otherwise it will run on a
 // single node.
-func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManager {
-	b := &BackgroundManager{
+func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManager[ResyncOptions] {
+	b := &BackgroundManager[ResyncOptions]{
 		name: "resync",
 		Process: &ResyncManagerDCP{
 			db:                db,
@@ -127,17 +134,13 @@ func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManag
 }
 
 // Init processes the options to start a resync process and sets them as struct memebers.
-func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
-	resyncCollections, ok := options["collections"].(base.CollectionNames)
-	if !ok {
-		return errors.New("collections option is required and must be of type base.CollectionNames")
-	}
+func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clusterStatus []byte) error {
 	r.setStartOptions(options)
 
 	var collections DatabaseCollections
-	if len(resyncCollections) > 0 {
+	if len(options.Collections) > 0 {
 		var err error
-		collections, err = r.db.collections(resyncCollections)
+		collections, err = r.db.collections(options.Collections)
 		if err != nil {
 			return err
 		}
@@ -154,7 +157,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	var statusDoc ResyncManagerStatusDocDCP
 	if clusterStatus == nil {
 		resetMsg = "no previous run found"
-	} else if resetOpt, _ := options["reset"].(bool); resetOpt {
+	} else if options.Reset {
 		resetMsg = "reset option requested"
 	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
 		resetMsg = "failed to unmarshal cluster status"
@@ -216,7 +219,7 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, resyncID string
 }
 
 // setStartOptions stores the options used to start the current run so that Resume can reconstruct them.
-func (r *ResyncManagerDCP) setStartOptions(options map[string]any) {
+func (r *ResyncManagerDCP) setStartOptions(options ResyncOptions) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.startOptions = options
@@ -230,12 +233,9 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 }
 
 // Run starts a DCP feed to process documents for resync.
-func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db := r.db
-	regenerateSequences, ok := options["regenerateSequences"].(bool)
-	if !ok {
-		return errors.New("regenerateSequences option is required and must be of type bool")
-	}
+	regenerateSequences := options.RegenerateSequences
 	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
@@ -789,9 +789,9 @@ type resyncManagerCompletedVBuckets struct {
 }
 
 type ResyncManagerMeta struct {
-	VBUUIDs       []uint64       `json:"vbuuids"`
-	CollectionIDs []uint32       `json:"collection_ids,omitempty"`
-	Options       map[string]any `json:"options,omitempty"` // start options, persisted for Resume
+	VBUUIDs       []uint64      `json:"vbuuids"`
+	CollectionIDs []uint32      `json:"collection_ids,omitempty"`
+	Options       ResyncOptions `json:"options,omitempty"` // start options, persisted for Resume
 	resyncManagerCompletedVBuckets
 }
 

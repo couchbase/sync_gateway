@@ -31,14 +31,14 @@ type AttachmentMigrationManager struct {
 	lock          sync.RWMutex
 }
 
-var _ BackgroundManagerProcessI = &AttachmentMigrationManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &AttachmentMigrationManager{}
 
 const MetaVersionValue = "4.0.0" // Meta version to set in syncInfo document upon completion of attachment migration for collection
 
-func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager {
+func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager[map[string]any] {
 	metadataStore := database.MetadataStore
 	metaKeys := database.MetadataKeys
-	return &BackgroundManager{
+	return &BackgroundManager[map[string]any]{
 		name: "attachment_migration",
 		Process: &AttachmentMigrationManager{
 			databaseCtx: database,

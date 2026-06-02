@@ -4356,39 +4356,37 @@ func Test_stopBackgroundManagers(t *testing.T) {
 	defer db.Close(ctx)
 
 	testCases := []struct {
-		resyncManager               *BackgroundManager
-		tombstoneCompactionManager  *BackgroundManager
-		attachmentCompactionManager *BackgroundManager
+		resyncManager               *BackgroundManager[ResyncOptions]
+		tombstoneCompactionManager  *BackgroundManager[map[string]any]
+		attachmentCompactionManager *BackgroundManager[map[string]any]
 		expected                    int
 	}{
 		{
 			expected: 0,
 		},
 		{
-			resyncManager: &BackgroundManager{
+			resyncManager: &BackgroundManager[ResyncOptions]{
 				name:    "test_resync",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[ResyncOptions]{isStoppable: true},
 			},
 			expected: 1,
 		},
 		{
-			resyncManager: &BackgroundManager{
+			resyncManager: &BackgroundManager[ResyncOptions]{
 				name:    "test_resync",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[ResyncOptions]{isStoppable: true},
 			},
-			tombstoneCompactionManager: &BackgroundManager{
+			tombstoneCompactionManager: &BackgroundManager[map[string]any]{
 				name:    "test_tombstone",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 			},
-			attachmentCompactionManager: &BackgroundManager{
+			attachmentCompactionManager: &BackgroundManager[map[string]any]{
 				name:    "test_attachment",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 			},
 			expected: 3,
 		},
 	}
-
-	emptyOptions := map[string]any{}
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -4396,15 +4394,15 @@ func Test_stopBackgroundManagers(t *testing.T) {
 			db.AttachmentCompactionManager = testCase.attachmentCompactionManager
 			db.TombstoneCompactionManager = testCase.tombstoneCompactionManager
 			if db.ResyncManager != nil {
-				err := db.ResyncManager.Start(ctx, emptyOptions)
+				err := db.ResyncManager.Start(ctx, ResyncOptions{})
 				assert.NoError(t, err)
 			}
 			if db.AttachmentCompactionManager != nil {
-				err := db.AttachmentCompactionManager.Start(ctx, emptyOptions)
+				err := db.AttachmentCompactionManager.Start(ctx, map[string]any{})
 				assert.NoError(t, err)
 			}
 			if db.TombstoneCompactionManager != nil {
-				err := db.TombstoneCompactionManager.Start(ctx, emptyOptions)
+				err := db.TombstoneCompactionManager.Start(ctx, map[string]any{})
 				assert.NoError(t, err)
 			}
 
@@ -4448,9 +4446,9 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		waitTime = 1 * time.Second
 	}
 	t.Run("single unstoppable process", func(t *testing.T) {
-		bgMngr := &BackgroundManager{
+		bgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_unstoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: false},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: false},
 		}
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
@@ -4460,15 +4458,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())
 	})
 
 	t.Run("single stoppable process", func(t *testing.T) {
-		bgMngr := &BackgroundManager{
+		bgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_stoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: true},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
@@ -4478,15 +4476,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
 	})
 
 	t.Run("one stoppable process and one unstoppable process", func(t *testing.T) {
-		stoppableBgMngr := &BackgroundManager{
+		stoppableBgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_stoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: true},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
 		err := stoppableBgMngr.Start(ctx, map[string]any{})
@@ -4494,9 +4492,9 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		err = stoppableBgMngr.Stop(ctx)
 		require.NoError(t, err)
 
-		unstoppableBgMngr := &BackgroundManager{
+		unstoppableBgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_unstoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: false},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: false},
 		}
 
 		err = unstoppableBgMngr.Start(ctx, map[string]any{})
@@ -4506,7 +4504,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())
 		assert.Equal(t, BackgroundProcessStateStopping, unstoppableBgMngr.GetRunState())
@@ -4514,17 +4512,17 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 }
 
 // Test BackgroundManagerProcessI which can be configured to stop or run forever
-var _ BackgroundManagerProcessI = &testBackgroundProcess{}
+var _ BackgroundManagerProcessI[map[string]any] = &testBackgroundProcess[map[string]any]{}
 
-type testBackgroundProcess struct {
+type testBackgroundProcess[O any] struct {
 	isStoppable bool
 }
 
-func (i *testBackgroundProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (i *testBackgroundProcess[O]) Init(_ context.Context, _ O, _ []byte) error {
 	return nil
 }
 
-func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (i *testBackgroundProcess[O]) Run(_ context.Context, _ O, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	<-terminator.Done()
 	if i.isStoppable {
 		return nil
@@ -4534,9 +4532,9 @@ func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any,
 	return nil
 }
 
-func (i *testBackgroundProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+func (i *testBackgroundProcess[O]) SetProcessStatus(context.Context, []byte, []byte) {}
 
-func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
+func (i *testBackgroundProcess[O]) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	statusJSON, err := base.JSONMarshal(status)
 	if err != nil {
 		return nil, nil, err
@@ -4545,7 +4543,7 @@ func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus,
 	return statusJSON, nil, nil
 }
 
-func (i *testBackgroundProcess) ResetStatus() {
+func (i *testBackgroundProcess[O]) ResetStatus() {
 }
 
 // Make sure that closing a database context after a mutation feed fails to start results does not panic

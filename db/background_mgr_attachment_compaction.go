@@ -38,10 +38,10 @@ type AttachmentCompactionManager struct {
 	runFunctionStartedCallback atomic.Pointer[runFunctionStartedCallbackFunc]
 }
 
-var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &AttachmentCompactionManager{}
 
-func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
-	return &BackgroundManager{
+func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:    "attachment_compaction",
 		Process: &AttachmentCompactionManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
