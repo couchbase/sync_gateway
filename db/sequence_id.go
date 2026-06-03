@@ -54,11 +54,15 @@ func (s SequenceID) String() string {
 
 func (s SequenceID) intSeqToString() string {
 
-	if s.LowSeq > 0 && s.LowSeq < s.Seq {
+	if s.LowSeq > 0 {
 		if s.TriggeredBy > 0 {
 			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
 		} else {
-			return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+			if s.LowSeq < s.Seq {
+				return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+			} else {
+				return strconv.FormatUint(s.Seq, 10)
+			}
 
 		}
 	} else if s.TriggeredBy > 0 {
@@ -183,21 +187,44 @@ func (s SequenceID) Equals(s2 SequenceID) bool {
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
-// The tricky part is that "n" sorts after "n:m" for any nonzero m
+// The tricky part is that "y" sorts after "y:z" for any nonzero z
 func (s SequenceID) Before(s2 SequenceID) bool {
-	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
-	if s.TriggeredBy == s2.TriggeredBy {
-		if s.SafeSequence() == s2.SafeSequence() {
-			// If both are equal, one sequence must be a non-zero LowSeq - sort those after the actual sequence.
-			return s.Seq < s2.Seq
+
+	// s in format x:y:z or x::z
+	if s.LowSeq != 0 {
+		if s.LowSeq == s2.LowSeq {
+			return SequenceID{TriggeredBy: s.TriggeredBy, Seq: s.Seq}.Before(SequenceID{TriggeredBy: s2.TriggeredBy, Seq: s2.Seq})
 		}
-		return s.SafeSequence() < s2.SafeSequence() // the simple case: untriggered, or triggered by same sequence
-	} else if s.TriggeredBy == 0 {
-		return s.SafeSequence() < s2.TriggeredBy // s2 triggered but not s
-	} else if s2.TriggeredBy == 0 {
-		return s.TriggeredBy <= s2.SafeSequence() // s triggered but not s2
+		if s2.LowSeq != 0 {
+			return s.LowSeq < s2.LowSeq
+		}
+		if s2.TriggeredBy != 0 {
+			return s.LowSeq < s2.TriggeredBy
+		}
+		return s.LowSeq < s2.Seq
+	}
+
+	// s in format x:y
+	if s.TriggeredBy != 0 {
+		if s2.LowSeq != 0 {
+			return s.TriggeredBy <= s2.LowSeq
+		}
+		if s2.TriggeredBy != 0 {
+			if s.TriggeredBy == s2.TriggeredBy {
+				return s.Seq < s2.Seq
+			}
+			return s.TriggeredBy < s2.TriggeredBy
+		}
+		return s.TriggeredBy <= s2.Seq // "n" sorts after "n:m" for any nonzero m
+	}
+
+	// s in format x (simple sequence)
+	if s2.LowSeq != 0 {
+		return s.Seq <= s2.LowSeq
+	} else if s2.TriggeredBy != 0 {
+		return s.Seq < s2.TriggeredBy
 	} else {
-		return s.TriggeredBy < s2.TriggeredBy // both triggered, but by different sequences
+		return s.Seq < s2.Seq
 	}
 }
 
