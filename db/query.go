@@ -811,7 +811,7 @@ func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
 			Value float64 `json:"value"`
 		}
 		err = results.One(ctx, &row)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "No results returned.") {
 			return 0, err
 		}
 		return uint64(row.Value), nil
