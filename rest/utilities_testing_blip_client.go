@@ -600,11 +600,13 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 					} else if localHLV.DominatesSource(changesVersion) {
 						base.DebugfCtx(ctx, base.KeySGTest, "Skipping changes for incoming doc %q with rev %s as we already have a newer version %#v", docID, changesVersion, localHLV)
 						knownRevs[i] = nil // Send back null to signal we don't need this change
-					} else {
+						continue
+					} else if localHLV.GetCurrentVersionString() != "" {
 						// HLV clients only need to send the current version
 						knownRevs[i] = []any{localHLV.GetCurrentVersionString()}
+						continue
 					}
-					continue
+					// local doc has only legacy revtree IDs (no HLV) — fall through to revtree path below
 				}
 				allVersions := btcc.getAllRevisions(docID)
 				if len(allVersions) == 0 {
@@ -710,7 +712,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			require.NoError(btc.TB(), err)
 
 			var deltaSrcVersion DocVersion
-			if btc.UseHLV() {
+			if btc.UseHLV() && !base.IsRevTreeID(deltaSrc) {
 				v, err := db.ParseVersion(deltaSrc)
 				require.NoError(btr.TB(), err, "error parsing version %q: %v", deltaSrc, err)
 				deltaSrcVersion = DocVersion{CV: v}
