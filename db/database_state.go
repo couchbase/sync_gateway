@@ -35,8 +35,7 @@ type DatabaseStateMgr struct {
 	done            chan struct{}
 }
 
-// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeResyncFunc is called by the polling loop
-// when a state change is detected with ResyncRunning set to true; it should resume the resync process.
+// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. If resumeResync is non-nil, it will be invoked when DatabaseState.ResyncRunning is detected as changed on the bucket.
 func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResync resyncResumeFunc) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
@@ -115,9 +114,8 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	}()
 }
 
-// poll checks whether the state document has been updated and, if ResyncRunning is true, invokes
-// resumeResyncFunc. The locally held CAS is only advanced after resumeResyncFunc succeeds (or when no handler
-// action is required), so a transient resumeResyncFunc error leaves the CAS stale and the next tick retries.
+// poll checks whether the state document has been updated and calls appropriate callback functions. If the callback
+// functions return any errors, do not update the CAS so the next time poll runs, the callback function will rerun.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	newCAS, state, ok := dbMgr.isUpdated(ctx)
 	if !ok {
