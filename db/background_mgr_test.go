@@ -1281,3 +1281,32 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 		}
 	}, 10*time.Second, 100*time.Millisecond)
 }
+
+// TestBackgroundManagerStartAfterCompleted verifies that calling Start() on a multi-node
+// BackgroundManager after the process has already run to completion returns an error.
+func TestBackgroundManagerStartAfterCompleted(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-start-after-complete")
+
+	mgr := &BackgroundManager{
+		name:    "test-start-after-complete-mgr",
+		Process: &immediateCallbackProcess{},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: "start-after-complete",
+			multiNode:     true,
+		},
+		terminator: base.NewSafeTerminator(),
+	}
+
+	// Start and wait for the process to run to completion.
+	require.NoError(t, mgr.Start(ctx, nil))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	err := mgr.Start(ctx, nil)
+	require.NoError(t, err)
+}
