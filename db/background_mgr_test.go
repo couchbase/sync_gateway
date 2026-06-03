@@ -1283,8 +1283,8 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 }
 
 // TestBackgroundManagerStartAfterCompleted verifies that calling Start() on a multi-node
-// BackgroundManager after the process has already run to completion returns an error.
-func TestBackgroundManagerStartAfterCompleted(t *testing.T) {
+// BackgroundManager after the process has already run to completion succeeds (returns nil).
+func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)

@@ -641,8 +641,8 @@ func (b *BackgroundManager) SetError(err error) {
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
-// In multi-node mode it uses FailInconsistent: if the cluster doc shows a terminal state while the local
-// state is running, it returns errBackgroundManagerStatusNotRunning. This is the callback passed to Run.
+// In multi-node mode, if the cluster doc shows a terminal state while the local state is running, it returns errBackgroundManagerStatusNotRunning without writing.
+// This is the callback passed to Run.
 func (b *BackgroundManager) UpdateStatusClusterAware(ctx context.Context) error {
 	switch b.mode() {
 	case backgroundManagerModeSingleNode:
