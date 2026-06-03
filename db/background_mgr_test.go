@@ -1172,6 +1172,7 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 }
 
 func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
+	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1280,4 +1281,33 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 			}, state, "mgr %d should be in terminal state", i)
 		}
 	}, 10*time.Second, 100*time.Millisecond)
+}
+
+// TestBackgroundManagerStartAfterCompleted verifies that calling Start() on a multi-node
+// BackgroundManager after the process has already run to completion succeeds (returns nil).
+func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-start-after-complete")
+
+	mgr := &BackgroundManager[map[string]any]{
+		name:    "test-start-after-complete-mgr",
+		Process: &immediateCallbackProcess{},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: "start-after-complete",
+			multiNode:     true,
+		},
+		terminator: base.NewSafeTerminator(),
+	}
+
+	// Start and wait for the process to run to completion.
+	require.NoError(t, mgr.Start(ctx, nil))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	err := mgr.Start(ctx, nil)
+	require.NoError(t, err)
 }

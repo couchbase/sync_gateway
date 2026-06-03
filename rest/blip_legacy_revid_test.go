@@ -654,6 +654,242 @@ func TestChangesResponseLegacyRev(t *testing.T) {
 
 }
 
+// TestDeltaSyncSendHistoryWithLegacyClient verifies that when a delta is sent to a client that has a legacy revision
+// (pre-HLV), the history property on the rev message includes the rev tree so the client can detect conflicts.
+//
+// Setup:
+//   - Create doc rev1 on SGW
+//   - Update doc to create rev2 on SGW
+//   - Client pre-populated with rev1 as a legacy revtree revision (no HLV)
+//   - Client pulls with delta sync enabled
+//   - Server computes delta from rev1 → rev2 and sends via sendDelta
+//
+// Expected rev message (buildRevHistory scenario 3):
+//
+//	history property: [hlvHistory, rev2RevTreeID, rev1RevTreeID] (no hlv pv here since doc has only been updated by one hlv aware peer)
+//	deltaSrc:         rev1RevTreeID
+//	body:             the delta (not full body)
+func TestDeltaSyncSendRevTreeHistoryWithClientHavingLegacyRev(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync requires EE")
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4-specific: tests legacy rev in HLV-aware client
+
+	sgUseDeltas := true
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: &sgUseDeltas,
+				},
+			}},
+		})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			ClientDeltas: true,
+		})
+		defer client.Close()
+
+		// Create rev1 and rev2 on SGW
+		docVersion1 := rt.PutDoc(docID, `{"key": "val1"}`)
+		rev1ID := docVersion1.RevTreeID
+		docVersion2 := rt.UpdateDoc(docID, docVersion1, `{"key": "val2"}`)
+		rt.WaitForPendingChanges()
+
+		// Pre-populate the client with rev1 as a legacy revtree revision so that when SGW sends changes
+		// for rev2, the client reports rev1ID as its known rev (triggering delta from rev1).
+		btcRunner.AddRevTreeRev(client.id, docID, rev1ID, EmptyDocVersion(), []byte(`{"key": "val1"}`))
+
+		btcRunner.StartOneshotPull(client.id)
+		msg := btcRunner.WaitForPullRevMessage(client.id, docID, docVersion2)
+
+		// Should be sent as delta with rev1 as the delta source
+		assert.Equal(t, rev1ID, msg.Properties[db.RevMessageDeltaSrc], "delta source should be the legacy revID the client reported")
+
+		// The rev property should be the CV (HLV-aware identifier)
+		assert.Equal(t, docVersion2.CV.String(), msg.Properties[db.RevMessageRev])
+
+		// History should contain rev2's revTreeID then rev1's revTreeID
+		// (scenario 3 in buildRevHistory: local HLV-aware, remote legacy; no HLV pv since same source)
+		history := msg.Properties[db.RevMessageHistory]
+		require.NotEmpty(t, history, "history must not be empty — rev tree history is required for legacy client conflict detection")
+		historyList := strings.Split(history, ",")
+		require.Len(t, historyList, 2, "history should have rev tree entries only since hlv history is empty for this doc")
+		assert.Equal(t, docVersion2.RevTreeID, historyList[0], "first history entry should be current revTreeID")
+		assert.Equal(t, docVersion1.RevTreeID, historyList[1], "second history entry should be parent revTreeID")
+
+		// Should NOT have a separate revTreeHistory property (that's only for SGR2 peers)
+		assert.Empty(t, msg.Properties[db.RevMessageTreeHistory], "revTreeHistory property should not be set for non-SGR2 clients")
+	})
+}
+
+// TestDeltaSyncSendRevTreeHistoryWithHLVHistoryClientHavingLegacyRev verifies that when a delta is sent to a client that has a
+// legacy revision and the document has multi-source HLV history, the history property contains the HLV previous
+// versions followed by the rev tree.
+//
+// This extends the coverage from TestDeltaSyncSendHistoryWithLegacyClient to the case where HLV history
+// is non-empty (the document was updated by a different peer before SGW created rev2).
+//
+// Setup:
+//   - Create doc rev1 on SGW (gets revTreeID + HLV cv)
+//   - Update doc via HLV agent to simulate a different peer creating rev2 (gets a new HLV cv with rev1's cv as pv)
+//   - Client pre-populated with rev1 as a legacy revtree revision (no HLV)
+//   - Client pulls with delta sync enabled
+//
+// Expected rev message (buildRevHistory scenario 3):
+//
+//	history property: [pv (rev1's cv), rev2RevTreeID, rev1RevTreeID]
+//	deltaSrc:         rev1RevTreeID
+func TestDeltaSyncSendRevTreeHistoryWithHLVHistoryClientHavingLegacyRev(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync requires EE")
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4-specific: tests legacy rev in HLV-aware client
+
+	sgUseDeltas := true
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: &sgUseDeltas,
+				},
+			}},
+		})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			ClientDeltas: true,
+		})
+		defer client.Close()
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+		// Create rev1 on SGW — gets revTreeID + HLV
+		docVersion1 := rt.PutDoc(docID, `{"key": "val1"}`)
+		rev1ID := docVersion1.RevTreeID
+
+		// Pre-populate the client with rev1 as a legacy revtree revision so that when SGW sends changes
+		// for the updated doc, the client reports rev1ID as its known rev (triggering delta from rev1).
+		btcRunner.AddRevTreeRev(client.id, docID, rev1ID, EmptyDocVersion(), []byte(`{"key": "val1"}`))
+
+		// Update doc via HLV agent to simulate a different peer creating rev2.
+		// This gives the doc a new CV from "peerSource" with rev1's CV as a previous version in the HLV.
+		newDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		agent := db.NewHLVAgent(t, rt.GetSingleDataStore(), "peerSource", base.VvXattrName)
+		_ = agent.UpdateWithHLV(ctx, docID, newDoc.Cas, newDoc.HLV)
+
+		// Force import so SGW picks up the HLV agent's update
+		newDoc, err = collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		rt.WaitForPendingChanges()
+
+		docVersion2 := newDoc.ExtractDocVersion()
+		btcRunner.StartOneshotPull(client.id)
+		msg := btcRunner.WaitForPullRevMessage(client.id, docID, docVersion2)
+
+		// Should be sent as delta with rev1 as the delta source
+		assert.Equal(t, rev1ID, msg.Properties[db.RevMessageDeltaSrc], "delta source should be the legacy revID the client reported")
+
+		// Rev property should be the new CV from the HLV agent update
+		assert.Equal(t, docVersion2.CV.String(), msg.Properties[db.RevMessageRev])
+
+		// History should be: [pv (rev1's original cv), rev2RevTreeID, rev1RevTreeID]
+		// - First entry is HLV previous version (rev1's cv becomes pv after the HLV agent update)
+		// - Last two entries are the rev tree (scenario 3: local HLV-aware, remote legacy)
+		history := msg.Properties[db.RevMessageHistory]
+		require.NotEmpty(t, history, "history must not be empty")
+		historyList := strings.Split(history, ",")
+		require.Len(t, historyList, 3, "history should have HLV pv + 2 rev tree entries")
+		assert.Equal(t, docVersion1.CV.String(), historyList[0], "first history entry should be HLV previous version (rev1's cv)")
+		assert.Equal(t, docVersion2.RevTreeID, historyList[1], "second history entry should be current revTreeID")
+		assert.Equal(t, docVersion1.RevTreeID, historyList[2], "third history entry should be parent revTreeID")
+
+		assert.Empty(t, msg.Properties[db.RevMessageTreeHistory], "revTreeHistory property should not be set for non-SGR2 clients")
+	})
+}
+
+// TestBothSidesLegacyRevDeltaSync verifies that when a delta is sent to a client that has a legacy revision
+// and the document on SGW is also a legacy revision (no HLV on either side), the history property contains
+// only the parent revTreeID and the rev property is the current revTreeID (not a CV).
+//
+// Setup:
+//   - Create doc rev1 and rev2 on SGW with no HLV (legacy revs)
+//   - Client pre-populated with rev1 as a legacy revtree revision (no HLV)
+//   - Client pulls with delta sync enabled
+//
+// Expected rev message (buildRevHistory scenario 1):
+//
+//	history property: [rev1RevTreeID] (no hlv pv since neither side is HLV-aware)
+//	rev property:     rev2RevTreeID (not a CV, since both sides are legacy)
+//	deltaSrc:         rev1RevTreeID
+func TestBothSidesLegacyRevDeltaSync(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta sync requires EE")
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // V4-specific: tests legacy rev in HLV-aware client
+
+	sgUseDeltas := true
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: &sgUseDeltas,
+				},
+			}},
+		})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			ClientDeltas: true,
+		})
+		defer client.Close()
+
+		// create rev1, rev 2 on SGW with no HLV (legacy revs)
+		docRev1 := rt.CreateDocNoHLV(docID, db.Body{"test": "doc"})
+		docRev2 := rt.CreateDocNoHLV(docID, db.Body{"test": "update", db.BodyRev: docRev1.GetRevTreeID()})
+		rt.WaitForPendingChanges()
+
+		// Pre-populate the client with rev1 as a legacy revtree revision so that when SGW sends changes
+		// for rev2, the client reports rev1ID as its known rev (triggering delta from rev1).
+		btcRunner.AddRevTreeRev(client.id, docID, docRev1.GetRevTreeID(), EmptyDocVersion(), []byte(`{"test": "doc"}`))
+
+		btcRunner.StartOneshotPull(client.id)
+		msg := btcRunner.WaitForPullRevMessage(client.id, docID, docRev2.ExtractDocVersion())
+
+		// Should be sent as delta with rev1 as the delta source
+		assert.Equal(t, docRev1.GetRevTreeID(), msg.Properties[db.RevMessageDeltaSrc], "delta source should be the legacy revID the client reported")
+
+		// Rev property should be rev2's rev tree ID since both sides are legacy
+		assert.Equal(t, docRev2.GetRevTreeID(), msg.Properties[db.RevMessageRev])
+
+		// History should contain rev1's revTreeID
+		history := msg.Properties[db.RevMessageHistory]
+		require.NotEmpty(t, history, "history must not be empty — rev tree history is required for legacy client conflict detection")
+		historyList := strings.Split(history, ",")
+		require.Len(t, historyList, 1, "history should have rev tree entries only since hlv history is empty for this doc")
+		assert.Equal(t, docRev1.GetRevTreeID(), historyList[0], "only history entry should be parent revTreeID since both sides are legacy")
+
+		assert.Empty(t, msg.Properties[db.RevMessageTreeHistory], "revTreeHistory property should not be set for non-SGR2 clients")
+	})
+}
+
 // TestChangesResponseWithHLVInHistory:
 //   - Create doc
 //   - Update doc with hlv agent to mock update from a another peer

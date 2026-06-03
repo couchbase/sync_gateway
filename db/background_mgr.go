@@ -52,6 +52,20 @@ var errBackgroundManagerProcessAlreadyRunning = base.HTTPErrorf(http.StatusServi
 // errBackgroundManagerProcessAlreadyStopped is returned when an action to Stop a process occurs but it is already stopped.
 var errBackgroundManagerProcessAlreadyStopped = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
+// backgroundManagerUpdateClusterStatusMode controls whether updateMultiNodeClusterAwareStatus enforces
+// consistency between the local and cluster states.
+type backgroundManagerUpdateClusterStatusMode int
+
+const (
+	// backgroundManagerReportInconsistentStatus returns errBackgroundManagerStatusNotRunning
+	// when the cluster doc shows a terminal state but the local state is running. Used by the polling loop to
+	// detect that another node has stopped or completed the process.
+	backgroundManagerReportInconsistentStatus backgroundManagerUpdateClusterStatusMode = iota
+	// backgroundManagerOverwriteInconsistentStatus writes the current local status to the
+	// cluster doc unconditionally. Used when starting or finalising a run where we own the state transition.
+	backgroundManagerOverwriteInconsistentStatus
+)
+
 type BackgroundProcessAction string
 
 const (
@@ -296,7 +310,13 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
-		err := b.UpdateStatusClusterAware(ctx)
+		var err error
+		if b.mode() == backgroundManagerModeMultiNode {
+			// when starting a background process, allow overwriting any previous state (completed, error, stopped, stopping)
+			err = b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerOverwriteInconsistentStatus)
+		} else {
+			err = b.UpdateSingleNodeClusterAwareStatus(ctx)
+		}
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
 			return err
@@ -631,19 +651,19 @@ func (b *BackgroundManager[O]) SetError(err error) {
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
+// In multi-node mode, if the cluster doc shows a terminal state while the local state is running, it returns errBackgroundManagerStatusNotRunning without writing.
+// This is the callback passed to Run.
 func (b *BackgroundManager[O]) UpdateStatusClusterAware(ctx context.Context) error {
-	var err error
 	switch b.mode() {
 	case backgroundManagerModeSingleNode:
-		err = b.UpdateSingleNodeClusterAwareStatus(ctx)
+		return b.UpdateSingleNodeClusterAwareStatus(ctx)
 	case backgroundManagerModeMultiNode:
-		err = b.updateMultiNodeClusterAwareStatus(ctx)
+		return b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerReportInconsistentStatus)
 	case backgroundManagerModeLocal:
 		return nil
 	default:
 		return fmt.Errorf("unknown background manager mode: %v", b.mode())
 	}
-	return err
 }
 
 // UpdateSingleNodeClusterAwareStatus gets the current local status from the running process and updates the status document in
@@ -673,8 +693,11 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 	return err
 }
 
-// updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status. If the bucket status is in a stopping / stopped / completed / error state but the local status is running, then this method will not update the bucket status and instead return.
-func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context) error {
+// updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status.
+// When mode is backgroundManagerReportInconsistentStatus and the cluster doc shows a terminal
+// state while the local state is running, it returns errBackgroundManagerStatusNotRunning without
+// writing. When mode is backgroundManagerOverwriteInconsistentStatus the write always proceeds.
+func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
 	var newStatus []byte
@@ -689,13 +712,17 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			if err := base.JSONUnmarshal(current, &output); err != nil {
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
-			if status, ok := output["status"]; ok {
-				bucketState, err := unmarshalBackgroundProcessState(status)
-				if err != nil {
-					return nil, nil, false, err
-				}
-				if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
-					return nil, nil, false, errBackgroundManagerStatusNotRunning
+			// If the local status is running, but another node stopped or errored, do not serialize status and report
+			// not running so that caller can terminate the background manager on this node
+			if mode == backgroundManagerReportInconsistentStatus {
+				if status, ok := output["status"]; ok {
+					bucketState, err := unmarshalBackgroundProcessState(status)
+					if err != nil {
+						return nil, nil, false, err
+					}
+					if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
+						return nil, nil, false, errBackgroundManagerStatusNotRunning
+					}
 				}
 			}
 		}
@@ -767,7 +794,7 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 	for {
 		select {
 		case <-ticker.C:
-			err := b.updateMultiNodeClusterAwareStatus(ctx)
+			err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerReportInconsistentStatus)
 			if err != nil {
 				if errors.Is(err, errBackgroundManagerStatusNotRunning) {
 					b.stopProcess(ctx)

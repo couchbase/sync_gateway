@@ -1171,11 +1171,18 @@ func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
 // round-trip performed by BackgroundManager.Resume: options are written to the cluster status document by
 // the first manager and then read back into a fresh ResyncManagerDCP via Resume, without ever being passed
 // to the second manager's Start call directly.
-//
-// The BackgroundManagers are constructed with multiNode=true (required for Resume) but with
-// ResyncManagerDCP.Distributed=false so the non-CBGT DCP path is used, which is compatible with Rosmar.
 func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	// write documents so that Resume() can be called while mgr is already running
+	docsToCreate := 500
+	if base.UnitTestUrlIsWalrus() {
+		// rosmar runs too quickly, increase doc count
+		docsToCreate *= 3
+	}
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+		docsToCreate:                 docsToCreate,
+		updateSyncFuncAfterDocsAdded: true,
+	})
 	defer db.Close(ctx)
 
 	newMgr := func() *BackgroundManager[ResyncOptions] {
@@ -1197,23 +1204,18 @@ func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
 	}
 
 	mgr1 := newMgr()
-	defer func() {
-		_ = mgr1.Stop(ctx)
-		mgr1.resetStatus()
-	}()
+	defer func() { _ = mgr1.Stop(ctx) }()
 
 	// Empty Collections means "all collections" (no per-collection lookup in Init).
 	// RegenerateSequences and Reset are both non-zero so a silent field drop would be caught.
 	inputOptions := ResyncOptions{
-		Collections:         base.NewCollectionNames(),
+		Collections:         db.collectionNames(),
 		RegenerateSequences: true,
 		Reset:               true,
 	}
 
 	require.NoError(t, mgr1.Start(ctx, inputOptions))
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
-	}, 5*time.Second, 100*time.Millisecond)
+	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
 
 	// Flush options into the cluster status document before the second manager calls Resume.
 	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
@@ -1223,24 +1225,15 @@ func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
 	// Init is called synchronously inside Resume before Run is spawned, so startOptions is already set
 	// by the time Resume returns.
 	mgr2 := newMgr()
-	defer func() {
-		_ = mgr2.Stop(ctx)
-		mgr2.resetStatus()
-	}()
+	defer func() { _ = mgr2.Stop(ctx) }()
 
 	require.NoError(t, mgr2.Resume(ctx))
 
 	// Read startOptions from mgr2's process. The field is unexported but accessible within the package.
 	resync2 := mgr2.Process.(*ResyncManagerDCP)
 	resync2.lock.RLock()
-	got := resync2.startOptions
-	resync2.lock.RUnlock()
-
-	require.Equal(t, inputOptions.RegenerateSequences, got.RegenerateSequences)
-	require.Equal(t, inputOptions.Reset, got.Reset)
-	// Empty collections (meaning "all collections") marshals with omitempty and round-trips as nil;
-	// both nil and an empty map are semantically identical in ResyncManagerDCP.Init.
-	require.Empty(t, got.Collections)
+	defer resync2.lock.RUnlock()
+	require.Equal(t, inputOptions, resync2.startOptions)
 }
 
 // TestNewResyncManagerDCPUpdateDatabaseState verifies that NewResyncManagerDCP wires updateDatabaseState

@@ -33,6 +33,10 @@ func seedFallback(ctx context.Context, t *testing.T, ms *base.MetadataStore, key
 	t.Helper()
 	_, err := ms.Fallback().AddRaw(ctx, key, 0, body)
 	require.NoError(t, err, "seed fallback %s", key)
+	// KV range scans read from a per-vBucket snapshot view, so a scan issued immediately after
+	// the write can miss the just-seeded doc until the vBucket's scan view catches up. Block here
+	// so callers can't forget to wait for visibility before exercising scan-backed code.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{key})
 }
 
 // TestMigrateMetadataEmptyFallback verifies the new-DB fast path: empty fallback yields a
@@ -225,6 +229,9 @@ func TestMigrateMetadataMovesUserEmailAndSession(t *testing.T) {
 	seededSessionExpiry, err := ms.Fallback().GetExpiry(ctx, sessionKey)
 	require.NoError(t, err)
 	require.NotZero(t, seededSessionExpiry, "fallback should have a non-zero absolute expiry after a TTL write")
+
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{emailKey, sessionKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
@@ -529,6 +536,9 @@ func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
 	rangeBody := append(binaryLE(10), binaryLE(20)...)
 	_, err = ms.Fallback().AddRaw(ctx, rangeKey, 0, rangeBody)
 	require.NoError(t, err, "seed fallback unusedSeqs range")
+
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{singletonKey, rangeKey})
 
 	stats := &MigrationStats{}
 	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)

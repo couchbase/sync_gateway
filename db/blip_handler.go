@@ -913,7 +913,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, remoteIsLegacyRev bool) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(ctx, docID, deltaSrcRevID, revID)
@@ -922,39 +922,35 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, remoteIsLegacyRev)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(ctx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, remoteIsLegacyRev)
 	} else if err != nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, remoteIsLegacyRev)
 	}
 
 	if redactedRev != nil {
-		var history []string
-		var revTreeProperty []string
-		if !bsc.useHLV() || bsc.sendRevTreeProperty() {
+		localIsLegacyRev := redactedRev.CV == nil
+		var revTreeHistory []string
+		if !bsc.useHLV() || localIsLegacyRev || remoteIsLegacyRev || bsc.sendRevTreeProperty() {
 			var err error
-			history, err = toHistory(redactedRev.History, knownRevs, maxHistory)
+			revTreeHistory, err = toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
 				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
 				base.WarnfCtx(ctx, "%s", err)
 				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 			}
-		} else {
-			history = append(history, redactedRev.HlvHistory)
 		}
-		if bsc.sendRevTreeProperty() {
-			revTreeProperty = append(revTreeProperty, redactedRev.RevID)
-			history, err := toHistory(redactedRev.History, knownRevs, maxHistory)
-			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev when sending in sendRevAsDelta %s %s: %w, sending a noRev to skip this document for replication at sequence %s.", base.UD(docID), redactedRev.RevID, err, seq)
-				base.WarnfCtx(ctx, "%s", err)
-				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-			}
-			revTreeProperty = append(revTreeProperty, history...)
-		}
+
+		history, revTreeProperty := bsc.buildRevHistory(revHistoryInput{
+			revTreeHistory:    revTreeHistory,
+			hlvHistory:        redactedRev.HlvHistory,
+			revID:             redactedRev.RevID,
+			localIsLegacyRev:  localIsLegacyRev,
+			remoteIsLegacyRev: remoteIsLegacyRev,
+		})
 
 		properties, err := blipRevMessageProperties(history, redactedRev.Deleted, seq, "", revTreeProperty)
 		if err != nil {
@@ -965,16 +961,16 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 
 	if revDelta == nil {
 		base.DebugfCtx(ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, remoteIsLegacyRev)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(ctx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, false)
+		return bsc.sendRevision(ctx, sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx, remoteIsLegacyRev)
 	}
 
 	base.TracefCtx(ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bsc.sendDelta(ctx, sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, resendFullRevisionFunc); err != nil {
+	if err := bsc.sendDelta(ctx, sender, docID, collectionIdx, deltaSrcRevID, revDelta, seq, remoteIsLegacyRev, resendFullRevisionFunc); err != nil {
 		return err
 	}
 
