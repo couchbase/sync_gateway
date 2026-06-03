@@ -513,6 +513,9 @@ func (b *BackgroundManager) setLastErrorMessage(msg string) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 	b.status.LastErrorMessage = msg
+	if msg != "" {
+		b.status.State = BackgroundProcessStateError
+	}
 }
 
 // Stop triggers a Stop of the background process. This will transition the state to BackgroundProcessStateStopping and
@@ -609,7 +612,6 @@ func (b *BackgroundManager) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.setLastErrorMessage(err.Error())
-	b.setRunState(BackgroundProcessStateError)
 	b.Terminate()
 }
 
