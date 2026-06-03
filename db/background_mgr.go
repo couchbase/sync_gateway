@@ -149,7 +149,9 @@ func (b *BackgroundManager) callUpdateDatabaseState(ctx context.Context, running
 // errBackgroundManagerStatusNotRunning.  Only supported for multi-node background managers.
 func (b *BackgroundManager) Resume(ctx context.Context) error {
 	if b.mode() != backgroundManagerModeMultiNode {
-		return fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
+		err := fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
+		base.WarnfCtx(ctx, "%v", err)
+		return err
 	}
 
 	docID := b.clusterAwareOptions.StatusDocID()

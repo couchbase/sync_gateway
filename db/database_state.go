@@ -17,30 +17,33 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// resyncResumeFunc is a callback function to call to resume a resync process.
+type resyncResumeFunc func(ctx context.Context) error
+
 type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
 }
 
 type DatabaseStateMgr struct {
-	CAS              uint64
-	dbStateID        string
-	metadataStore    base.DataStore
-	pollingInterval  time.Duration
-	resumeResyncFunc func(ctx context.Context) error
-	lock             sync.Mutex
-	terminator       chan struct{}
-	done             chan struct{}
+	CAS             uint64
+	dbStateID       string
+	metadataStore   base.DataStore
+	pollingInterval time.Duration
+	resumeResync    resyncResumeFunc
+	lock            sync.Mutex
+	terminator      chan struct{}
+	done            chan struct{}
 }
 
 // NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeResyncFunc is called by the polling loop
 // when a state change is detected with ResyncRunning set to true; it should resume the resync process.
-func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResyncFunc func(ctx context.Context) error) *DatabaseStateMgr {
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResync resyncResumeFunc) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
-		dbStateID:        dbStateID,
-		CAS:              0,
-		metadataStore:    metadataStore,
-		pollingInterval:  10 * time.Second,
-		resumeResyncFunc: resumeResyncFunc,
+		dbStateID:       dbStateID,
+		CAS:             0,
+		metadataStore:   metadataStore,
+		pollingInterval: 10 * time.Second,
+		resumeResync:    resumeResync,
 	}
 }
 
@@ -120,11 +123,13 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if !ok {
 		return
 	}
-	if state.ResyncRunning != nil && *state.ResyncRunning {
-		err := dbMgr.resumeResyncFunc(ctx)
-		if err != nil {
-			base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
-			return // leave CAS stale so next tick retries
+	if dbMgr.resumeResync != nil {
+		if state.ResyncRunning != nil && *state.ResyncRunning {
+			err := dbMgr.resumeResync(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
+				return // leave CAS stale so next tick retries
+			}
 		}
 	}
 	dbMgr.lock.Lock()
