@@ -451,7 +451,7 @@ func (b *GocbV2Bucket) Flush(ctx context.Context) error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (b *GocbV2Bucket) BucketItemCount(ctx context.Context) (itemCount int, err error) {
-	dataStoreNames, err := b.ListDataStores(ctx)
+	dataStoreNames, err := GetAllDataStores(ctx, b)
 	if err != nil {
 		return 0, err
 	}

@@ -34,6 +34,13 @@ func IsDefaultCollection(scope, collection string) bool {
 	return collection == DefaultCollection && scope == DefaultScope
 }
 
+// IsMobileCollection returns true if the scope and collection are the mobile system collection
+// (_system._mobile).
+func IsMobileCollection(scope, collection string) bool {
+	// check collection first to early exit non-mobile collection
+	return collection == SystemCollectionMobile && scope == SystemScope
+}
+
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
 	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {

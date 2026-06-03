@@ -183,7 +183,9 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	var purgeErrors *base.MultiError
 
-	dataStores, err := bucket.ListDataStores(ctx)
+	// Include the mobile system collection so we also purge Sync Gateway metadata from it, avoiding
+	// interference between test runs.
+	dataStores, err := base.GetAllDataStores(ctx, bucket)
 	if err != nil {
 		return err
 	}
@@ -196,17 +198,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		}
 		collectionNames.Add(dataStoreName)
 		collections[collection.GetCollectionID()] = collection
-
 	}
-	// add system cope and collection to we also purge metadata from the system collection to avoid
-	// interference between test runs
-	mobileCollectionName := base.MobileSystemScopeAndCollectionName()
-	collectionNames.Add(mobileCollectionName)
-	systemDS, err := bucket.NamedDataStore(ctx, mobileCollectionName)
-	if err != nil {
-		return err
-	}
-	collections[systemDS.GetCollectionID()] = systemDS
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
 		processedDocCount.Add(1)
@@ -329,7 +321,8 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 	if err != nil {
 		return err
 	}
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped too.
+	dataStores, err := base.GetAllDataStores(ctx, b)
 	if err != nil {
 		return err
 	}
@@ -362,36 +355,16 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 
 	tbp.Logf(ctx, "Starting bucket init function")
 
-	if !skipGSI {
-		mobileSystemDataStore, err := b.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
-		if err != nil {
-			return err
-		}
-		systemCollectionInitOptions := InitializeIndexOptions{
-			UseXattrs:                  true,
-			NumReplicas:                0,
-			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-			LegacySyncDocsIndex:        false,
-			MetadataIndexes:            IndexesMetadataOnly,
-			NumPartitions:              DefaultNumIndexPartitions,
-		}
-		systemN1QLStore, ok := base.AsN1QLStore(mobileSystemDataStore)
-		if !ok {
-			return fmt.Errorf("bucket %T was not a N1QL store", b)
-		}
-
-		if err := InitializeIndexes(ctx, systemN1QLStore, systemCollectionInitOptions); err != nil {
-			return err
-		}
-	}
-
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped and recreated alongside the
+	// other collections, rather than being left with stale indexes between bucket reuses.
+	dataStores, err := base.GetAllDataStores(ctx, b)
 	if err != nil {
 		return err
 	}
 
 	for _, dataStoreName := range dataStores {
 		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
+		isSystemCollection := base.IsMobileCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName())
 		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
 		if err != nil {
 			return err
@@ -425,7 +398,10 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			MetadataIndexes:            IndexesWithoutMetadata,
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
-		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+		switch {
+		case isSystemCollection:
+			options.MetadataIndexes = IndexesMetadataOnly
+		case base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()):
 			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
