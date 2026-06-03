@@ -48,6 +48,9 @@ func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		AllowConflicts: base.Ptr(true),
 		CacheOptions:   base.Ptr(DefaultCacheOptions()),
+		UnsupportedOptions: &UnsupportedOptions{
+			ResyncPartitions: base.Ptr(uint16(2)),
+		},
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }

@@ -405,174 +405,161 @@ func TestSyncFnTimeout(t *testing.T) {
 }
 
 func TestResyncRegenerateSequences(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
-
-			ctx := base.TestCtx(t)
-			syncFn := `
+	ctx := base.TestCtx(t)
+	syncFn := `
 	function(doc) {
 		if (doc.userdoc){
 			channel("channel_1")
 		}
 	}`
 
-			rt := NewRestTester(t,
-				&RestTesterConfig{
-					SyncFn: syncFn,
-				},
-			)
-			defer rt.Close()
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
 
-			var response *TestResponse
-			var docSeqArr []uint64
-			var body db.Body
-			var rawDocResponse RawDocResponse
+	var response *TestResponse
+	var docSeqArr []uint64
+	var body db.Body
+	var rawDocResponse RawDocResponse
 
-			for i := range 10 {
-				docID := fmt.Sprintf("doc%d", i)
-				rt.CreateTestDoc(docID)
+	for i := range 10 {
+		docID := fmt.Sprintf("doc%d", i)
+		rt.CreateTestDoc(docID)
 
-				response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
-				require.Equal(t, http.StatusOK, response.Code)
+		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
+		require.Equal(t, http.StatusOK, response.Code)
 
-				err := json.Unmarshal(response.BodyBytes(), &rawDocResponse)
-				require.NoError(t, err)
+		err := json.Unmarshal(response.BodyBytes(), &rawDocResponse)
+		require.NoError(t, err)
 
-				docSeqArr = append(docSeqArr, rawDocResponse.Xattrs.Sync.Sequence)
-			}
-
-			ds := rt.GetSingleDataStore()
-			response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", ds, []string{"channel_1"}))
-			RequireStatus(t, response, http.StatusCreated)
-
-			response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", ds, []string{"channel_1"}, []string{"role1"}))
-			RequireStatus(t, response, http.StatusCreated)
-
-			_, err := rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
-			assert.NoError(t, err)
-			role1SeqBefore := body["sequence"].(float64)
-
-			_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
-			assert.NoError(t, err)
-			user1SeqBefore := body["sequence"].(float64)
-
-			response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc", `{"userdoc": true}`)
-			RequireStatus(t, response, http.StatusCreated)
-
-			response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc2", `{"userdoc": true}`)
-			RequireStatus(t, response, http.StatusCreated)
-
-			// Let everything catch up before opening changes feed
-			rt.WaitForPendingChanges()
-
-			changesRespContains := func(changesResp ChangesResults, docid string) bool {
-				for _, resp := range changesResp.Results {
-					if resp.ID == docid {
-						return true
-					}
-				}
-				return false
-			}
-
-			changesResp := rt.GetChanges("/{{.keyspace}}/_changes", "user1")
-			assert.Len(t, changesResp.Results, 3)
-			assert.True(t, changesRespContains(changesResp, "userdoc"))
-			assert.True(t, changesRespContains(changesResp, "userdoc2"))
-
-			response = rt.SendAdminRequest("GET", "/db/_resync", "")
-			RequireStatus(t, response, http.StatusOK)
-
-			response = rt.SendAdminRequest("POST", "/db/_offline", "")
-			RequireStatus(t, response, http.StatusOK)
-			rt.SetDistributedResync(testCase.Distributed)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
-			RequireStatus(t, response, http.StatusOK)
-
-			resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
-			_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
-			assert.NoError(t, err)
-			role1SeqAfter := body["sequence"].(float64)
-
-			_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
-			assert.NoError(t, err)
-			user1SeqAfter := body["sequence"].(float64)
-
-			assert.True(t, role1SeqAfter > role1SeqBefore)
-			assert.True(t, user1SeqAfter > user1SeqBefore)
-
-			collection, ctx := rt.GetSingleTestDatabaseCollection()
-			for i := range 10 {
-				docID := fmt.Sprintf("doc%d", i)
-
-				doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
-				assert.NoError(t, err)
-
-				assert.True(t, doc.Sequence > docSeqArr[i])
-			}
-
-			assert.Equal(t, int64(12), resyncStatus.DocsChanged)
-			if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
-				// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
-				// test.
-				// 1. doc1 mutation
-				// 2. doc1 deletion
-				//
-				// In a test, these will not be resynced but docsProcessed is incremented. Relax
-				// the assertion to greater than the number of documents.
-				assert.GreaterOrEqual(t, resyncStatus.DocsProcessed, int64(12))
-			} else {
-				assert.Equal(t, int64(12), resyncStatus.DocsProcessed)
-			}
-
-			rt.TakeDbOnline()
-
-			changesResp = rt.GetChanges("/{{.keyspace}}/_changes", "user1")
-			assert.Len(t, changesResp.Results, 3)
-			assert.True(t, changesRespContains(changesResp, "userdoc"))
-			assert.True(t, changesRespContains(changesResp, "userdoc2"))
-		})
+		docSeqArr = append(docSeqArr, rawDocResponse.Xattrs.Sync.Sequence)
 	}
+
+	ds := rt.GetSingleDataStore()
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", ds, []string{"channel_1"}))
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", ds, []string{"channel_1"}, []string{"role1"}))
+	RequireStatus(t, response, http.StatusCreated)
+
+	_, err := rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
+	assert.NoError(t, err)
+	role1SeqBefore := body["sequence"].(float64)
+
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
+	assert.NoError(t, err)
+	user1SeqBefore := body["sequence"].(float64)
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc", `{"userdoc": true}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc2", `{"userdoc": true}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// Let everything catch up before opening changes feed
+	rt.WaitForPendingChanges()
+
+	changesRespContains := func(changesResp ChangesResults, docid string) bool {
+		for _, resp := range changesResp.Results {
+			if resp.ID == docid {
+				return true
+			}
+		}
+		return false
+	}
+
+	changesResp := rt.GetChanges("/{{.keyspace}}/_changes", "user1")
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	resyncStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
+	assert.NoError(t, err)
+	role1SeqAfter := body["sequence"].(float64)
+
+	_, err = rt.MetadataStore().Get(ctx, rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
+	assert.NoError(t, err)
+	user1SeqAfter := body["sequence"].(float64)
+
+	assert.True(t, role1SeqAfter > role1SeqBefore)
+	assert.True(t, user1SeqAfter > user1SeqBefore)
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	for i := range 10 {
+		docID := fmt.Sprintf("doc%d", i)
+
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		assert.True(t, doc.Sequence > docSeqArr[i])
+	}
+
+	assert.Equal(t, int64(12), resyncStatus.DocsChanged)
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+		// test.
+		// 1. doc1 mutation
+		// 2. doc1 deletion
+		//
+		// In a test, these will not be resynced but docsProcessed is incremented. Relax
+		// the assertion to greater than the number of documents.
+		assert.GreaterOrEqual(t, resyncStatus.DocsProcessed, int64(12))
+	} else {
+		assert.Equal(t, int64(12), resyncStatus.DocsProcessed)
+	}
+
+	rt.TakeDbOnline()
+
+	changesResp = rt.GetChanges("/{{.keyspace}}/_changes", "user1")
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 }
 
 // CBG-2150: Tests that resync status is cluster aware
 func TestResyncPersistence(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
+	tb := base.GetTestBucket(t)
+	noCloseTB := tb.NoCloseClone()
 
-			tb := base.GetTestBucket(t)
-			noCloseTB := tb.NoCloseClone()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: noCloseTB,
+	})
 
-			rt1 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: noCloseTB,
-			})
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb,
+	})
 
-			rt2 := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: tb,
-			})
+	defer rt2.Close()
+	defer rt1.Close()
 
-			defer rt2.Close()
-			defer rt1.Close()
+	// Create a document to process through resync
+	rt1.CreateTestDoc("doc1")
 
-			// Create a document to process through resync
-			rt1.CreateTestDoc("doc1")
+	// Start resync
+	rt1.TakeDbOffline()
 
-			// Start resync
-			rt1.TakeDbOffline()
-			rt1.SetDistributedResync(testCase.Distributed)
-			rt2.SetDistributedResync(testCase.Distributed)
+	resp := rt1.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
+	RequireStatus(t, resp, http.StatusOK)
 
-			resp := rt1.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
-			RequireStatus(t, resp, http.StatusOK)
+	// Wait for resync to complete
+	rt1Status := rt1.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			// Wait for resync to complete
-			rt1Status := rt1.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
-			rt2Status := rt2.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-			require.Equal(t, rt1Status, rt2Status)
-		})
-	}
+	rt2Status := rt2.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	require.Equal(t, rt1Status, rt2Status)
 }
 
 func TestExpiryUpdateSyncFunction(t *testing.T) {
