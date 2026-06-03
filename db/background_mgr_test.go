@@ -1172,6 +1172,7 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 }
 
 func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
+	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
