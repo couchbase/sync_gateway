@@ -148,6 +148,9 @@ func TestMarshalTriggeredSequenceID(t *testing.T) {
 	err = base.JSONUnmarshal(asJson, &s2)
 	assert.NoError(t, err, "Unmarshal failed")
 	assert.Equal(t, s, s2)
+
+	s = SequenceID{LowSeq: 5000, TriggeredBy: 5678, Seq: 1234}
+	assert.Equal(t, "5000:5678:1234", s.String())
 }
 
 func TestCompareSequenceIDs(t *testing.T) {
@@ -173,8 +176,14 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 		{LowSeq: 1200, Seq: 1233},
 		{LowSeq: 1205, Seq: 1234},
 		{Seq: 1234},
-		{LowSeq: 1234, Seq: 5677},
+		{LowSeq: 1234, TriggeredBy: 5677, Seq: 2000},
+		{LowSeq: 1234, Seq: 5677}, // Seq 5677 comes after the sequences it triggered, even when lowSeq is non-zero
 		{LowSeq: 1234, Seq: 5678},
+		{TriggeredBy: 1300, Seq: 1100},
+		{LowSeq: 1300, Seq: 1350},
+		{LowSeq: 1300, TriggeredBy: 1400, Seq: 100},
+		{LowSeq: 1300, Seq: 1400}, // Seq 1400 comes after the sequences it triggered, even when lowSeq is non-zero
+		{TriggeredBy: 1301, Seq: 1000},
 	}
 
 	for i := range orderedSeqs {
