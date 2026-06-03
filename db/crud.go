@@ -261,7 +261,12 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+	xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+	userXattrKey := c.UserXattrKey()
+	if userXattrKey != "" {
+		xattrKeys = append(xattrKeys, userXattrKey)
+	}
+	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -324,13 +329,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		return nil, base.RedactErrorf("failed to marshal sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
 	}
 
-	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
-	if err != nil {
-		base.WarnfCtx(ctx, `Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
-		return nil, base.RedactErrorf(`Could not determine the revSeqNo when attempting to compact channel history for doc %s - history will not be compacted: %v`, base.UD(docid), err)
-	}
-
-	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, revSeqNo, doc.MetadataOnlyUpdate)
+	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
 
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
@@ -341,7 +340,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	opts := &sgbucket.MutateInOptions{}
 	// Only update _sync.cas and _mou.cas if the pre-compaction doc had already been imported by SGW
 	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
-		sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.MouXattrName), sgbucket.MacroCas),
 		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
 	}
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
@@ -354,12 +353,6 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	compactedChannelArray := compactedChannels.ToArray()
 	slices.Sort(compactedChannelArray)
 	return compactedChannelArray, err
-}
-
-// unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
-func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.UserXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
-
 }
 
 // GetDocSyncDataNoImport returns unmarshalled value of the _sync xattr.

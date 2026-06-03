@@ -3285,15 +3285,13 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	syncDataBefore, err := collection.GetDocSyncData(ctx, nonImportedDocID)
 	require.NoError(t, err)
 	require.Greater(t, len(syncDataBefore.ChannelSetHistory), 0, "document should have channel history")
-	cvBeforeCompaction := syncDataBefore.CVOrRevTreeID()
-	require.NotEmpty(t, cvBeforeCompaction, "cv should be set before compaction")
 
 	// Step 6: Get document sequence for compaction point
 	docSeq := rt.GetDocumentSequence(nonImportedDocID)
 
 	// Step 7: Update the document body directly in the datastore to simulate external modification
 	// Read current document body
-	docBytesRaw, _, err := dataStore.GetRaw(ctx, nonImportedDocID)
+	docBytesRaw, _, err := dataStore.GetRaw(nonImportedDocID)
 	require.NoError(t, err)
 	var docBody map[string]any
 	err = json.Unmarshal(docBytesRaw, &docBody)
@@ -3307,7 +3305,7 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write modified body back to datastore
-	err = dataStore.SetRaw(ctx, nonImportedDocID, 0, nil, modifiedDocBytes)
+	err = dataStore.SetRaw(nonImportedDocID, 0, nil, modifiedDocBytes)
 	require.NoError(t, err)
 
 	// Step 8: Call CompactDocChannelHistory - this will trigger the auto-import check
@@ -3319,26 +3317,26 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	// Step 9: Verify compaction succeeded and history was removed
 	require.NoError(t, err)
 
-	xattrs, cas, err := dataStore.GetXattrs(ctx, nonImportedDocID, []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName})
+	xattrs, cas, err := dataStore.GetXattrs(ctx, nonImportedDocID, []string{base.SyncXattrName, base.MouXattrName})
 	require.NoError(t, err)
 	doc := db.NewDocument(nonImportedDocID)
-	err = doc.UnmarshalWithXattrs(ctx, nil, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], nil, nil, db.DocUnmarshalSync)
-	require.NoError(t, err)
-	err = base.JSONUnmarshal(xattrs[base.MouXattrName], &doc.MetadataOnlyUpdate)
+	doc.SyncData = db.SyncData{History: make(db.RevTree)}
+	unmarshalErr := base.JSONUnmarshal(xattrs[base.SyncXattrName], &doc.SyncData)
+	require.NoError(t, unmarshalErr)
+	var mou db.MetadataOnlyUpdate
+	err = base.JSONUnmarshal(xattrs[base.MouXattrName], &mou)
 	require.NoError(t, err)
 
 	// History should be compacted
 	assert.Less(t, len(doc.SyncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
-	// CV must be updated by the import triggered during compaction
-	assert.NotEqual(t, cvBeforeCompaction, doc.SyncData.CVOrRevTreeID(), "cv should be updated after compaction import")
 	// sync cas should be equal to doc cas
 	assert.Equal(t, doc.SyncData.Cas, base.CasToString(cas))
 	// verify _mou.cas
-	mouCAS := base.HexCasToUint64(doc.MetadataOnlyUpdate.HexCAS)
+	mouCAS := base.HexCasToUint64(mou.CAS)
 	assert.Equal(t, mouCAS, cas)
 
 	// Step 10: Verify document is still accessible and intact
-	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(ctx, nonImportedDocID)
+	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(nonImportedDocID)
 	require.NoError(t, err)
 	require.NotNil(t, docFromBucket)
 
