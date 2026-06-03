@@ -24,10 +24,10 @@ type TombstoneCompactionManager struct {
 	PurgedDocCount int64
 }
 
-var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &TombstoneCompactionManager{}
 
-func NewTombstoneCompactionManager() *BackgroundManager {
-	return &BackgroundManager{
+func NewTombstoneCompactionManager() *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:       "tombstone_compaction",
 		Process:    &TombstoneCompactionManager{},
 		terminator: base.NewSafeTerminator(),

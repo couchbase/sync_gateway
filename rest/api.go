@@ -453,10 +453,10 @@ func (h *handler) handlePostResync() error {
 
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-			err := h.db.ResyncManager.Start(h.ctx(), map[string]any{
-				"regenerateSequences": regenerateSequences,
-				"collections":         resyncPostReqBody.Scope,
-				"reset":               reset,
+			err := h.db.ResyncManager.Start(h.ctx(), db.ResyncOptions{
+				RegenerateSequences: regenerateSequences,
+				Collections:         resyncPostReqBody.Scope,
+				Reset:               reset,
 			})
 			if err != nil {
 				return err

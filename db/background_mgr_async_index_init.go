@@ -89,10 +89,10 @@ func (a *AsyncIndexInitManager) ResetStatus() {
 	return
 }
 
-var _ BackgroundManagerProcessI = &AsyncIndexInitManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &AsyncIndexInitManager{}
 
-func NewAsyncIndexInitManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
-	return &BackgroundManager{
+func NewAsyncIndexInitManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:    "index_init",
 		Process: &AsyncIndexInitManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{

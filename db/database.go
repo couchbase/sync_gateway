@@ -128,12 +128,12 @@ type DatabaseContext struct {
 	Options                     DatabaseContextOptions // Database Context Options
 	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
 	State                       uint32                 // The runtime state of the DB from a service perspective
-	ResyncManager               *BackgroundManager
-	TombstoneCompactionManager  *BackgroundManager
-	AttachmentCompactionManager *BackgroundManager
-	AttachmentMigrationManager  *BackgroundManager
-	AsyncIndexInitManager       *BackgroundManager
-	MetadataMigrationManager    *BackgroundManager
+	ResyncManager               *BackgroundManager[ResyncOptions]
+	TombstoneCompactionManager  *BackgroundManager[map[string]any]
+	AttachmentCompactionManager *BackgroundManager[map[string]any]
+	AttachmentMigrationManager  *BackgroundManager[map[string]any]
+	AsyncIndexInitManager       *BackgroundManager[map[string]any]
+	MetadataMigrationManager    *BackgroundManager[map[string]any]
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
@@ -792,17 +792,31 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
-// Returns a list of BackgroundManager it signalled to stop
-func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []*BackgroundManager) {
-	for _, manager := range []*BackgroundManager{
-		dbCtx.ResyncManager,
-		dbCtx.AttachmentCompactionManager,
-		dbCtx.TombstoneCompactionManager,
-		dbCtx.AsyncIndexInitManager,
-		dbCtx.AttachmentMigrationManager,
-		dbCtx.MetadataMigrationManager,
-	} {
-		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
+// Returns a list of StoppableBackgroundManager it signalled to stop.
+func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []StoppableBackgroundManager) {
+	// Nil-check each typed pointer before adding to the interface slice to avoid the
+	// nil-pointer-wrapped-in-interface pitfall.
+	var managers []StoppableBackgroundManager
+	if dbCtx.ResyncManager != nil {
+		managers = append(managers, dbCtx.ResyncManager)
+	}
+	if dbCtx.AttachmentCompactionManager != nil {
+		managers = append(managers, dbCtx.AttachmentCompactionManager)
+	}
+	if dbCtx.TombstoneCompactionManager != nil {
+		managers = append(managers, dbCtx.TombstoneCompactionManager)
+	}
+	if dbCtx.AsyncIndexInitManager != nil {
+		managers = append(managers, dbCtx.AsyncIndexInitManager)
+	}
+	if dbCtx.AttachmentMigrationManager != nil {
+		managers = append(managers, dbCtx.AttachmentMigrationManager)
+	}
+	if dbCtx.MetadataMigrationManager != nil {
+		managers = append(managers, dbCtx.MetadataMigrationManager)
+	}
+	for _, manager := range managers {
+		if !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
 			stopped = append(stopped, manager)
 		}
 	}
@@ -810,7 +824,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopp
 }
 
 // waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
-func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
+func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []StoppableBackgroundManager) {
 	timeout := time.NewTicker(waitTimeMax)
 	defer timeout.Stop()
 	retryInterval := 1 * time.Millisecond

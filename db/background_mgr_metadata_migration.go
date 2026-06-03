@@ -34,15 +34,15 @@ type MetadataMigrationManager struct {
 
 const MetadataMigrationManagerName = "metadata_migration"
 
-var _ BackgroundManagerProcessI = &MetadataMigrationManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &MetadataMigrationManager{}
 
 // errMetadataMigrationTerminated is the cancellation cause propagated to the run context when
 // the BackgroundManager terminator fires, so ops blocked on ctx (seq-counter retry loop, range
 // scan iteration) can distinguish an operator stop from a parent-context cancellation.
 var errMetadataMigrationTerminated = errors.New("metadata migration terminated by stop request")
 
-func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager {
-	return &BackgroundManager{
+func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:    MetadataMigrationManagerName,
 		Process: &MetadataMigrationManager{dbContext: dbContext},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
