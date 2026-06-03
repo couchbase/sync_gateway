@@ -628,7 +628,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
-	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), dbContext.ResyncManager.Resume)
+	var resumeResync resyncResumeFunc
+	if distributedResync {
+		resumeResync = dbContext.ResyncManager.Resume
+	}
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), resumeResync)
 
 	return dbContext, nil
 }

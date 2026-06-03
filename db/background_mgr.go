@@ -80,7 +80,6 @@ type BackgroundManager[O any] struct {
 	status                                 BackgroundManagerStatus
 	statusLock                             sync.RWMutex
 	name                                   string
-	lastError                              error
 	terminator                             *base.SafeTerminator
 	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
 	clusterAwareOptions                    *ClusterAwareBackgroundManagerOptions
@@ -173,7 +172,9 @@ func (b *BackgroundManager[O]) callUpdateDatabaseState(ctx context.Context, runn
 // errBackgroundManagerStatusNotRunning.  Only supported for multi-node background managers.
 func (b *BackgroundManager[O]) Resume(ctx context.Context) error {
 	if b.mode() != backgroundManagerModeMultiNode {
-		return fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
+		err := fmt.Errorf("Resume is only supported for multi-node background managers (process %q)", b.name)
+		base.WarnfCtx(ctx, "%v", err)
+		return err
 	}
 
 	docID := b.clusterAwareOptions.StatusDocID()
@@ -466,10 +467,6 @@ func (b *BackgroundManager[O]) getStatusWithPrevious(previous []byte) ([]byte, [
 		backgroundStatus.State = BackgroundProcessStateCompleted
 	}
 
-	if b.lastError != nil {
-		backgroundStatus.LastErrorMessage = b.lastError.Error()
-	}
-
 	return b.Process.GetProcessStatus(backgroundStatus, previous)
 }
 
@@ -539,16 +536,18 @@ func (b *BackgroundManager[O]) resetStatus() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.lastError = nil
-	b.clearLastErrorMessage()
+	b.setLastErrorMessage("")
 	b.Process.ResetStatus()
 }
 
 // setLastErrorMessage sets the last error message
-func (b *BackgroundManager[O]) clearLastErrorMessage() {
+func (b *BackgroundManager[O]) setLastErrorMessage(msg string) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
-	b.status.LastErrorMessage = ""
+	b.status.LastErrorMessage = msg
+	if msg != "" {
+		b.status.State = BackgroundProcessStateError
+	}
 }
 
 // Stop triggers a Stop of the background process. This will transition the state to BackgroundProcessStateStopping and
@@ -644,9 +643,7 @@ func (b *BackgroundManager[O]) setStartTime(startTime time.Time) {
 func (b *BackgroundManager[O]) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-
-	b.lastError = err
-	b.setRunState(BackgroundProcessStateError)
+	b.setLastErrorMessage(err.Error())
 	b.Terminate()
 }
 
