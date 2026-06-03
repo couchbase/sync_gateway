@@ -198,6 +198,15 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		collections[collection.GetCollectionID()] = collection
 
 	}
+	// add system cope and collection to we also purge metadata from the system collection to avoid
+	// interference between test runs
+	mobileCollectionName := base.MobileSystemScopeAndCollectionName()
+	collectionNames.Add(mobileCollectionName)
+	systemDS, err := bucket.NamedDataStore(ctx, mobileCollectionName)
+	if err != nil {
+		return err
+	}
+	collections[systemDS.GetCollectionID()] = systemDS
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
 		processedDocCount.Add(1)
