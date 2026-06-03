@@ -41,7 +41,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	// Assert there are no indexes on the datastores, to test server startup
-	dsNames, err := bucket.ListDataStores(ctx)
+	dsNames, err := base.GetAllDataStores(ctx, bucket)
 	require.NoError(t, err)
 	for _, dsName := range dsNames {
 		dataStore, err := bucket.NamedDataStore(ctx, dsName)
