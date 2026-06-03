@@ -17,30 +17,32 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// resyncResumeFunc is a callback function to call to resume a resync process.
+type resyncResumeFunc func(ctx context.Context) error
+
 type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
 }
 
 type DatabaseStateMgr struct {
-	CAS              uint64
-	dbStateID        string
-	metadataStore    base.DataStore
-	pollingInterval  time.Duration
-	resumeResyncFunc func(ctx context.Context) error
-	lock             sync.Mutex
-	terminator       chan struct{}
-	done             chan struct{}
+	CAS             uint64
+	dbStateID       string
+	metadataStore   base.DataStore
+	pollingInterval time.Duration
+	resumeResync    resyncResumeFunc
+	lock            sync.Mutex
+	terminator      chan struct{}
+	done            chan struct{}
 }
 
-// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. resumeResyncFunc is called by the polling loop
-// when a state change is detected with ResyncRunning set to true; it should resume the resync process.
-func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResyncFunc func(ctx context.Context) error) *DatabaseStateMgr {
+// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. If resumeResync is non-nil, it will be invoked when DatabaseState.ResyncRunning is detected as changed on the bucket.
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResync resyncResumeFunc) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
-		dbStateID:        dbStateID,
-		CAS:              0,
-		metadataStore:    metadataStore,
-		pollingInterval:  10 * time.Second,
-		resumeResyncFunc: resumeResyncFunc,
+		dbStateID:       dbStateID,
+		CAS:             0,
+		metadataStore:   metadataStore,
+		pollingInterval: 10 * time.Second,
+		resumeResync:    resumeResync,
 	}
 }
 
@@ -112,19 +114,20 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 	}()
 }
 
-// poll checks whether the state document has been updated and, if ResyncRunning is true, invokes
-// resumeResyncFunc. The locally held CAS is only advanced after resumeResyncFunc succeeds (or when no handler
-// action is required), so a transient resumeResyncFunc error leaves the CAS stale and the next tick retries.
+// poll checks whether the state document has been updated and calls appropriate callback functions. If the callback
+// functions return any errors, do not update the CAS so the next time poll runs, the callback function will rerun.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	newCAS, state, ok := dbMgr.isUpdated(ctx)
 	if !ok {
 		return
 	}
-	if state.ResyncRunning != nil && *state.ResyncRunning {
-		err := dbMgr.resumeResyncFunc(ctx)
-		if err != nil {
-			base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
-			return // leave CAS stale so next tick retries
+	if dbMgr.resumeResync != nil {
+		if state.ResyncRunning != nil && *state.ResyncRunning {
+			err := dbMgr.resumeResync(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
+				return // leave CAS stale so next tick retries
+			}
 		}
 	}
 	dbMgr.lock.Lock()
