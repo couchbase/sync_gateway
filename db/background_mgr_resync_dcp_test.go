@@ -354,6 +354,9 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
+		t.Skip("CBG-5441 skip test which flakes for distributed resync")
+	}
 	docsToCreate := 5000
 	// rosmar runs too quickly, increase doc count
 	if base.UnitTestUrlIsWalrus() {
