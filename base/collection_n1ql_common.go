@@ -395,7 +395,7 @@ func GetAllN1QLStores(ctx context.Context, bucket Bucket) ([]N1QLStore, error) {
 	for _, ds := range dataStores {
 		ns, ok := AsN1QLStore(ds)
 		if !ok {
-			return nil, RedactErrorf("%s.%s.%s is not a N1QLStore is of type %T", ds.GetName(), ds.ScopeName(), ds.CollectionName(), ds)
+			return nil, RedactErrorf("%s.%s.%s is not a N1QLStore is of type %T", MD(ds.GetName()), MD(ds.ScopeName()), MD(ds.CollectionName()), ds)
 		}
 		n1qlStores = append(n1qlStores, ns)
 	}

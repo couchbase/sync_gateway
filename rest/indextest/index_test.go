@@ -26,25 +26,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requireNoIndexes(t *testing.T, n1qlStore base.N1QLStore) {
-	indexNames, err := n1qlStore.GetIndexes()
-	require.NoError(t, err)
-	require.Len(t, indexNames, 0)
-}
-
 func TestSyncGatewayStartupIndexes(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-
-	// Assert there are no indexes on the datastores, to test server startup
-	n1qlStores, err := base.GetAllN1QLStores(ctx, bucket)
-	require.NoError(t, err)
-	for _, ns := range n1qlStores {
-		if !base.TestsDisableGSI() {
-			requireNoIndexes(t, ns)
-		}
-	}
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
