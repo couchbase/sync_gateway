@@ -86,7 +86,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseUsers []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseUsers)
+		err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 		require.NoError(t, err)
 		require.Equal(t, users, responseUsers)
 	})
@@ -103,7 +103,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseRoles []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseRoles)
+		err := json.Unmarshal(response.Body.Bytes(), &responseRoles)
 		require.NoError(t, err)
 		require.Equal(t, roles, responseRoles)
 	})
