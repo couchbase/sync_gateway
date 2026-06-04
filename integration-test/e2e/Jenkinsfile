@@ -1,0 +1,132 @@
+pipeline {
+    agent any
+    parameters {
+        choice(
+            name: 'BACKING_STORE',
+            choices: ['rosmar', 'cbs'],
+            description: 'Backing store to use'
+        )
+        choice(
+            name: 'TEST_DIRECTORY',
+            choices: ['tests/dev_e2e', 'tests/QE'],
+            description: 'Directory for tests'
+        )
+        string(
+            name: 'COUCHBASE_LITE_TESTS_COMMIT',
+            defaultValue: 'main',
+            description: 'Version of couchbase-lite-tests repo.'
+        )
+        activeChoiceHtml(
+            name: 'COUCHBASE_LITE_VERSION',
+            description: 'Version of Couchbase Lite C to build.',
+            choiceType: 'ET_FORMATTED_HTML',
+            omitValueField: true,
+            script: groovyScript(
+                script: [
+                    script: '''
+                        import jenkins.model.Jenkins
+                        def defaultVal = ""
+                        def errorMsg = ""
+                        try {
+                            def envVarsNodePropertyList = Jenkins.instance.globalNodeProperties.getAll(hudson.slaves.EnvironmentVariablesNodeProperty)
+                            if (envVarsNodePropertyList && envVarsNodePropertyList[0]) {
+                                defaultVal = envVarsNodePropertyList[0].envVars.get("DEFAULT_COUCHBASE_LITE_VERSION") ?: ""
+                            }
+                        } catch (Throwable t) {
+                            errorMsg = "Exception retrieving default: " + t.toString().replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
+                        }
+                        defaultVal = defaultVal.replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
+                        def html = "<input name='value' value='" + defaultVal + "' class='setting-input' type='text'>"
+                        if (errorMsg) {
+                            html += "<div class='description' style='color: #d9534f; margin-top: 5px;'>" + errorMsg + "</div>"
+                        }
+                        return html
+                    ''',
+                    sandbox: false
+                ],
+                fallbackScript: [
+                    script: '''
+                        return "<input name='value' value='' class='setting-input' type='text' placeholder='Enter COUCHBASE_LITE_VERSION...'>" +
+                               "<div class='description' style='color: #d9534f; margin-top: 5px;'>Error: Script approval required or execution failed. Check Jenkins script approvals if this is not populated. Please enter the version manually.</div>"
+                    ''',
+                    sandbox: false
+                ]
+            )
+        )
+        activeChoiceHtml(
+            name: 'COUCHBASE_SERVER_VERSION',
+            description: 'Version of Couchbase Server',
+            choiceType: 'ET_FORMATTED_HTML',
+            omitValueField: true,
+            script: groovyScript(
+                script: [
+                    script: '''
+                        import jenkins.model.Jenkins
+                        def defaultVal = ""
+                        def errorMsg = ""
+                        try {
+                            def envVarsNodePropertyList = Jenkins.instance.globalNodeProperties.getAll(hudson.slaves.EnvironmentVariablesNodeProperty)
+                            if (envVarsNodePropertyList && envVarsNodePropertyList[0]) {
+                                defaultVal = envVarsNodePropertyList[0].envVars.get("DEFAULT_COUCHBASE_SERVER_VERSION") ?: ""
+                            }
+                        } catch (Throwable t) {
+                            errorMsg = "Exception retrieving default: " + t.toString().replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
+                        }
+                        defaultVal = defaultVal.replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
+                        def html = "<input name='value' value='" + defaultVal + "' class='setting-input' type='text'>"
+                        if (errorMsg) {
+                            html += "<div class='description' style='color: #d9534f; margin-top: 5px;'>" + errorMsg + "</div>"
+                        }
+                        return html
+                    ''',
+                    sandbox: false
+                ],
+                fallbackScript: [
+                    script: '''
+                        return "<input name='value' value='' class='setting-input' type='text' placeholder='Enter COUCHBASE_SERVER_VERSION...'>" +
+                               "<div class='description' style='color: #d9534f; margin-top: 5px;'>Error: Script approval required or execution failed. Check Jenkins script approvals if this is not populated. Please enter the version manually.</div>"
+                    ''',
+                    sandbox: false
+                ]
+            )
+        )
+        string(
+            name: 'PYTEST_EXTRA_ARGS',
+            defaultValue: '',
+            description: 'Add additional args to pytest run, such is -k <test name> or -x'
+        )
+        string(
+            name: 'SG_COMMIT',
+            defaultValue: 'main',
+            description: 'Revision of Sync Gateway to build.'
+        )
+    }
+    stages {
+        stage('Checkout Scm') {
+            steps {
+                cleanWs()
+                git(
+                    url: 'git@github.com:couchbase/sync_gateway.git',
+                    branch: "${params.SG_COMMIT}",
+                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                )
+            }
+        }
+        stage('Run E2E Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    sh '/bin/bash ./integration-test/e2e/run_e2e_tests.sh'
+                }
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'couchbase-lite-tests/environment/local/sync_gateway.log', followSymlinks: false
+            junit allowEmptyResults: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml'
+        }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+        }
+    }
+}
