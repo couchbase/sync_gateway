@@ -166,7 +166,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 
 	// check for mismatch in collection id's between current collections on the db and prev run
 
-	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, currCollectionIDs)
 	if err != nil {
 		return err
 	}
@@ -340,28 +340,24 @@ func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *D
 	)
 }
 
+// matchingCollectionIDs returns true if the collectionIDs passed in are the same as the collectionIDs configured
+func (a *AttachmentMigrationManager) matchingCollectionIDs(collectionIDs []uint32) bool {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	rhs := slices.Clone(a.CollectionIDs)
+	slices.Sort(rhs)
+	lhs := slices.Clone(collectionIDs)
+	slices.Sort(lhs)
+	return slices.Compare(rhs, lhs) == 0
+}
+
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
-	// if we are on our first run, no collections will be defined on the manager yet
-	if len(a.CollectionIDs) == 0 {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, collectionIDs []uint32) error {
+	if a.matchingCollectionIDs(collectionIDs) {
 		return nil
 	}
-	if len(a.CollectionIDs) != len(collectionIDs) {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := a.purgeCheckpoints(ctx, database, a.MigrationID)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	slices.Sort(collectionIDs)
-	slices.Sort(a.CollectionIDs)
-	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
-	if purgeNeeded != 0 {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		return a.purgeCheckpoints(ctx, database, a.MigrationID)
-	}
-	return nil
+	base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
+	return a.purgeCheckpoints(ctx, database, a.MigrationID)
 }
 
 // getCollectionsForAttachmentMigration will get all datastores.
