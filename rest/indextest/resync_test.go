@@ -44,7 +44,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	rt.WaitForDBInitializationCompleted(dbName)
 
 	if !base.TestsDisableGSI() {
-		rest.DropAllTestIndexesIncludingPrimary(t, rt.TestBucket)
+		base.DropAllBucketIndexes(t, rt.TestBucket)
 	}
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)

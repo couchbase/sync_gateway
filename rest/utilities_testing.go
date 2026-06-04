@@ -2610,36 +2610,6 @@ func stringPtrOrNil(s string) *string {
 	return base.Ptr(s)
 }
 
-func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
-	dropAllNonPrimaryIndexes(t, tb.GetMetadataStore())
-
-	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := range dsNames {
-		ds, err := tb.GetNamedDataStore(i)
-		require.NoError(t, err)
-		dropAllNonPrimaryIndexes(t, ds)
-	}
-}
-
-func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
-
-	ctx := base.TestCtx(t)
-	n1qlStore, ok := base.AsN1QLStore(tb.GetMetadataStore())
-	require.True(t, ok)
-	dropErr := base.DropAllIndexes(ctx, n1qlStore)
-	require.NoError(t, dropErr)
-
-	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := range dsNames {
-		ds, err := tb.GetNamedDataStore(i)
-		require.NoError(t, err)
-		n1qlStore, ok := base.AsN1QLStore(ds)
-		require.True(t, ok)
-		dropErr := base.DropAllIndexes(ctx, n1qlStore)
-		require.NoError(t, dropErr)
-	}
-}
-
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
@@ -2679,18 +2649,6 @@ func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 		dbs = append(dbs, db)
 	}
 	return dbs
-}
-
-// Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements
-func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
-
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	require.True(t, ok)
-	ctx := base.TestCtx(t)
-	dropErr := base.DropAllIndexes(ctx, n1qlStore)
-	require.NoError(t, dropErr)
-	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
-	require.NoError(t, err, "Unable to recreate primary index")
 }
 
 // RequireBucketSpecificCredentials skips tests if bucket specific credentials are required

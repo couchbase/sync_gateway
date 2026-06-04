@@ -969,6 +969,18 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 	return nonDefaultDataStoreNames
 }
 
+// DropAllBucketIndexes removes all indexes from all N1QL stores in the bucket.
+func DropAllBucketIndexes(t testing.TB, tb *TestBucket) {
+	ctx := TestCtx(t)
+	n1qlStores, err := GetAllN1QLStores(ctx, tb)
+	require.NoError(t, err)
+
+	for _, ns := range n1qlStores {
+		dropErr := DropAllIndexes(ctx, ns)
+		require.NoError(t, dropErr)
+	}
+}
+
 // TestClusterSpec returns the cluster spec for the test bucket pool.
 func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
 	return GTestBucketPool.clusterSpec

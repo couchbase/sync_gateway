@@ -41,12 +41,21 @@ func MobileSystemScopeAndCollectionName() ScopeAndCollectionName {
 // (_system._mobile). ListDataStores intentionally omits the system scope so that callers don't
 // accidentally iterate over system collections; use this instead in paths that must account for
 // Sync Gateway's metadata in the system collection (e.g. purging documents, dropping indexes).
-func GetAllDataStores(ctx context.Context, bucket Bucket) ([]sgbucket.DataStoreName, error) {
-	dataStores, err := bucket.ListDataStores(ctx)
+func GetAllDataStores(ctx context.Context, bucket Bucket) ([]DataStore, error) {
+	dataStoreNames, err := bucket.ListDataStores(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataStores = append(dataStores, MobileSystemScopeAndCollectionName())
+	dataStoreNames = append(dataStoreNames, MobileSystemScopeAndCollectionName())
+
+	dataStores := make([]DataStore, 0, len(dataStoreNames))
+	for _, name := range dataStoreNames {
+		ds, err := bucket.NamedDataStore(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		dataStores = append(dataStores, ds)
+	}
 	return dataStores, nil
 }
 

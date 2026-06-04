@@ -191,13 +191,9 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 	}
 	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
 	collectionNames := base.NewCollectionNameSet()
-	for _, dataStoreName := range dataStores {
-		collection, err := bucket.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		collectionNames.Add(dataStoreName)
-		collections[collection.GetCollectionID()] = collection
+	for _, dataStore := range dataStores {
+		collectionNames.Add(dataStore)
+		collections[dataStore.GetCollectionID()] = dataStore
 	}
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
@@ -322,20 +318,13 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 		return err
 	}
 	// Include the mobile system collection so its indexes are dropped too.
-	dataStores, err := base.GetAllDataStores(ctx, b)
+	n1qlStores, err := base.GetAllN1QLStores(ctx, b)
 	if err != nil {
 		return err
 	}
-	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			return errors.New("attempting to empty indexes with non-N1QL store")
-		}
-		tbp.Logf(ctx, "dropping existing bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
+	for _, n1qlStore := range n1qlStores {
+		ctx := base.DataStoreLogCtx(ctx, n1qlStore)
+		tbp.Logf(ctx, "dropping existing bucket indexes %s", n1qlStore.GetName())
 		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 			return err
@@ -362,13 +351,8 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return err
 	}
 
-	for _, dataStoreName := range dataStores {
-		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
-		isSystemCollection := base.IsMobileCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName())
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
+	for _, dataStore := range dataStores {
+		ctx := base.DataStoreLogCtx(ctx, dataStore)
 
 		// Views
 		if skipGSI || base.TestsDisableGSI() {
@@ -399,7 +383,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
 		switch {
-		case isSystemCollection:
+		case base.IsMobileSystemCollection(dataStore):
 			options.MetadataIndexes = IndexesMetadataOnly
 		case base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()):
 			options.MetadataIndexes = IndexesAll
@@ -1139,7 +1123,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("primary datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Primary())
 	}
-	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
+	primaryCtx := base.DataStoreLogCtx(ctx, metadataStore.Primary())
 	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
 	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
 		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
@@ -1149,7 +1133,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("fallback datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Fallback())
 	}
-	fallbackCtx := base.CollectionLogCtx(ctx, metadataStore.Fallback().ScopeName(), metadataStore.Fallback().CollectionName())
+	fallbackCtx := base.DataStoreLogCtx(ctx, metadataStore.Fallback())
 	if err := InitializeIndexes(fallbackCtx, fallbackN1QL, options); err != nil {
 		return fmt.Errorf("initializing indexes on fallback metadata store: %w", err)
 	}

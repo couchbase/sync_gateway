@@ -26,13 +26,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
-	collection, err := base.AsCollection(dataStore)
-	require.NoError(t, err)
-	indexNames, err := collection.GetIndexes()
+func requireNoIndexes(t *testing.T, n1qlStore base.N1QLStore) {
+	indexNames, err := n1qlStore.GetIndexes()
 	require.NoError(t, err)
 	require.Len(t, indexNames, 0)
-
 }
 
 func TestSyncGatewayStartupIndexes(t *testing.T) {
@@ -41,13 +38,11 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	// Assert there are no indexes on the datastores, to test server startup
-	dsNames, err := base.GetAllDataStores(ctx, bucket)
+	n1qlStores, err := base.GetAllN1QLStores(ctx, bucket)
 	require.NoError(t, err)
-	for _, dsName := range dsNames {
-		dataStore, err := bucket.NamedDataStore(ctx, dsName)
-		require.NoError(t, err)
+	for _, ns := range n1qlStores {
 		if !base.TestsDisableGSI() {
-			requireNoIndexes(t, dataStore)
+			requireNoIndexes(t, ns)
 		}
 	}
 
@@ -279,7 +274,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+dbName+"/", "")
 	resp.RequireStatus(http.StatusOK)
 
-	rest.DropAllTestIndexesIncludingPrimary(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)

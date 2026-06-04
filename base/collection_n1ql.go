@@ -34,11 +34,11 @@ func IsDefaultCollection(scope, collection string) bool {
 	return collection == DefaultCollection && scope == DefaultScope
 }
 
-// IsMobileCollection returns true if the scope and collection are the mobile system collection
-// (_system._mobile).
-func IsMobileCollection(scope, collection string) bool {
+// IsMobileSystemCollection returns true datastore name is the
+// mobile system collection (_system._mobile).
+func IsMobileSystemCollection(dsn sgbucket.DataStoreName) bool {
 	// check collection first to early exit non-mobile collection
-	return collection == SystemCollectionMobile && scope == SystemScope
+	return dsn.CollectionName() == SystemCollectionMobile && dsn.ScopeName() == SystemScope
 }
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)

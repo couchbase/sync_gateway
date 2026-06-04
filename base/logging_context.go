@@ -16,6 +16,8 @@ import (
 	"math/rand"
 	"strconv"
 	"testing"
+
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // LogContextKey is used to key a LogContext value
@@ -258,6 +260,14 @@ func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionNam
 	newCtx.Bucket = bucketName
 	newCtx.Collection = collectionName
 	newCtx.Scope = scopeName
+	return LogContextWith(parent, &newCtx)
+}
+
+// DataStoreLogCtx extends the parent context with a scope and collection from a DataStoreName.
+func DataStoreLogCtx(parent context.Context, dataStoreName sgbucket.DataStoreName) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Collection = dataStoreName.CollectionName()
+	newCtx.Scope = dataStoreName.ScopeName()
 	return LogContextWith(parent, &newCtx)
 }
 
