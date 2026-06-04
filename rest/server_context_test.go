@@ -31,6 +31,108 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestIsPerDBMigrationInProgress verifies the guard that prevents a joining node from marking
+// its MetadataStore wrapper migration-complete while another node's migration is still running.
+func TestIsPerDBMigrationInProgress(t *testing.T) {
+	rt := NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+	conn := sc.BootstrapContext.Connection
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	primary, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	fallback := tb.DefaultDataStore(ctx)
+
+	const metadataID = "test-in-progress-guard"
+	metaKeys := base.NewMetadataKeys(metadataID)
+	seqKey := metaKeys.SyncSeqKey()
+	bucketName := tb.GetName()
+
+	// Seed legacy metadata on fallback.
+	_, err = fallback.Incr(ctx, seqKey, 0, 42, 0)
+	require.NoError(t, err)
+	legacyDocs := map[string][]byte{
+		metaKeys.UserKey("alice"):      []byte(`{"name":"alice"}`),
+		metaKeys.RoleKey("admin"):      []byte(`{"name":"admin"}`),
+		metaKeys.SessionKey("sess123"): []byte(`{"session_id":"sess123"}`),
+	}
+	for k, v := range legacyDocs {
+		_, err := fallback.AddRaw(ctx, k, 0, v)
+		require.NoError(t, err)
+	}
+
+	// Stamp the initial (empty) migration status doc.
+	_, err = conn.InsertMetadataMigrationStatus(ctx, bucketName, base.NewMetadataMigrationStatus())
+	require.NoError(t, err)
+
+	// --- Subtest: no per-DB entry → not in progress ---
+	t.Run("no entry means not in progress", func(t *testing.T) {
+		assert.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+			"missing per-DB entry should not be treated as in_progress")
+	})
+
+	// --- Subtest: per-DB entry is in_progress → guard fires ---
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		s.Databases[metadataID] = &base.DatabaseMigrationStatus{State: base.MigrationStateInProgress}
+		return nil
+	})
+	require.NoError(t, err)
+
+	t.Run("in_progress entry detected", func(t *testing.T) {
+		assert.True(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+			"in_progress per-DB entry must be detected")
+	})
+
+	// --- Subtest: full race scenario with the fix ---
+	// Migrate the seq counter (Node A's first step) and verify the guard keeps
+	// dual-read mode so fallback docs remain accessible.
+	nodeAStore := base.NewMetadataStore(primary, fallback)
+	db.MigrateSeqCounterForTest(t, ctx, nodeAStore, seqKey)
+
+	t.Run("race scenario with fix applied", func(t *testing.T) {
+		nodeBStore := base.NewMetadataStore(primary, fallback)
+
+		hasLegacy := probeLegacyPerDBMetadata(ctx, fallback, metadataID)
+		require.False(t, hasLegacy, "probe returns false — seq was migrated")
+
+		inProgress := sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID)
+		require.True(t, inProgress, "status doc shows in_progress — guard must fire")
+
+		// Node B does NOT call SetMigrationComplete — the fix keeps dual-read mode.
+		for k, want := range legacyDocs {
+			got, _, getErr := nodeBStore.GetRaw(ctx, k)
+			require.NoError(t, getErr, "with fix: wrapper must still find %s on fallback", k)
+			assert.Equal(t, want, got)
+		}
+
+		assert.False(t, nodeBStore.MigrationComplete(),
+			"wrapper must NOT be marked migration-complete while another node is mid-migration")
+	})
+
+	// --- Subtest: per-DB entry is complete → safe to mark complete ---
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		s.Databases[metadataID] = &base.DatabaseMigrationStatus{State: base.MigrationStateComplete}
+		return nil
+	})
+	require.NoError(t, err)
+
+	t.Run("complete entry means not in progress", func(t *testing.T) {
+		assert.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+			"completed migration should not be treated as in_progress")
+	})
+
+	// --- Subtest: status doc doesn't exist → not in progress ---
+	t.Run("missing status doc means not in progress", func(t *testing.T) {
+		assert.False(t, sc.isPerDBMigrationInProgress(ctx, "nonexistent-bucket", metadataID),
+			"missing status doc should not be treated as in_progress")
+	})
+}
+
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
 	// Reset this to 0
