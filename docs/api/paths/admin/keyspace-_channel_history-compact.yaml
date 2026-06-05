@@ -1,0 +1,74 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
+post:
+  summary: Compact Channel History of Document
+  description: |-
+    Compacts channel history for a specified document.  Channel history older than the specified sequence will be removed.
+
+    This endpoint removes all channel entries (for sequences before the specified sequence number where the document left the channel),
+    effectively cleaning up historical channel membership information while preserving active channels and recent changes.
+    This can be useful for reducing metadata size for documents that frequently gain and lose access to channels.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Application
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - seq
+          properties:
+            seq:
+              description: |-
+                Channel history having end sequences earlier than this sequence will be removed from the specified document's metadata.
+              type: integer
+              format: int64
+              minimum: 1
+              example: 12345
+  responses:
+    '200':
+      description: |-
+        Successfully compacted channel history from the specified document.
+        Returns a list of channels that were compacted.
+
+        If the response has an empty array, it means either no channels were compacted.
+
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              x-additionalPropertiesName: doc_id
+              type: array
+              items:
+                type: string
+              description: |-
+                Array of channel names that were compacted.
+            description: |-
+              A array of all the compacted channels
+            example:
+              compacted_channels:
+                - channel1
+                - channel2
+    '400':
+      description: 'Bad request. This could be due to invalid request parameters such as invalid seq value.'
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+    '403':
+      $ref: ../../components/responses.yaml#/Unauthorized-database
+
+  tags:
+    - Document
+  operationId: post_keyspace-_history-compact

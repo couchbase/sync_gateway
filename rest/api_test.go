@@ -3754,3 +3754,529 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
 	assert.Nil(t, body[db.BodyCV])
 }
+
+func TestDocumentChannelHistoryCompact(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("CompactDocChannelHistory requires XATTR-based metadata")
+	}
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	t.Run("basic compaction", func(t *testing.T) {
+		// Create a document with a single channel assignment
+		version := rt.PutDoc("doc1", `{"channels": ["test"]}`)
+		syncData, err := collection.GetDocSyncData(ctx, "doc1")
+		assert.NoError(t, err)
+
+		require.Len(t, syncData.ChannelSet, 1)
+		assert.Equal(t, db.ChannelSetEntry{Name: "test", Start: 1, End: 0}, syncData.ChannelSet[0])
+		assert.Len(t, syncData.ChannelSetHistory, 0)
+
+		// Remove all channels - ends the existing channel range in ChannelSet
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		syncData, err = collection.GetDocSyncData(ctx, "doc1")
+		assert.NoError(t, err)
+
+		require.Len(t, syncData.ChannelSet, 1)
+		assert.Equal(t, db.ChannelSetEntry{Name: "test", Start: 1, End: 2}, syncData.ChannelSet[0])
+		assert.Len(t, syncData.ChannelSetHistory, 0)
+
+		// Add multiple channels - generates history for the previously removed channel
+		_ = rt.UpdateDoc("doc1", version, `{"channels": ["test", "test2"]}`)
+		syncData, err = collection.GetDocSyncData(ctx, "doc1")
+		assert.NoError(t, err)
+
+		require.Len(t, syncData.ChannelSet, 2)
+		assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
+		assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
+		require.Len(t, syncData.ChannelSetHistory, 1)
+		assert.Equal(t, db.ChannelSetEntry{Name: "test", Start: 1, End: 2}, syncData.ChannelSetHistory[0])
+
+		// Compact history at sequence 2 and verify history is cleared
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc1", 2)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
+		syncData, err = collection.GetDocSyncData(ctx, "doc1")
+		assert.NoError(t, err)
+		assert.Zero(t, len(syncData.ChannelSetHistory))
+	})
+
+	t.Run("seq zero keeps all history", func(t *testing.T) {
+		// Compact with seq=0 should keep all entries
+		version := rt.PutDoc("doc2", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc2", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc2", version, `{"channels": ["test", "test2"]}`)
+
+		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc2")
+		require.NoError(t, err)
+		historyLenBefore := len(syncDataBefore.ChannelSetHistory)
+		require.Greater(t, historyLenBefore, 0)
+
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc2", 0)
+		require.NoError(t, err)
+		assert.Equal(t, []string{}, compactedChannels)
+
+		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc2")
+		require.NoError(t, err)
+		assert.Equal(t, historyLenBefore, len(syncDataAfter.ChannelSetHistory))
+	})
+
+	t.Run("compact all history", func(t *testing.T) {
+		// Compact with very high seq removes all history
+		version := rt.PutDoc("doc3", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc3", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc3", version, `{"channels": ["test", "test2"]}`)
+
+		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc3")
+		require.NoError(t, err)
+
+		// Compact with very high seq number
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc3", 999999)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
+
+		syncData, err := collection.GetDocSyncData(ctx, "doc3")
+		require.NoError(t, err)
+		assert.Zero(t, len(syncData.ChannelSetHistory))
+		assert.Equal(t, len(syncDataBefore.Channels), len(syncData.Channels))
+		assert.Equal(t, len(syncDataBefore.ChannelSet), len(syncData.ChannelSet))
+	})
+
+	t.Run("partial history compaction", func(t *testing.T) {
+		// Compact removes entries with End <= seq, keeps entries with End > seq
+		version := rt.PutDoc("doc4", `{"channels": ["a"]}`)
+		version = rt.UpdateDoc("doc4", version, `{"channels": []}`)
+
+		docSeq := rt.GetDocumentSequence("doc4")
+
+		version = rt.UpdateDoc("doc4", version, `{"channels": ["b"]}`)
+		_ = rt.UpdateDoc("doc4", version, `{"channels": []}`)
+
+		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc4")
+		require.NoError(t, err)
+		channelSetLenBefore := len(syncDataBefore.ChannelSet)
+		channelLenBefore := len(syncDataBefore.Channels)
+
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a"}, compactedChannels)
+
+		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
+		require.NoError(t, err)
+
+		for _, entry := range syncDataAfter.ChannelSet {
+			assert.True(t, entry.End == 0 || entry.End > docSeq)
+		}
+
+		for _, entry := range syncDataAfter.Channels {
+			assert.True(t, entry.Seq > docSeq)
+		}
+
+		// Should have fewer than before
+		assert.Less(t, len(syncDataAfter.Channels), channelLenBefore)
+		assert.Less(t, len(syncDataAfter.ChannelSet), channelSetLenBefore)
+	})
+
+	t.Run("invalid doc id", func(t *testing.T) {
+		// Empty doc ID should return 400 error
+		_, err := collection.CompactDocChannelHistory(ctx, "", 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "Invalid doc ID")
+	})
+
+	t.Run("nonexistent document", func(t *testing.T) {
+		// Compacting nonexistent doc should return not found error
+		_, err := collection.CompactDocChannelHistory(ctx, "nonexistent", 1)
+		assert.Error(t, err)
+
+		req := CompactDocChannelHistoryRequest{
+			Seq: 999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/nonexistent/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusNotFound)
+	})
+
+	t.Run("multiple channels with mixed history", func(t *testing.T) {
+		// Complex scenario with multiple channels
+		version := rt.PutDoc("doc7", `{"channels": ["a", "b"]}`)
+		version = rt.UpdateDoc("doc7", version, `{"channels": ["a"]}`)
+
+		docSeq := rt.GetDocumentSequence("doc7")
+
+		_ = rt.UpdateDoc("doc7", version, `{"channels": ["a", "c"]}`)
+
+		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc7")
+		require.NoError(t, err)
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"b"}, compactedChannels)
+
+		syncData, err := collection.GetDocSyncData(ctx, "doc7")
+		require.NoError(t, err)
+		// Should still have active channels
+		assert.Less(t, len(syncData.ChannelSet), len(syncDataBefore.ChannelSet))
+		assert.Less(t, len(syncData.Channels), len(syncDataBefore.Channels))
+	})
+
+	t.Run("compact empty history", func(t *testing.T) {
+		// Doc with no history should succeed
+		rt.PutDoc("doc8", `{"channels": ["test"]}`)
+
+		syncDataBefore, err := collection.GetDocSyncData(ctx, "doc8")
+		require.NoError(t, err)
+		assert.Len(t, syncDataBefore.ChannelSetHistory, 0)
+
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc8", 1)
+		require.NoError(t, err)
+		assert.Equal(t, []string{}, compactedChannels)
+
+		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc8")
+		require.NoError(t, err)
+		assert.Len(t, syncDataAfter.ChannelSetHistory, 0)
+	})
+
+	t.Run("verify xattr updates", func(t *testing.T) {
+		// Verify CAS is updated and no reimport happens
+		version := rt.PutDoc("doc10", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc10", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc10", version, `{"channels": ["test", "test2"]}`)
+		seq := rt.GetDocumentSequence("doc10")
+
+		// After compaction, document should still be accessible
+		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc10", seq)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"test"}, compactedChannels)
+
+		// Verify doc is still accessible with correct data
+		syncData, err := collection.GetDocSyncData(ctx, "doc10")
+		require.NoError(t, err)
+		assert.NotNil(t, syncData)
+	})
+
+	t.Run("test rest api endpoint", func(t *testing.T) {
+
+		version := rt.PutDoc("doc11", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc11", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc11", version, `{"channels": ["test", "test2"]}`)
+
+		version = rt.PutDoc("doc12", `{"channels": ["a", "b"]}`)
+		version = rt.UpdateDoc("doc12", version, `{"channels": ["a"]}`)
+		_ = rt.UpdateDoc("doc12", version, `{"channels": ["a", "c"]}`)
+		req := CompactDocChannelHistoryRequest{
+			Seq: 999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc11/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusOK)
+
+		var chanOutput1 map[string][]string
+		err = base.JSONUnmarshal(resp.Body.Bytes(), &chanOutput1)
+		require.NoError(t, err)
+
+		expectedOutput1 := map[string][]string{
+			"compacted_channels": []string{"test"},
+		}
+
+		assert.Equal(t, expectedOutput1, chanOutput1)
+
+		resp2 := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc12/compact", string(bodyBytes))
+		RequireStatus(t, resp2, http.StatusOK)
+
+		var chanOutput2 map[string][]string
+		err = base.JSONUnmarshal(resp2.Body.Bytes(), &chanOutput2)
+		require.NoError(t, err)
+
+		expectedOutput2 := map[string][]string{
+			"compacted_channels": []string{"b"},
+		}
+
+		assert.Equal(t, expectedOutput2, chanOutput2)
+	})
+
+	t.Run("seq zero returns 400", func(t *testing.T) {
+		req := CompactDocChannelHistoryRequest{
+			Seq: 0,
+		}
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc1/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusBadRequest)
+	})
+}
+
+// TestCompactNonImportedDocWithAutoImport verifies that when CompactDocChannelHistory is called
+// on a non-imported document, it automatically imports the document first before performing compaction.
+func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("CompactDocChannelHistory requires XATTR-based metadata")
+	}
+
+	// Create RestTester with AutoImport disabled to allow non-imported documents
+	rtConfig := RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false,
+		}},
+	}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig)
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	dataStore := rt.GetSingleDataStore()
+
+	// Step 1-6: Use REST API to create document with channel history
+	nonImportedDocID := "non_imported_doc"
+
+	// Create initial document with a channel
+	version := rt.PutDoc(nonImportedDocID, `{"type":"test","channels":["test_channel"]}`)
+
+	// Update to remove channel (creates history)
+	version = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":[]}`)
+
+	// Update again to add new channels (more history)
+	_ = rt.UpdateDoc(nonImportedDocID, version, `{"type":"test","channels":["test_channel","new_channel"]}`)
+
+	// Verify document has channel history
+	syncDataBefore, err := collection.GetDocSyncData(ctx, nonImportedDocID)
+	require.NoError(t, err)
+	require.Greater(t, len(syncDataBefore.ChannelSetHistory), 0, "document should have channel history")
+	cvBeforeCompaction := syncDataBefore.CVOrRevTreeID()
+	require.NotEmpty(t, cvBeforeCompaction, "cv should be set before compaction")
+
+	// Step 6: Get document sequence for compaction point
+	docSeq := rt.GetDocumentSequence(nonImportedDocID)
+
+	// Step 7: Update the document body directly in the datastore to simulate external modification
+	// Read current document body
+	docBytesRaw, _, err := dataStore.GetRaw(nonImportedDocID)
+	require.NoError(t, err)
+	var docBody map[string]any
+	err = json.Unmarshal(docBytesRaw, &docBody)
+	require.NoError(t, err)
+
+	// Modify document body with external changes
+	docBody["modified"] = true
+	docBody["updatedAt"] = "external_update"
+	docBody["externalVersion"] = 2
+	modifiedDocBytes, err := json.Marshal(docBody)
+	require.NoError(t, err)
+
+	// Write modified body back to datastore
+	err = dataStore.SetRaw(nonImportedDocID, 0, nil, modifiedDocBytes)
+	require.NoError(t, err)
+
+	// Step 8: Call CompactDocChannelHistory - this will trigger the auto-import check
+	// which verifies the document is imported (has valid _sync xattr) before compacting
+	compactedChannels, err := collection.CompactDocChannelHistory(ctx, nonImportedDocID, docSeq-1)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"test_channel"}, compactedChannels)
+
+	// Step 9: Verify compaction succeeded and history was removed
+	require.NoError(t, err)
+
+	xattrs, cas, err := dataStore.GetXattrs(ctx, nonImportedDocID, []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName})
+	require.NoError(t, err)
+	doc := db.NewDocument(nonImportedDocID)
+	err = doc.UnmarshalWithXattrs(ctx, nil, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], nil, nil, db.DocUnmarshalSync)
+	require.NoError(t, err)
+	err = base.JSONUnmarshal(xattrs[base.MouXattrName], &doc.MetadataOnlyUpdate)
+	require.NoError(t, err)
+
+	// History should be compacted
+	assert.Less(t, len(doc.SyncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
+	// CV must be updated by the import triggered during compaction
+	assert.NotEqual(t, cvBeforeCompaction, doc.SyncData.CVOrRevTreeID(), "cv should be updated after compaction import")
+	// sync cas should be equal to doc cas
+	assert.Equal(t, doc.SyncData.Cas, base.CasToString(cas))
+	// verify _mou.cas
+	mouCAS := base.HexCasToUint64(doc.MetadataOnlyUpdate.HexCAS)
+	assert.Equal(t, mouCAS, cas)
+
+	// Step 10: Verify document is still accessible and intact
+	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(nonImportedDocID)
+	require.NoError(t, err)
+	require.NotNil(t, docFromBucket)
+
+	// Verify the document body is intact after compaction
+	var finalBody map[string]any
+	err = json.Unmarshal(docFromBucket, &finalBody)
+	require.NoError(t, err)
+	assert.Equal(t, "test", finalBody["type"])
+}
+
+// TestGetDocChannelHistory tests the GetDocChannelHistory function and the
+// GET /{keyspace}/_channel_history/{docid} REST endpoint. It verifies that
+// the channel revocation history is correctly collected from the Channels map,
+// ChannelSet, and ChannelSetHistory, and that the REST endpoint returns the
+// same result serialised as JSON.
+func TestGetDocChannelHistory(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	t.Run("basic channel history", func(t *testing.T) {
+		// Create doc in chan1, revoke it, re-add with chan2, revoke again, then add chan3+chan2
+		version := rt.PutDoc("doc1", `{"channels": ["chan1"]}`)
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		chanRevocationSeq1 := rt.GetDocumentSequence("doc1")
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": ["chan1","chan2"]}`)
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		chanRevocationSeq2 := rt.GetDocumentSequence("doc1")
+
+		rt.UpdateDoc("doc1", version, `{"channels": ["chan3","chan2"]}`)
+
+		expectedChanHistory := map[string][]uint64{
+			"chan1": {chanRevocationSeq2, chanRevocationSeq1},
+			"chan2": {chanRevocationSeq2},
+		}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc1")
+		require.NoError(t, err)
+		require.Len(t, chanHistory, len(expectedChanHistory))
+		for chanName, expectedSeq := range expectedChanHistory {
+			assert.ElementsMatch(t, expectedSeq, chanHistory[chanName])
+		}
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		require.Len(t, apiResult, len(expectedChanHistory))
+		for chanName, expectedSeq := range expectedChanHistory {
+			assert.ElementsMatch(t, expectedSeq, apiResult[chanName])
+		}
+	})
+
+	t.Run("nonexistent document", func(t *testing.T) {
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "nonexistent")
+		assert.Error(t, err)
+		assert.Nil(t, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/nonexistent", "")
+		RequireStatus(t, resp, http.StatusNotFound)
+	})
+
+	t.Run("channel never revoked", func(t *testing.T) {
+		rt.PutDoc("doc2", `{"channels": ["chan1"]}`)
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc2")
+		require.NoError(t, err)
+		assert.Empty(t, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc2", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Empty(t, apiResult)
+	})
+
+	t.Run("channel revoked once", func(t *testing.T) {
+		version := rt.PutDoc("doc3", `{"channels": ["chan1"]}`)
+		rt.UpdateDoc("doc3", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc3")
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc3")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc3", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("multiple channels revoked simultaneously", func(t *testing.T) {
+		version := rt.PutDoc("doc4", `{"channels": ["chan1", "chan2", "chan3"]}`)
+		rt.UpdateDoc("doc4", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc4")
+		expected := map[string][]uint64{
+			"chan1": {revocationSeq},
+			"chan2": {revocationSeq},
+			"chan3": {revocationSeq},
+		}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc4")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc4", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("history from ChannelSetHistory overflow", func(t *testing.T) {
+		// Cycle a channel enough times to push entries into ChannelSetHistory
+		version := rt.PutDoc("doc5", `{"channels": ["chan1"]}`)
+		for range db.DocumentHistoryMaxEntriesPerChannel {
+			version = rt.UpdateDoc("doc5", version, `{"channels": []}`)
+			version = rt.UpdateDoc("doc5", version, `{"channels": ["chan1"]}`)
+		}
+		rt.UpdateDoc("doc5", version, `{"channels": []}`)
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc5")
+		require.NoError(t, err)
+		assert.NotEmpty(t, chanHistory["chan1"])
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc5", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.NotEmpty(t, apiResult["chan1"])
+	})
+
+	t.Run("partially revoked channels", func(t *testing.T) {
+		// Doc starts in chan1+chan2, chan1 is removed but chan2 stays active
+		version := rt.PutDoc("doc6", `{"channels": ["chan1", "chan2"]}`)
+		rt.UpdateDoc("doc6", version, `{"channels": ["chan2"]}`)
+		revocationSeq := rt.GetDocumentSequence("doc6")
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc6")
+		require.NoError(t, err)
+		// chan1 was revoked; chan2 is still active so it should not appear
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc6", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("channel re-added after revocation still appears in history", func(t *testing.T) {
+		version := rt.PutDoc("doc8", `{"channels": ["chan1"]}`)
+		version = rt.UpdateDoc("doc8", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc8")
+
+		// Re-add chan1 — it should still appear in history from the earlier revocation
+		rt.UpdateDoc("doc8", version, `{"channels": ["chan1"]}`)
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc8")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc8", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+}
