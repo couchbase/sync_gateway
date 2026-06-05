@@ -2406,14 +2406,22 @@ func probeLegacyPerDBMetadata(ctx context.Context, fallback base.DataStore, meta
 // Returns false (safe to mark complete) when the status doc is absent, the per-DB entry does
 // not exist, the entry is in any state other than in_progress, or the bootstrap connection is
 // unavailable. All of these mean either no migration has been attempted or it has already
-// finished.
+// finished. If status doc cannot be read it is safer to assume a migration is in progress than to
+// risk a false negative and prematurely disable fallback reads.
 func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketName, metadataID string) bool {
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return false
 	}
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
-		return false
+		if errors.Is(err, base.ErrNotFound) {
+			// only treat not found as "no migration" if the bucket-level status doc is missing — if the doc is present
+			// but unreadable for some reason (transient failure network/timeout), it's safer to assume a migration is
+			// in progress than to risk a false negative and prematurely disable fallback reads
+			return false
+		}
+		base.WarnfCtx(ctx, "Unable to read %s on bucket %q while checking per-DB migration status: %v — assuming migration in progress to avoid prematurely disabling fallback reads", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucketName), err)
+		return true
 	}
 	entry, ok := status.Databases[metadataID]
 	if !ok || entry == nil {

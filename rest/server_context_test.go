@@ -44,9 +44,9 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	primary, err := tb.GetNamedDataStore(0)
+	primary, err := rt.Bucket().NamedDataStore(ctx, base.ScopeAndCollectionName{Scope: base.SystemScope, Collection: base.SystemCollectionMobile})
 	require.NoError(t, err)
-	fallback := tb.DefaultDataStore(ctx)
+	fallback := rt.Bucket().DefaultDataStore(ctx)
 
 	const metadataID = "test-in-progress-guard"
 	metaKeys := base.NewMetadataKeys(metadataID)
