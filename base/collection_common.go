@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"slices"
@@ -34,6 +35,28 @@ func DefaultScopeAndCollectionName() ScopeAndCollectionName {
 
 func MobileSystemScopeAndCollectionName() ScopeAndCollectionName {
 	return ScopeAndCollectionName{Scope: SystemScope, Collection: SystemCollectionMobile}
+}
+
+// GetAllDataStores returns all data stores in the bucket, including the mobile system collection
+// (_system._mobile). ListDataStores intentionally omits the system scope so that callers don't
+// accidentally iterate over system collections; use this instead in paths that must account for
+// Sync Gateway's metadata in the system collection (e.g. purging documents, dropping indexes).
+func GetAllDataStores(ctx context.Context, bucket Bucket) ([]DataStore, error) {
+	dataStoreNames, err := bucket.ListDataStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataStoreNames = append(dataStoreNames, MobileSystemScopeAndCollectionName())
+
+	dataStores := make([]DataStore, 0, len(dataStoreNames))
+	for _, name := range dataStoreNames {
+		ds, err := bucket.NamedDataStore(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		dataStores = append(dataStores, ds)
+	}
+	return dataStores, nil
 }
 
 func NewScopeAndCollectionName(scope, collection string) ScopeAndCollectionName {

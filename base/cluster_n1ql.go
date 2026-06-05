@@ -75,6 +75,16 @@ func (cl *ClusterOnlyN1QLStore) GetName() string {
 	return cl.bucketName
 }
 
+// ScopeName returns the scope name for the N1QLStore.
+func (cl *ClusterOnlyN1QLStore) ScopeName() string {
+	return cl.scopeName
+}
+
+// CollectionName returns the collection name for the N1QLStore.
+func (cl *ClusterOnlyN1QLStore) CollectionName() string {
+	return cl.collectionName
+}
+
 func (cl *ClusterOnlyN1QLStore) BucketName() string {
 	return cl.bucketName
 }

@@ -51,6 +51,8 @@ const (
 // N1QLStore defines the set of operations Sync Gateway uses to manage and interact with N1QL
 type N1QLStore interface {
 	GetName() string
+	ScopeName() string
+	CollectionName() string
 	BuildDeferredIndexes(ctx context.Context, indexSet []string) error
 	CreateIndex(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreateIndexIfNotExists(ctx context.Context, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
@@ -379,6 +381,25 @@ func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 	}
 
 	return err
+}
+
+// GetAllN1QLStores returns all N1QL stores in the bucket, including the mobile system collection
+// (_system._mobile).
+func GetAllN1QLStores(ctx context.Context, bucket Bucket) ([]N1QLStore, error) {
+	dataStores, err := GetAllDataStores(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	n1qlStores := make([]N1QLStore, 0, len(dataStores))
+	for _, ds := range dataStores {
+		ns, ok := AsN1QLStore(ds)
+		if !ok {
+			return nil, RedactErrorf("%s.%s.%s is not a N1QLStore is of type %T", MD(ds.GetName()), MD(ds.ScopeName()), MD(ds.CollectionName()), ds)
+		}
+		n1qlStores = append(n1qlStores, ns)
+	}
+	return n1qlStores, nil
 }
 
 // AsN1QLStore tries to return the given DataStore as a N1QLStore.

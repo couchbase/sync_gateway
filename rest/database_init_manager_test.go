@@ -45,7 +45,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Drop indexes
-	dropAllNonPrimaryIndexes(t, tb.GetSingleDataStore())
+	base.DropAllBucketIndexes(t, tb)
 
 	// Async index creation
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
@@ -76,7 +76,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -163,7 +163,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -250,7 +250,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -336,14 +336,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	defer tb1.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb1)
+	base.DropAllBucketIndexes(t, tb1)
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb2)
+	base.DropAllBucketIndexes(t, tb2)
 
 	// Set up collection names and ScopesConfig for testing - use same collections for both buckets
 	scopesConfig := GetCollectionsConfig(t, tb1, 3)
@@ -433,7 +433,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)

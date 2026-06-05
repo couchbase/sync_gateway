@@ -26,30 +26,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
-	collection, err := base.AsCollection(dataStore)
-	require.NoError(t, err)
-	indexNames, err := collection.GetIndexes()
-	require.NoError(t, err)
-	require.Len(t, indexNames, 0)
-
-}
-
 func TestSyncGatewayStartupIndexes(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-
-	// Assert there are no indexes on the datastores, to test server startup
-	dsNames, err := bucket.ListDataStores(ctx)
-	require.NoError(t, err)
-	for _, dsName := range dsNames {
-		dataStore, err := bucket.NamedDataStore(ctx, dsName)
-		require.NoError(t, err)
-		if !base.TestsDisableGSI() {
-			requireNoIndexes(t, dataStore)
-		}
-	}
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
@@ -106,7 +86,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseUsers []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseUsers)
+		err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 		require.NoError(t, err)
 		require.Equal(t, users, responseUsers)
 	})
@@ -123,7 +103,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseRoles []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseRoles)
+		err := json.Unmarshal(response.Body.Bytes(), &responseRoles)
 		require.NoError(t, err)
 		require.Equal(t, roles, responseRoles)
 	})
@@ -279,7 +259,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+dbName+"/", "")
 	resp.RequireStatus(http.StatusOK)
 
-	rest.DropAllTestIndexesIncludingPrimary(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)

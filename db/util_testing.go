@@ -183,20 +183,17 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	var purgeErrors *base.MultiError
 
-	dataStores, err := bucket.ListDataStores(ctx)
+	// Include the mobile system collection so we also purge Sync Gateway metadata from it, avoiding
+	// interference between test runs.
+	dataStores, err := base.GetAllDataStores(ctx, bucket)
 	if err != nil {
 		return err
 	}
 	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
 	collectionNames := base.NewCollectionNameSet()
-	for _, dataStoreName := range dataStores {
-		collection, err := bucket.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		collectionNames.Add(dataStoreName)
-		collections[collection.GetCollectionID()] = collection
-
+	for _, dataStore := range dataStores {
+		collectionNames.Add(dataStore)
+		collections[dataStore.GetCollectionID()] = dataStore
 	}
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
@@ -320,20 +317,14 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 	if err != nil {
 		return err
 	}
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped too.
+	n1qlStores, err := base.GetAllN1QLStores(ctx, b)
 	if err != nil {
 		return err
 	}
-	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			return errors.New("attempting to empty indexes with non-N1QL store")
-		}
-		tbp.Logf(ctx, "dropping existing bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
+	for _, n1qlStore := range n1qlStores {
+		ctx := base.DataStoreLogCtx(ctx, n1qlStore)
+		tbp.Logf(ctx, "dropping existing bucket indexes %s", n1qlStore.GetName())
 		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 			return err
@@ -353,40 +344,15 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 
 	tbp.Logf(ctx, "Starting bucket init function")
 
-	if !skipGSI {
-		mobileSystemDataStore, err := b.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
-		if err != nil {
-			return err
-		}
-		systemCollectionInitOptions := InitializeIndexOptions{
-			UseXattrs:                  true,
-			NumReplicas:                0,
-			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-			LegacySyncDocsIndex:        false,
-			MetadataIndexes:            IndexesMetadataOnly,
-			NumPartitions:              DefaultNumIndexPartitions,
-		}
-		systemN1QLStore, ok := base.AsN1QLStore(mobileSystemDataStore)
-		if !ok {
-			return fmt.Errorf("bucket %T was not a N1QL store", b)
-		}
-
-		if err := InitializeIndexes(ctx, systemN1QLStore, systemCollectionInitOptions); err != nil {
-			return err
-		}
-	}
-
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped and recreated alongside the
+	// other collections, rather than being left with stale indexes between bucket reuses.
+	dataStores, err := base.GetAllDataStores(ctx, b)
 	if err != nil {
 		return err
 	}
 
-	for _, dataStoreName := range dataStores {
-		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
+	for _, dataStore := range dataStores {
+		ctx := base.DataStoreLogCtx(ctx, dataStore)
 
 		// Views
 		if skipGSI || base.TestsDisableGSI() {
@@ -416,7 +382,10 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			MetadataIndexes:            IndexesWithoutMetadata,
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
-		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+		switch {
+		case base.IsMobileSystemCollection(dataStore):
+			options.MetadataIndexes = IndexesMetadataOnly
+		case base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()):
 			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
@@ -1154,7 +1123,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("primary datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Primary())
 	}
-	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
+	primaryCtx := base.DataStoreLogCtx(ctx, metadataStore.Primary())
 	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
 	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
 		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
@@ -1164,7 +1133,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("fallback datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Fallback())
 	}
-	fallbackCtx := base.CollectionLogCtx(ctx, metadataStore.Fallback().ScopeName(), metadataStore.Fallback().CollectionName())
+	fallbackCtx := base.DataStoreLogCtx(ctx, metadataStore.Fallback())
 	if err := InitializeIndexes(fallbackCtx, fallbackN1QL, options); err != nil {
 		return fmt.Errorf("initializing indexes on fallback metadata store: %w", err)
 	}
