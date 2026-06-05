@@ -2508,9 +2508,10 @@ func (h *handler) handleGetClusterInfo() error {
 			// Grab metadata migration status for bucket, if it exists, and add to response
 			migrationStatus, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
 			if err != nil && !base.IsDocNotFoundError(err) {
-				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during /_cluster_info: %v. Returning response without this information.", base.MD(bucketName), err)
+			} else {
+				bucketInfo.MigrationStatus = migrationStatus
 			}
-			bucketInfo.MigrationStatus = migrationStatus
 
 			// If there's a cached bootstrap target for this bucket, add it to the response. getGatewayRegistry above
 			// can populate the cache, so we need to refresh for each iteration.

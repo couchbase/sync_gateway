@@ -3049,12 +3049,13 @@ Status:
             enum:
               - fallback_active
               - fallback_inactive
+            x-enumDescriptions:
+              fallback_active: Dual store is in place and reads fall back to `_default._default` when not found in `_system._mobile` (migration not yet complete).
+              fallback_inactive: Dual store is in place but migration has completed and fallback reads are skipped.
             description: |-
-              Classification of this database's dual metadata store. `fallback_active` means
-              the dual store is in place and reads fall back to `_default._default` (migration
-              not yet complete); `fallback_inactive` means the dual store is in place but
-              migration has completed and fallback reads are skipped. Omitted when this
-              database does not use a dual metadata store.
+              Classification of this database's dual metadata store. Enabled via the
+              `use_system_metadata_collection` option in either the database or bootstrap
+              configuration. Omitted when this database does not use a dual metadata store.
     version:
       description: |-
         The product version including the build number and edition (ie. `EE` or `CE`).
@@ -3535,13 +3536,16 @@ BucketInfo:
     bootstrap_target:
       type: string
       enum:
-        - system_mobile
-        - default
+        - _system._mobile
+        - _default._default
+        - unknown
+      x-enumDescriptions:
+        _system._mobile: Bootstrap docs live in the `_system._mobile` collection (opted-in or migrated).
+        _default._default: Bootstrap docs live in the `_default._default` collection (legacy registry or no opt-in).
+        unknown: Target was cached but could not be resolved to a known collection.
       description: |-
         Cached location of this bucket's bootstrap documents (registry, dbconfig, cbgt cfg) on
-        this node. `system_mobile` means bootstrap docs live in `_system._mobile`; `default`
-        means they live in `_default._default` (legacy registry or no opt-in). Omitted when the
-        target has not yet been resolved on this node.
+        this node. Omitted when the target has not yet been resolved on this node.
 
 MetadataMigrationStatus:
   type: object
@@ -3572,9 +3576,11 @@ DatabaseMigrationStatus:
         - pending
         - in_progress
         - complete
-      description: |-
-        Per-database migration state. `in_progress` indicates a node currently holds the
-        BackgroundManager heartbeat lease for this database.
+      x-enumDescriptions:
+        pending: Migration has not yet started for this database.
+        in_progress: A node currently holds the BackgroundManager heartbeat lease and is actively migrating this database.
+        complete: All metadata for this database has been migrated to `_system._mobile`.
+      description: Per-database migration state.
     started_at:
       type: string
       format: date-time
@@ -3597,9 +3603,12 @@ BootstrapMigrationStatus:
       enum:
         - pending
         - complete
+      x-enumDescriptions:
+        pending: Bootstrap migration has not yet completed; one or more per-database entries are still pending or in progress.
+        complete: All per-database migrations are complete and bootstrap docs have been moved to `_system._mobile`.
       description: |-
-        Bucket-level bootstrap state. The bucket-level block transitions from `pending` to
-        `complete` only after every per-database entry is complete; it never reports `in_progress`.
+        Bucket-level bootstrap state. Transitions from `pending` to `complete` only after every
+        per-database entry is complete; it never reports `in_progress`.
     completed_at:
       type: string
       format: date-time

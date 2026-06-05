@@ -119,9 +119,9 @@ type CouchbaseCluster struct {
 	useSystemMetadataCollection bool                    // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
 	migrationComplete           atomic.Bool             // When set, fallback reads are skipped even if useSystemMetadataCollection is true
 	// bucketBootstrapTargets caches the resolved bootstrap-doc location for each bucket.
-	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint). Values
-	// are bucketBootstrapTarget; absence of an entry means "fall back to the connection-wide flag."
-	bucketBootstrapTargets sync.Map
+	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint).
+	// Absence of an entry means "fall back to the connection-wide flag."
+	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
 	useGOCBFastFailRetry   bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
@@ -137,12 +137,11 @@ const (
 func (t bucketBootstrapTarget) String() string {
 	switch t {
 	case bucketTargetSystemMobile:
-		return "system_mobile"
+		return "_system._mobile"
 	case bucketTargetDefault:
-		return "default"
-	default:
-		return ""
-	}
+		return "_default._default"
+	} // exhaustive:enforce
+	return ""
 }
 
 type BucketConnectionMode int
@@ -386,7 +385,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 	cached, hasCachedTarget := cc.bucketBootstrapTargets.Load(b.Name())
 	useSystemMobile := cc.useSystemMetadataCollection
 	if hasCachedTarget {
-		useSystemMobile = cached.(bucketBootstrapTarget) == bucketTargetSystemMobile
+		useSystemMobile = cached == bucketTargetSystemMobile
 	}
 	if !useSystemMobile {
 		// When this bucket has any opt-in indication — either cached as bucketTargetDefault
@@ -413,7 +412,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 // the bucket-level migration). A no-op when the cache already says _system._mobile, since the
 // systemMobile→default fallback direction is the legitimate in-progress-migration legacy path.
 func (cc *CouchbaseCluster) noteBucketFallbackHit(bucketName string) {
-	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached.(bucketBootstrapTarget) == bucketTargetSystemMobile {
+	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached == bucketTargetSystemMobile {
 		return
 	}
 	cc.bucketBootstrapTargets.Store(bucketName, bucketTargetSystemMobile)
@@ -454,12 +453,13 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 // The snapshot is not guaranteed to be consistent across concurrent updates.
 func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
 	targets := make(map[string]string)
-	cc.bucketBootstrapTargets.Range(func(key, value any) bool {
-		if s := value.(bucketBootstrapTarget).String(); s != "" {
-			targets[key.(string)] = s
+	for key, value := range cc.bucketBootstrapTargets.Range {
+		if s := value.String(); s != "" {
+			targets[key] = s
+		} else {
+			targets[key] = "unknown"
 		}
-		return true
-	})
+	}
 	return targets
 }
 

@@ -16,7 +16,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -33,7 +32,7 @@ type RosmarCluster struct {
 	migrationComplete           atomic.Bool // When set, fallback reads are skipped even if useSystemMetadataCollection is true
 	// bucketBootstrapTargets caches the resolved bootstrap-doc target for each bucket.
 	// Mirrors CouchbaseCluster.bucketBootstrapTargets — see that comment for the decision tree.
-	bucketBootstrapTargets sync.Map
+	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
 }
 
 // NewRosmarCluster creates a from a given URL. useSystemMetadataCollection mirrors
@@ -162,7 +161,7 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 	cached, hasCachedTarget := c.bucketBootstrapTargets.Load(bucketName)
 	useSystemMobile := c.useSystemMetadataCollection
 	if hasCachedTarget {
-		useSystemMobile = cached.(bucketBootstrapTarget) == bucketTargetSystemMobile
+		useSystemMobile = cached == bucketTargetSystemMobile
 	}
 	if !useSystemMobile {
 		// Reads/writes route to default first. When this bucket has any opt-in indication —
@@ -197,7 +196,7 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 // the bucket-level migration). A no-op when the cache already says _system._mobile, since the
 // systemMobile→default fallback direction is the legitimate in-progress-migration legacy path.
 func (c *RosmarCluster) noteBucketFallbackHit(bucketName string) {
-	if cached, ok := c.bucketBootstrapTargets.Load(bucketName); ok && cached.(bucketBootstrapTarget) == bucketTargetSystemMobile {
+	if cached, ok := c.bucketBootstrapTargets.Load(bucketName); ok && cached == bucketTargetSystemMobile {
 		return
 	}
 	c.bucketBootstrapTargets.Store(bucketName, bucketTargetSystemMobile)
@@ -676,12 +675,13 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 // The snapshot is not guaranteed to be consistent across concurrent updates.
 func (c *RosmarCluster) CachedBootstrapTargets() map[string]string {
 	targets := make(map[string]string)
-	c.bucketBootstrapTargets.Range(func(key, value any) bool {
-		if s := value.(bucketBootstrapTarget).String(); s != "" {
-			targets[key.(string)] = s
+	for key, value := range c.bucketBootstrapTargets.Range {
+		if s := value.String(); s != "" {
+			targets[key] = s
+		} else {
+			targets[key] = "unknown"
 		}
-		return true
-	})
+	}
 	return targets
 }
 
