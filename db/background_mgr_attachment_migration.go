@@ -340,15 +340,22 @@ func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *D
 	)
 }
 
+// getCollectionIDs returns a copy of the sorted collection IDs that are being processed in the current migration run.
+func (a *AttachmentMigrationManager) getCollectionIDs() []uint32 {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	c := slices.Clone(a.CollectionIDs)
+	slices.Sort(c)
+	return c
+}
+
 // matchingCollectionIDs returns true if the collectionIDs passed in are the same as the collectionIDs configured
 func (a *AttachmentMigrationManager) matchingCollectionIDs(collectionIDs []uint32) bool {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
-	rhs := slices.Clone(a.CollectionIDs)
-	slices.Sort(rhs)
 	lhs := slices.Clone(collectionIDs)
 	slices.Sort(lhs)
-	return slices.Compare(rhs, lhs) == 0
+	return slices.Compare(a.getCollectionIDs(), lhs) == 0
 }
 
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
