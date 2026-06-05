@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,7 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 
 	// --- Subtest: no per-DB entry → not in progress ---
 	t.Run("no entry means not in progress", func(t *testing.T) {
-		assert.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, metadataID,
 			"missing per-DB entry should not be treated as in_progress")
 	})
 
@@ -84,7 +85,7 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("in_progress entry detected", func(t *testing.T) {
-		assert.True(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		requireDBMigrationInProgress(t, sc, ctx, bucketName, metadataID,
 			"in_progress per-DB entry must be detected")
 	})
 
@@ -100,8 +101,8 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 		hasLegacy := probeLegacyPerDBMetadata(ctx, fallback, metadataID)
 		require.False(t, hasLegacy, "probe returns false — seq was migrated")
 
-		inProgress := sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID)
-		require.True(t, inProgress, "status doc shows in_progress — guard must fire")
+		requireDBMigrationInProgress(t, sc, ctx, bucketName, metadataID,
+			"status doc shows in_progress — guard must fire")
 
 		// Node B does NOT call SetMigrationComplete — the fix keeps dual-read mode.
 		for k, want := range legacyDocs {
@@ -122,15 +123,31 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("complete entry means not in progress", func(t *testing.T) {
-		assert.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, metadataID,
 			"completed migration should not be treated as in_progress")
 	})
 
 	// --- Subtest: status doc doesn't exist → not in progress ---
 	t.Run("missing status doc means not in progress", func(t *testing.T) {
-		assert.False(t, sc.isPerDBMigrationInProgress(ctx, "nonexistent-bucket", metadataID),
+		requireDBMigrationNotInProgress(t, sc, ctx, "nonexistent-bucket", metadataID,
 			"missing status doc should not be treated as in_progress")
 	})
+}
+
+// requireDBMigrationInProgress asserts that isPerDBMigrationInProgress reports true, logging the
+// bucketName and metadataID under test if the assertion fails.
+func requireDBMigrationInProgress(t *testing.T, sc *ServerContext, ctx context.Context, bucketName, metadataID, msg string) {
+	t.Helper()
+	require.True(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		"%s (bucketName=%q, metadataID=%q)", msg, bucketName, metadataID)
+}
+
+// requireDBMigrationNotInProgress asserts that isPerDBMigrationInProgress reports false, logging the
+// bucketName and metadataID under test if the assertion fails.
+func requireDBMigrationNotInProgress(t *testing.T, sc *ServerContext, ctx context.Context, bucketName, metadataID, msg string) {
+	t.Helper()
+	require.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		"%s (bucketName=%q, metadataID=%q)", msg, bucketName, metadataID)
 }
 
 func TestRecordGoroutineHighwaterMark(t *testing.T) {

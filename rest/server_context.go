@@ -2414,7 +2414,7 @@ func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketN
 	}
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
-		if errors.Is(err, base.ErrNotFound) {
+		if base.IsDocNotFoundError(err) {
 			// only treat not found as "no migration" if the bucket-level status doc is missing — if the doc is present
 			// but unreadable for some reason (transient failure network/timeout), it's safer to assume a migration is
 			// in progress than to risk a false negative and prematurely disable fallback reads
@@ -2425,6 +2425,7 @@ func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketN
 	}
 	entry, ok := status.Databases[metadataID]
 	if !ok || entry == nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "No entry for metadataID %q in bucket %q metadata-migration status doc — treating as no migration in progress (expected for a new database with no legacy metadata to migrate)", base.MD(metadataID), base.MD(bucketName))
 		return false
 	}
 	return entry.State == base.MigrationStateInProgress
