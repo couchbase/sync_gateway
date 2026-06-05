@@ -877,10 +877,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	if base.UnitTestUrlIsWalrus() || !base.IsEnterpriseEdition() {
-		// CBG-5418: debug distributed resync processing more documents than expected
-		assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
-	}
+	assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
@@ -890,10 +887,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	if base.UnitTestUrlIsWalrus() || !base.IsEnterpriseEdition() {
-		// CBG-5418: debug distributed resync processing more documents than expected
-		assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
-	}
+	assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
