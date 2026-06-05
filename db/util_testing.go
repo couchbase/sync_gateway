@@ -1191,3 +1191,10 @@ func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) 
 func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
 	db.RestartChangeListener(t, true)
 }
+
+// MigrateSeqCounterForTest exposes the unexported migrateSeqCounter for cross-package tests.
+func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.MetadataStore, seqKey string) {
+	t.Helper()
+	stats := &MigrationStats{}
+	require.NoError(t, migrateSeqCounter(ctx, ms, seqKey, stats))
+}

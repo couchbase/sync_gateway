@@ -928,6 +928,13 @@ type MigrationStats struct {
 	SeqPoisonPillApplied *SgwIntStat `json:"seq_poison_pill_applied"`
 	// Cumulative count of MigrateMetadata pass invocations.
 	Passes *SgwIntStat `json:"passes"`
+	// AbandonedRuns counts metadata migration runs that the orchestrator gave up on after the
+	// bounded pass loop exhausted itself without a clean pass (zero unknown-prefix remaining
+	// AND zero per-doc errors on the same pass). Runs that exit early via a hard error from
+	// MigrateMetadata, or are stopped cooperatively via the terminator, are not counted here —
+	// this stat is specifically the "we hit the retry ceiling" failure mode, useful for
+	// distinguishing transient/abortive errors from buckets that need operator intervention.
+	AbandonedRuns *SgwIntStat `json:"abandoned_runs"`
 }
 
 type SgwStatWrapper interface {
@@ -2577,6 +2584,10 @@ func (d *DbStats) InitMigrationStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.AbandonedRuns, err = NewIntStat(SubsystemMetadataMigration, "abandoned_runs", StatUnitNoUnits, MetadataMigrationAbandonedRunsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	d.MigrationStats = resUtil
 	return nil
 }
@@ -2589,6 +2600,7 @@ func (d *DbStats) unregisterMigrationStats() {
 	prometheus.Unregister(d.MigrationStats.Errors)
 	prometheus.Unregister(d.MigrationStats.SeqPoisonPillApplied)
 	prometheus.Unregister(d.MigrationStats.Passes)
+	prometheus.Unregister(d.MigrationStats.AbandonedRuns)
 }
 
 func (d *DbStats) MetadataMigration() *MigrationStats {

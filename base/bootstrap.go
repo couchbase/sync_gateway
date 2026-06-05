@@ -86,6 +86,9 @@ type BootstrapConnection interface {
 	// information about whether a new DB on this bucket has opted in (e.g., PUT /<db>/ with
 	// use_system_metadata_collection: true) so the very first bootstrap doc lands correctly.
 	SetBucketBootstrapTargetHint(ctx context.Context, bucket string, optInHint bool) error
+	// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+	// The snapshot is not guaranteed to be consistent across concurrent updates.
+	CachedBootstrapTargets() map[string]string
 	// Close releases any long-lived connections
 	Close()
 }
@@ -116,9 +119,9 @@ type CouchbaseCluster struct {
 	useSystemMetadataCollection bool                    // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
 	migrationComplete           atomic.Bool             // When set, fallback reads are skipped even if useSystemMetadataCollection is true
 	// bucketBootstrapTargets caches the resolved bootstrap-doc location for each bucket.
-	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint). Values
-	// are bucketBootstrapTarget; absence of an entry means "fall back to the connection-wide flag."
-	bucketBootstrapTargets sync.Map
+	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint).
+	// Absence of an entry means "fall back to the connection-wide flag."
+	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
 	useGOCBFastFailRetry   bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
@@ -130,6 +133,16 @@ const (
 	bucketTargetDefault      bucketBootstrapTarget = iota // _default._default — legacy registry or no opt-in
 	bucketTargetSystemMobile                              // _system._mobile primary; _default._default fallback until migration complete
 )
+
+func (t bucketBootstrapTarget) String() string {
+	switch t {
+	case bucketTargetSystemMobile:
+		return "_system._mobile"
+	case bucketTargetDefault:
+		return "_default._default"
+	} // exhaustive:enforce
+	return ""
+}
 
 type BucketConnectionMode int
 
@@ -372,7 +385,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 	cached, hasCachedTarget := cc.bucketBootstrapTargets.Load(b.Name())
 	useSystemMobile := cc.useSystemMetadataCollection
 	if hasCachedTarget {
-		useSystemMobile = cached.(bucketBootstrapTarget) == bucketTargetSystemMobile
+		useSystemMobile = cached == bucketTargetSystemMobile
 	}
 	if !useSystemMobile {
 		// When this bucket has any opt-in indication — either cached as bucketTargetDefault
@@ -399,7 +412,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 // the bucket-level migration). A no-op when the cache already says _system._mobile, since the
 // systemMobile→default fallback direction is the legitimate in-progress-migration legacy path.
 func (cc *CouchbaseCluster) noteBucketFallbackHit(bucketName string) {
-	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached.(bucketBootstrapTarget) == bucketTargetSystemMobile {
+	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached == bucketTargetSystemMobile {
 		return
 	}
 	cc.bucketBootstrapTargets.Store(bucketName, bucketTargetSystemMobile)
@@ -434,6 +447,20 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 	return nil
+}
+
+// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+// The snapshot is not guaranteed to be consistent across concurrent updates.
+func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
+	targets := make(map[string]string)
+	for key, value := range cc.bucketBootstrapTargets.Range {
+		if s := value.String(); s != "" {
+			targets[key] = s
+		} else {
+			targets[key] = "unknown"
+		}
+	}
+	return targets
 }
 
 // probeRegistryLocation checks both collections for an existing _sync:registry doc. Returns

@@ -4189,3 +4189,76 @@ func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, 
 	}
 	require.Equal(t, expectedCount, actualCount)
 }
+
+func TestRetrieveMetadataMigrationStatusInClusterInfo(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	metadID := rt.GetDatabase().Options.MetadataID
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var clusterInfoResponse rest.ClusterInfo
+	err := json.Unmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Nil(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus)
+
+	// update doc to trigger migration status update
+	dbCfg := rt.NewDbConfig()
+	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
+
+	// flush to ensure config is applied before starting migration
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	// start migration
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	require.NotNil(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus)
+	assert.Equal(t, base.MigrationStateComplete, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus.Databases[metadID].State)
+}
+
+// TestRetrieveMetadataStoreModeInStatus tests the three-state metadata_store_mode signal on /_status:
+//   - default DB: not a dual store, field omitted (empty string post-unmarshal)
+//   - after opt-in, pre-migration: dual store with fallback reads active
+//   - after migration completes: dual store with fallback reads inactive
+func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var statusResponse rest.Status
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	require.Contains(t, statusResponse.Databases, "db")
+	assert.Empty(t, statusResponse.Databases["db"].MetadataStoreMode, "default DB should not report a dual-store mode")
+
+	// Opt in to the dual metadata store but do not yet start the migration.
+	dbCfg := rt.NewDbConfig()
+	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	assert.Equal(t, base.MetadataStoreModeFallbackActive, statusResponse.Databases["db"].MetadataStoreMode)
+
+	// Run the migration to completion — mode should flip to fallback_inactive.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
+}

@@ -614,6 +614,23 @@ func TestMetadataMigrationListsPrincipalsAfterCompletion(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "observer", "roles must be listable after migration completes")
 }
 
+// TestBootstrapTargetOmittedWhenNoCachedValue verifies that bootstrap_target is omitted from the
+// /_cluster_info response when no database has been created on the bucket. Without a database, no
+// _sync:registry exists, so probeRegistryLocation finds nothing authoritative and the per-bucket
+// target cache stays empty — matching the window between node startup and the first DB creation.
+func TestBootstrapTargetOmittedWhenNoCachedValue(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	var clusterInfoResponse rest.ClusterInfo
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.NotContains(t, resp.Body.String(), "bootstrap_target", "cluster info must not be empty")
+	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Empty(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+}
+
 // TestMetadataMigrationEndToEndBucketComplete is a full end-to-end check of the bucket-level
 // completion handoff: migrate a single database's metadata (a user doc), then assert that once
 // it is the last database in the bucket to finish, PostMetadataMigrationCompleteFunc migrates
@@ -629,6 +646,13 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	var clusterInfoResponse rest.ClusterInfo
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Equal(t, "_default._default", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -667,6 +691,13 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 		assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
 		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
 	}, 30*time.Second, 200*time.Millisecond)
+
+	clusterInfoResponse = rest.ClusterInfo{}
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err = base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Equal(t, "_system._mobile", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 }
 
 // TestMetadataMigrationRESTStartRejectedWithoutOptIn verifies a manual start via the admin API is

@@ -3044,6 +3044,18 @@ Status:
                       host:
                         description: The nodes host name.
                         type: string
+          metadata_store_mode:
+            type: string
+            enum:
+              - fallback_active
+              - fallback_inactive
+            x-enumDescriptions:
+              fallback_active: Dual store is in place and reads fall back to `_default._default` when not found in `_system._mobile` (migration not yet complete).
+              fallback_inactive: Dual store is in place but migration has completed and fallback reads are skipped.
+            description: |-
+              Classification of this database's dual metadata store. Enabled via the
+              `use_system_metadata_collection` option in either the database or bootstrap
+              configuration. Omitted when this database does not use a dual metadata store.
     version:
       description: |-
         The product version including the build number and edition (ie. `EE` or `CE`).
@@ -3512,9 +3524,102 @@ BucketInfo:
   properties:
     registry:
       $ref: '#/GatewayRegistry'
+    migration_status:
+      allOf:
+        - $ref: '#/MetadataMigrationStatus'
+      description: |-
+        Bucket-level metadata-migration status. Omitted when the status doc does not yet exist
+        on the bucket (no migration has been observed or initiated).
     enable_cross_cluster_versioning:
       description: Indicates if cross-cluster versioning is enabled for this bucket.
       type: boolean
+    bootstrap_target:
+      type: string
+      enum:
+        - _system._mobile
+        - _default._default
+        - unknown
+      x-enumDescriptions:
+        _system._mobile: Bootstrap docs live in the `_system._mobile` collection (opted-in or migrated).
+        _default._default: Bootstrap docs live in the `_default._default` collection (legacy registry or no opt-in).
+        unknown: Target was cached but could not be resolved to a known collection.
+      description: |-
+        Cached location of this bucket's bootstrap documents (registry, dbconfig, cbgt cfg) on
+        this node. Omitted when the target has not yet been resolved on this node.
+
+MetadataMigrationStatus:
+  type: object
+  description: |-
+    Per-bucket metadata-migration lifecycle. One document per bucket, tracking bucket-global
+    bootstrap state and per-database completion. Per-database entries are keyed by metadata ID
+    so database renames do not break tracking.
+  properties:
+    bucket_migration_id:
+      type: string
+      description: Stable identifier for this bucket's migration lifecycle.
+    databases:
+      type: object
+      description: Map of database metadata ID to per-database migration state.
+      additionalProperties:
+        x-additionalPropertiesName: metadataid
+        $ref: '#/DatabaseMigrationStatus'
+    bootstrap:
+      $ref: '#/BootstrapMigrationStatus'
+
+DatabaseMigrationStatus:
+  type: object
+  description: Per-database entry in the bucket migration status document.
+  properties:
+    state:
+      type: string
+      enum:
+        - pending
+        - in_progress
+        - complete
+      x-enumDescriptions:
+        pending: Migration has not yet started for this database.
+        in_progress: A node currently holds the BackgroundManager heartbeat lease and is actively migrating this database.
+        complete: All metadata for this database has been migrated to `_system._mobile`.
+      description: Per-database migration state.
+    started_at:
+      type: string
+      format: date-time
+      description: Time the per-database migration was first observed in progress.
+    completed_at:
+      type: string
+      format: date-time
+      description: Time the per-database migration reached the complete state.
+
+BootstrapMigrationStatus:
+  type: object
+  description: |-
+    Bucket-global bootstrap migration state covering `_sync:registry`, `_sync:dbconfig:*`, and
+    cbgt cfg documents. `attempts` and `last_attempted_at` are observability fields written by
+    every node that runs the migration loop, so operators can distinguish "no one has tried" from
+    repeated failure.
+  properties:
+    state:
+      type: string
+      enum:
+        - pending
+        - complete
+      x-enumDescriptions:
+        pending: Bootstrap migration has not yet completed; one or more per-database entries are still pending or in progress.
+        complete: All per-database migrations are complete and bootstrap docs have been moved to `_system._mobile`.
+      description: |-
+        Bucket-level bootstrap state. Transitions from `pending` to `complete` only after every
+        per-database entry is complete; it never reports `in_progress`.
+    completed_at:
+      type: string
+      format: date-time
+      description: Time the bootstrap migration reached the complete state.
+    last_attempted_at:
+      type: string
+      format: date-time
+      description: Time the migration loop most recently ran on this bucket, regardless of outcome.
+    attempts:
+      type: integer
+      description: Number of times the migration loop has run on this bucket.
 
 GatewayRegistry:
   type: object

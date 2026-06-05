@@ -1665,6 +1665,7 @@ type DatabaseStatus struct {
 	RequireResync     []string                `json:"require_resync"`
 	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
+	MetadataStoreMode base.MetadataStoreMode  `json:"metadata_store_mode,omitempty"`
 }
 
 type RuntimeStatus struct {
@@ -1728,6 +1729,7 @@ func (h *handler) handleGetStatus() error {
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
+			MetadataStoreMode: base.GetMetadataStoreMode(database.MetadataStore),
 		}
 	}
 
@@ -2465,8 +2467,10 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry                     *GatewayRegistry `json:"registry,omitempty"`
-	EnableCrossClusterVersioning bool             `json:"enable_cross_cluster_versioning"`
+	Registry                     *GatewayRegistry              `json:"registry,omitempty"`
+	MigrationStatus              *base.MetadataMigrationStatus `json:"migration_status,omitempty"`
+	EnableCrossClusterVersioning bool                          `json:"enable_cross_cluster_versioning"`
+	BootstrapTarget              string                        `json:"bootstrap_target,omitempty"`
 }
 
 // Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
@@ -2500,6 +2504,22 @@ func (h *handler) handleGetClusterInfo() error {
 				Registry:                     registry,
 				EnableCrossClusterVersioning: eccv[bucketName],
 			}
+
+			// Grab metadata migration status for bucket, if it exists, and add to response
+			migrationStatus, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
+			if err != nil && !base.IsDocNotFoundError(err) {
+				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during /_cluster_info: %v. Returning response without this information.", base.MD(bucketName), err)
+			} else {
+				bucketInfo.MigrationStatus = migrationStatus
+			}
+
+			// If there's a cached bootstrap target for this bucket, add it to the response. getGatewayRegistry above
+			// can populate the cache, so we need to refresh for each iteration.
+			cachedTargets := h.server.BootstrapContext.Connection.CachedBootstrapTargets()
+			if target, ok := cachedTargets[bucketName]; ok {
+				bucketInfo.BootstrapTarget = target
+			}
+
 			clusterInfo.Buckets[bucketName] = bucketInfo
 		}
 	} else {
