@@ -555,9 +555,10 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	stores := tb.GetNonDefaultDatastoreNames()
-	require.GreaterOrEqual(t, len(stores), 2, "test needs two named collections in the same scope")
-	coll0, coll1 := stores[0], stores[1]
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -583,8 +584,8 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 		return cfg
 	}
 
-	rest.RequireStatus(t, rt.CreateDatabase("db0", dbConfigForCollection(coll0)), http.StatusCreated)
-	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfigForCollection(coll1)), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db0", dbConfigForCollection(dataStore1)), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfigForCollection(dataStore2)), http.StatusCreated)
 
 	db0Ctx, err := rt.ServerContext().GetDatabase(ctx, "db0")
 	require.NoError(t, err)
@@ -592,8 +593,8 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	require.NoError(t, err)
 
 	// syncdata docs are keyed by groupID + scope.collection, not metadataID.
-	syncFnKey0 := base.CollectionSyncFunctionKeyWithGroupID(db0Ctx.Options.GroupID, coll0.ScopeName(), coll0.CollectionName())
-	syncFnKey1 := base.CollectionSyncFunctionKeyWithGroupID(db1Ctx.Options.GroupID, coll1.ScopeName(), coll1.CollectionName())
+	syncFnKey0 := base.CollectionSyncFunctionKeyWithGroupID(db0Ctx.Options.GroupID, dataStore1.ScopeName(), dataStore1.CollectionName())
+	syncFnKey1 := base.CollectionSyncFunctionKeyWithGroupID(db1Ctx.Options.GroupID, dataStore2.ScopeName(), dataStore2.CollectionName())
 	require.NotEqual(t, syncFnKey0, syncFnKey1, "the two collections must produce distinct syncdata keys")
 
 	fallback := tb.Bucket.DefaultDataStore(ctx)
@@ -606,8 +607,7 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 		require.True(t, exists, "syncdata doc %q must exist in _default._default before migration", k)
 	}
 
-	// migrateDB flips a DB's opt-in, seeds its seq counter so the new-DB fast path doesn't
-	// auto-complete the migration, and drives the migration to completion via the admin API.
+	// migrateDB flips a DB's opt-in, drives the migration to completion via the admin API.
 	migrateDB := func(dbName string, dbCtx *db.DatabaseContext, cfg rest.DbConfig, ownedKey string) *base.MetadataStore {
 
 		cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
@@ -630,7 +630,7 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	}
 
 	// Migrate db0. Its syncdata doc moves to primary; db1's must stay on fallback.
-	ms0 := migrateDB("db0", db0Ctx, dbConfigForCollection(coll0), syncFnKey0)
+	ms0 := migrateDB("db0", db0Ctx, dbConfigForCollection(dataStore1), syncFnKey0)
 
 	primaryHas0, err := ms0.Primary().Exists(ctx, syncFnKey0)
 	require.NoError(t, err)
@@ -647,7 +647,7 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	assert.True(t, fallbackHas1, "db1's syncdata doc must remain on _default._default after db0's migration")
 
 	// Migrate db1. Its syncdata doc now moves too, leaving both on primary.
-	ms1 := migrateDB("db1", db1Ctx, dbConfigForCollection(coll1), syncFnKey1)
+	ms1 := migrateDB("db1", db1Ctx, dbConfigForCollection(dataStore2), syncFnKey1)
 
 	primaryHas1, err = ms1.Primary().Exists(ctx, syncFnKey1)
 	require.NoError(t, err)
