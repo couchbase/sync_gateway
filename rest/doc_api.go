@@ -747,3 +747,66 @@ func (h *handler) isReadOnlyGuest() bool {
 	}
 	return false
 }
+
+// handleGetDocChannelHistory handles GET /{keyspace}/_channel_history/{docid}.
+// It returns the channel revocation history for the document as a JSON object mapping
+// channel names to the sequences at which the document was removed from each channel.
+func (h *handler) handleGetDocChannelHistory() error {
+	h.assertAdminOnly()
+
+	docid := h.PathVar("docid")
+
+	chanHistory, err := h.collection.GetDocChannelHistory(h.ctx(), docid)
+	if err != nil {
+		return err
+	}
+
+	base.Audit(h.ctx(), base.AuditIDDocumentMetadataRead, base.AuditFields{
+		base.AuditFieldDocID: docid,
+	})
+
+	h.writeJSON(chanHistory)
+	return nil
+}
+
+type CompactDocChannelHistoryRequest struct {
+	Seq uint64 `json:"seq"`
+}
+
+// handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/{docid}/compact.
+// It accepts a JSON body containing a sequence number and removes channel history entries
+// for the specified document that ended at or before that sequence, returning the compacted
+// channel names for that document.
+func (h *handler) handleCompactDocChannelHistory() error {
+	h.assertAdminOnly()
+
+	var req CompactDocChannelHistoryRequest
+
+	docid := h.PathVar("docid")
+
+	err := h.readJSONInto(&req)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
+	}
+
+	if req.Seq == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "missing seq")
+	}
+
+	channels, err := h.collection.CompactDocChannelHistory(h.ctx(), docid, req.Seq)
+	if err != nil {
+		return err
+	}
+	res := map[string][]string{
+		"compacted_channels": channels,
+	}
+
+	base.Audit(h.ctx(), base.AuditIDDocumentChannelHistoryCompact, base.AuditFields{
+		base.AuditFieldDocID:    docid,
+		base.AuditFieldChannels: channels,
+		base.AuditFieldSequence: strconv.FormatUint(req.Seq, 10),
+	})
+
+	h.writeJSON(res)
+	return nil
+}

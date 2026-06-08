@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,6 +197,161 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+type ChannelHistory map[string]map[uint64]struct{}
+
+func (ch ChannelHistory) addChannelHistoryEntry(name string, seq uint64) {
+	if _, ok := ch[name]; !ok {
+		ch[name] = make(map[uint64]struct{})
+	}
+	if _, ok := ch[name][seq]; !ok {
+		ch[name][seq] = struct{}{}
+	}
+}
+
+func (ch ChannelHistory) getChannelHistoryAsMap() map[string][]uint64 {
+	response := make(map[string][]uint64)
+	for chanName, chanEntry := range ch {
+		response[chanName] = make([]uint64, 0)
+		for seq, _ := range chanEntry {
+			response[chanName] = append(response[chanName], seq)
+		}
+		slices.Sort(response[chanName])
+		slices.Reverse(response[chanName])
+	}
+	return response
+}
+
+// GetDocChannelHistory returns the channel revocation history for the given document as a map
+// from channel name to the sequences at which the document was removed from that channel.
+// It collects revocation sequences from the active Channels map, the ChannelSet, and the
+// ChannelSetHistory (overflow). Only channels that have been revoked at least once appear in
+// the result; active memberships with no revocation history are omitted, even though a currently
+// assigned channel can still appear if it was revoked and later re-added.
+func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid string) (map[string][]uint64, error) {
+
+	chanHistory := make(ChannelHistory)
+	syncData, err := c.GetDocSyncData(ctx, docid)
+	if err != nil {
+		return nil, err
+	}
+	for chanName, chanVal := range syncData.Channels {
+		if chanVal != nil && chanVal.Seq != 0 {
+			chanHistory.addChannelHistoryEntry(chanName, chanVal.Seq)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSet {
+		if chanSetEntry.End != 0 {
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+	for _, chanSetEntry := range syncData.ChannelSetHistory {
+		if chanSetEntry.End != 0 {
+			chanHistory.addChannelHistoryEntry(chanSetEntry.Name, chanSetEntry.End)
+		}
+	}
+
+	return chanHistory.getChannelHistoryAsMap(), nil
+}
+
+// CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
+// This is used to prune stale channel assignment history to reduce storage overhead.
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
+	key := realDocID(docid)
+	if key == "" {
+		return nil, base.HTTPErrorf(400, "Invalid doc ID")
+	}
+
+	xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
+	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	doc, err := c.unmarshalDocumentWithXattrs(ctx, key, nil, xattrs, cas, DocUnmarshalSync)
+	if err != nil {
+		return nil, err
+	}
+
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
+	}
+
+	if !isSgWrite {
+		var importErr error
+
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
+		if importErr != nil {
+			return nil, importErr
+		}
+		if doc == nil {
+			return nil, fmt.Errorf("skipping compaction of document %s, %v ", base.UD(docid), base.ErrNotFound)
+		}
+		cas = doc.Cas
+	}
+
+	compactedChannels := make(base.Set)
+
+	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
+		del := channel.End <= seq
+		if del {
+			compactedChannels.Add(channel.Name)
+		}
+		return del
+	})
+
+	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
+		del := channel.End != 0 && channel.End <= seq
+		if del {
+			compactedChannels.Add(channel.Name)
+		}
+		return del
+	})
+
+	for chanName, chanEntry := range doc.SyncData.Channels {
+		if chanEntry != nil && chanEntry.Seq <= seq {
+			compactedChannels.Add(chanName)
+			delete(doc.SyncData.Channels, chanName)
+		}
+	}
+
+	// Exit early if no compaction occurred
+	if len(compactedChannels) == 0 {
+		return []string{}, nil
+	}
+
+	rawSyncXattr, err := base.JSONMarshal(doc.SyncData)
+	if err != nil {
+		return nil, base.RedactErrorf("failed to marshal sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
+	}
+
+	metadataOnlyUpdate := computeMetadataOnlyUpdate(doc.Cas, doc.metadataOnlyUpdate)
+
+	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+	if err != nil {
+		return nil, base.RedactErrorf("failed to marshal _mou when attempting to compact channel history for doc: %s. Error: %v", base.UD(docid), err)
+	}
+
+	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
+	opts := &sgbucket.MutateInOptions{}
+	// Only update _sync.cas and _mou.cas if the pre-compaction doc had already been imported by SGW
+	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.MouXattrName), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
+	}
+	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
+
+	updatedXattr := map[string][]byte{
+		base.SyncXattrName: rawSyncXattr,
+		base.MouXattrName:  rawMouXattr,
+	}
+	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
+	compactedChannelArray := compactedChannels.ToArray()
+	slices.Sort(compactedChannelArray)
+	return compactedChannelArray, err
+}
+
+// GetDocSyncDataNoImport returns unmarshalled value of the _sync xattr.
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.

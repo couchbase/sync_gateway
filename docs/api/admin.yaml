@@ -113,6 +113,10 @@ paths:
     $ref: './paths/admin/db-_index_init.yaml'
   '/{keyspace}/_purge':
     $ref: './paths/admin/keyspace-_purge.yaml'
+  '/{keyspace}/_channel_history/{docid}':
+    $ref: './paths/admin/keyspace-_channel_history.yaml'
+  '/{keyspace}/_channel_history/{docid}/compact':
+    $ref: './paths/admin/keyspace-_channel_history-compact.yaml'
   '/{db}/_flush':
     $ref: './paths/admin/db-_flush.yaml'
   '/{db}/_online':
