@@ -190,6 +190,10 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		//
 		// Each pass scans the fallback DataStore, and remaining are in-scope docs we didn't move on this pass
 		const maxPasses = 16
+		// Sync-function ("syncdata") docs are keyed by groupID + scope.collection rather than
+		// metadataID, so precompute this DB's owned set from its configured collections for the
+		// key handler to match against.
+		dbSyncFunctionKeys := syncFunctionKeysForDB(m.dbContext.Options.GroupID, m.dbContext.CollectionNames)
 		for pass := 0; ; pass++ {
 			if terminator.IsClosed() {
 				// Mid-run stop: leave the per-DB entry in in_progress so the next manager
@@ -199,7 +203,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 			}
 
 			stats := &MigrationStats{}
-			remaining, err := MigrateMetadata(runCtx, ms, metadataID, stats)
+			remaining, err := MigrateMetadata(runCtx, ms, metadataID, dbSyncFunctionKeys, stats)
 			m.passes.Add(1)
 			m.docsProcessed.Add(stats.DocsMigrated.Load())
 			m.docsFailed.Add(stats.Errors.Load())

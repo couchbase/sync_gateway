@@ -41,7 +41,7 @@ type MigrationStats struct {
 // (DocsUnknownPrefix from this pass). The orchestrator drives this in a loop until remaining
 // reaches zero — a doc written underneath an in-flight scan can be missed on this pass but
 // will surface on the next one.
-func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID string, stats *MigrationStats) (remaining int, err error) {
+func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID string, dbSyncFunctionKeys map[string]struct{}, stats *MigrationStats) (remaining int, err error) {
 	if ms == nil {
 		return 0, errors.New("MigrateMetadata: nil MetadataStore")
 	}
@@ -74,7 +74,7 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 			return int(stats.DocsUnknownPrefix.Load()), ctxErr
 		}
 		stats.DocsScannedTotal.Add(1)
-		handleMigrationKey(ctx, ms, keys, metadataID, item.ID, stats)
+		handleMigrationKey(ctx, ms, keys, metadataID, dbSyncFunctionKeys, item.ID, stats)
 	}
 
 	// In-scope leftovers tell the orchestrator whether to schedule another pass. Out-of-
@@ -156,6 +156,23 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 	return nil
 }
 
+// syncFunctionKeysForDB returns the set of sync-function ("syncdata") metadata doc keys owned
+// by this database — one per configured collection. Unlike the rest of SG's metadata, these
+// docs are NOT namespaced by metadataID (see base.CollectionSyncFunctionKeyWithGroupID): they
+// are keyed by groupID + scope.collection, so handleMigrationKey's metadataID-prefix matching
+// (isOurs) can't classify them. Precomputing the exact owned-key set from the DB's configured
+// collections lets us decide ownership by exact match, distinguishing our _sync:syncdata
+// docs from a sibling DB's.
+func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string]struct{}) map[string]struct{} {
+	out := make(map[string]struct{})
+	for scopeName, colls := range collectionNames {
+		for collName := range colls {
+			out[base.CollectionSyncFunctionKeyWithGroupID(groupID, scopeName, collName)] = struct{}{}
+		}
+	}
+	return out
+}
+
 // handleMigrationKey is the per-key dispatcher. It owns both the in-scope/out-of-scope
 // decision and the per-family policy. The switch cases use the database's own
 // MetadataKeys prefix accessors so namespacing (the `m_<id>:` infix) is part of the prefix
@@ -165,10 +182,15 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 // (`prefix + m_<X>:`, requiring a `:` after the namespace) — this keeps a legacy default
 // user literally named `m_alice` correctly classified as ours.
 //
-// Anything that doesn't match a known family is split between out-of-scope (sibling-DB
-// standard form, bucket-level bootstrap docs, `_sync:syncdata*` and `_sync:syncInfo`
-// which the design plan keeps in the source collection) and genuinely unknown.
-func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID, key string, stats *MigrationStats) {
+// Sync-function ("syncdata") docs are the exception to the metadataID-prefix scheme: they are
+// keyed by groupID + scope.collection, so ownership is decided by exact match against the
+// precomputed dbSyncFunctionKeys set rather than by isOurs. Our collections' syncdata docs are
+// migrated; any other `_sync:syncdata*` key belongs to a sibling DB and is out-of-scope.
+//
+// Anything else that doesn't match a known family is split between out-of-scope (sibling-DB
+// standard form, bucket-level bootstrap docs, and `_sync:syncInfo` which the design plan keeps
+// in the source collection) and genuinely unknown.
+func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID string, dbSyncFunctionKeys map[string]struct{}, key string, stats *MigrationStats) {
 	// isOurs matches a prefix and excludes sibling-DB inverted-form keys. For namespaced
 	// metadataIDs the keys.XxxKeyPrefix() already encodes the unique `m_<id>:` segment
 	// so isSiblingInverted is structurally a no-op there. For the legacy default DB
@@ -195,9 +217,14 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		thisMetadataID = base.SyncDocMetadataPrefix + metadataID + ":"
 	}
 
+	// Sync-function docs aren't metadataID-namespaced, so isOurs can't classify them — ownership
+	// is an exact match against the keys precomputed from this DB's configured collections.
+	_, isOurSyncFunctionDoc := dbSyncFunctionKeys[key]
+
 	switch {
 	// matching sync docs for this database
 	case
+		isOurSyncFunctionDoc,
 		isOurs(keys.UserKeyPrefix()),
 		isOurs(keys.RoleKeyPrefix()),
 		isOurs(keys.UserEmailKey("")),
@@ -234,6 +261,11 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		key == base.SyncDocPrefix+"seq",
 		key == base.SGRegistryKey,
 		key == base.SGSyncInfo,
+		// sync-function docs not in our owned set belong to a sibling DB (different
+		// collection, or same collection under another groupID) — left on the source
+		// collection. SyncFunctionKeyWithoutGroupID (`_sync:syncdata`) is also a prefix of
+		// the collection form (`_sync:syncdata_collection:…`), so this covers both shapes.
+		strings.HasPrefix(key, base.SyncFunctionKeyWithoutGroupID),
 		strings.HasPrefix(key, base.PersistentConfigPrefixWithoutGroupID):
 		stats.DocsOutOfScope.Add(1)
 
