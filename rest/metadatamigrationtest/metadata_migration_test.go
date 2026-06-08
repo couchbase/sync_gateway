@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -535,6 +536,179 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.
 	assert.NotContains(t, finalBody, `"status":"error"`,
 		"dbnamed's migration should not error — its own keys migrate and the sibling DB's "+
 			"out-of-scope keys are skipped. Final payload: %s", finalBody)
+}
+
+// TestMetadataMigrationMovesOwnedSyncFunctionDocs verifies that a per-DB migration moves only
+// this database's sync-function ("syncdata") doc and leaves a sibling DB's untouched. Unlike the
+// rest of SG's metadata these docs are keyed by groupID + scope.collection rather than metadataID
+// (see base.CollectionSyncFunctionKeyWithGroupID), so the dispatcher classifies them via the
+// per-DB owned-collection set rather than the metadataID-prefix isOurs check.
+//
+// Two databases share one scope, each owning a different collection. db0's migration must move
+// db0's syncdata doc to _system._mobile and leave db1's on _default._default. Migrating db1 then
+// moves the second doc, leaving both on primary.
+func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 2)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	stores := tb.GetNonDefaultDatastoreNames()
+	require.GreaterOrEqual(t, len(stores), 2, "test needs two named collections in the same scope")
+	coll0, coll1 := stores[0], stores[1]
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	const syncFn = `function(doc){channel(doc.channels);}`
+
+	// dbConfigForCollection builds a single-collection DB config in legacy mode (opt-in=false)
+	// with an explicit sync function, so the syncdata doc is written to _default._default at
+	// creation — the pre-migration shape we want to exercise.
+	dbConfigForCollection := func(coll sgbucket.DataStoreName) rest.DbConfig {
+		cfg := rt.NewDbConfig()
+		cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+		cfg.Scopes = rest.ScopesConfig{
+			coll.ScopeName(): rest.ScopeConfig{
+				Collections: rest.CollectionsConfig{
+					coll.CollectionName(): {SyncFn: base.Ptr(syncFn)},
+				},
+			},
+		}
+		return cfg
+	}
+
+	rest.RequireStatus(t, rt.CreateDatabase("db0", dbConfigForCollection(coll0)), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfigForCollection(coll1)), http.StatusCreated)
+
+	db0Ctx, err := rt.ServerContext().GetDatabase(ctx, "db0")
+	require.NoError(t, err)
+	db1Ctx, err := rt.ServerContext().GetDatabase(ctx, "db1")
+	require.NoError(t, err)
+
+	// syncdata docs are keyed by groupID + scope.collection, not metadataID.
+	syncFnKey0 := base.CollectionSyncFunctionKeyWithGroupID(db0Ctx.Options.GroupID, coll0.ScopeName(), coll0.CollectionName())
+	syncFnKey1 := base.CollectionSyncFunctionKeyWithGroupID(db1Ctx.Options.GroupID, coll1.ScopeName(), coll1.CollectionName())
+	require.NotEqual(t, syncFnKey0, syncFnKey1, "the two collections must produce distinct syncdata keys")
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+
+	// Both syncdata docs land in _default._default in legacy mode — the precondition for the
+	// migration to have anything to move.
+	for _, k := range []string{syncFnKey0, syncFnKey1} {
+		exists, err := fallback.Exists(ctx, k)
+		require.NoError(t, err)
+		require.True(t, exists, "syncdata doc %q must exist in _default._default before migration", k)
+	}
+
+	// migrateDB flips a DB's opt-in, seeds its seq counter so the new-DB fast path doesn't
+	// auto-complete the migration, and drives the migration to completion via the admin API.
+	migrateDB := func(dbName string, dbCtx *db.DatabaseContext, cfg rest.DbConfig, ownedKey string) *base.MetadataStore {
+
+		cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+		rest.RequireStatus(t, rt.UpsertDbConfig(dbName, cfg), http.StatusCreated)
+
+		// Make sure the owned syncdata doc is visible to the range scan before we start, so the
+		// first pass can't miss it and complete with nothing migrated.
+		base.RequireDocsVisibleToRangeScan(t, fallback, []string{ownedKey})
+
+		rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbName)
+
+		reloaded, err := rt.ServerContext().GetDatabase(ctx, dbName)
+		require.NoError(t, err)
+		ms, ok := reloaded.MetadataStore.(*base.MetadataStore)
+		require.True(t, ok, "%s MetadataStore must be the dual-collection wrapper after opt-in", dbName)
+		return ms
+	}
+
+	// Migrate db0. Its syncdata doc moves to primary; db1's must stay on fallback.
+	ms0 := migrateDB("db0", db0Ctx, dbConfigForCollection(coll0), syncFnKey0)
+
+	primaryHas0, err := ms0.Primary().Exists(ctx, syncFnKey0)
+	require.NoError(t, err)
+	assert.True(t, primaryHas0, "db0's syncdata doc must be migrated to _system._mobile")
+	fallbackHas0, err := fallback.Exists(ctx, syncFnKey0)
+	require.NoError(t, err)
+	assert.False(t, fallbackHas0, "db0's syncdata doc must be removed from _default._default after its migration")
+
+	primaryHas1, err := ms0.Primary().Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.False(t, primaryHas1, "db1's syncdata doc must NOT be migrated by db0's run")
+	fallbackHas1, err := fallback.Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.True(t, fallbackHas1, "db1's syncdata doc must remain on _default._default after db0's migration")
+
+	// Migrate db1. Its syncdata doc now moves too, leaving both on primary.
+	ms1 := migrateDB("db1", db1Ctx, dbConfigForCollection(coll1), syncFnKey1)
+
+	primaryHas1, err = ms1.Primary().Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.True(t, primaryHas1, "db1's syncdata doc must be migrated to _system._mobile after its own migration")
+	fallbackHas1, err = fallback.Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.False(t, fallbackHas1, "db1's syncdata doc must be removed from _default._default after its migration")
+}
+
+// TestMoveSyncDataDocumentForDefaultDB verifies that the sync function document for the default database is moved
+// from the fallback collection to the primary collection when opting in to the system metadata collection.
+func TestMoveSyncDataDocumentForDefaultDB(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				base.DefaultCollection: {SyncFn: base.Ptr(`function(doc){channel(doc.channels);}`)},
+			},
+		},
+	}
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+
+	syncFnKey := base.CollectionSyncFunctionKeyWithGroupID(rt.ServerContext().Config.Bootstrap.ConfigGroupID, base.DefaultScope, base.DefaultCollection)
+	// assert we find sync data doc on fallback before migration
+	exists, err := fallback.Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	require.True(t, exists, "syncdata doc must exist in _default._default before migration")
+
+	// Flip the opt-in and migrate.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	// assert the sync data doc is migrated to primary and removed from fallback
+	dbCtx := rt.GetDatabase()
+	ms, ok := dbCtx.MetadataStore.(*base.MetadataStore)
+	require.True(t, ok, "MetadataStore must be the dual-collection wrapper after opt-in")
+	primaryHasSyncData, err := ms.Primary().Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	assert.True(t, primaryHasSyncData, "syncdata doc must be migrated to _system._mobile")
+	fallbackHasSyncData, err := fallback.Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	assert.False(t, fallbackHasSyncData, "syncdata doc must be removed from _default._default after migration")
 }
 
 // TestMetadataMigrationOptInRejectedWithViews verifies the DbConfig.validateVersion guard:

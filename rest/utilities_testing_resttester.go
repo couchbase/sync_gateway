@@ -452,6 +452,10 @@ func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcess
 	return rt.waitForMetadataMigrationStatus(status, "{{.db}}")
 }
 
+func (rt *RestTester) WaitForMetadataMigrationStatusForDB(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
+	return rt.waitForMetadataMigrationStatus(status, dbName)
+}
+
 func (rt *RestTester) waitForMetadataMigrationStatus(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
 	timeout := 10 * time.Second
 	pollInterval := 10 * time.Millisecond

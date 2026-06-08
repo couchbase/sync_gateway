@@ -49,7 +49,7 @@ func TestMigrateMetadataEmptyFallback(t *testing.T) {
 	ms := newMigrationTestStore(t, bucket)
 	stats := &MigrationStats{}
 
-	remaining, err := MigrateMetadata(ctx, ms, "testEmpty", stats)
+	remaining, err := MigrateMetadata(ctx, ms, "testEmpty", nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Zero(t, stats.DocsScannedTotal.Load())
@@ -100,7 +100,7 @@ func TestMigrateMetadataUnknownPrefixCountedAsRemaining(t *testing.T) {
 	seedFallback(ctx, t, ms, unknownKey, []byte(`{"body":"unknown"}`))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 1, remaining, "unknown-prefix doc should be reported as remaining")
 	assert.Equal(t, int64(1), stats.DocsUnknownPrefix.Load())
@@ -125,7 +125,7 @@ func TestMigrateMetadataNamespacedExcludesSiblingDB(t *testing.T) {
 	seedFallback(ctx, t, ms, siblingKey, []byte(`{"heartbeat":"sibling"}`))
 
 	stats := &MigrationStats{}
-	_, err := MigrateMetadata(ctx, ms, "myDB", stats)
+	_, err := MigrateMetadata(ctx, ms, "myDB", nil, stats)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(1), stats.DocsOutOfScope.Load())
@@ -183,7 +183,7 @@ func TestMigrateMetadataMovesUserAndRoleDocs(t *testing.T) {
 	}
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(len(seeded)), stats.DocsMigrated.Load())
@@ -234,7 +234,7 @@ func TestMigrateMetadataMovesUserEmailAndSession(t *testing.T) {
 	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{emailKey, sessionKey})
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(2), stats.DocsMigrated.Load(), "useremail and session should both be moved")
@@ -286,7 +286,7 @@ func TestMigrateMetadataUserDocPrimaryWinsOnConflict(t *testing.T) {
 	seedFallback(ctx, t, ms, key, stalerFallback)
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "already-exists short-circuit should count as migrated")
@@ -321,7 +321,7 @@ func TestMigrateMetadataLegacyDefaultUserAndRole(t *testing.T) {
 	}
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(len(seeded)), stats.DocsMigrated.Load())
@@ -356,7 +356,7 @@ func TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted(t *testing.T
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 1, remaining, "unknown-prefix doc must keep the migration in 'work remaining' state")
 	assert.Equal(t, int64(1), stats.DocsUnknownPrefix.Load(), "%q must be classified as unknown-prefix, not as a heartbeat", unknownKey)
@@ -392,7 +392,7 @@ func TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch(t *te
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining, "groupID-suffixed heartbeat must not surface as unknown-prefix")
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "groupID-suffixed heartbeat doc should be deleted via the shape match")
@@ -418,7 +418,7 @@ func TestMigrateMetadataNamespacedHeartbeatDeletedViaShapeMatch(t *testing.T) {
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "namespaced heartbeat doc should be deleted via the shape match")
@@ -440,7 +440,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 
 	classify := func(metadataID, key string) *MigrationStats {
 		stats := &MigrationStats{}
-		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, key, stats)
+		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, nil, key, stats)
 		return stats
 	}
 
@@ -541,7 +541,7 @@ func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
 	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{singletonKey, rangeKey})
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining, "unused-seq docs must clear in a single pass")
 	assert.Equal(t, int64(2), stats.DocsMigrated.Load())
@@ -572,7 +572,7 @@ func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
 	seedFallback(ctx, t, ms, mUserKey, body)
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "m_alice user in default mode must be migrated, not skipped as a sibling-DB shape")
@@ -582,4 +582,37 @@ func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
 	assert.Equal(t, body, got)
 	_, _, getErr = ms.Fallback().GetRaw(ctx, mUserKey)
 	assert.True(t, base.IsDocNotFoundError(getErr))
+}
+
+// TestSyncFunctionKeysForDB verifies the owned sync-function key set is built per configured
+// collection, using the legacy `_sync:syncdata` shape for the default collection and the
+// `_sync:syncdata_collection:scope.collection` shape for named collections, with groupID
+// applied to both.
+func TestSyncFunctionKeysForDB(t *testing.T) {
+	collections := map[string]map[string]struct{}{
+		base.DefaultScope: {base.DefaultCollection: {}},
+	}
+
+	// default collection
+	noGroup := syncFunctionKeysForDB("", collections)
+	require.Len(t, noGroup, 1)
+	assert.Contains(t, noGroup, base.SyncFunctionKeyWithoutGroupID)
+
+	withGroup := syncFunctionKeysForDB("group1", collections)
+	require.Len(t, withGroup, 1)
+	assert.Contains(t, withGroup, base.SyncFunctionKeyWithoutGroupID+":group1")
+
+	// named collection
+	collections = map[string]map[string]struct{}{
+		"myScope": {"collA": {}, "collB": {}},
+	}
+	noGroup = syncFunctionKeysForDB("", collections)
+	require.Len(t, noGroup, 2)
+	assert.Contains(t, noGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA")
+	assert.Contains(t, noGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB")
+
+	withGroup = syncFunctionKeysForDB("group1", collections)
+	require.Len(t, withGroup, 2)
+	assert.Contains(t, withGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA:group1")
+	assert.Contains(t, withGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB:group1")
 }
