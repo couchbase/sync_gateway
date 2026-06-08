@@ -2640,6 +2640,15 @@ func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Con
 	sc.ClusterCompat.Refresh(ctx)
 }
 
+// BootstrapDocKeysToMigrate returns the bucket-global bootstrap doc keys that MigrateBootstrapDocs
+// moves from _default._default to _system._mobile for the given bucket. Exposed for tests so they
+// assert against exactly the set production migrates, rather than reconstructing (and drifting from) it.
+func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Context, bucketName string) []string {
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	return bootstrapDocKeysToMigrate(ctx, registry)
+}
+
 // AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
 func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 	sc.invalidDatabaseConfigTracking.m.RLock()
