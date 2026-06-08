@@ -953,8 +953,6 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 		}
 		fallbackCas := gocb.Cas(cas)
 
-		// Use the JSON transcoder for both sides so the destination preserves JSONType flags
-		// even when the source datatype is masked behind the raw read.
 		_, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
 		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)

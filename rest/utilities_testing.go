@@ -2641,8 +2641,7 @@ func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Con
 }
 
 // BootstrapDocKeysToMigrate returns the bucket-global bootstrap doc keys that MigrateBootstrapDocs
-// moves from _default._default to _system._mobile for the given bucket. Exposed for tests so they
-// assert against exactly the set production migrates, rather than reconstructing (and drifting from) it.
+// moves from _default._default to _system._mobile for the given bucket.
 func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Context, bucketName string) []string {
 	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)

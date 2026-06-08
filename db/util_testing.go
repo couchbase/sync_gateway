@@ -239,7 +239,6 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 		}
 
 		purgeErr := dataStore.DeleteWithXattrs(ctx, docID, xattrs)
-		fmt.Println("deleting docID", docID, "with xattrs", xattrs, "got error", purgeErr)
 		if base.IsDocNotFoundError(purgeErr) { // doc is a tombstone
 			// If key no longer exists, need to add and and remove to remove a Sync Gateway tombstone.
 			_, addErr := dataStore.Add(ctx, docID, 0, purgeBody)
