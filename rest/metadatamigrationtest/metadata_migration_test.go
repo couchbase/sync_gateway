@@ -626,10 +626,10 @@ func TestBootstrapTargetOmittedWhenNoCachedValue(t *testing.T) {
 	var clusterInfoResponse rest.ClusterInfo
 	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	target := clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget
-	assert.Equal(t, "", target)
 	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
 	require.NoError(t, err)
+	target := clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget
+	assert.Equal(t, "", target)
 	assert.Empty(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 }
 
