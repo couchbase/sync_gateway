@@ -262,10 +262,6 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 
 	xattrKeys := []string{base.SyncXattrName, base.MouXattrName}
-	userXattrKey := c.UserXattrKey()
-	if userXattrKey != "" {
-		xattrKeys = append(xattrKeys, userXattrKey)
-	}
 	rawDoc, xattrs, cas, err := c.dataStore.GetWithXattrs(ctx, key, xattrKeys)
 	if err != nil {
 		return nil, err
