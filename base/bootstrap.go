@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -942,30 +941,24 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 
 	primary := cc.systemMobileCollection(b)
 	fallback := b.DefaultCollection()
-	raw := &gocb.GetOptions{Transcoder: NewSGRawTranscoder()}
 
 	for _, docID := range docIDs {
-		fallbackRes, err := fallback.Get(docID, raw)
+		var value map[string]interface{}
+		cas, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
 		if err != nil {
 			if IsDocNotFoundError(err) {
 				continue
 			}
 			return fmt.Errorf("read fallback %q during bootstrap migration: %w", docID, err)
 		}
-		var body []byte
-		if err := fallbackRes.Content(&body); err != nil {
-			return fmt.Errorf("decode fallback %q: %w", docID, err)
-		}
-		fallbackCas := fallbackRes.Cas()
+		fallbackCas := gocb.Cas(cas)
 
-		// Use the JSON transcoder for both sides so the destination preserves JSONType flags
-		// even when the source datatype is masked behind the raw read.
-		_, insertErr := primary.Insert(docID, json.RawMessage(body), &gocb.InsertOptions{Transcoder: gocb.NewRawJSONTranscoder()})
+		_, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
 		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 
-		if _, err := fallback.Remove(docID, &gocb.RemoveOptions{Cas: fallbackCas}); err != nil {
+		if _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))
 				continue

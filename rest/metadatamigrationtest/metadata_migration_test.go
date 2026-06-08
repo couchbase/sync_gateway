@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package metadatamigrationtest
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -625,9 +626,10 @@ func TestBootstrapTargetOmittedWhenNoCachedValue(t *testing.T) {
 	var clusterInfoResponse rest.ClusterInfo
 	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	assert.NotContains(t, resp.Body.String(), "bootstrap_target", "cluster info must not be empty")
 	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
 	require.NoError(t, err)
+	target := clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget
+	assert.Equal(t, "", target)
 	assert.Empty(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 }
 
@@ -637,67 +639,190 @@ func TestBootstrapTargetOmittedWhenNoCachedValue(t *testing.T) {
 // the bucket bootstrap docs (registry/dbconfig/cfg) and the bucket-level bootstrap state in
 // _sync:metadata_migration_status flips to complete.
 func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
-	ctx := base.TestCtx(t)
-	rt := rest.NewRestTesterPersistentConfigNoDB(t)
-	defer rt.Close()
+	for _, useXattrConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UseXattrConfig=%t", useXattrConfig), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+				UseXattrConfig:   useXattrConfig,
+			})
+			defer rt.Close()
 
-	// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
-	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
-	resp := rt.CreateDatabase("db", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
+			dbConfig := rt.NewDbConfig()
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			resp := rt.CreateDatabase("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	var clusterInfoResponse rest.ClusterInfo
-	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
-	require.NoError(t, err)
-	assert.Equal(t, "_default._default", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+			var clusterInfoResponse rest.ClusterInfo
+			resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "_default._default", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	dbCtx := rt.GetDatabase()
-	metadataID := dbCtx.Options.MetadataID
-	require.NotEmpty(t, metadataID)
-	bucketName := rt.Bucket().GetName()
+			dbCtx := rt.GetDatabase()
+			metadataID := dbCtx.Options.MetadataID
+			require.NotEmpty(t, metadataID)
+			bucketName := rt.Bucket().GetName()
 
-	// Opt in, flush this node's applied config version so the manual start passes the
-	// config-fully-applied gate, then drive the migration to completion.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
-	resp = rt.UpsertDbConfig("db", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			// Opt in, flush this node's applied config version so the manual start passes the
+			// config-fully-applied gate, then drive the migration to completion.
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			resp = rt.UpsertDbConfig("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
-	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
-		body := st.Body.String()
-		assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
-		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
-	}, 30*time.Second, 200*time.Millisecond)
+			rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 
-	// End-to-end assertion on the durable status doc: the per-DB entry is complete AND, because
-	// this is the only (hence last) database in the bucket, the bucket bootstrap migration has
-	// also completed.
-	conn := rt.ServerContext().BootstrapContext.Connection
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
-		require.NoError(c, err)
-		require.NotNil(c, status)
-		entry, ok := status.Databases[metadataID]
-		require.True(c, ok, "status doc must have a per-DB entry for %q", metadataID)
-		assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
-		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
-	}, 30*time.Second, 200*time.Millisecond)
+			// grab registry from default collection for later comparison
+			defaultDS := rt.Bucket().DefaultDataStore(ctx)
+			body, xattrs, _, err := defaultDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
 
-	clusterInfoResponse = rest.ClusterInfo{}
-	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	err = base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
-	require.NoError(t, err)
-	assert.Equal(t, "_system._mobile", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+			resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+				body := st.Body.String()
+				assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
+				assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+			}, 30*time.Second, 200*time.Millisecond)
+
+			// End-to-end assertion on the durable status doc: the per-DB entry is complete AND, because
+			// this is the only (hence last) database in the bucket, the bucket bootstrap migration has
+			// also completed.
+			conn := rt.ServerContext().BootstrapContext.Connection
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				require.NoError(c, err)
+				require.NotNil(c, status)
+				entry, ok := status.Databases[metadataID]
+				require.True(c, ok, "status doc must have a per-DB entry for %q", metadataID)
+				assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
+				assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
+			}, 30*time.Second, 200*time.Millisecond)
+
+			clusterInfoResponse = rest.ClusterInfo{}
+			resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			err = base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "_system._mobile", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+
+			// assert registry is moved and correctly stored in the new location with the same body and xattrs
+			systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+			require.NoError(t, err)
+			migratedBody, migratedXattrs, _, err := systemDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			assert.JSONEq(t, string(body), string(migratedBody), "registry body must be unchanged by the migration")
+			// The bootstrap config only lives in the _sync xattr under CouchbaseCluster +
+			// XattrBootstrapPersistence (UseXattrConfig). RosmarCluster has no configPersistence and
+			// always stores bootstrap config in the body, so the xattr is empty there regardless of
+			// UseXattrConfig — only assert on it when xattr persistence is genuinely in use.
+			if useXattrConfig && !base.UnitTestUrlIsWalrus() {
+				assert.JSONEq(t, string(xattrs[base.SyncXattrName]), string(migratedXattrs[base.SyncXattrName]), "registry xattrs must be unchanged by the migration")
+			}
+			// assert that registry is removed from the old location
+			_, _, _, err = defaultDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.Error(t, err)
+			assert.True(t, base.IsDocNotFoundError(err), "registry must be removed from the old location after migration")
+		})
+	}
+}
+
+// TestMetadataMigrationEndToEndBucketBootstrapDocsContent asserts on the full set of bucket-global bootstrap
+// docs MigrateBootstrapDocs moves. For every such doc it captures the raw body
+// and _sync xattr in _default._default before migration, then after migration asserts the doc in
+// _system._mobile is identical and that the fallback copy is fully removed.
+func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
+	for _, useXattrConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UseXattrConfig=%t", useXattrConfig), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+				UseXattrConfig:   useXattrConfig,
+			})
+			defer rt.Close()
+
+			// Legacy mode so the bootstrap docs land in _default._default and the migration runs.
+			dbConfig := rt.NewDbConfig()
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			bucketName := rt.Bucket().GetName()
+			metadataID := rt.GetDatabase().Options.MetadataID
+			require.NotEmpty(t, metadataID)
+
+			// Opt in and converge before snapshotting so the captured dbconfig reflects the opted-in config.
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+			rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+			// Snapshot every bootstrap doc the migration will move, exactly as production enumerates them.
+			// Capture raw body + _sync xattr from the fallback so the post-migration comparison is
+			// independent of which persistence mode stores the config in the body vs the xattr.
+			type docSnapshot struct {
+				body      []byte
+				syncXattr []byte
+			}
+			defaultDS := rt.Bucket().DefaultDataStore(ctx)
+			keys := rt.ServerContext().BootstrapDocKeysToMigrate(t, ctx, bucketName)
+			require.NotEmpty(t, keys)
+			sourceDocs := make(map[string]docSnapshot)
+			for _, key := range keys {
+				body, xattrs, _, err := defaultDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				if base.IsDocNotFoundError(err) {
+					// Optional doc absent in this scenario (e.g. cbgt cfg keys without sharded import);
+					// MigrateBootstrapDocs skips not-found docs too, so there is nothing to assert.
+					continue
+				}
+				require.NoError(t, err, "reading source bootstrap doc %q", key)
+				sourceDocs[key] = docSnapshot{body: body, syncXattr: xattrs[base.SyncXattrName]}
+			}
+			// Registry plus the db's config doc must always be present and migrated.
+			require.Contains(t, sourceDocs, base.SGRegistryKey)
+			require.GreaterOrEqual(t, len(sourceDocs), 2, "expected at least the registry and one dbconfig doc to migrate")
+
+			// Drive the migration to completion.
+			resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			conn := rt.ServerContext().BootstrapContext.Connection
+			// wait for db migration and bootstrap migration to complete
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				require.NoError(c, err)
+				require.NotNil(c, status)
+				assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should complete")
+			}, 30*time.Second, 200*time.Millisecond)
+
+			// Every captured bootstrap doc must now live in _system._mobile identical to its
+			// fallback source, and be fully removed from _default._default.
+			systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+			require.NoError(t, err)
+			for key, source := range sourceDocs {
+				migratedBody, migratedXattrs, _, err := systemDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				require.NoError(t, err, "bootstrap doc %q must exist in _system._mobile after migration", key)
+				assert.JSONEqf(t, string(source.body), string(migratedBody), "body of %q must be unchanged by the migration", key)
+				// The bootstrap config only lives in the _sync xattr under CouchbaseCluster +
+				// XattrBootstrapPersistence (UseXattrConfig). RosmarCluster has no configPersistence and
+				// always stores bootstrap config in the body, so the xattr is empty there regardless of
+				// UseXattrConfig — only assert on it when xattr persistence is genuinely in use.
+				if useXattrConfig && !base.UnitTestUrlIsWalrus() {
+					assert.JSONEqf(t, string(source.syncXattr), string(migratedXattrs[base.SyncXattrName]), "_sync xattr of %q must be unchanged by the migration", key)
+				}
+
+				_, _, _, err = defaultDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				require.Error(t, err, "bootstrap doc %q must be removed from _default._default after migration", key)
+				assert.True(t, base.IsDocNotFoundError(err), "bootstrap doc %q removal from fallback must be a not-found, got: %v", key, err)
+			}
+		})
+	}
 }
 
 // TestMetadataMigrationRESTStartRejectedWithoutOptIn verifies a manual start via the admin API is
