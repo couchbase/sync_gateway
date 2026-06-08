@@ -1311,3 +1311,80 @@ func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
 	err := mgr.Start(ctx, nil)
 	require.NoError(t, err)
 }
+
+type statsMockProcess struct {
+	MockProcess
+	lastPreviousStatus []byte
+	previousStatusLock sync.Mutex
+}
+
+func (s *statsMockProcess) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
+	s.previousStatusLock.Lock()
+	s.lastPreviousStatus = previousStatus
+	s.previousStatusLock.Unlock()
+	return s.MockProcess.GetProcessStatus(status, previousStatus)
+}
+
+func (s *statsMockProcess) LastPreviousStatus() []byte {
+	s.previousStatusLock.Lock()
+	defer s.previousStatusLock.Unlock()
+	return s.lastPreviousStatus
+}
+
+// TestBackgroundManagerResumePreservesPreviousStatus verifies that when a multi-node manager Resume()s,
+// it preserves and passes the previous cluster status to the process GetProcessStatus call,
+// allowing it to merge/preserve stats.
+func TestBackgroundManagerResumePreservesPreviousStatus(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-resume-preserve-status")
+
+	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "resume-preserve-status",
+		multiNode:     true,
+	}
+
+	process1 := &statsMockProcess{}
+	mgr1 := &BackgroundManager[map[string]any]{
+		name:                "test-resume-mgr1",
+		Process:             process1,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	require.NoError(t, mgr1.Start(ctx, nil))
+	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
+
+	// Ensure the running status is written to the cluster.
+	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
+
+	process2 := &statsMockProcess{}
+	mgr2 := &BackgroundManager[map[string]any]{
+		name:                "test-resume-mgr2",
+		Process:             process2,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	require.NoError(t, mgr2.Resume(ctx))
+	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+
+	// Assert that process2 received the previous status in its GetProcessStatus call,
+	// which is required to avoid dropping stats on resume.
+	require.NotEmpty(t, process2.LastPreviousStatus(), "expected previous status to be passed to GetProcessStatus on resume")
+
+	// Ensure we can unmarshal it to verify it actually contains the status.
+	var clusterStatus struct {
+		Status BackgroundManagerStatus `json:"status"`
+	}
+	err := json.Unmarshal(process2.LastPreviousStatus(), &clusterStatus)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateRunning, clusterStatus.Status.State)
+
+	require.NoError(t, mgr1.Stop(ctx))
+	require.NoError(t, mgr2.Stop(ctx))
+}

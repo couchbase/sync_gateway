@@ -300,11 +300,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		assert.GreaterOrEqual(t, cs.ResyncNumProcessed.Value(), int64(docsToCreate))
 		assert.Equal(t, int64(docsToCreate), cs.ResyncNumChanged.Value())
 
-		if !db.useShardedDCP() {
-			// CBG-5418: debug flake of why distributed resync sometimes processes more documents than expected
-			deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
-			assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
-		}
+		deltaOk := assert.InDelta(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value(), 2)
+		assert.True(t, deltaOk, "DCP stream has processed some documents more than once than allowed delta. Try rerunning the test.")
 	})
 }
 
@@ -616,16 +613,13 @@ function sync(doc, oldDoc){
 	channel("resync_channel_again");
 }`
 
-	if !db.useShardedDCP() {
-		// CBG-5418: debug distributed resync processing more documents than expected
-		resyncStats = runResync(t, ctx, db, collection, syncFn)
-		assert.GreaterOrEqual(t, resyncStats.DocsProcessed, int64(2))
+	resyncStats = runResync(t, ctx, db, collection, syncFn)
+	assert.GreaterOrEqual(t, resyncStats.DocsProcessed, int64(2))
 
-		assert.Equal(t, int64(2), resyncStats.DocsChanged)
+	assert.Equal(t, int64(2), resyncStats.DocsChanged)
 
-		assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(4))
-		assert.Equal(t, int64(4), db.DbStats.Database().ResyncNumChanged.Value())
-	}
+	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(4))
+	assert.Equal(t, int64(4), db.DbStats.Database().ResyncNumChanged.Value())
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
