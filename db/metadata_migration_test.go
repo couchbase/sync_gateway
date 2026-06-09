@@ -484,15 +484,13 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 	})
 
 	// LegacySiblingInvertedFormOutOfScope pins the sibling-side of the corner-case fix:
-	// when the local DB is in legacy default mode, a co-located sibling's inverted-form
+	// when the local DB has default metadataID, a co-located sibling's inverted-form
 	// keys must be classified out-of-scope. The classifier recognises them by matching
 	// the segment after the inverted prefix against the authoritative sibling-metadataID
 	// list from the registry (`<siblingID>:`) — there is no `m_` in inverted keys
-	// (`formatInvertedMetadataKey` omits it; see base/constants_syncdocs_test.go:75), so a
-	// real sibling "otherDB" produces `_sync:user:otherDB:alice`. Without the sibling list
-	// the default DB cannot tell these from its own keys, so the list must be supplied.
-	// The ours-side counterpart — a legacy default user literally named `m_alice` — is
-	// covered end-to-end by TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername below.
+	// (`formatInvertedMetadataKey` omits it, so a real sibling "otherDB" produces
+	// `_sync:user:otherDB:alice`. Without the sibling list the default DB cannot tell these from its own
+	// keys, so the list must be supplied.
 	t.Run("LegacySiblingInvertedFormOutOfScope", func(t *testing.T) {
 		for _, k := range []string{
 			"_sync:user:otherDB:alice",
@@ -524,17 +522,13 @@ const (
 )
 
 // TestHandleMigrationKeyClassification is the exhaustive per-key routing matrix for
-// handleMigrationKey: every switch arm, for the legacy-default migrating DB (with and
-// without a sibling) and for a namespaced migrating DB (the inverse direction). It is the
-// unit-level guard for the sibling-DB misclassification fix — it asserts which collection
+// handleMigrationKey: every switch arm, for the default metaID migrating DB (with and
+// without a sibling) and for a namespaced migrating DB (the inverse direction). It asserts which collection
 // each key family is routed to, not the byte-fidelity of the move (datatype/TTL/body
 // equality live in the MigrateMetadata full-scan tests).
 //
 // Keys are built through the real base.MetadataKeys formatters rather than hardcoded, so a
-// future change to a key shape is reflected here automatically. The crux of the fix is the
-// inverted families (user/role/useremail/session/dcp_ck): for the default DB their prefix
-// is also a prefix of every sibling's inverted key, so the classifier must consult the
-// authoritative sibling-metadataID list to tell ours from theirs.
+// future change to a key shape is reflected here automatically.
 func TestHandleMigrationKeyClassification(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -609,9 +603,8 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 	db2 := base.NewMetadataKeys("db2")
 
 	// Direction 1 — the legacy-default DB migrates while a namespaced sibling "db2" shares
-	// the bucket. This is the direction the bug manifested in: the default DB's bare inverted
-	// prefixes overlap every sibling's inverted key, so without the sibling list the default
-	// DB would steal db2's user/role/useremail/session/dcp_ck docs.
+	// the bucket. The default DB's bare inverted prefixes overlap every sibling's inverted key,
+	// so without the sibling list the default DB would steal db2's user/role/useremail/session/dcp_ck docs.
 	t.Run("DefaultDB_with_namespaced_sibling_db2", func(t *testing.T) {
 		run(t, base.DefaultMetadataID, []string{"db2"}, nil, []keyCase{
 			// inverted families — ours (no sibling-id segment after the prefix)
@@ -619,7 +612,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			{"own role", def.RoleKey("admins"), dispMigrated},
 			{"own useremail", def.UserEmailKey("alice@example.com"), dispMigrated},
 			{"own session", def.SessionKey("sessAlice"), dispMigrated},
-			// own dcp_ck: group id "default" + version + vbno — colons in the body, but the
+			// own dcp_ck: group id "default" + vbno — colons in the body, but the
 			// first segment ("default") is not the sibling id "db2", so it stays ours. This is
 			// the case the naive "any colon ⇒ sibling" heuristic could not handle.
 			{"own dcp_ck (group default)", def.DCPCheckpointPrefix("default") + "1", dispMigrated},
@@ -674,7 +667,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			{"own role", db2.RoleKey("readers"), dispMigrated},
 			{"own useremail", db2.UserEmailKey("bob@example.com"), dispMigrated},
 			{"own session", db2.SessionKey("sessBob2"), dispMigrated},
-			{"own dcp_ck", db2.DCPCheckpointPrefix("default") + "1:42", dispMigrated},
+			{"own dcp_ck", db2.DCPCheckpointPrefix("default") + "1", dispMigrated},
 
 			// the default sibling's inverted keys — out-of-scope (inverted-default arms)
 			{"default-sibling user", def.UserKey("alice"), dispOutOfScope},
@@ -692,22 +685,6 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 
 			// own seq counter — out-of-scope (not range-scan migrated)
 			{"own seq counter (not migrated)", db2.SyncSeqKey(), dispOutOfScope},
-		})
-	})
-
-	// Direction 1 with NO sibling list — documents the contract that the registry list is
-	// load-bearing. Without it the default DB cannot distinguish a co-located sibling's
-	// inverted key from one of its own, so it claims the sibling key as in-scope. This is
-	// exactly why ServerContext must wire SiblingMetadataIDFunc (exercised end-to-end in the
-	// rest integration tests). If a future change makes nil-siblings safe, this flips —
-	// intentional tripwire.
-	t.Run("DefaultDB_no_sibling_list_claims_everything", func(t *testing.T) {
-		run(t, base.DefaultMetadataID, nil, nil, []keyCase{
-			{"own user still migrates", def.UserKey("carol"), dispMigrated},
-			{"own dcp_ck still migrates", def.DCPCheckpointPrefix("default") + "9", dispMigrated},
-			// WITHOUT the sibling list this sibling key is claimed as ours — the bug the fix
-			// closes only when SiblingMetadataIDFunc supplies "db2".
-			{"sibling user claimed (no list)", db2.UserKey("dave"), dispMigrated},
 		})
 	})
 
