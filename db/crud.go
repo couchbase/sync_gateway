@@ -86,7 +86,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			// reload to get revseqno for on-demand import
-			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
+			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), unmarshalLevel)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -170,7 +170,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
