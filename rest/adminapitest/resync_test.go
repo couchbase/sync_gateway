@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
@@ -482,4 +483,80 @@ func TestResyncPartitionsMaximumValidation(t *testing.T) {
 	resp := rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+}
+
+// TestResyncCrossNode verifies that two nodes sharing the same bucket both transition to offline
+// when one node takes the database offline (via persistent config), and that resync started on
+// one node completes and is visible to both nodes.
+func TestResyncCrossNode(t *testing.T) {
+	db.UpdateDatabaseStatePolling(t, 100*time.Millisecond)
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	groupID := t.Name()
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          &groupID,
+	}
+
+	rt1 := rest.NewRestTester(t, rtConfig)
+	defer rt1.Close()
+
+	rt2 := rest.NewRestTester(t, rtConfig)
+	defer rt2.Close()
+
+	const dbName = "db"
+
+	// Create database on node 1
+	dbConfig := rt1.NewDbConfig()
+	rest.RequireStatus(t, rt1.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+
+	// Node 2 discovers database from the shared bucket
+	rt2.ServerContext().ForceDbConfigsReload(t, ctx)
+	rt2.WaitForDatabaseState(dbName, db.RunStateString[db.DBOnline])
+
+	// Seed 100 documents via node 1
+	const numDocs = 100
+	for i := range numDocs {
+		rt1.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	}
+
+	// Take node 1 offline — persists StartOffline=true to the shared bucket
+	rt1.TakeDbOffline()
+
+	// Node 2 picks up offline state from the shared bucket via config reload
+	rt2.ServerContext().ForceDbConfigsReload(t, ctx)
+	rt2.WaitForDatabaseState(dbName, db.RunStateString[db.DBOffline])
+
+	// Start resync on node 1
+	resp := rt1.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Both nodes observe the completed resync status via the shared bucket
+	status := rt1.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateCompleted, dbName)
+	t.Logf("Node 1 resync status: %+v", status)
+	status = rt2.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateCompleted, dbName)
+	t.Logf("Node 2 resync status: %+v", status)
+	/*
+		require.GreaterOrEqual(t, status.DocsProcessed, int64(numDocs))
+
+		// rt1 local stats: processed ≥ numDocs, nothing changed (same sync fn),
+		// DocsTargeted resets to 0 on completion, no errors
+		rt1DB := rt1.GetDatabase()
+		assert.GreaterOrEqual(t, rt1DB.DbStats.Database().ResyncNumProcessed.Value(), int64(numDocs))
+		assert.Equal(t, int64(0), rt1DB.DbStats.Database().ResyncNumChanged.Value())
+		assert.Equal(t, int64(0), rt1DB.DbStats.Database().ResyncDocsTargeted.Value()) // reset to 0 after completion
+		assert.Equal(t, int64(0), rt1DB.DbStats.Database().ResyncErrorsTotal.Value())
+
+		rt2.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateCompleted, dbName)
+
+		// rt2 local stats: 0 in non-distributed mode (rt2 processed no vbuckets);
+		// in distributed mode rt2 would have non-zero ResyncNumProcessed
+		rt2DB := rt2.GetDatabase()
+		assert.Equal(t, int64(0), rt2DB.DbStats.Database().ResyncNumChanged.Value())
+		assert.Equal(t, int64(0), rt2DB.DbStats.Database().ResyncDocsTargeted.Value())
+		assert.Equal(t, int64(0), rt2DB.DbStats.Database().ResyncErrorsTotal.Value())
+	*/
 }

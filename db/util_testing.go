@@ -1167,3 +1167,11 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 	stats := &MigrationStats{}
 	require.NoError(t, migrateSeqCounter(ctx, ms, seqKey, stats))
 }
+
+func UpdateDatabaseStatePolling(t testing.TB, interval time.Duration) {
+	old := databaseStatePollingInterval
+	t.Cleanup(func() {
+		databaseStatePollingInterval = old
+	})
+	databaseStatePollingInterval = interval
+}

@@ -17,7 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// resyncResumeFunc is a callback function to call to resume a resync process.
+var databaseStatePollingInterval = 10 * time.Second
+
 type resyncResumeFunc func(ctx context.Context) error
 
 type DatabaseState struct {
@@ -41,7 +42,7 @@ func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeR
 		dbStateID:       dbStateID,
 		CAS:             0,
 		metadataStore:   metadataStore,
-		pollingInterval: 10 * time.Second,
+		pollingInterval: databaseStatePollingInterval,
 		resumeResync:    resumeResync,
 	}
 }
