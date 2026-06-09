@@ -3127,3 +3127,36 @@ DiagnosticFunctionLogging:
       items:
         type: string
         example: This is an info message produced by console.log("test").
+
+CollectionAccessHistory:
+  description: Channel history organized by scope name. Each scope contains a map of collection names to arrays of channel names.
+  type: object
+  additionalProperties:
+    x-additionalPropertiesName: scope
+    type: object
+    additionalProperties:
+      x-additionalPropertiesName: collection
+      type: array
+      items:
+        type: string
+      description: Array of channel names with revocation history in this collection.
+
+UserHistory:
+  description: User channel history organized by scope and collection.
+  type: object
+  title: UserHistory
+  properties:
+    channels:
+      description: Channel history organized by scope and collection.
+      allOf:
+        - $ref: '#/CollectionAccessHistory'
+
+CompactedUserHistory:
+  description: User channel history organized by scope and collection.
+  type: object
+  title: CompactedUserHistory
+  properties:
+    compacted_channels:
+      description: Channel history organized by scope and collection.
+      allOf:
+        - $ref: '#/CollectionAccessHistory'

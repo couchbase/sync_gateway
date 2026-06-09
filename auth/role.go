@@ -53,6 +53,17 @@ func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []st
 	return prunedChannelHistory
 }
 
+func (timedSet TimedSetHistory) PruneHistoryByKey(keys []string) []string {
+	removedKeys := make([]string, 0)
+	for _, key := range keys {
+		if _, ok := timedSet[key]; ok {
+			delete(timedSet, key)
+			removedKeys = append(removedKeys, key)
+		}
+	}
+	return removedKeys
+}
+
 type GrantHistory struct {
 	UpdatedAt int64                      `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
 	Entries   []GrantHistorySequencePair `json:"entries"`    // Entry for a specific grant period
@@ -391,6 +402,15 @@ func (role *roleImpl) authorizeAllChannels(channels base.Set) error {
 
 func (role *roleImpl) authorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
+}
+
+func (role *roleImpl) CompactChannelHistory(scope, collection string, channels []string) []string {
+	chanHistory := role.CollectionChannelHistory(scope, collection)
+	if chanHistory == nil {
+		return []string{}
+	}
+	compactedChannels := chanHistory.PruneHistoryByKey(channels)
+	return compactedChannels
 }
 
 // Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.
