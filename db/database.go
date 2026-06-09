@@ -160,26 +160,30 @@ type DatabaseContext struct {
 	// complete in the status doc. Triggers the bucket-level all-complete check + bootstrap copy
 	// + SetMigrationComplete on the cluster.
 	PostMetadataMigrationCompleteFunc func(ctx context.Context) error
-	ClusterCompatVersionFunc          func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
-	UserFunctionTimeout               time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
-	Scopes                            map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	CollectionByID                    map[uint32]*DatabaseCollection    // A map keyed by collection ID to Collection
-	CollectionNames                   map[string]map[string]struct{}    // Map of scope, collection names
-	MetadataKeys                      *base.MetadataKeys                // Factory to generate metadata document keys
-	RequireResync                     base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
-	RequireAttachmentMigration        base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
-	CORS                              *auth.CORSConfig                  // CORS configuration
-	EnableMou                         bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
-	WasInitializedSynchronously       bool                              // true if the database was initialized synchronously
-	BroadcastSlowMode                 atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
-	DatabaseStartupError              *DatabaseError                    // Error that occurred during database online processes startup
-	CachedPurgeInterval               atomic.Pointer[time.Duration]     // If set, the cached value of the purge interval to avoid repeated lookups
-	CachedVersionPruningWindow        atomic.Pointer[time.Duration]     // If set, the cached value of the version pruning window to avoid repeated lookups
-	CachedCCVStartingCas              *base.VBucketCAS                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
-	CachedCCVEnabled                  atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
-	numVBuckets                       uint16                            // Number of vbuckets in the bucket
-	SameSiteCookieMode                http.SameSite
-	DBStateManager                    *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	// SiblingMetadataIDFunc will return metadataIDs of all sibling databases with the same bucket (excluding this databases).
+	// Used by metadata migration to recognise co-located sibling databases metadata documents to avoid migrating them and
+	// classify as out-of-scope.
+	SiblingMetadataIDFunc       func(ctx context.Context) ([]string, error)
+	ClusterCompatVersionFunc    func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
+	UserFunctionTimeout         time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
+	Scopes                      map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	CollectionByID              map[uint32]*DatabaseCollection    // A map keyed by collection ID to Collection
+	CollectionNames             map[string]map[string]struct{}    // Map of scope, collection names
+	MetadataKeys                *base.MetadataKeys                // Factory to generate metadata document keys
+	RequireResync               base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
+	RequireAttachmentMigration  base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
+	CORS                        *auth.CORSConfig                  // CORS configuration
+	EnableMou                   bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+	WasInitializedSynchronously bool                              // true if the database was initialized synchronously
+	BroadcastSlowMode           atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	DatabaseStartupError        *DatabaseError                    // Error that occurred during database online processes startup
+	CachedPurgeInterval         atomic.Pointer[time.Duration]     // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedVersionPruningWindow  atomic.Pointer[time.Duration]     // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas        *base.VBucketCAS                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
+	CachedCCVEnabled            atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
+	numVBuckets                 uint16                            // Number of vbuckets in the bucket
+	SameSiteCookieMode          http.SameSite
+	DBStateManager              *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
