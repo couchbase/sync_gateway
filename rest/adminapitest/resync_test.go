@@ -512,7 +512,7 @@ func TestDistributedResync(t *testing.T) {
 	rt2 := rest.NewRestTester(t, rt2Config)
 	defer rt2.Close()
 
-	// Verify the db exists on rt2
+	// wait for db to be online on rt1
 	rt1.WaitForDBState(db.RunStateString[db.DBOnline])
 
 	// Wait for database polling on rt2 to detect the database created by rt1
@@ -562,7 +562,7 @@ function sync(doc, oldDoc){
 
 	log.Printf("rt2 resync status (changed/processed): %v/%v", rt2ResyncStatus.DocsChanged, rt2ResyncStatus.DocsProcessed)
 	assert.Equal(t, int64(numDocs), rt2ResyncStatus.DocsChanged)
-	assert.LessOrEqual(t, int64(numDocs), rt1ResyncStatus.DocsProcessed)
+	assert.LessOrEqual(t, int64(numDocs), rt2ResyncStatus.DocsProcessed)
 
 	log.Printf("rt1 stats - resync num changed: %v", rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
 	log.Printf("rt2 stats - resync num changed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
