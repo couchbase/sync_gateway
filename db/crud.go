@@ -170,7 +170,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 	if c.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -189,6 +189,11 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
+
+			rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+			if getErr != nil {
+				return emptySyncData, getErr
+			}
 
 			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
 			if importErr != nil {
