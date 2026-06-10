@@ -518,7 +518,20 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		want                    CollectionInitData
 	}{
 		{
-			name: "implicit default collection",
+			name: "implicit default collection with mobile collection enabled",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            nil,
+					UseSystemMobileMetadataCollection: base.Ptr(true),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			name: "implicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes: nil,
@@ -526,15 +539,15 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			defaultCollectionExists: true,
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():      db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
 			},
 		},
 		{
-			name: "explicit default collection",
+			name: "explicit default collection with mobile collection enabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -544,10 +557,22 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 		},
 		{
-			name: "one named collection",
+			name: "explicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			name: "one named collection with mobile collection enabled",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -558,7 +583,33 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 		},
 		{
-			name: "one named and explicit default collection",
+			name: "one named collection with mobile collection disabled",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			name: "one named and explicit default collection with mobile collection enabled",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			name: "one named and explicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
@@ -567,7 +618,6 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
 			},
 		},

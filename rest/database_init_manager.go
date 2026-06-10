@@ -228,8 +228,11 @@ func (m *DatabaseInitManager) cancelWorkers() {
 // _default is gone (and not itself a configured data collection) it is omitted from the index set.
 func buildCollectionIndexData(config *DatabaseConfig, defaultCollectionExists bool) CollectionInitData {
 	if len(config.Scopes) == 0 {
-		// todo: only init these mobile collection indexes when required?
-		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+		if config.UseSystemMobileMetadataCollection != nil && *config.UseSystemMobileMetadataCollection {
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+		} else {
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
+		}
 	}
 
 	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
@@ -253,8 +256,9 @@ func buildCollectionIndexData(config *DatabaseConfig, defaultCollectionExists bo
 	if defaultCollectionExists || defaultIsConfiguredCollection {
 		collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
 	}
-	// todo: only init these indexes when required?
-	collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
+	if config.UseSystemMobileMetadataCollection != nil && *config.UseSystemMobileMetadataCollection {
+		collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
+	}
 
 	return collectionInitData
 }
