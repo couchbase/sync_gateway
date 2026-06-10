@@ -212,7 +212,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 				var sibErr error
 				siblingMetadataIDs, sibErr = m.dbContext.SiblingMetadataIDFunc(runCtx)
 				if sibErr != nil {
-					return fmt.Errorf("[%s] Failed to get sibling MetadataIDs: %v", metadataMigrationLoggingID, sibErr)
+					return fmt.Errorf("[%s] failed to get sibling MetadataIDs: %w", metadataMigrationLoggingID, sibErr)
 				}
 			}
 

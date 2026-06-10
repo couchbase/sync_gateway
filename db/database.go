@@ -160,9 +160,9 @@ type DatabaseContext struct {
 	// complete in the status doc. Triggers the bucket-level all-complete check + bootstrap copy
 	// + SetMigrationComplete on the cluster.
 	PostMetadataMigrationCompleteFunc func(ctx context.Context) error
-	// SiblingMetadataIDFunc will return metadataIDs of all sibling databases with the same bucket (excluding this databases).
-	// Used by metadata migration to recognise co-located sibling databases metadata documents to avoid migrating them and
-	// classify as out-of-scope.
+	// SiblingMetadataIDFunc returns metadataIDs of all sibling databases sharing the same bucket (excluding this database).
+	// Used by metadata migration to recognise co-located sibling databases' metadata documents, avoid migrating them, and
+	// classify them as out-of-scope.
 	SiblingMetadataIDFunc       func(ctx context.Context) ([]string, error)
 	ClusterCompatVersionFunc    func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
 	UserFunctionTimeout         time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)

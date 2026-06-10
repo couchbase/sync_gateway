@@ -178,9 +178,9 @@ func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string
 // MetadataKeys prefix accessors so namespacing (the `m_<id>:` infix) is part of the prefix
 // match for namespaced metadataIDs. For the legacy `_default` metadataID, where each
 // inverted-form prefix (e.g. `_sync:user:`) overlaps with sibling DBs' inverted-form keys
-// (`_sync:user:<metaID>:…`), isOursInverted handles this case by doing a prefix match and for default metadata id db's
-// we will also check against sibling db's metadata ids fetched from registry doc — this keeps a legacy default
-// user literally named `m_alice` correctly classified as ours.
+// (`_sync:user:<metaID>:…`), isOursInverted handles this case by doing a prefix match, and for the default
+// metadataID DB it also checks the registry-supplied sibling metadataIDs — this keeps a legacy default user literally
+// named `m_alice` correctly classified as ours.
 //
 // Sync-function ("syncdata") docs are the exception to the metadataID-prefix scheme: they are
 // keyed by groupID + scope.collection, so ownership is decided by exact match against the
