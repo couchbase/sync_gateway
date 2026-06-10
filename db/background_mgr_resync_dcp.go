@@ -589,6 +589,11 @@ func (r *ResyncManagerDCP) initializeFromPreviousStatus(statusDoc ResyncManagerS
 	defer r.lock.Unlock()
 	r.ResyncID = statusDoc.ResyncID
 	r.EndSeqNos = statusDoc.EndSeqNos
+	if !r.Distributed {
+		r.docsChangedLocal.Store(statusDoc.DocsChanged)
+		r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
+		r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	}
 	r.docsTargeted.Store(statusDoc.DocsTargeted)
 	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(statusDoc.DocsTargeted))
 }

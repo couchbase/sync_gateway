@@ -557,16 +557,16 @@ function sync(doc, oldDoc){
 	log.Printf("rt2 sync function count: %v", rt2.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	log.Printf("rt1 resync status (changed/processed): %v/%v", rt1ResyncStatus.DocsChanged, rt1ResyncStatus.DocsProcessed)
-	assert.Equal(t, numDocs, rt1ResyncStatus.DocsChanged)
-	assert.GreaterOrEqual(t, numDocs, rt1ResyncStatus.DocsProcessed)
+	assert.Equal(t, int64(numDocs), rt1ResyncStatus.DocsChanged)
+	assert.LessOrEqual(t, int64(numDocs), rt1ResyncStatus.DocsProcessed)
 
 	log.Printf("rt2 resync status (changed/processed): %v/%v", rt2ResyncStatus.DocsChanged, rt2ResyncStatus.DocsProcessed)
-	assert.Equal(t, numDocs, rt2ResyncStatus.DocsChanged)
-	assert.GreaterOrEqual(t, numDocs, rt1ResyncStatus.DocsProcessed)
+	assert.Equal(t, int64(numDocs), rt2ResyncStatus.DocsChanged)
+	assert.LessOrEqual(t, int64(numDocs), rt1ResyncStatus.DocsProcessed)
 
 	log.Printf("rt1 stats - resync num changed: %v", rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
 	log.Printf("rt2 stats - resync num changed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
-	assert.Equal(t, numDocs, rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value()+rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
+	assert.Equal(t, int64(numDocs), rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value()+rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
 
 	log.Printf("rt1 stats - resync num processed: %v", rt1.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
 	log.Printf("rt2 stats - resync num processed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
