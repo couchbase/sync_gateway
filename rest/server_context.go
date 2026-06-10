@@ -818,15 +818,19 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		fallbackStore := bucket.DefaultDataStore(ctx)
 		metaStore := base.NewMetadataStore(primaryMetadataStore, fallbackStore)
 		if !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID) {
-			metaStore.SetMigrationComplete()
-			// Same SetMigrationComplete action covers two distinct cases — log them
-			// separately so operators don't see "new-database fast path" against a DB
-			// that just finished migrating.
-			primarySeqKey := base.NewMetadataKeys(config.MetadataID).SyncSeqKey()
-			if primaryHasSeq, _ := primaryMetadataStore.Exists(ctx, primarySeqKey); primaryHasSeq {
-				base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — marking per-DB MetadataStore wrapper migration-complete", base.MD(dbName))
+			if sc.isPerDBMigrationInProgress(ctx, spec.BucketName, config.MetadataID) {
+				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy _sync:seq in _default._default but per-DB migration is in_progress on another node — keeping dual-read mode until migration completes", base.MD(dbName))
 			} else {
-				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+				metaStore.SetMigrationComplete()
+				// Same SetMigrationComplete action covers two distinct cases — log them
+				// separately so operators don't see "new-database fast path" against a DB
+				// that just finished migrating.
+				primarySeqKey := base.NewMetadataKeys(config.MetadataID).SyncSeqKey()
+				if primaryHasSeq, _ := primaryMetadataStore.Exists(ctx, primarySeqKey); primaryHasSeq {
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — marking per-DB MetadataStore wrapper migration-complete", base.MD(dbName))
+				} else {
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+				}
 			}
 		}
 		contextOptions.MetadataStore = metaStore
@@ -2389,6 +2393,42 @@ func probeLegacyPerDBMetadata(ctx context.Context, fallback base.DataStore, meta
 		return true
 	}
 	return exists
+}
+
+// isPerDBMigrationInProgress checks the bucket-level metadata-migration status doc for the
+// given metadataID and reports whether its per-DB entry is in_progress. This guards against a
+// race where another node's migration has already moved the _sync:seq counter to primary
+// (causing probeLegacyPerDBMetadata to return false) but has not yet finished migrating all
+// per-DB metadata (users, roles, sessions). Without this check the joining node would
+// incorrectly call SetMigrationComplete, causing reads to skip the fallback and miss
+// not-yet-migrated docs.
+//
+// Returns false (safe to mark complete) when the status doc is absent, the per-DB entry does
+// not exist, the entry is in any state other than in_progress, or the bootstrap connection is
+// unavailable. All of these mean either no migration has been attempted or it has already
+// finished. If status doc cannot be read it is safer to assume a migration is in progress than to
+// risk a false negative and prematurely disable fallback reads.
+func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketName, metadataID string) bool {
+	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
+		return false
+	}
+	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			// only treat not found as "no migration" if the bucket-level status doc is missing — if the doc is present
+			// but unreadable for some reason (transient failure network/timeout), it's safer to assume a migration is
+			// in progress than to risk a false negative and prematurely disable fallback reads
+			return false
+		}
+		base.WarnfCtx(ctx, "Unable to read %s on bucket %q while checking per-DB migration status: %v — assuming migration in progress to avoid prematurely disabling fallback reads", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucketName), err)
+		return true
+	}
+	entry, ok := status.Databases[metadataID]
+	if !ok || entry == nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "No entry for metadataID %q in bucket %q metadata-migration status doc — treating as no migration in progress (expected for a new database with no legacy metadata to migrate)", base.MD(metadataID), base.MD(bucketName))
+		return false
+	}
+	return entry.State == base.MigrationStateInProgress
 }
 
 // maybeCompleteBucketMetadataMigration is invoked after each per-DB migration reports complete.
