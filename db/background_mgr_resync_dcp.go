@@ -44,6 +44,7 @@ type ResyncManagerDCP struct {
 	docsTargeted                 atomic.Uint64 // number of documents targeted for resync, computed once at the start of a new run
 	ResyncID                     string
 	VBUUIDs                      []uint64
+	EndSeqNos                    []uint64 // EndSeqNos for resync, stored as a slice to optimize persistence in status doc
 	ResyncedCollections          base.CollectionNames
 	startOptions                 ResyncOptions // options from the most recent Start call, persisted to meta for Resume
 	resyncCollectionInfo
@@ -191,6 +192,15 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(docsTargeted))
 
 	r.ResyncID = newID.String()
+
+	if r.Distributed {
+		endSeqNosMap, err := base.GetHighSeqNos(ctx, r.db.Bucket)
+		if err != nil {
+			return err
+		}
+		r.setEndSeqNosFromMap(endSeqNosMap)
+	}
+
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
 	return nil
 }
@@ -237,6 +247,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 	db := r.db
 	regenerateSequences := options.RegenerateSequences
 	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
+	ctx = db.AddDatabaseLogContext(ctx)
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
 	defer func() {
@@ -353,10 +364,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 
 		r.dcpDoneChan = make(chan error)
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db, r.ResyncID, true)
-		endSeqNos, err := base.GetHighSeqNos(ctx, db.Bucket)
-		if err != nil {
-			return err
-		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(
@@ -367,7 +374,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 					MaxVbNo:            db.numVBuckets,
 					PersistCheckpoints: true,
 					CheckpointPrefix:   checkPointPrefix,
-					EndSeqNos:          endSeqNos,
+					EndSeqNos:          r.endSeqNosMap(),
 				},
 			)
 			if err != nil {
@@ -425,7 +432,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			IndexName:              indexName,
 			Datastore:              db.MetadataStore,
 			FeedType:               base.ShardedDCPFeedTypeResync,
-			EndSeqNos:              endSeqNos,
+			EndSeqNos:              r.endSeqNosMap(),
 			UnregisterFeedCallback: r.getUnregisterFeedFunc(ctx, db.numVBuckets),
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(ctx, opts)
@@ -575,15 +582,38 @@ func (r *ResyncManagerDCP) ResetStatus() {
 
 // initializeFromPreviousStatus restores the in-memory state of the manager from a previously persisted status
 // document so that a resumed run starts with the correct accumulated counts.
+// Does not set local stats (*Local) from persisted stats (cluster-wide).  These start again from zero on resume,
+// and follow the standard status update process to aggregate those with the previously persisted stats.
 func (r *ResyncManagerDCP) initializeFromPreviousStatus(statusDoc ResyncManagerStatusDocDCP) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.ResyncID = statusDoc.ResyncID
-	r.docsChangedLocal.Store(statusDoc.DocsChanged)
-	r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
-	r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	r.EndSeqNos = statusDoc.EndSeqNos
+	if !r.Distributed {
+		r.docsChangedLocal.Store(statusDoc.DocsChanged)
+		r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
+		r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	}
 	r.docsTargeted.Store(statusDoc.DocsTargeted)
 	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(statusDoc.DocsTargeted))
+}
+
+// makeEndSeqNosMap converts a slice of end sequence numbers by vBucket to a map
+func (r *ResyncManagerDCP) endSeqNosMap() map[uint16]uint64 {
+	endSeqNoMap := make(map[uint16]uint64, len(r.EndSeqNos))
+	for vb, endSeq := range r.EndSeqNos {
+		endSeqNoMap[uint16(vb)] = endSeq
+	}
+	return endSeqNoMap
+}
+
+// makeEndSeqNosSlice converts a map of end sequence numbers by vBucket to a slice, filling in any missing vBuckets with 0
+func (r *ResyncManagerDCP) setEndSeqNosFromMap(endSeqMap map[uint16]uint64) {
+	r.EndSeqNos = make([]uint64, r.db.numVBuckets)
+	for vb := uint16(0); vb < r.db.numVBuckets; vb++ {
+		r.EndSeqNos[vb] = endSeqMap[vb]
+	}
+
 }
 
 // setCollectionStatus sets the active collections being resynced.
@@ -689,6 +719,7 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		VBUUIDs:       r.VBUUIDs,
 		CollectionIDs: r.collectionIDs,
 		Options:       r.startOptions,
+		EndSeqNos:     r.EndSeqNos,
 	}
 
 	prevVBuckets, err := getCompletedVBucketsFromMeta(previousStatus)
@@ -792,6 +823,7 @@ type resyncManagerCompletedVBuckets struct {
 type ResyncManagerMeta struct {
 	VBUUIDs       []uint64      `json:"vbuuids"`
 	CollectionIDs []uint32      `json:"collection_ids,omitempty"`
+	EndSeqNos     []uint64      `json:"end_seq_nos"`       // end seq nos, persisted for Resume
 	Options       ResyncOptions `json:"options,omitempty"` // start options, persisted for Resume
 	resyncManagerCompletedVBuckets
 }
