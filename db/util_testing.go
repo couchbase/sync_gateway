@@ -335,13 +335,6 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 
 // viewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-	skipGSI := false
-
-	if base.TestsDisableGSI() {
-		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
-		skipGSI = true
-	}
-
 	tbp.Logf(ctx, "Starting bucket init function")
 
 	// Include the mobile system collection so its indexes are dropped and recreated alongside the
@@ -355,7 +348,12 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		ctx := base.DataStoreLogCtx(ctx, dataStore)
 
 		// Views
-		if skipGSI || base.TestsDisableGSI() {
+		if base.TestsDisableGSI() {
+			// create views if walrus (GSI=true), all collections
+			// Couchbase Server doesn't support views on a non-default collection and neither does Sync Gateway for CBS
+			if !base.UnitTestUrlIsWalrus() && !base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+				continue
+			}
 			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
 				return err
 			}
