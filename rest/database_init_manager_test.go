@@ -511,20 +511,22 @@ func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string
 }
 
 func TestBuildCollectionIndexData(t *testing.T) {
+	bootstrapEnabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(true)}}
+	bootstrapDisabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(false)}}
+
 	tests := []struct {
 		name                    string
 		config                  *DatabaseConfig
 		defaultCollectionExists bool
 		want                    CollectionInitData
 	}{
+		// Scope variations — verifies index sets are computed correctly per collection layout.
+		// Uses per-DB opt-in to show the full output including mobile collection.
 		{
-			name: "implicit default collection with mobile collection enabled",
-			config: &DatabaseConfig{
-				DbConfig: DbConfig{
-					Scopes:                            nil,
-					UseSystemMobileMetadataCollection: base.Ptr(true),
-				},
-			},
+			name: "implicit default collection",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -583,29 +585,25 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 		},
 		{
-			name: "one named collection with mobile collection disabled",
-			config: &DatabaseConfig{
-				DbConfig: DbConfig{
-					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
-				},
-			},
-			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
-				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
-			},
-		},
-		{
-			name: "one named and explicit default collection with mobile collection enabled",
-			config: &DatabaseConfig{
-				DbConfig: DbConfig{
-					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
-				},
-			},
+			name: "one named and explicit default collection",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		// Flag interaction cases — verifies resolveUseSystemMetadataCollection precedence.
+		// Uses implicit default collection as a representative scope.
+		{
+			name:   "per-DB enabled, no startup config",
+			config: &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -617,8 +615,36 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			defaultCollectionExists: true,
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
-				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			// per-DB false falls through to the cluster flag, which is true
+			name:          "bootstrap enabled, per-DB explicitly disabled",
+			startupConfig: bootstrapEnabled,
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(false)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			name:          "bootstrap disabled, per-DB unset",
+			startupConfig: bootstrapDisabled,
+			config:        &DatabaseConfig{},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			// per-DB true always wins, regardless of cluster flag
+			name:          "bootstrap disabled, per-DB explicitly enabled",
+			startupConfig: bootstrapDisabled,
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
