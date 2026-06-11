@@ -3969,7 +3969,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 		require.NoError(t, err)
 		userSequences[i] = user.Sequence()
 	}
-	err := db.updateAllPrincipalsSequences(ctx)
+	err := db.updateAllPrincipalsSequences(ctx, "resyncID")
 	require.NoError(t, err)
 
 	for i := range 5 {

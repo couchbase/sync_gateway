@@ -1785,7 +1785,7 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) error {
+func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context, resyncID string) error {
 	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
@@ -1801,7 +1801,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if role == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, role)
+		err = db.regeneratePrincipalSequences(ctx, authr, role, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1815,7 +1815,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if user == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, user)
+		err = db.regeneratePrincipalSequences(ctx, authr, user, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1823,13 +1823,13 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 	return nil
 }
 
-func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal, resyncID string) error {
 	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = authr.UpdateSequenceNumber(princ, nextSeq)
+	err = authr.UpdateSequenceNumberForResync(princ, nextSeq, resyncID)
 	if err != nil {
 		return err
 	}
@@ -1965,34 +1965,35 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 	return err
 }
 
-// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
-func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) error {
+// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections.  If resyncID is provided,
+// cancels invalidation if the resyncID matches the one on the existing principal
+func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64, resyncID string) error {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
 	users, roles, err := dbCtx.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
 	}
 	for _, name := range users {
-		dbCtx.invalUserRolesAndChannels(ctx, name, collectionNames, endSeq)
+		dbCtx.invalUserRolesAndChannels(ctx, name, collectionNames, endSeq, resyncID)
 	}
 	for _, name := range roles {
-		dbCtx.invalRoleChannels(ctx, name, collectionNames, endSeq)
+		dbCtx.invalRoleChannels(ctx, name, collectionNames, endSeq, resyncID)
 	}
 	return nil
 }
 
 // invalUserChannels invalidates a user's computed channels for the specified collections
-func (dbCtx *DatabaseContext) invalUserChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+func (dbCtx *DatabaseContext) invalUserChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) {
 	authr := dbCtx.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, collections, invalSeq); err != nil {
+	if err := authr.InvalidateChannels(username, true, collections, invalSeq, resyncID); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
 // invalRoleChannels invalidates a role's computed channels for the specified collections
-func (dbCtx *DatabaseContext) invalRoleChannels(ctx context.Context, rolename string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+func (dbCtx *DatabaseContext) invalRoleChannels(ctx context.Context, rolename string, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) {
 	authr := dbCtx.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, collections, invalSeq); err != nil {
+	if err := authr.InvalidateChannels(rolename, false, collections, invalSeq, resyncID); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
@@ -2007,9 +2008,9 @@ func (dbCtx *DatabaseContext) invalUserRoles(ctx context.Context, username strin
 }
 
 // invalUserRolesAndChannels invalidates the user's computed roles, and invalidates the computed channels for all specified collections
-func (dbCtx *DatabaseContext) invalUserRolesAndChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64) {
+func (dbCtx *DatabaseContext) invalUserRolesAndChannels(ctx context.Context, username string, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) {
 	authr := dbCtx.Authenticator(ctx)
-	if err := authr.InvalidateRolesAndChannels(username, collections, invalSeq); err != nil {
+	if err := authr.InvalidateRolesAndChannels(username, collections, invalSeq, resyncID); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }

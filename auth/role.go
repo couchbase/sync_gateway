@@ -35,6 +35,7 @@ type roleImpl struct {
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	UpdatedAt         time.Time                               `json:"updated_at"`
 	CreatedAt         time.Time                               `json:"created_at"`
+	ResyncID_         string                                  `json:"resync_id,omitempty"`
 	cas               uint64
 	docID             string // key used to store the roleImpl
 }
@@ -362,6 +363,13 @@ func (role *roleImpl) SetChannelHistory(history TimedSetHistory) {
 
 func (role *roleImpl) ChannelHistory() TimedSetHistory {
 	return role.ChannelHistory_
+}
+
+func (role *roleImpl) ResyncID() string {
+	return role.ResyncID_
+}
+func (role *roleImpl) SetResyncID(resyncID string) {
+	role.ResyncID_ = resyncID
 }
 
 // Checks whether this role object contains valid data; if not, returns an error.

@@ -428,9 +428,15 @@ func (auth *Authenticator) Save(p Principal) error {
 	return nil
 }
 
-// Used for resync
-func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
+// Used for resync.  Cancels update if provided resyncID matches existing on the principal
+func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64, resyncID string) error {
+
+	if p.ResyncID() == resyncID {
+		return nil
+	}
+
 	p.SetSequence(seq)
+	p.SetResyncID(resyncID)
 	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
@@ -441,11 +447,12 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 }
 
 func (auth *Authenticator) InvalidateDefaultChannels(name string, isUser bool, invalSeq uint64) error {
-	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq)
+	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq, "")
 }
 
-// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
-func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
+// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value.  If resyncID is provided, the update will be
+// cancelled when invalidating multiple collections.  The subdoc pathway ignores resyncID since it's already only one kv op.
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) error {
 	var princ Principal
 	var docID string
 
@@ -493,6 +500,10 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 		err = base.JSONUnmarshal(current, &princ)
 		if err != nil {
 			return nil, nil, false, err
+		}
+
+		if resyncID != "" && princ.ResyncID() == resyncID {
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
 		changed := false
@@ -564,7 +575,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 }
 
 // Invalidates the computed roles and channels of a user by setting the ChannelInvalSeq to a non-zero value for all specified collections.
-func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
+func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) error {
 
 	docID := auth.DocIDForUser(username)
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate computed role and channel access of %q for collections %v", base.UD(username), collections)
@@ -578,6 +589,11 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 		var user userImpl
 		err = base.JSONUnmarshal(current, &user)
 		if err != nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		// If resyncID is provided, cancel the update if the existing doc has already been processed for this ResyncID
+		if resyncID != "" && user.ResyncID() == resyncID {
 			return nil, nil, false, base.ErrUpdateCancel
 		}
 

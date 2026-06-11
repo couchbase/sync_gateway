@@ -477,7 +477,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			return err
 		}
 
-		if err := invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections, r.DocsChanged()); err != nil {
+		if err := r.invalidatePrincipals(ctx, db, regenerateSequences); err != nil {
 			return err
 		}
 
@@ -502,23 +502,23 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 }
 
 // invalidatePrincipals invalidates principal documents after documents have been resynced.
-func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, resyncAllCollections bool, docsChanged int64) error {
+func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool) error {
 	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-	if !db.UseViews() && ((regenerateSequences && resyncAllCollections) || docsChanged > 0) {
+	if !db.UseViews() && ((regenerateSequences && r.hasAllCollections) || r.DocsChanged() > 0) {
 		err := initializePrincipalDocsIndex(ctx, db)
 		if err != nil {
 			return err
 		}
 	}
-	if regenerateSequences && resyncAllCollections {
-		err := db.updateAllPrincipalsSequences(ctx)
+	if regenerateSequences && r.hasAllCollections {
+		err := db.updateAllPrincipalsSequences(ctx, r.ResyncID)
 		if err != nil {
 			return fmt.Errorf("Error updating principal sequences: %w", err)
 		}
 	}
 
-	if docsChanged > 0 {
+	if r.DocsChanged() > 0 {
 		endSeq, err := db.sequences.getSequence(ctx)
 		if err != nil {
 			return err
@@ -528,7 +528,7 @@ func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSe
 		for _, databaseCollection := range db.CollectionByID {
 			collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
 		}
-		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
+		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq, r.ResyncID)
 		if err != nil {
 			return fmt.Errorf("Could not invalidate principal documents: %w", err)
 		}

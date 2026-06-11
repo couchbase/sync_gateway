@@ -412,12 +412,12 @@ func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name s
 
 // invalRoleChannels invalidates a user's computed channels for collection c
 func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	c.dbCtx.invalUserChannels(ctx, username, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+	c.dbCtx.invalUserChannels(ctx, username, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq, "")
 }
 
 // invalRoleChannels invalidates a role's computed channels for collection c
 func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
+	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq, "")
 }
 
 func (c *DatabaseCollection) useMou() bool {
