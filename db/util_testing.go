@@ -347,12 +347,11 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	for _, dataStore := range dataStores {
 		ctx := base.DataStoreLogCtx(ctx, dataStore)
 
-		if base.TestsDisableGSI() && !base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
-			continue
-		}
-
 		// Views
-		if base.TestsDisableGSI() || base.UnitTestUrlIsWalrus() {
+		if base.TestsDisableGSI() {
+			// create views if walrus (GSI=true), all collections
+			// Couchbase Server doesn't support views on a non-default collection and neither does Sync Gateway for CBS
+			if base.TestsDisableGSI() && base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) || base.UnitTestUrlIsWalrus() {
 			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
 				return err
 			}
