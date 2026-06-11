@@ -805,7 +805,7 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 			err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate)
 			if err != nil {
 				if errors.Is(err, errBackgroundManagerStatusNotRunning) {
-					b.stopProcess(ctx)
+					b.terminator.Close()
 					return
 				} else {
 					base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
