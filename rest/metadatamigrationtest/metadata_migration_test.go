@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -538,6 +539,156 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.
 	assert.NotContains(t, finalBody, `"status":"error"`,
 		"dbnamed's migration should not error — its own keys migrate and the sibling DB's "+
 			"out-of-scope keys are skipped. Final payload: %s", finalBody)
+}
+
+// TestMetadataMigrationConcurrentDefaultAndNamedDB migrates two databases that share one bucket -
+// a legacy default-metadataID DB on _default._default (unprefixed keys, e.g. `_sync:user:alice`)
+// and a namespaced DB on a named collection (m_<id>:-prefixed keys, e.g. `_sync:user:m_<id>:bob`) -
+// at the same time, each triggered through its own POST /{db}/_metadata_migration?action=start in
+// its own goroutine.
+//
+// Both migrations scan and drain the shared _default._default fallback concurrently.
+func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollection = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	// dbdefault: → metadataID="_default"
+	const dbDefaultName = "dbdefault"
+	dbDefaultCfg := rt.NewDbConfig()
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbDefaultName+"/_user/alice",
+		`{"name":"alice","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbDefaultName+"/_role/admins",
+		`{"name":"admins","admin_channels":["public"]}`), http.StatusCreated)
+
+	// dbnamed: → namespaced metadataID
+	const dbNamedName = "dbnamed"
+	dbNamedCfg := rt.NewDbConfig()
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{namedCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbNamedName, dbNamedCfg), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbNamedName+"/_user/bob",
+		`{"name":"bob","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbNamedName+"/_role/readers",
+		`{"name":"readers","admin_channels":["public"]}`), http.StatusCreated)
+
+	// Confirm the topology matches the premise: distinct metadataIDs, the default one for dbdefault.
+	dbDefaultCtx, err := rt.ServerContext().GetDatabase(ctx, dbDefaultName)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultMetadataID, dbDefaultCtx.Options.MetadataID, "dbdefault must use the legacy default metadataID")
+	dbNamedCtx, err := rt.ServerContext().GetDatabase(ctx, dbNamedName)
+	require.NoError(t, err)
+	require.NotEqual(t, base.DefaultMetadataID, dbNamedCtx.Options.MetadataID, "dbnamed must have a non-default metadataID")
+	require.NotEmpty(t, dbNamedCtx.Options.MetadataID)
+
+	defaultDocKeys := []string{
+		base.DefaultMetadataKeys.UserKey("alice"),
+		base.DefaultMetadataKeys.RoleKey("admins"),
+	}
+	namedDocKeys := []string{
+		dbNamedCtx.MetadataKeys.UserKey("bob"),
+		dbNamedCtx.MetadataKeys.RoleKey("readers"),
+	}
+	allDocKeys := append(append([]string{}, defaultDocKeys...), namedDocKeys...)
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+	for _, k := range allDocKeys {
+		exists, existsErr := fallback.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		require.Truef(t, exists, "%q must exist in _default._default before migration", k)
+	}
+	base.RequireDocsVisibleToRangeScan(t, fallback, allDocKeys)
+
+	// Flip both DBs' opt-in
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	// Flush this node's applied config versions so the manual starts pass the config-fully-applied gate.
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	// Kick both migrations off at the same time, each via its own admin endpoint POST in its own
+	// goroutine
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+	go func() {
+		defer wg.Done()
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+	wg.Wait()
+
+	// Both per-DB managers must reach completed
+	defaultResp := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbDefaultName)
+	namedResp := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbNamedName)
+
+	assert.Zero(t, defaultResp.DocsFailed, "dbdefault migration must have no per-doc failures")
+	assert.Zero(t, namedResp.DocsFailed, "dbnamed migration must have no per-doc failures")
+	// Each DB migrates only its own principals (user + role) + other metadata documents; the other's are out-of-scope.
+	assert.GreaterOrEqual(t, defaultResp.DocsProcessed, int64(len(defaultDocKeys)), "dbdefault should migrate its own principals")
+	assert.GreaterOrEqual(t, namedResp.DocsProcessed, int64(len(namedDocKeys)), "dbnamed should migrate its own principals")
+
+	// Every principal moved to _system._mobile and left _default._default, regardless of owner.
+	systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+	require.NoError(t, err)
+	for _, k := range allDocKeys {
+		onPrimary, existsErr := systemDS.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		assert.Truef(t, onPrimary, "%q must be migrated to _system._mobile", k)
+		onFallback, existsErr := fallback.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		assert.Falsef(t, onFallback, "%q must be removed from _default._default after migration", k)
+	}
+
+	// Both DBs' principals remain functional through their own admin APIs
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", ""), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_user/bob", ""), http.StatusOK)
+
+	// check the bucket level doc for migration, assert that both db's are in completed state and bootstrap migration is done.
+	conn := rt.ServerContext().BootstrapContext.Connection
+	bucketName := rt.Bucket().GetName()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, _, statusErr := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		require.NoError(c, statusErr)
+		require.NotNil(c, status)
+		for _, id := range []string{base.DefaultMetadataID, dbNamedCtx.Options.MetadataID} {
+			entry, ok := status.Databases[id]
+			require.Truef(c, ok, "status doc must have a per-DB entry for %q", id)
+			assert.Equalf(c, base.MigrationStateComplete, entry.State, "per-DB migration entry for %q should be complete", id)
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once both DBs finish")
+	}, 30*time.Second, 200*time.Millisecond)
 }
 
 // TestMetadataMigrationMovesOwnedSyncFunctionDocs verifies that a per-DB migration moves only
