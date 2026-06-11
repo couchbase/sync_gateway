@@ -1207,15 +1207,23 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 			base.DebugfCtx(ctx, base.KeyVV, "Not updating HLV due to _mou.cas == doc.cas for doc %s, extant HLV %#v", base.UD(d.ID), d.HLV)
 		}
 	case NewVersion, ExistingVersionWithUpdateToHLV:
-		// add a new entry to the version vector
-		newVVEntry := Version{}
-		newVVEntry.SourceID = db.dbCtx.EncodedSourceID
-		newVVEntry.Value = expandMacroCASValueUint64
+		// Add a new entry to the version vector. The version value is generated from the database HLC rather
+		// than relying on server-side CAS macro expansion, so it is known before the write and can be written
+		// as a literal - this avoids one subdoc macro-expansion path per removed channel, which would
+		// otherwise overflow the server's per-mutation path limit when many channels are removed at once.
+		// The floor (max existing value for our source, computed before AddVersion mutates the HLV) ensures
+		// the generated value strictly exceeds any existing value for our source, preserving per-source
+		// monotonicity.
+		sourceID := db.dbCtx.EncodedSourceID
+		newVVEntry := Version{
+			SourceID: sourceID,
+			Value:    db.dbCtx.hlc.Now(d.HLV.maxValueForSource(sourceID)),
+		}
 		err := d.HLV.AddVersion(newVVEntry)
 		if err != nil {
 			return nil, err
 		}
-		// update the cvCAS on the SGWrite event too
+		// cvCAS stays macro-expanded to the committed CAS so the cvCAS==cas import-detection invariant holds.
 		d.HLV.CurrentVersionCAS = expandMacroCASValueUint64
 	case ExistingVersionLegacyRev:
 		revTreeEncodedCV, err := LegacyRevToRevTreeEncodedVersion(d.GetRevTreeID())
@@ -2259,9 +2267,15 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 	newHLV := localDoc.HLV.Copy()
 
 	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s with merge, local hlv: %v, incoming hlv: %v", base.UD(localDoc.ID), localDoc.HLV, remoteDoc.HLV)
+	// Generate the merge version value from the database HLC rather than relying on server-side CAS macro
+	// expansion, for the same reasons as a regular write (see updateHLV): a known-before-write literal avoids
+	// a per-removed-channel subdoc macro-expansion path. The floor is the highest existing value for our
+	// source across both HLVs being merged, so the generated value preserves per-source monotonicity.
+	sourceID := db.dbCtx.EncodedSourceID
+	floor := max(localDoc.HLV.maxValueForSource(sourceID), remoteDoc.HLV.maxValueForSource(sourceID))
 	newCV := Version{
-		SourceID: db.dbCtx.EncodedSourceID,
-		Value:    expandMacroCASValueUint64,
+		SourceID: sourceID,
+		Value:    db.dbCtx.hlc.Now(floor),
 	}
 	err = newHLV.MergeWithIncomingHLV(newCV, remoteDoc.HLV)
 	if err != nil {
@@ -2701,7 +2715,6 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	changedAccessPrincipals []string,
 	changedRoleAccessUsers []string,
 	createNewRevIDSkipped bool,
-	revokedChannelsRequiringExpansion []string,
 	err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
@@ -2784,6 +2797,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	// The callback has updated the HLV for mutations coming from CBL.  Update the HLV so that the current version is set before
 	// we call updateChannels, which needs to set the current version for removals
 	// update the HLV values
+	// pass computed version case
 	doc, err = col.updateHLV(ctx, doc, docUpdateEvent, mouMatch)
 	if err != nil {
 		return
@@ -2800,7 +2814,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 				return
 			}
 		}
-		_, revokedChannelsRequiringExpansion, err = doc.updateChannels(ctx, channelSet)
+		_, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {
 			return
 		}
@@ -2825,7 +2839,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -2897,8 +2911,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			isNewDocCreation = currentValue == nil
-			var revokedChannelsRequiringExpansion []string
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, revokedChannelsRequiringExpansion, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2916,11 +2929,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 			// update the mutate in options based on the above logic
 			updatedDoc.Spec = doc.HLV.computeMacroExpansions()
-
-			updatedDoc.Spec, err = appendRevocationMacroExpansions(updatedDoc.Spec, revokedChannelsRequiringExpansion)
-			if err != nil {
-				return
-			}
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
 			if doc.MetadataOnlyUpdate != nil {
@@ -2999,6 +3007,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 			// update the doc's HLV defined post macro expansion
 			doc = db.postWriteUpdateHLV(ctx, doc, casOut)
+			// If the generated version came out ahead of the committed CAS (SG clock ran ahead of the
+			// server), wait for the clock to catch up and re-stamp the CAS so cv.ver <= cas holds for XDCR (MB-72252).
+			doc = db.correctVersionAheadOfCAS(ctx, key, doc, casOut)
 		}
 	}
 
@@ -3174,9 +3185,8 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	if doc.HLV == nil {
 		return doc
 	}
-	if doc.HLV.Version == expandMacroCASValueUint64 {
-		doc.HLV.Version = casOut
-	}
+	// Version is generated by the HLC and written as a literal, so only cvCAS is macro-expanded and needs
+	// resolving to the committed CAS here.
 	if doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
 		doc.HLV.CurrentVersionCAS = casOut
 	}
@@ -3206,6 +3216,79 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 		}
 	}
 	return doc
+}
+
+// maxVersionCASCorrectionWait bounds how long correctVersionAheadOfCAS will sleep waiting for the server
+// clock to catch up to a generated version. A gap larger than this indicates larger clock skew between
+// Sync Gateway and the server, which we log rather than stall a write on.
+const maxVersionCASCorrectionWait = time.Second
+
+// correctVersionAheadOfCAS handles the rare case where the HLC-generated current version is greater than
+// the CAS the server assigned to the write (the Sync Gateway clock ran ahead of the server's). goxdcr
+// rejects a document whose cv.ver exceeds its CAS, so leaving it would cause this mutation to be
+// ignored by XDCR (MB-72252). Rather than move the version backwards, we wait for real time to advance until a fresh
+// CAS would reach the generated version, then re-stamp the document's CAS (and cvCAS) without changing the
+// version - so cv.ver <= cas holds and the version a peer may already have replicated is preserved.
+//
+// The wait is bounded by maxVersionCASCorrectionWait; a larger gap is logged and left uncorrected. When a
+// re-stamp occurs the document's in-memory Cas and cvCAS are updated.
+func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Context, key string, doc *Document, casOut uint64) *Document {
+	if doc.HLV == nil || doc.HLV.Version <= casOut {
+		return doc
+	}
+
+	gap := base.CASToPhysicalNanos(doc.HLV.Version) - base.CASToPhysicalNanos(casOut)
+	if gap > uint64(maxVersionCASCorrectionWait.Nanoseconds()) {
+		base.WarnfCtx(ctx, "Generated version %d for doc %q is ahead of its CAS %d by %s (> %s); leaving uncorrected - this indicates clock skew between Sync Gateway and the server and may cause the document to be skipped by XDCR until a later mutation",
+			doc.HLV.Version, base.UD(doc.ID), casOut, time.Duration(gap), maxVersionCASCorrectionWait)
+		return doc
+	}
+
+	// sleep until the server's CAS would have caught up to the generated version, then re-stamp the CAS on the document so cv.ver <= cas holds for XDCR replication
+	time.Sleep(time.Duration(gap))
+
+	cas2, err := db.restampVersionCAS(ctx, key, doc, casOut)
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			// A concurrent writer beat us to it; their mutation carries a later CAS, so the version is no
+			// longer ahead, and it's that writer's responsibility to satisfy the invariant.
+			base.DebugfCtx(ctx, base.KeyVV, "Skipping CAS re-stamp for doc %q (generated version %d ahead of CAS %d): concurrent update won the CAS", base.UD(doc.ID), doc.HLV.Version, casOut)
+			return doc
+		}
+		base.WarnfCtx(ctx, "Unable to re-stamp CAS for doc %q whose generated version %d was ahead of CAS %d: %v", base.UD(doc.ID), doc.HLV.Version, casOut, err)
+		return doc
+	}
+
+	doc.Cas = cas2
+	doc.HLV.CurrentVersionCAS = cas2
+	doc.SyncData.Cas = base.CasToString(cas2)
+	db.dbStats().Database().HLVVersionCASRetryCount.Add(1)
+	base.InfofCtx(ctx, base.KeyVV, "Re-stamped CAS for doc %q from %d to %d so generated version %d <= CAS", base.UD(doc.ID), casOut, cas2, doc.HLV.Version)
+	return doc
+}
+
+// restampVersionCAS re-persists the document's _sync and _vv xattrs so the server assigns a fresh CAS,
+// leaving the current version (cv.ver) unchanged while macro-expanding _sync.cas and _vv.cvCas to the new
+// CAS. It is a metadata-only update guarded on the supplied CAS: the revision, sequence and body are
+// untouched, so no new revision is created (the resulting mutation is ignored by the changes feed, which
+// is correct as the version is not changing).
+func (db *DatabaseCollectionWithUser) restampVersionCAS(ctx context.Context, key string, doc *Document, cas uint64) (uint64, error) {
+	_, syncXattr, vvXattr, _, _, err := doc.MarshalWithXattrs()
+	if err != nil {
+		return 0, err
+	}
+	// we do not want to use _mou here as we don't want xdcr to ignore the mutation
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas),
+		},
+		PreserveExpiry: true,
+	}
+	return db.dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{
+		base.SyncXattrName: syncXattr,
+		base.VvXattrName:   vvXattr,
+	}, opts)
 }
 
 // getAttachmentIDsForLeafRevisions returns a map of attachment docids with values of attachment names.
@@ -3998,17 +4081,13 @@ func (doc *Document) addNewerRevisionsToRevTreeHistory(newDoc *Document, current
 }
 
 const (
-	xattrMacroCas               = "cas"          // SyncData.Cas
-	xattrMacroValueCrc32c       = "value_crc32c" // SyncData.Crc32c
-	xattrMacroCurrentRevVersion = "rev.ver"      // SyncData.RevAndVersion.CurrentVersion
-	versionVectorVrsMacro       = "ver"          // PersistedHybridLogicalVector.Version
-	versionVectorCVCASMacro     = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
+	xattrMacroCas           = "cas"          // SyncData.Cas
+	xattrMacroValueCrc32c   = "value_crc32c" // SyncData.Crc32c
+	versionVectorVrsMacro   = "ver"          // PersistedHybridLogicalVector.Version
+	versionVectorCVCASMacro = "cvCas"        // PersistedHybridLogicalVector.CurrentVersionCAS
 
 	expandMacroCASValueUint64 = math.MaxUint64 // static value that indicates that a CAS macro expansion should be applied to a property
 	expandMacroCASValueString = "expand"
-
-	// cbsSubdocPathMaxLength is the maximum number of bytes allowed in a Couchbase Server subdocument path.
-	cbsSubdocPathMaxLength = 1024
 )
 
 func macroExpandSpec(xattrName string) []sgbucket.MacroExpansionSpec {
@@ -4033,32 +4112,10 @@ func XattrMouCasPath() string {
 	return base.MouXattrName + "." + xattrMacroCas
 }
 
-func xattrCurrentRevVersionPath(xattrKey string) string {
-	return xattrKey + "." + xattrMacroCurrentRevVersion
-}
-
 func xattrCurrentVersionPath(xattrKey string) string {
 	return xattrKey + "." + versionVectorVrsMacro
 }
 
 func xattrCurrentVersionCASPath(xattrKey string) string {
 	return xattrKey + "." + versionVectorCVCASMacro
-}
-
-func xattrRevokedChannelVersionPath(xattrKey string, channelName string) (string, error) {
-	path := xattrKey + ".channels." + escapeSubdocPathComponent(channelName) + "." + xattrMacroCurrentRevVersion
-	if len(path) > cbsSubdocPathMaxLength {
-		return "", base.RedactErrorf("subdoc path for channel %s exceeds maximum length of %d bytes", base.UD(channelName), cbsSubdocPathMaxLength)
-	}
-	return path, nil
-}
-
-// escapeSubdocPathComponent wraps a Couchbase subdocument path component in backticks when it
-// contains characters that are special in subdoc paths: dots (path separator) or square brackets
-// (array index syntax). Any backticks within the component are doubled to escape them.
-func escapeSubdocPathComponent(component string) string {
-	if !strings.ContainsAny(component, ".[]`") {
-		return component
-	}
-	return "`" + strings.ReplaceAll(component, "`", "``") + "`"
 }

@@ -4165,7 +4165,7 @@ func Test_resyncDocument(t *testing.T) {
 				require.NotNil(t, postResyncDoc.HLV)
 				require.Equal(t, Version{
 					SourceID: db.EncodedSourceID,
-					Value:    preResyncDoc.Cas,
+					Value:    preResyncDoc.HLV.Version,
 				}, Version{
 					SourceID: postResyncDoc.HLV.SourceID,
 					Value:    postResyncDoc.HLV.Version,
