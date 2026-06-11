@@ -17,14 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeHLCClock is a deterministic hlcClock for tests. now may be mutated between calls.
-type fakeHLCClock struct {
-	now uint64
-}
-
-func (f *fakeHLCClock) getTime() uint64 { return f.now }
-
-// hourNanos is an offset used to place test floors/observations a wall-clock hour either side of "now".
+// hourNanos is an offset used to place test floors a wall-clock hour either side of "now".
 const hourNanos = uint64(time.Hour)
 
 // TestHybridLogicalClockMonotonic asserts successive values from the system-backed clock strictly increase.
@@ -53,7 +46,7 @@ func TestHybridLogicalClockTracksWallClock(t *testing.T) {
 // still strictly increase via the logical counter.
 func TestHybridLogicalClockSameInstant(t *testing.T) {
 	now := uint64(time.Now().UnixNano())
-	hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
+	hlc := &HybridLogicalClock{clock: func() uint64 { return now }}
 
 	first := hlc.Now(0)
 	require.Equal(t, now&^hlcLogicalMask, first)
@@ -66,7 +59,7 @@ func TestHybridLogicalClockSameInstant(t *testing.T) {
 func TestHybridLogicalClockPhysicalMask(t *testing.T) {
 	// OR in low bits so masking is observable regardless of the current nanosecond.
 	now := uint64(time.Now().UnixNano()) | hlcLogicalMask
-	hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
+	hlc := &HybridLogicalClock{clock: func() uint64 { return now }}
 
 	got := hlc.Now(0)
 	// Isolates only bits 15–0 of the result. Requires them to be all zero — proving Now() stripped them via &^ hlcLogicalMask.
@@ -79,14 +72,14 @@ func TestHybridLogicalClockPhysicalMask(t *testing.T) {
 func TestHybridLogicalClockFloor(t *testing.T) {
 	t.Run("floor below physical is ignored", func(t *testing.T) {
 		now := uint64(time.Now().UnixNano())
-		hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
+		hlc := &HybridLogicalClock{clock: func() uint64 { return now }}
 		got := hlc.Now(now - hourNanos) // a floor an hour in the past
 		require.Equal(t, now&^hlcLogicalMask, got)
 	})
 
 	t.Run("floor above physical wins", func(t *testing.T) {
 		now := uint64(time.Now().UnixNano())
-		hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
+		hlc := &HybridLogicalClock{clock: func() uint64 { return now }}
 		floor := now + hourNanos // a floor an hour in the future
 		got := hlc.Now(floor)
 		require.Equal(t, floor+1, got)
@@ -98,23 +91,8 @@ func TestHybridLogicalClockFloor(t *testing.T) {
 // behaves as an ordinary tick rather than special-casing.
 func TestHybridLogicalClockNoFloor(t *testing.T) {
 	now := uint64(time.Now().UnixNano())
-	hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
+	hlc := &HybridLogicalClock{clock: func() uint64 { return now }}
 	require.Equal(t, now&^hlcLogicalMask, hlc.Now(0))
-}
-
-// TestHybridLogicalClockObserve asserts an observed CAS raises the floor for subsequent values, even when
-// the observed value is far ahead of the wall clock.
-func TestHybridLogicalClockObserve(t *testing.T) {
-	now := uint64(time.Now().UnixNano())
-	hlc := &HybridLogicalClock{clock: &fakeHLCClock{now: now}}
-
-	observed := now + hourNanos // an observed CAS an hour ahead of our wall clock
-	hlc.Observe(observed)
-	require.Equal(t, observed+1, hlc.Now(0))
-
-	// A stale observation (below the current high-water mark) must not lower the clock.
-	hlc.Observe(now - hourNanos)
-	require.Equal(t, observed+2, hlc.Now(0))
 }
 
 // TestHybridLogicalClockConcurrent asserts thread-safety: concurrent callers never receive duplicate

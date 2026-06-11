@@ -22,34 +22,6 @@ const hlcLogicalBits = 16
 // hlcLogicalMask masks off the logical component, isolating the physical component of a timestamp.
 const hlcLogicalMask = (1 << hlcLogicalBits) - 1
 
-// hlcClock abstracts the system clock so tests can supply a deterministic time source.
-type hlcClock interface {
-	// getTime returns the current wall-clock time in nanoseconds since the Unix epoch.
-	getTime() uint64
-}
-
-// systemClock is the production hlcClock backed by the host wall clock.
-type systemClock struct{}
-
-func (systemClock) getTime() uint64 {
-	return uint64(time.Now().UnixNano())
-}
-
-// clockFunc adapts a plain function to the hlcClock interface.
-type clockFunc func() uint64
-
-func (f clockFunc) getTime() uint64 { return f() }
-
-// SetClockForTest overrides the wall-clock source and resets the clock's high-water mark, so the next
-// value returned by Now is determined solely by getTime. Test-only: used to simulate clock skew between
-// Sync Gateway and the server.
-func (c *HybridLogicalClock) SetClockForTest(getTime func() uint64) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.clock = clockFunc(getTime)
-	c.highestTime = 0
-}
-
 // HybridLogicalClock generates monotonically increasing timestamps in the same numeric space as a
 // Couchbase Server CAS (a 48-bit nanosecond physical component plus a 16-bit logical counter). Sync
 // Gateway uses it to assign HLV current-version values without relying on server-side CAS macro
@@ -60,14 +32,24 @@ func (c *HybridLogicalClock) SetClockForTest(getTime func() uint64) {
 // is below the CAS the server stamps at commit. This is an invariant goxdcr enforces (cv.ver <= cas) until MB-72252.
 // Monotonicity per HLV source is the caller's responsibility, supplied via the floor argument to Now.
 type HybridLogicalClock struct {
-	clock       hlcClock
+	clock       func() uint64 // wall-clock source, nanoseconds since the Unix epoch; overridable in tests
 	highestTime uint64
 	mutex       sync.Mutex
 }
 
 // NewHybridLogicalClock returns a HybridLogicalClock backed by the system wall clock.
 func NewHybridLogicalClock() *HybridLogicalClock {
-	return &HybridLogicalClock{clock: systemClock{}}
+	return &HybridLogicalClock{clock: func() uint64 { return uint64(time.Now().UnixNano()) }}
+}
+
+// SetClockForTest overrides the wall-clock source and resets the clock's high-water mark, so the next
+// value returned by Now is determined solely by getTime. Test-only: used to simulate clock skew between
+// Sync Gateway and the server.
+func (c *HybridLogicalClock) SetClockForTest(getTime func() uint64) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.clock = getTime
+	c.highestTime = 0
 }
 
 // Now returns the next timestamp, guaranteed to be strictly greater than both the previous value
@@ -82,8 +64,8 @@ func (c *HybridLogicalClock) Now(floor uint64) uint64 {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	next := c.clock.getTime() &^ hlcLogicalMask // physical component, tracks the wall clock
-	if c.highestTime+1 > next {                 // ensure strictly greater than the previous value
+	next := c.clock() &^ hlcLogicalMask // physical component, tracks the wall clock
+	if c.highestTime+1 > next {         // ensure strictly greater than the previous value
 		next = c.highestTime + 1
 	}
 	if floor+1 > next { // ensure strictly greater than the caller's floor
@@ -98,15 +80,4 @@ func (c *HybridLogicalClock) Now(floor uint64) uint64 {
 // time between them, which is used to decide how long to wait for a lagging clock to catch up.
 func CASToPhysicalNanos(cas uint64) uint64 {
 	return cas &^ hlcLogicalMask
-}
-
-// Observe advances the clock so that future calls to Now return values greater than the supplied CAS.
-// Sync Gateway feeds back each committed document CAS, keeping the clock tracking observed server time
-// and reducing the chance that a subsequently generated version exceeds a later CAS.
-func (c *HybridLogicalClock) Observe(cas uint64) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if cas > c.highestTime {
-		c.highestTime = cas
-	}
 }
