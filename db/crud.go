@@ -1209,8 +1209,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 	case NewVersion, ExistingVersionWithUpdateToHLV:
 		// Add a new entry to the version vector. The version value is generated from the database HLC rather
 		// than relying on server-side CAS macro expansion, so it is known before the write and can be written
-		// as a literal - this avoids one subdoc macro-expansion path per removed channel, which would
-		// otherwise overflow the server's per-mutation path limit when many channels are removed at once.
+		// as a literal.
 		// The floor (max existing value for our source, computed before AddVersion mutates the HLV) ensures
 		// the generated value strictly exceeds any existing value for our source, preserving per-source
 		// monotonicity.
@@ -2267,9 +2266,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 	newHLV := localDoc.HLV.Copy()
 
 	base.DebugfCtx(ctx, base.KeyVV, "resolving doc %s with merge, local hlv: %v, incoming hlv: %v", base.UD(localDoc.ID), localDoc.HLV, remoteDoc.HLV)
-	// Generate the merge version value from the database HLC rather than relying on server-side CAS macro
-	// expansion, for the same reasons as a regular write (see updateHLV): a known-before-write literal avoids
-	// a per-removed-channel subdoc macro-expansion path. The floor is the highest existing value for our
+	// Generate the merge version value from the database HLC. The floor is the highest existing value for our
 	// source across both HLVs being merged, so the generated value preserves per-source monotonicity.
 	sourceID := db.dbCtx.EncodedSourceID
 	floor := max(localDoc.HLV.maxValueForSource(sourceID), remoteDoc.HLV.maxValueForSource(sourceID))
