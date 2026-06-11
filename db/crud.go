@@ -190,9 +190,16 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		if !isSgWrite {
 			var importErr error
 
-			rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+			rawDoc, xattrs, cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
 			if getErr != nil {
 				return emptySyncData, getErr
+			}
+
+			// Re-unmarshal with the full xattr set so doc.RevSeqNo and doc.MetadataOnlyUpdate
+			// are populated for use by OnDemandImportForGet.
+			doc, unmarshalErr = c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+			if unmarshalErr != nil {
+				return emptySyncData, unmarshalErr
 			}
 
 			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
