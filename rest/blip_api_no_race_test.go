@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.

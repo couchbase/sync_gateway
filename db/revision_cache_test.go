@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // testBackingStore always returns an empty doc at rev:"1-abc" in channel "*" except for docs not in 'notFoundDocIDs'

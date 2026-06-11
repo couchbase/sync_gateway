@@ -13,7 +13,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestImportFeedEventRecover will make sure panics are recoverable importListener.ProcessFeedEvent

@@ -17,9 +17,9 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRosmarManagementAPI(t *testing.T) {

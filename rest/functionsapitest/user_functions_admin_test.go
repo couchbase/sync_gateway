@@ -18,8 +18,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 var allowAll = &functions.Allow{Channels: []string{"*"}}

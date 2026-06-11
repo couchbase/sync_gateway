@@ -15,7 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestResyncLegacyRev makes sure that running resync on a legacy rev will send future blip messages as a legacy rev and not as an HLV

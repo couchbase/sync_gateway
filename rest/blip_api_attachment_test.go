@@ -21,8 +21,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Test pushing and pulling v2 attachments with v2 client

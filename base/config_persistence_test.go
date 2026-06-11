@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestConfigPersistence ensures that all implementations of ConfigPersistence behave as expected for common operations.

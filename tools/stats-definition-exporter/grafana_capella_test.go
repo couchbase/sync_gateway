@@ -13,9 +13,9 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCapellaGrafanaDashboardGeneration(t *testing.T) {

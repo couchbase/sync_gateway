@@ -26,14 +26,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped

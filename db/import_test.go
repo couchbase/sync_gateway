@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestFeedImport(t *testing.T) {

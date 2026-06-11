@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 

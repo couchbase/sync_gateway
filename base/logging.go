@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // GetLogKeys returns log keys in a map

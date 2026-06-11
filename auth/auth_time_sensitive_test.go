@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // Test that multiple authentications of the same user/password are fast.

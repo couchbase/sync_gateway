@@ -13,9 +13,9 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	sdkdashboard "github.com/grafana/grafana-foundation-sdk/go/dashboard"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMapUnit(t *testing.T) {

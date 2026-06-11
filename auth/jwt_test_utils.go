@@ -11,9 +11,9 @@ package auth
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/stretchr/testify/require"
 )
 
 // These are not in jwt_test.go to allow use in tests from other packages.

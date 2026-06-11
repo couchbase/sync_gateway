@@ -36,9 +36,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -1231,7 +1231,7 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			assert.Equal(t, nil, partJSON[db.BodyRevisions])
+			assert.Nil(t, partJSON[db.BodyRevisions])
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
@@ -1356,7 +1356,7 @@ func TestResponseEncoding(t *testing.T) {
 	assert.NoError(t, err)
 	unjson := base.JSONDecoder(unzip)
 	var body db.Body
-	assert.Equal(t, nil, unjson.Decode(&body))
+	assert.Nil(t, unjson.Decode(&body))
 	assert.Equal(t, str, body["long"])
 }
 

@@ -19,8 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 var allowAll = &Allow{Channels: []string{"*"}}
@@ -349,7 +349,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	// Missing document:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
-	assert.EqualValues(t, nil, result)
+	assert.Nil(t, result)
 
 	docParams := map[string]any{
 		"docID": docID,

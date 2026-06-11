@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -499,7 +499,7 @@ func TestFindPrimaryAddr(t *testing.T) {
 		t.Skipf("WARNING: network is unreachable: %s", err)
 	}
 
-	assert.NotEqual(t, nil, ip)
+	assert.NotEmpty(t, ip)
 	assert.NotEqual(t, "", ip.String())
 	assert.NotEqual(t, "<nil>", ip.String())
 }

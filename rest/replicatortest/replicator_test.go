@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -7019,7 +7019,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 		// Assert document was replicated successfully
 		doc := passiveRT.GetDocBody(docID)
 		assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
-		assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
+		assert.Nil(t, doc["_exp"])                // Confirm expiry was consumed
 		assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
 		// Confirm attachment was created successfully
 		resp := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/bar", "")

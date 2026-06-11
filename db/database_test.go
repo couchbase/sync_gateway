@@ -24,15 +24,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
 )
 
 func init() {

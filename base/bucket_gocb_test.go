@@ -22,8 +22,8 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestSetGet(t *testing.T) {
@@ -701,7 +701,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(rawVal, &retrievedVal))
 	require.NoError(t, JSONUnmarshal(marshalledXattr, &retrievedXattr))
-	assert.Equal(t, nil, retrievedVal["sg_field"])
+	assert.Nil(t, retrievedVal["sg_field"])
 	assert.Equal(t, updatedVal["sdk_field"], retrievedVal["sdk_field"])
 	assert.Equal(t, xattrVal["seq"], retrievedXattr["seq"])
 	assert.Equal(t, "1-1234", retrievedXattr["rev"])
@@ -1085,7 +1085,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	var gotBody map[string]any
 	cas, err := dataStore.Get(ctx, key, &gotBody)
 	assert.NoError(t, err)
-	assert.Equal(t, nil, gotBody["userXattrVal"])
+	assert.Nil(t, gotBody["userXattrVal"])
 
 	userXattrVal := map[string]any{"val": "val"}
 

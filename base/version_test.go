@@ -11,7 +11,7 @@ package base
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // TestPRODUCT_VERSIONAPIEquality tests that the stamped "PRODUCT_VERSION" is equal to the manually-specified API version constants.

@@ -14,7 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // setDesignDocPreviousVersionsForTest sets the previous versions of the design docs for testing purposes and reverts to the original set once the test is done.

@@ -18,8 +18,8 @@ import (
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestDCPNameLength(t *testing.T) {

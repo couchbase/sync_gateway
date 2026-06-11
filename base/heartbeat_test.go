@@ -20,8 +20,8 @@ import (
 
 	"github.com/couchbase/cbgt"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestHeartbeatListener uses a shared node store, and maintains a count of stale notifications

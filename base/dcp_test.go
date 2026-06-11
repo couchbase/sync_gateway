@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {

@@ -16,7 +16,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestSubprotocolString roundtrips the parse/format Subprotocol methods on the subprotocol constants.

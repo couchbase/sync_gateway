@@ -26,8 +26,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
@@ -2403,20 +2403,20 @@ func TestImportUpdateExpiry(t *testing.T) {
 		name         string
 		syncFn       string
 		startExpiry  uint32
-		assertion    func(t require.TestingT, expected, actual any, msgAndArgs ...any)
+		assertion    func(t require.TestingT, expected, actual int, msgAndArgs ...any)
 		shouldBeZero bool
 	}{
 		{
 			name:        "Decrease expiry",
 			syncFn:      `function(doc, oldDoc, meta) { expiry(1000); }`,
 			startExpiry: 2000,
-			assertion:   require.Less,
+			assertion:   require.Less[int, int],
 		},
 		{
 			name:        "Increase expiry",
 			syncFn:      `function(doc, oldDoc, meta) { expiry(2000); }`,
 			startExpiry: 1000,
-			assertion:   require.Greater,
+			assertion:   require.Greater[int, int],
 		},
 		{
 			name:         "Unset TTL",
@@ -2428,7 +2428,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 			name:        "no modification to TTL",
 			syncFn:      `function(doc, oldDoc, meta) { }`,
 			startExpiry: 2000,
-			assertion:   require.LessOrEqual, // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
+			assertion:   require.LessOrEqual[int, int], // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
 		},
 	}
 	for _, test := range testCases {
