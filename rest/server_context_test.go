@@ -128,8 +128,8 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 	})
 
 	// --- Subtest: status doc doesn't exist → not in progress ---
-	t.Run("missing status doc means not in progress", func(t *testing.T) {
-		requireDBMigrationNotInProgress(t, sc, ctx, "nonexistent-bucket", metadataID,
+	t.Run("missing meatdataID in doc means not in progress", func(t *testing.T) {
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, "nonexistenbucket",
 			"missing status doc should not be treated as in_progress")
 	})
 }
