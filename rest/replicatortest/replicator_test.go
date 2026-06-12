@@ -2787,7 +2787,8 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 					require.True(t, ok)
 					assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
 					assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
-					assert.Equal(t, doc.Cas, doc.HLV.Version)
+					assert.NotZero(t, doc.HLV.Version)
+					assert.NotEqual(t, doc.HLV.Version, doc.HLV.MergeVersions[rt1.GetDatabase().EncodedSourceID]) // we should have new CV generated from last conflicting version for this source
 				}
 
 				assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
@@ -4005,17 +4006,18 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				var expValue uint64
 				if sgrRunner.IsV4Protocol() {
 					if test.localWinsHLV {
-						expValue = rt1CVVersion.CV.Value
-					} else {
-						expValue = doc.Cas
-					}
-					if test.newCVGenerated || test.localWinsHLV {
 						test.expectedLocalVersion.CV = db.Version{
 							SourceID: rt1.GetDatabase().EncodedSourceID,
-							Value:    expValue,
+							Value:    rt1CVVersion.CV.Value,
+						}
+					} else if test.newCVGenerated {
+						require.NotZero(t, doc.HLV.Version)
+						require.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+						test.expectedLocalVersion.CV = db.Version{
+							SourceID: rt1.GetDatabase().EncodedSourceID,
+							Value:    doc.HLV.Version,
 						}
 					} else {
 						test.expectedLocalVersion.CV = rt2Version.CV
@@ -4233,16 +4235,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, err)
 				switch test.winner {
 				case merge:
-					test.expectedVersion.CV = db.Version{
-						SourceID: rt1.GetDatabase().EncodedSourceID,
-						Value:    doc.Cas,
-					}
+					require.NotZero(t, doc.HLV.Version)
+					require.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+					test.expectedVersion.CV = db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}
 				case local:
 					test.expectedVersion.CV = rt1Version.CV
 				case remote:
 					test.expectedVersion.CV = rt2Version.CV
 				}
-				sgrRunner.WaitForVersion(docID, rt1, test.expectedVersion)
 				requireBodyEqual(t, test.expectedBody, doc)
 				t.Logf("Doc %s is %+v", docID, doc)
 				t.Logf("Doc %s attachments are %+v", docID, doc.Attachments())
@@ -5774,11 +5774,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				test.expectedLocalVersion.CV = db.Version{
-					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Value:    doc.Cas,
-				}
-				sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
+				assert.NotZero(t, doc.HLV.Version)
+				assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
 				t.Logf("doc.Body(): %v", doc.Body(ctx))
 				assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
 				t.Logf("Doc %s is %+v", docID, doc)
@@ -6647,7 +6644,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 						require.NoError(t, err)
 						expVersion.CV = db.Version{
 							SourceID: activeRT.GetDatabase().EncodedSourceID,
-							Value:    doc.Cas,
+							Value:    doc.HLV.Version,
 						}
 					}
 				}

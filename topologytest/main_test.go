@@ -13,6 +13,7 @@ package topologytest
 import (
 	"context"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -22,6 +23,13 @@ import (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
+	// TODO: CBG-5460 Temporarily disabled on Windows. Windows' low wall-clock precision causes peers' HLV versions to
+	// tie (Sync Gateway and Couchbase Server peers each have their own HLC), making conflict winners
+	// non-deterministic.
+	if runtime.GOOS == "windows" {
+		base.SkipTestMain(m, "Topology tests are temporarily disabled on Windows due to low wall-clock precision causing non-deterministic HLV version ordering")
+		return
+	}
 	runTests, _ := strconv.ParseBool(os.Getenv(base.TbpEnvTopologyTests))
 	if !base.UnitTestUrlIsWalrus() && !runTests {
 		base.SkipTestMain(m, "Tests are disabled for Couchbase Server by default, to enable set %s=true environment variable", base.TbpEnvTopologyTests)

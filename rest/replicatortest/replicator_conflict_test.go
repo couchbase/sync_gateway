@@ -445,6 +445,8 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
 				ctx2 := rt2.Context()
+				rt1DbCtx := rt1.GetDatabase()
+				rt2DbCtx := rt2.GetDatabase()
 
 				docID := "doc1_"
 				version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -486,7 +488,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 
 				// alter remote doc HLV to have MV
 				newHLVForRemote := &db.HybridLogicalVector{
-					Version:          math.MaxUint64, // will macro expand
+					Version:          rt2DbCtx.GetHLCValueForTest(0),
 					SourceID:         version.CV.SourceID,
 					PreviousVersions: testCase.pvForRemote,
 					MergeVersions:    testCase.mvForRemote,
@@ -495,7 +497,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				// create local hlv for conflict (simulating an update locally)
 				newHLVForLocal := &db.HybridLogicalVector{
 					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Version:  math.MaxUint64, // will macro expand
+					Version:  rt1DbCtx.GetHLCValueForTest(0),
 					PreviousVersions: map[string]uint64{
 						rt1Version.CV.SourceID: rt1Version.CV.Value, // move current cv to pv
 					},
@@ -508,7 +510,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 					"channels": []string{"alice"},
 					"some":     "data",
 				}
-				remoteCas := db.AlterHLVForTest(t, ctx2, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
+				db.AlterHLVForTest(t, ctx2, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
 				remoteDocPreConflict, _ := rt2.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
@@ -518,14 +520,14 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				docBody = map[string]any{
 					"channels": []string{"alice"},
 				}
-				localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
+				db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
 				localDocPreConflict, localDocPreConflictBody := rt1.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt1.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
 				}, 1)
 
 				expectedHLV := &db.HybridLogicalVector{
-					Version:          localCas,
+					Version:          newHLVForLocal.Version,
 					SourceID:         rt1.GetDatabase().EncodedSourceID,
 					PreviousVersions: testCase.expectedPV,
 				}
@@ -533,7 +535,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 					expectedHLV.MergeVersions = testCase.mvForLocal
 				}
 				// add current CVs to expected MV
-				expectedHLV.PreviousVersions[rt2.GetDatabase().EncodedSourceID] = remoteCas
+				expectedHLV.PreviousVersions[rt2.GetDatabase().EncodedSourceID] = newHLVForRemote.Version
 
 				rt1.WaitForPendingChanges()
 				rt2.WaitForPendingChanges()
@@ -807,7 +809,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 					"channels": []string{"alice"},
 					"some":     "data",
 				}
-				remoteCas := db.AlterHLVForTest(t, ctx1, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
+				db.AlterHLVForTest(t, ctx1, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
 				remoteDocVersionPreConflict, remoteDocBodyPreConflict := rt2.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
@@ -817,7 +819,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 					"source":   "rt1",
 					"channels": []string{"alice"},
 				}
-				localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
+				db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
 				localDocVersionPreConflict, _ := rt1.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt1.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
@@ -825,10 +827,10 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 
 				expectedHLV := &db.HybridLogicalVector{
 					SourceID:      rt2.GetDatabase().EncodedSourceID,
-					Version:       remoteCas,
+					Version:       newHLVForRemote.Version,
 					MergeVersions: testCase.expectedMV,
 					PreviousVersions: map[string]uint64{
-						rt1.GetDatabase().EncodedSourceID: localCas,
+						rt1.GetDatabase().EncodedSourceID: newHLVForLocal.Version,
 					},
 				}
 				maps.Copy(expectedHLV.PreviousVersions, testCase.expectedPV)
@@ -1038,7 +1040,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 					"source":   "rt2",
 					"channels": []string{"alice"},
 				}
-				remoteCas := db.AlterHLVForTest(t, ctx1, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
+				db.AlterHLVForTest(t, ctx1, rt2.GetSingleDataStore(), docID, newHLVForRemote, docBody)
 				remoteDocVersionPreConflict, remoteDocBodyPreConflict := rt2.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
@@ -1048,7 +1050,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				docBody = map[string]any{
 					"channels": []string{"alice"},
 				}
-				localCas := db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
+				db.AlterHLVForTest(t, ctx2, rt1.GetSingleDataStore(), docID, newHLVForLocal, docBody)
 				localDocVersionPreConflict, localDocBodyPreConflict := rt1.GetDoc(docID) // ensure doc is imported
 				base.RequireWaitForStat(t, func() int64 {
 					return rt1.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value()
@@ -1078,10 +1080,10 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 					expectedHLV = db.HybridLogicalVector{
 						CurrentVersionCAS: rt1Doc.Cas,
 						SourceID:          rt2.GetDatabase().EncodedSourceID,
-						Version:           remoteCas,
+						Version:           newHLVForRemote.Version,
 						MergeVersions:     testCase.expectedMV,
 						PreviousVersions: map[string]uint64{
-							rt1.GetDatabase().EncodedSourceID: localCas,
+							rt1.GetDatabase().EncodedSourceID: newHLVForLocal.Version,
 						},
 					}
 					expectedWinnerPreConflict = remoteDocBodyPreConflict
@@ -1089,10 +1091,10 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 					expectedHLV = db.HybridLogicalVector{
 						CurrentVersionCAS: rt1Doc.Cas,
 						SourceID:          rt1.GetDatabase().EncodedSourceID,
-						Version:           localCas,
+						Version:           newHLVForLocal.Version,
 						MergeVersions:     testCase.expectedMV,
 						PreviousVersions: db.HLVVersions{
-							rt2.GetDatabase().EncodedSourceID: remoteCas,
+							rt2.GetDatabase().EncodedSourceID: newHLVForRemote.Version,
 						},
 					}
 					expectedWinnerPreConflict = localDocBodyPreConflict
@@ -1572,7 +1574,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 			expectedDocPushResolved: true,
 			hlvResult: db.HybridLogicalVector{
 				SourceID: "NEED TO EXPAND IN TEST",
-				Version:  math.MaxInt64, // # this needs to get expanded in test code to doc.Cas before comparison
+				Version:  math.MaxInt64, // placeholder; overwritten in test code with the generated cv value before comparison
 				MergeVersions: db.HLVVersions{
 					passiveStartingCV.SourceID: passiveStartingCV.Value,
 					activeStartingCV.SourceID:  activeStartingCV.Value,
@@ -1667,7 +1669,9 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				expectedHLV.CurrentVersionCAS = resolvedDoc.Cas
 				if testCase.newCVGenerated {
 					expectedHLV.SourceID = rt1.GetDatabase().EncodedSourceID
-					expectedHLV.Version = resolvedDoc.Cas
+					// The merge current version is generated by the SG HLC rather than the CAS macro.
+					require.NotZero(t, resolvedDoc.HLV.Version)
+					expectedHLV.Version = resolvedDoc.HLV.Version
 				}
 				require.Equal(t, expectedHLV, *resolvedDoc.HLV)
 

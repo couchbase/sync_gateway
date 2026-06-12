@@ -106,21 +106,22 @@ const metadataMigrationArmRetryInterval = 10 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string             // Database name
-	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                      base.Bucket        // Storage
-	bucketUsername              string             // name of the connecting user for audit logging
-	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
-	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
-	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            *changeListener    // Caching feed listener
-	ImportListener              *importListener    // Import feed listener
-	sequences                   *sequenceAllocator // Source of new sequence numbers
-	StartTime                   time.Time          // Timestamp when context was instantiated
-	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
-	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache               RevisionCache      // Cache of recently-accessed doc revisions
+	Name                        string                   // Database name
+	UUID                        string                   // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore           // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket              // Storage
+	bucketUsername              string                   // name of the connecting user for audit logging
+	BucketUUID                  string                   // The bucket UUID for the bucket the database is created against
+	EncodedSourceID             string                   // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
+	hlc                         *base.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
+	BucketLock                  sync.RWMutex             // Control Access to the underlying bucket object
+	mutationListener            *changeListener          // Caching feed listener
+	ImportListener              *importListener          // Import feed listener
+	sequences                   *sequenceAllocator       // Source of new sequence numbers
+	StartTime                   time.Time                // Timestamp when context was instantiated
+	RevsLimit                   uint32                   // Max depth a document's revision tree can grow to
+	autoImport                  bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache               RevisionCache            // Cache of recently-accessed doc revisions
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
@@ -457,6 +458,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
+		hlc:                  base.NewHybridLogicalClock(),
 		StartTime:            time.Now(),
 		autoImport:           autoImport,
 		Options:              options,
@@ -1896,7 +1898,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, _, err := doc.updateChannels(ctx, channels)
+			changedChannels, err := doc.updateChannels(ctx, channels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)
