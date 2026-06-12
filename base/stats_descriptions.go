@@ -419,7 +419,7 @@ const (
 
 	MetadataMigrationDocsOutOfScopeDesc = "The number of fallback keys classified as out-of-scope on the most recent pass (sibling-DB or bucket-level docs not owned by this database)."
 
-	MetadataMigrationDocsUnknownPrefixDesc = "The number of fallback keys with an unrecognised prefix observed on the most recent pass — these are left in place and cause an additional pass."
+	MetadataMigrationDocsUnknownPrefixDesc = "The number of fallback keys with an unrecognised prefix observed on the most recent pass — these are left in place on the source collection and do not block completion."
 
 	MetadataMigrationErrorsDesc = "The total number of per-doc errors observed during metadata migration moves or deletes across all passes."
 
