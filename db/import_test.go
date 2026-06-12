@@ -253,6 +253,78 @@ func TestOnDemandImport(t *testing.T) {
 			})
 		}
 	})
+
+	// Verify that the reload performed before an on-demand import (crud.go GetDocumentWithRaw)
+	// fetches the _mou xattr, so rawBucketDoc returned to the caller contains it.
+	t.Run("on-demand get includes mou xattr in reload", func(t *testing.T) {
+		if !db.UseMou() {
+			t.Skip("Test requires MOU support")
+		}
+		docKey := baseKey + "_mouReload"
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+		// SDK write: creates the doc without _sync or _mou
+		_, err := collection.dataStore.WriteCas(ctx, docKey, 0, 0, []byte(`{"foo":"bar"}`), 0)
+		require.NoError(t, err)
+
+		// First on-demand import via GetDocument: SG writes _sync and _mou
+		importedDoc, err := collection.GetDocument(ctx, docKey, DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotNil(t, importedDoc.MetadataOnlyUpdate)
+
+		// External SDK write to the body: changes the CRC32 so IsSGWrite returns false on the
+		// next read. Rosmar's WriteCas with a non-zero CAS preserves existing xattrs (including _mou).
+		_, err = collection.dataStore.WriteCas(ctx, docKey, 0, importedDoc.Cas, []byte(`{"foo":"baz"}`), 0)
+		require.NoError(t, err)
+
+		// GetDocumentWithRaw detects a non-SG write, reloads the doc, then imports it.
+		// The reload must include _mou in its xattr list so the returned rawBucketDoc is complete.
+		_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, docKey, DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotNil(t, rawBucketDoc)
+
+		// rawBucketDoc.Xattrs reflects the pre-import state fetched at the reload step.
+		// Without the fix, _mou was absent from the reload xattr list, so this would be nil
+		// even though the bucket has a _mou xattr from the first import.
+		mouBytes := rawBucketDoc.Xattrs[base.MouXattrName]
+		require.NotNil(t, mouBytes, "_mou must be fetched during the on-demand import reload")
+		var mou MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(mouBytes, &mou))
+		require.NotEmpty(t, mou.HexCAS)
+	})
+
+	// Verify that GetDocSyncData fetches _revseqno so the on-demand import it triggers
+	// records the correct PreviousRevSeqNo in _mou (not 0).
+	t.Run("on-demand GetDocSyncData sets correct mou pRev", func(t *testing.T) {
+		if !db.UseMou() {
+			t.Skip("Test requires MOU support")
+		}
+		docKey := baseKey + "_syncDataMou"
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+		// SDK write: creates doc without _sync or _mou
+		_, err := collection.dataStore.WriteCas(ctx, docKey, 0, 0, []byte(`{"foo":"bar"}`), 0)
+		require.NoError(t, err)
+
+		// Capture revSeqNo before import — it must appear as _mou.pRev after import.
+		// Without the fix, GetDocSyncData fetches without _revseqno, so doc.RevSeqNo=0
+		// and _mou.pRev is written as 0 instead of the correct value.
+		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, docKey)
+		require.NoError(t, err)
+
+		// GetDocSyncData detects a non-SG-write and triggers on-demand import.
+		_, err = collection.GetDocSyncData(ctx, docKey)
+		require.NoError(t, err)
+
+		// Read _mou from the bucket to verify PreviousRevSeqNo was set correctly.
+		xattrs, _, err := collection.dataStore.GetXattrs(ctx, docKey, []string{base.MouXattrName})
+		require.NoError(t, err)
+		var mou MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+		require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo,
+			"_mou.pRev must equal the pre-import revSeqNo, not 0")
+	})
+
 	testCases := []struct {
 		name             string
 		eccv             bool

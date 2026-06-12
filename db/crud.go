@@ -86,7 +86,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			// reload to get revseqno for on-demand import
-			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, append(c.syncGlobalSyncAndUserXattrKeys(), base.VirtualXattrRevSeqNo), unmarshalLevel)
+			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), unmarshalLevel)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -189,6 +189,27 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
+
+			rawDoc, xattrs, cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+			if getErr != nil {
+				return emptySyncData, getErr
+			}
+
+			// Re-unmarshal with the full xattr set so doc.RevSeqNo and doc.MetadataOnlyUpdate
+			// are populated for use by OnDemandImportForGet.
+			doc, unmarshalErr = c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+			if unmarshalErr != nil {
+				return emptySyncData, unmarshalErr
+			}
+
+			isSgWriteAfterReload, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+			if crc32Match {
+				c.dbStats().Database().Crc32MatchCount.Add(1)
+			}
+
+			if isSgWriteAfterReload {
+				return doc.SyncData, nil
+			}
 
 			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
 			if importErr != nil {
