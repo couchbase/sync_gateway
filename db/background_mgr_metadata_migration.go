@@ -247,7 +247,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 
 			// Completion gates ONLY on per-doc move/delete errors. A failed in-scope move
 			// increments stats.Errors and leaves the doc on the fallback, which the wrapper
-			// would then permanently ignore (data loss) — so those must clear before we
+			// would then permanently ignore — so those must clear before we
 			// SetMigrationComplete(). Errors are typically transient (CAS races), so a non-clean
 			// pass simply forces a retry; only a persistent failure reaches the maxPasses give-up
 			// below, which never completes.
