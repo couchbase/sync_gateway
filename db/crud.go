@@ -198,6 +198,15 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 			// Re-unmarshal with the full xattr set so doc.RevSeqNo and doc.MetadataOnlyUpdate
 			// are populated for use by OnDemandImportForGet.
 			doc, unmarshalErr = c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+
+			isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+			if crc32Match {
+				c.dbStats().Database().Crc32MatchCount.Add(1)
+			}
+
+			if isSgWrite {
+				return doc.SyncData, nil
+			}
 			if unmarshalErr != nil {
 				return emptySyncData, unmarshalErr
 			}
