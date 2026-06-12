@@ -109,6 +109,7 @@ type DatabaseContext struct {
 	BucketSpec                  base.BucketSpec    // The BucketSpec
 	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
+	hlc                         *base.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
 	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
 	mutationListener            changeListener     // Caching feed listener
 	ImportListener              *importListener    // Import feed listener
@@ -427,6 +428,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		Bucket:               bucket,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
+		hlc:                  base.NewHybridLogicalClock(),
 		StartTime:            time.Now(),
 		autoImport:           autoImport,
 		Options:              options,
@@ -1814,7 +1816,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, _, err := doc.updateChannels(ctx, channels)
+			changedChannels, err := doc.updateChannels(ctx, channels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)

@@ -263,6 +263,8 @@ const (
 
 	HighSeqFeedDesc = "Highest sequence number seen on the caching DCP feed."
 
+	HLVVersionCASRetryCountDesc = "The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server."
+
 	NumAttachmentsCompactedDesc = "The number of attachments compacted import_feed"
 
 	ImportFeedDesc = "Contains low level dcp stats: (a). dcp_backfill_expected - the expected number of sequences in backfill (b). dcp_backfill_completed - the number of backfill items processed (c). dcp_rollback_count - the number of DCP rollbacks"

@@ -1041,7 +1041,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, revokedChannelsRequiringExpansion []string, err error) {
+func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -1059,10 +1059,6 @@ func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (
 					Deleted: doc.hasFlag(channels.Deleted)}
 				doc.updateChannelHistory(channel, curSequence, false)
 				changed = append(changed, channel)
-				// If the current version requires macro expansion, new removal in channel map will also require macro expansion
-				if doc.HLV != nil && doc.HLV.Version == expandMacroCASValueUint64 {
-					revokedChannelsRequiringExpansion = append(revokedChannelsRequiringExpansion, channel)
-				}
 			}
 		}
 	}

@@ -290,7 +290,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.EncodedSourceID
+	sourceID := db.EncodedSourceID
 
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
@@ -317,8 +317,8 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 
 	docVersion := GetChangeEntryCV(t, changes[0])
 	assert.Equal(t, doc.ID, changes[0].ID)
-	assert.Equal(t, bucketUUID, docVersion.SourceID)
-	assert.Equal(t, doc.Cas, docVersion.Value)
+	assert.Equal(t, sourceID, docVersion.SourceID)
+	assert.Equal(t, doc.HLV.Version, docVersion.Value)
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
@@ -583,7 +583,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionID := collection.GetCollectionID()
-	bucketUUID := db.EncodedSourceID
+	sourceID := db.EncodedSourceID
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Make channel active
@@ -606,8 +606,8 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 
 	// assert that the source and version has been populated with the channel cache entry for the doc
 	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), entries[0].Version)
-	assert.Equal(t, bucketUUID, entries[0].SourceID)
+	require.NotZero(t, entries[0].Version)
+	assert.Equal(t, sourceID, entries[0].SourceID)
 	assert.Equal(t, doc.HLV.SourceID, entries[0].SourceID)
 	assert.Equal(t, doc.HLV.Version, entries[0].Version)
 }
