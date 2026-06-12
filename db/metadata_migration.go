@@ -41,7 +41,7 @@ type MigrationStats struct {
 // reported for observability only. The orchestrator does NOT retry on this count — unknown-prefix
 // docs are left in place on the fallback and do not block completion. Retries are driven solely by
 // per-doc move/delete errors (stats.Errors); a doc written underneath an in-flight scan that is
-// in-scope is either moved on a later error-forced pass or dual-written to primary by the wrapper.
+// in-scope is either moved on a later error-forced pass or written directly to primary by the wrapper.
 func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, stats *MigrationStats) (remaining int, err error) {
 	if ms == nil {
 		return 0, errors.New("MigrateMetadata: nil MetadataStore")
