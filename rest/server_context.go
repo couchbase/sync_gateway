@@ -1081,6 +1081,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		dbcontext.PostMetadataMigrationCompleteFunc = func(ctx context.Context) error {
 			return sc.maybeCompleteBucketMetadataMigration(ctx, bucketName)
 		}
+		dbcontext.SiblingMetadataIDFunc = func(ctx context.Context) ([]string, error) {
+			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			if err != nil {
+				return nil, err
+			}
+			ids := registryMetadataIDs(registry)
+			return slices.DeleteFunc(ids, func(id string) bool {
+				return id == config.MetadataID
+			}), nil
+		}
 	}
 
 	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {

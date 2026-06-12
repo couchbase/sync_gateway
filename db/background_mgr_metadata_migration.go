@@ -202,8 +202,22 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 				return nil
 			}
 
+			// Re-read the sibling metadataID list each pass rather than once before the loop:
+			// a sibling DB registered after the migration started must be recognised on the next
+			// pass so the (legacy default) migrating DB never migrates a newly-arrived sibling's
+			// inverted keys. The registry read is cheap next to the range scan, and there are at
+			// most maxPasses of them.
+			var siblingMetadataIDs []string
+			if m.dbContext.SiblingMetadataIDFunc != nil {
+				var sibErr error
+				siblingMetadataIDs, sibErr = m.dbContext.SiblingMetadataIDFunc(runCtx)
+				if sibErr != nil {
+					return fmt.Errorf("[%s] failed to get sibling MetadataIDs: %w", metadataMigrationLoggingID, sibErr)
+				}
+			}
+
 			stats := &MigrationStats{}
-			remaining, err := MigrateMetadata(runCtx, ms, metadataID, dbSyncFunctionKeys, stats)
+			remaining, err := MigrateMetadata(runCtx, ms, metadataID, siblingMetadataIDs, dbSyncFunctionKeys, stats)
 			m.passes.Add(1)
 			m.docsProcessed.Add(stats.DocsMigrated.Load())
 			m.docsFailed.Add(stats.Errors.Load())
