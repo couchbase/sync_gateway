@@ -431,6 +431,10 @@ func (auth *Authenticator) Save(p Principal) error {
 // Used for resync.  Cancels update if provided resyncID matches existing on the principal
 func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64, resyncID string) error {
 
+	if resyncID == "" {
+		return errors.New("resyncID must not be empty")
+	}
+
 	if p.ResyncID() == resyncID {
 		return nil
 	}
@@ -473,8 +477,8 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
-	// Attempt to use subdoc if we're only modifying a single collection
-	if len(collections) == 1 {
+	// Attempt to use subdoc if we're only modifying a single collection and no resyncID is provided
+	if len(collections) == 1 && resyncID == "" {
 		scope := collections[0].ScopeName()
 		collection := collections[0].CollectionName()
 
@@ -519,6 +523,10 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 
 		if !changed {
 			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		if resyncID != "" {
+			princ.SetResyncID(resyncID)
 		}
 
 		updated, err = base.JSONMarshal(princ)
@@ -619,6 +627,10 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 
 		if !changed {
 			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		if resyncID != "" {
+			user.SetResyncID(resyncID)
 		}
 
 		updated, err = base.JSONMarshal(&user)

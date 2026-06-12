@@ -3208,3 +3208,235 @@ func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, cha
 	require.NoError(t, err)
 	assert.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
 }
+
+func TestUpdateSequenceNumberForResyncIdempotency(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
+
+	t.Run("Empty resyncID error", func(t *testing.T) {
+		user, err := auth.NewUser("resync_user_empty", "pass", nil)
+		require.NoError(t, err)
+		err = auth.Save(user)
+		require.NoError(t, err)
+
+		err = auth.UpdateSequenceNumberForResync(user, 10, "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "resyncID must not be empty")
+	})
+
+	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
+		user, err := auth.NewUser("resync_user_match", "pass", nil)
+		require.NoError(t, err)
+		err = auth.Save(user)
+		require.NoError(t, err)
+
+		// First call with "resync-1" - updates CAS
+		err = auth.UpdateSequenceNumberForResync(user, 10, "resync-1")
+		require.NoError(t, err)
+
+		dbUser, err := auth.GetUser("resync_user_match")
+		require.NoError(t, err)
+		initialCas := dbUser.Cas()
+
+		// Second call with "resync-1" - should be skipped, CAS must not update
+		err = auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-1")
+		require.NoError(t, err)
+
+		finalUser, err := auth.GetUser("resync_user_match")
+		require.NoError(t, err)
+		assert.Equal(t, initialCas, finalUser.Cas(), "CAS should not have changed")
+		assert.Equal(t, uint64(10), finalUser.Sequence(), "Sequence should remain unchanged")
+	})
+
+	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
+		user, err := auth.NewUser("resync_user_mismatch", "pass", nil)
+		require.NoError(t, err)
+		err = auth.Save(user)
+		require.NoError(t, err)
+
+		// First call with "resync-1"
+		err = auth.UpdateSequenceNumberForResync(user, 10, "resync-1")
+		require.NoError(t, err)
+
+		dbUser, err := auth.GetUser("resync_user_mismatch")
+		require.NoError(t, err)
+		casAfterFirst := dbUser.Cas()
+
+		// Second call with "resync-2" - mismatch, should update CAS
+		err = auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-2")
+		require.NoError(t, err)
+
+		finalUser, err := auth.GetUser("resync_user_mismatch")
+		require.NoError(t, err)
+		assert.NotEqual(t, casAfterFirst, finalUser.Cas(), "CAS must be updated")
+		assert.Equal(t, uint64(20), finalUser.Sequence(), "Sequence should be updated to 20")
+		assert.Equal(t, "resync-2", finalUser.ResyncID(), "ResyncID should be updated to resync-2")
+	})
+}
+
+func TestInvalidateChannelsIdempotency(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	options := DefaultAuthenticatorOptions(ctx)
+	options.Collections = map[string]map[string]struct{}{
+		base.DefaultScope: {
+			"c1": struct{}{},
+			"c2": struct{}{},
+		},
+	}
+	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), &mockComputer{}, options)
+
+	collections1 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c1")}
+	collections2 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c2")}
+
+	t.Run("Empty resyncID (CAS should update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_chan_empty", true)
+
+		var userOut userImpl
+		initialCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_empty"), &userOut)
+		require.NoError(t, err)
+
+		// Call InvalidateChannels with empty resyncID
+		err = auth.InvalidateChannels("inval_chan_empty", true, collections1, 5, "")
+		require.NoError(t, err)
+
+		updatedCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_empty"), &userOut)
+		require.NoError(t, err)
+		assert.NotEqual(t, initialCas, updatedCas, "CAS must be updated")
+		assert.Equal(t, uint64(5), userOut.getCollectionChannelInvalSeq(base.DefaultScope, "c1"))
+	})
+
+	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_chan_match", true)
+
+		// First call with "resync-1" on c1 - should update CAS and stamp resync-1
+		err := auth.InvalidateChannels("inval_chan_match", true, collections1, 10, "resync-1")
+		require.NoError(t, err)
+
+		var userOut userImpl
+		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_match"), &userOut)
+		require.NoError(t, err)
+		assert.Equal(t, "resync-1", userOut.ResyncID())
+
+		// Second call with same matching resyncID on c2 - should be skipped, CAS must not update
+		err = auth.InvalidateChannels("inval_chan_match", true, collections2, 20, "resync-1")
+		require.NoError(t, err)
+
+		var finalUser userImpl
+		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_match"), &finalUser)
+		require.NoError(t, err)
+		assert.Equal(t, casAfterFirst, finalCas, "CAS should not be updated")
+		assert.Equal(t, uint64(0), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should not be updated from 0")
+	})
+
+	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_chan_mismatch", true)
+
+		// First call with "resync-1" on c1
+		err := auth.InvalidateChannels("inval_chan_mismatch", true, collections1, 10, "resync-1")
+		require.NoError(t, err)
+
+		var userOut userImpl
+		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_mismatch"), &userOut)
+		require.NoError(t, err)
+
+		// Call InvalidateChannels with mismatching "resync-2" on c2 - should update CAS
+		err = auth.InvalidateChannels("inval_chan_mismatch", true, collections2, 20, "resync-2")
+		require.NoError(t, err)
+
+		var finalUser userImpl
+		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_mismatch"), &finalUser)
+		require.NoError(t, err)
+		assert.NotEqual(t, casAfterFirst, finalCas, "CAS must be updated")
+		assert.Equal(t, uint64(20), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should be updated")
+		assert.Equal(t, "resync-2", finalUser.ResyncID())
+	})
+}
+
+func TestInvalidateRolesAndChannelsIdempotency(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	options := DefaultAuthenticatorOptions(ctx)
+	options.Collections = map[string]map[string]struct{}{
+		base.DefaultScope: {
+			"c1": struct{}{},
+			"c2": struct{}{},
+		},
+	}
+	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), &mockComputer{}, options)
+
+	collections1 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c1")}
+	collections2 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c2")}
+
+	t.Run("Empty resyncID (CAS should update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_roles_empty", true)
+
+		var userOut userImpl
+		initialCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_empty"), &userOut)
+		require.NoError(t, err)
+
+		// Call InvalidateRolesAndChannels with empty resyncID
+		err = auth.InvalidateRolesAndChannels("inval_roles_empty", collections1, 5, "")
+		require.NoError(t, err)
+
+		updatedCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_empty"), &userOut)
+		require.NoError(t, err)
+		assert.NotEqual(t, initialCas, updatedCas, "CAS must be updated")
+		assert.Equal(t, uint64(5), userOut.getCollectionChannelInvalSeq(base.DefaultScope, "c1"))
+	})
+
+	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_roles_match", true)
+
+		// First call with "resync-1" - should update CAS and stamp resync-1
+		err := auth.InvalidateRolesAndChannels("inval_roles_match", collections1, 10, "resync-1")
+		require.NoError(t, err)
+
+		var userOut userImpl
+		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_match"), &userOut)
+		require.NoError(t, err)
+		assert.Equal(t, "resync-1", userOut.ResyncID())
+
+		// Call InvalidateRolesAndChannels with matching resyncID on c2 - should be skipped, CAS must not update
+		err = auth.InvalidateRolesAndChannels("inval_roles_match", collections2, 20, "resync-1")
+		require.NoError(t, err)
+
+		var finalUser userImpl
+		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_match"), &finalUser)
+		require.NoError(t, err)
+		assert.Equal(t, casAfterFirst, finalCas, "CAS should not be updated")
+		assert.Equal(t, uint64(0), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should not be updated from 0")
+		assert.Equal(t, uint64(10), finalUser.GetRoleInvalSeq(), "RoleInvalSeq should remain 10 from first call")
+	})
+
+	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
+		createTestPrincipal(t, auth, "inval_roles_mismatch", true)
+
+		// First call with "resync-1"
+		err := auth.InvalidateRolesAndChannels("inval_roles_mismatch", collections1, 10, "resync-1")
+		require.NoError(t, err)
+
+		var userOut userImpl
+		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_mismatch"), &userOut)
+		require.NoError(t, err)
+
+		// Call InvalidateRolesAndChannels with mismatching "resync-2" - should update CAS
+		err = auth.InvalidateRolesAndChannels("inval_roles_mismatch", collections2, 20, "resync-2")
+		require.NoError(t, err)
+
+		var finalUser userImpl
+		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_mismatch"), &finalUser)
+		require.NoError(t, err)
+		assert.NotEqual(t, casAfterFirst, finalCas, "CAS must be updated")
+		assert.Equal(t, uint64(20), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should be updated")
+		assert.Equal(t, uint64(10), finalUser.GetRoleInvalSeq(), "RoleInvalSeq should remain 10")
+		assert.Equal(t, "resync-2", finalUser.ResyncID())
+	})
+}
