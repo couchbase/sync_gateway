@@ -47,6 +47,12 @@ func (m *MockProcess) Run(ctx context.Context, options map[string]any, persistCl
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
+	if persistClusterStatusCallback != nil {
+		defer func() {
+			_ = persistClusterStatusCallback(ctx)
+		}()
+	}
+
 	for {
 		select {
 		case <-terminator.Done():
@@ -1387,4 +1393,86 @@ func TestBackgroundManagerResumePreservesPreviousStatus(t *testing.T) {
 
 	require.NoError(t, mgr1.Stop(ctx))
 	require.NoError(t, mgr2.Stop(ctx))
+}
+
+func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-polling-overwrite")
+
+	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "polling-overwrite",
+		multiNode:     true,
+	}
+
+	process1 := &MockProcess{}
+	mgr1 := &BackgroundManager[map[string]any]{
+		name:                "mgr1",
+		Process:             process1,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	process2 := &MockProcess{}
+	mgr2 := &BackgroundManager[map[string]any]{
+		name:                "mgr2",
+		Process:             process2,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	// Start both managers. Both should run.
+	require.NoError(t, mgr1.Start(ctx, nil))
+	defer func() { _ = mgr1.Stop(ctx) }()
+
+	require.NoError(t, mgr2.Start(ctx, nil))
+	defer func() { _ = mgr2.Stop(ctx) }()
+
+	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
+	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+
+	// Simulate mgr1 completing successfully by manually writing a completed status to the cluster status document.
+	docID := clusterOpts.StatusDocID()
+	_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+		var output map[string]json.RawMessage
+		if current != nil {
+			_ = base.JSONUnmarshal(current, &output)
+		} else {
+			output = make(map[string]json.RawMessage)
+		}
+
+		status := BackgroundManagerStatus{
+			State:     BackgroundProcessStateCompleted,
+			StartTime: time.Now(),
+		}
+		statusBytes, err := base.JSONMarshal(status)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		output["status"] = statusBytes
+		output["meta"] = json.RawMessage("null")
+
+		outputBytes, err := base.JSONMarshal(output)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		return outputBytes, nil, false, nil
+	})
+	require.NoError(t, err)
+
+	// Wait for mgr2's polling loop to detect the completed status and close its terminator.
+	require.Eventually(t, func() bool {
+		return mgr2.terminator.IsClosed()
+	}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects completed status")
+
+	// Verify that the status in the bucket remains completed and is not overwritten by mgr2.
+	rawStatus, err := mgr2.GetStatus(ctx)
+	require.NoError(t, err)
+	var status BackgroundManagerStatus
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
 }
