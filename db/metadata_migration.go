@@ -37,10 +37,11 @@ type MigrationStats struct {
 // migrateSeqCounter, which the orchestrator calls once before entering the pass loop —
 // MigrateMetadata is per-pass and does not re-pill the seq doc on each iteration.
 //
-// Returns the number of in-scope fallback keys still classified as remaining after the run
-// (DocsUnknownPrefix from this pass). The orchestrator drives this in a loop until remaining
-// reaches zero — a doc written underneath an in-flight scan can be missed on this pass but
-// will surface on the next one.
+// Returns the number of unrecognised-prefix fallback keys seen this pass (DocsUnknownPrefix),
+// reported for observability only. The orchestrator does NOT retry on this count — unknown-prefix
+// docs are left in place on the fallback and do not block completion. Retries are driven solely by
+// per-doc move/delete errors (stats.Errors); a doc written underneath an in-flight scan that is
+// in-scope is either moved on a later error-forced pass or dual-written to primary by the wrapper.
 func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, stats *MigrationStats) (remaining int, err error) {
 	if ms == nil {
 		return 0, errors.New("MigrateMetadata: nil MetadataStore")
