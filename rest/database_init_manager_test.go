@@ -662,6 +662,19 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
+		{
+			name: "explicit default collection, migration complete, mobile enabled",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
+			metadataMigrationComplete: true,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
