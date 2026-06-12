@@ -3250,6 +3250,9 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 		return doc
 	}
 
+	// This is a post-commit corrective write; don't let request cancellation prevent the re-stamp.
+	ctx = context.WithoutCancel(ctx)
+
 	gap := base.CASToPhysicalNanos(doc.HLV.Version) - base.CASToPhysicalNanos(casOut)
 	if gap > uint64(maxVersionCASCorrectionWait.Nanoseconds()) {
 		base.WarnfCtx(ctx, "Generated version %d for doc %q is ahead of its CAS %d by %s (> %s); leaving uncorrected - this indicates clock skew between Sync Gateway and the server and may cause the document to be skipped by XDCR until a later mutation",
@@ -3263,9 +3266,8 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	cas2, err := db.restampVersionCAS(ctx, key, doc, casOut)
 	if err != nil {
 		if base.IsCasMismatch(err) {
-			// A concurrent writer beat us to it; their mutation carries a later CAS, so the version is no
-			// longer ahead, and it's that writer's responsibility to satisfy the invariant.
-			base.DebugfCtx(ctx, base.KeyVV, "Skipping CAS re-stamp for doc %q (generated version %d ahead of CAS %d): concurrent update won the CAS", base.UD(doc.ID), doc.HLV.Version, casOut)
+			// A concurrent writer beat us to it; it's that writer's responsibility to satisfy the invariant.
+			base.DebugfCtx(ctx, base.KeyVV, "Skipping CAS re-stamp for doc %q due to our generated version %d ahead of CAS %d: concurrent update won ahead of re-stamp", base.UD(doc.ID), doc.HLV.Version, casOut)
 			return doc
 		}
 		base.WarnfCtx(ctx, "Unable to re-stamp CAS for doc %q whose generated version %d was ahead of CAS %d: %v", base.UD(doc.ID), doc.HLV.Version, casOut, err)
@@ -3299,17 +3301,25 @@ func (db *DatabaseCollectionWithUser) restampVersionCAS(ctx context.Context, key
 	if err != nil {
 		return 0, err
 	}
-	// we do not want to use _mou here as we don't want xdcr to ignore the mutation
+
+	mou := computeMetadataOnlyUpdate(cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
+	rawMouXattr, err := base.JSONMarshal(mou)
+	if err != nil {
+		return 0, base.RedactErrorf("failed to marshal _mou when attempting to re-persist %s to correct version and CAS drift. Error: %v", base.UD(doc.ID), err)
+	}
+
 	opts := &sgbucket.MutateInOptions{
 		MacroExpansion: []sgbucket.MacroExpansionSpec{
 			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
 			sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
 		},
 		PreserveExpiry: true,
 	}
 	return db.dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{
 		base.SyncXattrName: syncXattr,
 		base.VvXattrName:   vvXattr,
+		base.MouXattrName:  rawMouXattr,
 	}, opts)
 }
 

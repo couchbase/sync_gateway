@@ -3024,7 +3024,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	version2 := rt.UpdateDoc(docID, version1, `{"new": "update!"}`)
 	newDoc, _, err := collection.GetDocWithXattrs(ctx, existingHLVKey, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	casV2 := newDoc.HLV.Version
+	hlvVersionV2 := newDoc.HLV.Version
 	encodedSourceV2 := testSource
 
 	// assert that we have a prev CV drop to pv and a new CV pair, assert pv values are as expected after delta conversions
@@ -3049,7 +3049,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	assert.Equal(t, casV3, bucketDoc.HLV.Version)
 	assert.Len(t, bucketDoc.HLV.PreviousVersions, 2)
 	assert.Equal(t, casV1, bucketDoc.HLV.PreviousVersions[encodedSourceV1])
-	assert.Equal(t, casV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
+	assert.Equal(t, hlvVersionV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
 }
 
 // TestPutDocUpdateVersionVector:
