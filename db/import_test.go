@@ -277,7 +277,7 @@ func TestOnDemandImport(t *testing.T) {
 		_, err = collection.dataStore.WriteCas(ctx, docKey, 0, importedDoc.Cas, []byte(`{"foo":"baz"}`), 0)
 		require.NoError(t, err)
 
-		// GetDocumentWithRaw detects a non-SG write, reloads the doc (crud.go:89), then imports it.
+		// GetDocumentWithRaw detects a non-SG write, reloads the doc, then imports it.
 		// The reload must include _mou in its xattr list so the returned rawBucketDoc is complete.
 		_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, docKey, DocUnmarshalAll)
 		require.NoError(t, err)
