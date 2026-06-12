@@ -243,6 +243,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		require.NoError(t, db.ResyncManager.Start(ctx, options))
 		stats := waitForResyncState(t, db, BackgroundProcessStateCompleted)
 
+		assert.Equal(t, DefaultResyncPartitions, db.GetResyncPartitionCount())
+
 		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate)) // may be processing tombstones from previous tests
 		assert.Equal(t, int64(0), stats.DocsChanged)
 		assert.GreaterOrEqual(t, stats.DocsTargeted, uint64(docsToCreate))
@@ -283,6 +285,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		require.NoError(t, err)
 
 		RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+
+		assert.Equal(t, DefaultResyncPartitions, db.GetResyncPartitionCount())
 
 		stats := getResyncStats(t, db)
 		// If there are tombstones from older docs which have been deleted from the bucket, processed docs will

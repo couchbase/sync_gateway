@@ -467,23 +467,44 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
 }
 
-func TestResyncPartitionsMaximumValidation(t *testing.T) {
+func TestResyncPartitionsValidation(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 	})
 	defer rt.Close()
 
-	dbConfig := rt.NewDbConfig()
-	numVBuckets, err := rt.TestBucket.GetMaxVbno(base.TestCtx(t))
+	numVBuckets, err := rt.TestBucket.GetMaxVbno(rt.Context())
 	require.NoError(t, err)
-	invalidPartitions := numVBuckets + 1
-	dbConfig.Unsupported = &db.UnsupportedOptions{
-		ResyncPartitions: &invalidPartitions,
-	}
 
-	resp := rt.CreateDatabase("db1", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusInternalServerError)
-	assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+	t.Run("invalid partitions exceeding vbucket count are rejected", func(t *testing.T) {
+		// Partition count validation only applies when using sharded DCP (EE + CBS).
+		if !base.IsEnterpriseEdition() || base.UnitTestUrlIsWalrus() {
+			t.Skip("Partition count validation only applies to EE with CBS")
+		}
+		dbConfig := rt.NewDbConfig()
+		invalidPartitions := numVBuckets + 1
+		dbConfig.Unsupported = &db.UnsupportedOptions{
+			ResyncPartitions: &invalidPartitions,
+		}
+		resp := rt.CreateDatabase("db1", dbConfig)
+		rest.RequireStatus(t, resp, http.StatusInternalServerError)
+		assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+	})
+
+	t.Run("valid custom partitions are used by ResyncManagerDCP", func(t *testing.T) {
+		dbConfig := rt.NewDbConfig()
+		customPartitions := uint16(16)
+		dbConfig.Unsupported = &db.UnsupportedOptions{
+			ResyncPartitions: &customPartitions,
+		}
+		resp := rt.CreateDatabase("db2", dbConfig)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+
+		dbCtx, err := rt.ServerContext().GetDatabase(rt.Context(), "db2")
+		require.NoError(t, err)
+
+		assert.Equal(t, customPartitions, dbCtx.GetResyncPartitionCount())
+	})
 }
 
 // TestDistributedResync is a long-running dev-time test used to validate cbgt rebalance behavior during resync.

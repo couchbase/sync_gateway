@@ -53,3 +53,7 @@ func NewDatabaseError(code databaseErrorCode) *DatabaseError {
 		Code:   code,
 	}
 }
+
+func (e *DatabaseError) Error() string {
+	return e.ErrMsg
+}

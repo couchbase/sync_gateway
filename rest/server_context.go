@@ -1037,7 +1037,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext, err = db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
 		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseCreateDatabaseContextError))
+			var dbErr *db.DatabaseError
+			if !errors.As(err, &dbErr) {
+				dbErr = db.NewDatabaseError(db.DatabaseCreateDatabaseContextError)
+			}
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, dbErr)
 		}
 		return nil, err
 	}
@@ -1091,13 +1095,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				return id == config.MetadataID
 			}), nil
 		}
-	}
-
-	if config.Unsupported != nil && config.Unsupported.ResyncPartitions != nil && *config.Unsupported.ResyncPartitions > dbcontext.NumVBuckets() {
-		if options.loadFromBucket {
-			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidResyncPartitions))
-		}
-		return nil, fmt.Errorf("resync_partitions must be between 1 and %d, got %d", dbcontext.NumVBuckets(), *config.Unsupported.ResyncPartitions)
 	}
 
 	if config.CORS != nil {

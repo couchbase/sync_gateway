@@ -1725,7 +1725,7 @@ Database:
           type: boolean
         resync_partitions:
           description: |-
-            Number of partitions to use for distributed DCP resync. If not set, defaults to the import partitions value.
+            Number of partitions to use for distributed DCP resync. Maximum number is the number of vBuckets for the backing bucket.
           type: integer
           minimum: 1
           maximum: 1024
