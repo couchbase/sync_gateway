@@ -4020,7 +4020,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
-	require.NoError(t, db.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{sgbucket.DataStoreNameImpl{Scope: collection.ScopeName, Collection: collection.Name}}, endSeq))
+	require.NoError(t, db.invalidateAllPrincipals(ctx, base.ScopeAndCollectionNames{sgbucket.DataStoreNameImpl{Scope: collection.ScopeName, Collection: collection.Name}}, endSeq, ""))
 	db.WaitForPendingChanges(t)
 
 	if base.TestsUseNamedCollections() {

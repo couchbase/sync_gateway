@@ -35,7 +35,7 @@ type roleImpl struct {
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	UpdatedAt         time.Time                               `json:"updated_at"`
 	CreatedAt         time.Time                               `json:"created_at"`
-	ResyncID_         string                                  `json:"resync_id,omitempty"`
+	ResyncID_         string                                  `json:"resync_id,omitempty"` // Last known ID for a resync operation. Used to ensure updating principals on multiple nodes is OK.
 	cas               uint64
 	docID             string // key used to store the roleImpl
 }

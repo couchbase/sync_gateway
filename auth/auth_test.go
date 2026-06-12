@@ -421,7 +421,7 @@ func TestRebuildUserChannelsMultiCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2, "")
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -448,7 +448,7 @@ func TestRebuildUserChannelsNamedCollection(t *testing.T) {
 	user.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "explicit2"), 1), 0)
 	require.NoError(t, auth.Save(user))
 
-	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2, "")
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -2957,6 +2957,199 @@ func TestInvalidateChannels(t *testing.T) {
 			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 		})
 	}
+}
+
+// getRawPrincipal fetches the principal doc directly from the datastore, avoiding the channel
+// rebuild performed by GetUser/GetRole, so invalidation sequences can be inspected.
+func getRawPrincipal(t *testing.T, auth *Authenticator, name string, isUser bool) Principal {
+	ctx := base.TestCtx(t)
+	var princ Principal
+	var docID string
+	if isUser {
+		docID = auth.DocIDForUser(name)
+		princ = &userImpl{roleImpl: roleImpl{docID: docID}}
+	} else {
+		docID = auth.DocIDForRole(name)
+		princ = &roleImpl{docID: docID}
+	}
+	cas, err := auth.datastore.Get(ctx, docID, &princ)
+	require.NoError(t, err)
+	princ.SetCas(cas)
+	return princ
+}
+
+// createTestPrincipal creates and saves a user or role with a single explicit channel grant.
+func createTestPrincipal(t *testing.T, auth *Authenticator, name string, isUser bool) {
+	var princ Principal
+	var err error
+	if isUser {
+		princ, err = auth.NewUser(name, "password", ch.BaseSetOf(t, "ABC"))
+	} else {
+		princ, err = auth.NewRole(name, ch.BaseSetOf(t, "ABC"))
+	}
+	require.NoError(t, err)
+	require.NoError(t, auth.Save(princ))
+}
+
+// TestInvalidateDefaultChannelsIdempotent ensures that re-invalidating default collection
+// channels at a later sequence preserves the sequence of the original invalidation.
+func TestInvalidateDefaultChannelsIdempotent(t *testing.T) {
+	testCases := []struct {
+		name   string
+		isUser bool
+	}{
+		{name: "User", isUser: true},
+		{name: "Role", isUser: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
+			createTestPrincipal(t, auth, testCase.name, testCase.isUser)
+
+			require.NoError(t, auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5))
+			princ := getRawPrincipal(t, auth, testCase.name, testCase.isUser)
+			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+
+			// Re-invalidating at a later sequence must keep the original invalidation sequence
+			require.NoError(t, auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 20))
+			princ = getRawPrincipal(t, auth, testCase.name, testCase.isUser)
+			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+		})
+	}
+}
+
+// TestInvalidateChannelsIdempotent exercises the multi-collection (non-subdoc) pathway of
+// InvalidateChannels: re-invalidation must preserve the original invalidation sequence, and an
+// invalidation carrying the resync ID already stamped on the principal must be skipped.
+func TestInvalidateChannelsIdempotent(t *testing.T) {
+	const (
+		scopeName      = "scope1"
+		collectionName = "collection1"
+	)
+
+	testCases := []struct {
+		name   string
+		isUser bool
+	}{
+		{name: "User", isUser: true},
+		{name: "Role", isUser: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			options := DefaultAuthenticatorOptions(ctx)
+			options.Collections = map[string]map[string]struct{}{
+				base.DefaultScope: {base.DefaultCollection: struct{}{}},
+				scopeName:         {collectionName: struct{}{}},
+			}
+			auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &mockComputer{}, options)
+			createTestPrincipal(t, auth, testCase.name, testCase.isUser)
+
+			// Invalidating more than one collection forces the update (non-subdoc) pathway
+			collections := base.ScopeAndCollectionNames{
+				base.DefaultScopeAndCollectionName(),
+				base.NewScopeAndCollectionName(scopeName, collectionName),
+			}
+
+			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 5, ""))
+			princ := getRawPrincipal(t, auth, testCase.name, testCase.isUser)
+			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+			// Re-invalidating at a later sequence must keep the original invalidation sequence
+			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 20, ""))
+			princ = getRawPrincipal(t, auth, testCase.name, testCase.isUser)
+			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+			// A principal already stamped with the in-progress resync ID must not be invalidated again
+			resyncName := testCase.name + "Resync"
+			createTestPrincipal(t, auth, resyncName, testCase.isUser)
+			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
+			princ.SetResyncID("resync-1")
+			require.NoError(t, auth.Save(princ))
+
+			require.NoError(t, auth.InvalidateChannels(resyncName, testCase.isUser, collections, 5, "resync-1"))
+			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
+			require.Equal(t, uint64(0), princ.GetChannelInvalSeq())
+			require.Equal(t, uint64(0), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+			// A different resync ID still invalidates
+			require.NoError(t, auth.InvalidateChannels(resyncName, testCase.isUser, collections, 5, "resync-2"))
+			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
+			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+		})
+	}
+}
+
+// TestInvalidateRolesAndChannelsIdempotent ensures that re-invalidating a user's roles and
+// channels at a later sequence preserves the original invalidation sequence, and that an
+// invalidation carrying the resync ID already stamped on the user is skipped.
+func TestInvalidateRolesAndChannelsIdempotent(t *testing.T) {
+	const (
+		scopeName      = "scope1"
+		collectionName = "collection1"
+	)
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	computer := mockComputer{roles: ch.AtSequence(ch.BaseSetOf(t, "role1"), 1)}
+	options := DefaultAuthenticatorOptions(ctx)
+	options.Collections = map[string]map[string]struct{}{
+		base.DefaultScope: {base.DefaultCollection: struct{}{}},
+		scopeName:         {collectionName: struct{}{}},
+	}
+	auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &computer, options)
+	createTestPrincipal(t, auth, "alice", true)
+
+	collections := base.ScopeAndCollectionNames{
+		base.DefaultScopeAndCollectionName(),
+		base.NewScopeAndCollectionName(scopeName, collectionName),
+	}
+
+	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 5, ""))
+	user := getRawPrincipal(t, auth, "alice", true).(*userImpl)
+	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
+	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
+	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+	// Re-invalidating at a later sequence must keep the original invalidation sequence
+	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 20, ""))
+	user = getRawPrincipal(t, auth, "alice", true).(*userImpl)
+	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
+	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
+	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+	// A user already stamped with the in-progress resync ID must not be invalidated again
+	createTestPrincipal(t, auth, "bob", true)
+	princ := getRawPrincipal(t, auth, "bob", true)
+	princ.SetResyncID("resync-1")
+	require.NoError(t, auth.Save(princ))
+
+	require.NoError(t, auth.InvalidateRolesAndChannels("bob", collections, 5, "resync-1"))
+	user = getRawPrincipal(t, auth, "bob", true).(*userImpl)
+	require.Equal(t, uint64(0), user.GetRoleInvalSeq())
+	require.Equal(t, uint64(0), user.GetChannelInvalSeq())
+	require.Equal(t, uint64(0), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+
+	// A different resync ID still invalidates
+	require.NoError(t, auth.InvalidateRolesAndChannels("bob", collections, 5, "resync-2"))
+	user = getRawPrincipal(t, auth, "bob", true).(*userImpl)
+	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
+	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
+	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
 }
 
 func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {

@@ -22,9 +22,6 @@ import (
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support persistent config")
-	}
 	base.SkipImportTestsIfNotEnabled(t)
 
 	numCollections := 2
@@ -168,10 +165,6 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 // TestRequireResync tests behaviour when a collection moves between databases.  New database should start offline until
 // resync with regenerateSequences=true has been run for the collection
 func TestRequireResync(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server, until creating a db through the REST API allows the views/walrus/collections combination")
-	}
-
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	rtConfig := &rest.RestTesterConfig{

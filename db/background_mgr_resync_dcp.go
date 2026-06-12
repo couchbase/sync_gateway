@@ -516,6 +516,7 @@ func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Databas
 		if err != nil {
 			return fmt.Errorf("Error updating principal sequences: %w", err)
 		}
+		return nil
 	}
 
 	if r.DocsChanged() > 0 {
