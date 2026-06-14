@@ -421,7 +421,7 @@ func TestRebuildUserChannelsMultiCollection(t *testing.T) {
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2, "")
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -448,7 +448,7 @@ func TestRebuildUserChannelsNamedCollection(t *testing.T) {
 	user.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "explicit2"), 1), 0)
 	require.NoError(t, auth.Save(user))
 
-	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2, "")
+	err = auth.InvalidateChannels("testUser", true, base.ScopeAndCollectionNames{base.NewScopeAndCollectionName("scope1", "collection1")}, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -3060,32 +3060,14 @@ func TestInvalidateChannelsIdempotent(t *testing.T) {
 				base.NewScopeAndCollectionName(scopeName, collectionName),
 			}
 
-			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 5, ""))
+			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 5))
 			princ := getRawPrincipal(t, auth, testCase.name, testCase.isUser)
 			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
 			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
 
 			// Re-invalidating at a later sequence must keep the original invalidation sequence
-			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 20, ""))
+			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 20))
 			princ = getRawPrincipal(t, auth, testCase.name, testCase.isUser)
-			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
-			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
-
-			// A principal already stamped with the in-progress resync ID must not be invalidated again
-			resyncName := testCase.name + "Resync"
-			createTestPrincipal(t, auth, resyncName, testCase.isUser)
-			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
-			princ.SetResyncID("resync-1")
-			require.NoError(t, auth.Save(princ))
-
-			require.NoError(t, auth.InvalidateChannels(resyncName, testCase.isUser, collections, 5, "resync-1"))
-			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
-			require.Equal(t, uint64(0), princ.GetChannelInvalSeq())
-			require.Equal(t, uint64(0), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
-
-			// A different resync ID still invalidates
-			require.NoError(t, auth.InvalidateChannels(resyncName, testCase.isUser, collections, 5, "resync-2"))
-			princ = getRawPrincipal(t, auth, resyncName, testCase.isUser)
 			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
 			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
 		})
@@ -3119,37 +3101,19 @@ func TestInvalidateRolesAndChannelsIdempotent(t *testing.T) {
 		base.NewScopeAndCollectionName(scopeName, collectionName),
 	}
 
-	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 5, ""))
+	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 5))
 	user := getRawPrincipal(t, auth, "alice", true).(*userImpl)
 	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
 	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
 	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
 
 	// Re-invalidating at a later sequence must keep the original invalidation sequence
-	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 20, ""))
+	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 20))
 	user = getRawPrincipal(t, auth, "alice", true).(*userImpl)
 	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
 	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
 	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
 
-	// A user already stamped with the in-progress resync ID must not be invalidated again
-	createTestPrincipal(t, auth, "bob", true)
-	princ := getRawPrincipal(t, auth, "bob", true)
-	princ.SetResyncID("resync-1")
-	require.NoError(t, auth.Save(princ))
-
-	require.NoError(t, auth.InvalidateRolesAndChannels("bob", collections, 5, "resync-1"))
-	user = getRawPrincipal(t, auth, "bob", true).(*userImpl)
-	require.Equal(t, uint64(0), user.GetRoleInvalSeq())
-	require.Equal(t, uint64(0), user.GetChannelInvalSeq())
-	require.Equal(t, uint64(0), user.getCollectionChannelInvalSeq(scopeName, collectionName))
-
-	// A different resync ID still invalidates
-	require.NoError(t, auth.InvalidateRolesAndChannels("bob", collections, 5, "resync-2"))
-	user = getRawPrincipal(t, auth, "bob", true).(*userImpl)
-	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
-	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
-	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
 }
 
 func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
@@ -3274,169 +3238,5 @@ func TestUpdateSequenceNumberForResyncIdempotency(t *testing.T) {
 		assert.NotEqual(t, casAfterFirst, finalUser.Cas(), "CAS must be updated")
 		assert.Equal(t, uint64(20), finalUser.Sequence(), "Sequence should be updated to 20")
 		assert.Equal(t, "resync-2", finalUser.ResyncID(), "ResyncID should be updated to resync-2")
-	})
-}
-
-func TestInvalidateChannelsIdempotency(t *testing.T) {
-	ctx := base.TestCtx(t)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close(ctx)
-
-	options := DefaultAuthenticatorOptions(ctx)
-	options.Collections = map[string]map[string]struct{}{
-		base.DefaultScope: {
-			"c1": struct{}{},
-			"c2": struct{}{},
-		},
-	}
-	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), &mockComputer{}, options)
-
-	collections1 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c1")}
-	collections2 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c2")}
-
-	t.Run("Empty resyncID (CAS should update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_chan_empty", true)
-
-		var userOut userImpl
-		initialCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_empty"), &userOut)
-		require.NoError(t, err)
-
-		// Call InvalidateChannels with empty resyncID
-		err = auth.InvalidateChannels("inval_chan_empty", true, collections1, 5, "")
-		require.NoError(t, err)
-
-		updatedCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_empty"), &userOut)
-		require.NoError(t, err)
-		assert.NotEqual(t, initialCas, updatedCas, "CAS must be updated")
-		assert.Equal(t, uint64(5), userOut.getCollectionChannelInvalSeq(base.DefaultScope, "c1"))
-	})
-
-	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_chan_match", true)
-
-		// First call with "resync-1" on c1 - should update CAS and stamp resync-1
-		err := auth.InvalidateChannels("inval_chan_match", true, collections1, 10, "resync-1")
-		require.NoError(t, err)
-
-		var userOut userImpl
-		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_match"), &userOut)
-		require.NoError(t, err)
-		assert.Equal(t, "resync-1", userOut.ResyncID())
-
-		// Second call with same matching resyncID on c2 - should be skipped, CAS must not update
-		err = auth.InvalidateChannels("inval_chan_match", true, collections2, 20, "resync-1")
-		require.NoError(t, err)
-
-		var finalUser userImpl
-		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_match"), &finalUser)
-		require.NoError(t, err)
-		assert.Equal(t, casAfterFirst, finalCas, "CAS should not be updated")
-		assert.Equal(t, uint64(0), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should not be updated from 0")
-	})
-
-	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_chan_mismatch", true)
-
-		// First call with "resync-1" on c1
-		err := auth.InvalidateChannels("inval_chan_mismatch", true, collections1, 10, "resync-1")
-		require.NoError(t, err)
-
-		var userOut userImpl
-		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_mismatch"), &userOut)
-		require.NoError(t, err)
-
-		// Call InvalidateChannels with mismatching "resync-2" on c2 - should update CAS
-		err = auth.InvalidateChannels("inval_chan_mismatch", true, collections2, 20, "resync-2")
-		require.NoError(t, err)
-
-		var finalUser userImpl
-		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_chan_mismatch"), &finalUser)
-		require.NoError(t, err)
-		assert.NotEqual(t, casAfterFirst, finalCas, "CAS must be updated")
-		assert.Equal(t, uint64(20), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should be updated")
-		assert.Equal(t, "resync-2", finalUser.ResyncID())
-	})
-}
-
-func TestInvalidateRolesAndChannelsIdempotency(t *testing.T) {
-	ctx := base.TestCtx(t)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close(ctx)
-
-	options := DefaultAuthenticatorOptions(ctx)
-	options.Collections = map[string]map[string]struct{}{
-		base.DefaultScope: {
-			"c1": struct{}{},
-			"c2": struct{}{},
-		},
-	}
-	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), &mockComputer{}, options)
-
-	collections1 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c1")}
-	collections2 := base.ScopeAndCollectionNames{base.NewScopeAndCollectionName(base.DefaultScope, "c2")}
-
-	t.Run("Empty resyncID (CAS should update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_roles_empty", true)
-
-		var userOut userImpl
-		initialCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_empty"), &userOut)
-		require.NoError(t, err)
-
-		// Call InvalidateRolesAndChannels with empty resyncID
-		err = auth.InvalidateRolesAndChannels("inval_roles_empty", collections1, 5, "")
-		require.NoError(t, err)
-
-		updatedCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_empty"), &userOut)
-		require.NoError(t, err)
-		assert.NotEqual(t, initialCas, updatedCas, "CAS must be updated")
-		assert.Equal(t, uint64(5), userOut.getCollectionChannelInvalSeq(base.DefaultScope, "c1"))
-	})
-
-	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_roles_match", true)
-
-		// First call with "resync-1" - should update CAS and stamp resync-1
-		err := auth.InvalidateRolesAndChannels("inval_roles_match", collections1, 10, "resync-1")
-		require.NoError(t, err)
-
-		var userOut userImpl
-		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_match"), &userOut)
-		require.NoError(t, err)
-		assert.Equal(t, "resync-1", userOut.ResyncID())
-
-		// Call InvalidateRolesAndChannels with matching resyncID on c2 - should be skipped, CAS must not update
-		err = auth.InvalidateRolesAndChannels("inval_roles_match", collections2, 20, "resync-1")
-		require.NoError(t, err)
-
-		var finalUser userImpl
-		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_match"), &finalUser)
-		require.NoError(t, err)
-		assert.Equal(t, casAfterFirst, finalCas, "CAS should not be updated")
-		assert.Equal(t, uint64(0), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should not be updated from 0")
-		assert.Equal(t, uint64(10), finalUser.GetRoleInvalSeq(), "RoleInvalSeq should remain 10 from first call")
-	})
-
-	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
-		createTestPrincipal(t, auth, "inval_roles_mismatch", true)
-
-		// First call with "resync-1"
-		err := auth.InvalidateRolesAndChannels("inval_roles_mismatch", collections1, 10, "resync-1")
-		require.NoError(t, err)
-
-		var userOut userImpl
-		casAfterFirst, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_mismatch"), &userOut)
-		require.NoError(t, err)
-
-		// Call InvalidateRolesAndChannels with mismatching "resync-2" - should update CAS
-		err = auth.InvalidateRolesAndChannels("inval_roles_mismatch", collections2, 20, "resync-2")
-		require.NoError(t, err)
-
-		var finalUser userImpl
-		finalCas, err := auth.datastore.Get(ctx, auth.DocIDForUser("inval_roles_mismatch"), &finalUser)
-		require.NoError(t, err)
-		assert.NotEqual(t, casAfterFirst, finalCas, "CAS must be updated")
-		assert.Equal(t, uint64(20), finalUser.getCollectionChannelInvalSeq(base.DefaultScope, "c2"), "ChannelInvalSeq should be updated")
-		assert.Equal(t, uint64(10), finalUser.GetRoleInvalSeq(), "RoleInvalSeq should remain 10")
-		assert.Equal(t, "resync-2", finalUser.ResyncID())
 	})
 }

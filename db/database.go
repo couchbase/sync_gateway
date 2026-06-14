@@ -1831,7 +1831,14 @@ func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, aut
 
 	err = authr.UpdateSequenceNumberForResync(princ, nextSeq, resyncID)
 	if err != nil {
-		return err
+		if base.IsCasMismatch(err) {
+			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s to sequence %d.  Assuming sequence updated by another node - releasing seq as unused.", base.UD(princ.Name()), nextSeq, base.UD(resyncID))
+			if releaseErr := db.sequences.releaseSequence(ctx, nextSeq); releaseErr != nil {
+				base.WarnfCtx(ctx, "Error when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", nextSeq, releaseErr)
+			}
+		} else {
+			return err
+		}
 	}
 
 	return nil

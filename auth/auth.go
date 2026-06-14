@@ -434,8 +434,11 @@ func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64
 	if resyncID == "" {
 		return errors.New("resyncID must not be empty")
 	}
-
+	if p.ResyncID() == resyncID {
+		return nil
+	}
 	p.SetSequence(seq)
+	p.SetResyncID(resyncID)
 	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
