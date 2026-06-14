@@ -435,12 +435,7 @@ func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64
 		return errors.New("resyncID must not be empty")
 	}
 
-	if p.ResyncID() == resyncID {
-		return nil
-	}
-
 	p.SetSequence(seq)
-	p.SetResyncID(resyncID)
 	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
@@ -451,13 +446,13 @@ func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64
 }
 
 func (auth *Authenticator) InvalidateDefaultChannels(name string, isUser bool, invalSeq uint64) error {
-	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq, "")
+	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq)
 }
 
 // Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value.  When resyncID is specified, resyncID
 // represents a UUID for a given resync operation.  Invalidation will be performed only once for this resync operation, making this function
 // idempotent.  The subdoc pathway ignores resyncID since it's already only one kv op.
-func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) error {
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
 	var princ Principal
 	var docID string
 
@@ -478,7 +473,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
 	// Attempt to use subdoc if we're only modifying a single collection and no resyncID is provided
-	if len(collections) == 1 && resyncID == "" {
+	if len(collections) == 1 {
 		scope := collections[0].ScopeName()
 		collection := collections[0].CollectionName()
 
@@ -507,10 +502,6 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 			return nil, nil, false, err
 		}
 
-		if resyncID != "" && princ.ResyncID() == resyncID {
-			return nil, nil, false, base.ErrUpdateCancel
-		}
-
 		changed := false
 		for _, collectionName := range collections {
 			scope := collectionName.ScopeName()
@@ -523,10 +514,6 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 
 		if !changed {
 			return nil, nil, false, base.ErrUpdateCancel
-		}
-
-		if resyncID != "" {
-			princ.SetResyncID(resyncID)
 		}
 
 		updated, err = base.JSONMarshal(princ)
@@ -586,7 +573,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 // Invalidates the computed roles and channels of a user by setting the ChannelInvalSeq to a non-zero value for all specified collections.
 // When resyncID is specified, resyncID represents a UUID for a given resync operation.  Invalidation will be performed only once for this
 // resync operation, making this function idempotent.
-func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64, resyncID string) error {
+func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
 
 	docID := auth.DocIDForUser(username)
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate computed role and channel access of %q for collections %v", base.UD(username), collections)
@@ -600,11 +587,6 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 		var user userImpl
 		err = base.JSONUnmarshal(current, &user)
 		if err != nil {
-			return nil, nil, false, base.ErrUpdateCancel
-		}
-
-		// If resyncID is provided, cancel the update if the existing doc has already been processed for this ResyncID
-		if resyncID != "" && user.ResyncID() == resyncID {
 			return nil, nil, false, base.ErrUpdateCancel
 		}
 
@@ -627,10 +609,6 @@ func (auth *Authenticator) InvalidateRolesAndChannels(username string, collectio
 
 		if !changed {
 			return nil, nil, false, base.ErrUpdateCancel
-		}
-
-		if resyncID != "" {
-			user.SetResyncID(resyncID)
 		}
 
 		updated, err = base.JSONMarshal(&user)
