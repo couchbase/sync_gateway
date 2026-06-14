@@ -491,6 +491,13 @@ func TestResyncPartitionsMaximumValidation(t *testing.T) {
 // The test then validates that the resync completes successfully on both nodes, and logs the number of documents processed/changed on each node to verify that work is being distributed.
 // Usage notes: even with 100K docs, the test may intermittently complete resync on just rt1.  Putting a breakpoint in ResyncManagerDCP.Run and pausing for a few seconds
 // is typically sufficient to ensure rebalance happens without further increasing the number of docs.
+
+// Note: when the second rt comes online, all DCP traffic will be directed to the second rt, because of the following cbgt interaction:
+//    1. When a new node/rt is added, a new index definition and new set of feeds are created, and the previous ones closed
+//    2. The mapping from a feed to a dest (destKey) is stored in the index params, so only a single destKey can be active at a time for a cbgt index
+//    3. SGW's lookup for dest from destKey isn't db-scoped, so rt2's dest will be used for all the new feeds.
+// This still allows testing of overall feed close and status handling, but doesn't do a good job of testing concurrent updates to resync status from two nodes.
+
 func TestDistributedResync(t *testing.T) {
 
 	t.Skip("Long-running dev-time test used to test multi-node cbgt rebalance during resync")
