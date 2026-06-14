@@ -473,6 +473,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if err != nil {
 		return nil, err
 	}
+	if dbContext.useShardedDCP() {
+		if partitionCount := dbContext.GetResyncPartitionCount(); partitionCount > dbContext.numVBuckets {
+			return nil, NewDatabaseError(DatabaseInvalidResyncPartitions)
+		}
+	}
 	err = dbContext.updateCCVSettings(ctx)
 	if err != nil {
 		return nil, err
@@ -2726,6 +2731,15 @@ func (db *DatabaseContext) distributedDCPFeedMode() base.DCPFeedMode {
 // NumVBuckets return number of vBuckets on the databases bucket.
 func (db *DatabaseContext) NumVBuckets() uint16 {
 	return db.numVBuckets
+}
+
+// GetResyncPartitionCount returns the number of partitions to use for the DCP resync feed.
+// Returns the configured ResyncPartitions value if set, otherwise DefaultResyncPartitions.
+func (db *DatabaseContext) GetResyncPartitionCount() uint16 {
+	if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
+		return *db.Options.UnsupportedOptions.ResyncPartitions
+	}
+	return DefaultResyncPartitions
 }
 
 // InitializeOfflineMode starts polling the database state when the database transitions to offline mode.

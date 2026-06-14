@@ -751,6 +751,9 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
+			dbCtx := rt.GetDatabase()
+			assert.Equal(t, db.DefaultResyncPartitions, dbCtx.GetResyncPartitionCount())
+
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 			if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
 				// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous

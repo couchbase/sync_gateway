@@ -30,6 +30,8 @@ import (
 // Resync Implementation of Background Manager Process using DCP stream
 // =====================================================================
 
+const DefaultResyncPartitions uint16 = 64
+
 type ResyncManagerDCP struct {
 	db                           *DatabaseContext
 	docsProcessedLocal           atomic.Int64  // number of documents processed locally on this node since the last start or resume of resync
@@ -411,12 +413,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 
-		var partitionCount uint16
-		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
-			partitionCount = *db.Options.UnsupportedOptions.ResyncPartitions
-		} else {
-			partitionCount = db.Options.ImportOptions.ImportPartitions
-		}
+		partitionCount := r.db.GetResyncPartitionCount()
 		base.DebugfCtx(ctx, base.KeyAll, "Using %d partitions for resync", partitionCount)
 
 		opts := base.ShardedDCPOptions{
