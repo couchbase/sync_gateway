@@ -529,7 +529,6 @@ func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *Databas
 		for _, databaseCollection := range db.CollectionByID {
 			collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
 		}
-		// invalidateAllPrincipals doesn't require ResyncID since invalidation handling already cancels
 		// the update if the principal is already invalidated
 		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
 		if err != nil {

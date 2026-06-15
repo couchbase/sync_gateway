@@ -58,8 +58,10 @@ type Principal interface {
 	// Sets the created time for the principal document
 	SetCreatedAt(t time.Time)
 
-	// ResyncID used for resync sequence regeneration
+	// ResyncID returns a ID used to update sequence for a resync operation. If regenerate_sequences=false, this will be
+	// an empty string.
 	ResyncID() string
+	// SetResyncID sets the resync ID.
 	SetResyncID(resyncID string)
 
 	CompactChannelHistory(scope string, col string, channels []string) []string

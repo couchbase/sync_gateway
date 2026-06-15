@@ -452,9 +452,7 @@ func (auth *Authenticator) InvalidateDefaultChannels(name string, isUser bool, i
 	return auth.InvalidateChannels(name, isUser, base.ScopeAndCollectionNames{base.DefaultScopeAndCollectionName()}, invalSeq)
 }
 
-// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value.  When resyncID is specified, resyncID
-// represents a UUID for a given resync operation.  Invalidation will be performed only once for this resync operation, making this function
-// idempotent.  The subdoc pathway ignores resyncID since it's already only one kv op.
+// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
 func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
 	var princ Principal
 	var docID string
@@ -475,7 +473,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, collecti
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
-	// Attempt to use subdoc if we're only modifying a single collection and no resyncID is provided
+	// Attempt to use subdoc if we're only modifying a single collection
 	if len(collections) == 1 {
 		scope := collections[0].ScopeName()
 		collection := collections[0].CollectionName()
@@ -574,8 +572,6 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 }
 
 // Invalidates the computed roles and channels of a user by setting the ChannelInvalSeq to a non-zero value for all specified collections.
-// When resyncID is specified, resyncID represents a UUID for a given resync operation.  Invalidation will be performed only once for this
-// resync operation, making this function idempotent.
 func (auth *Authenticator) InvalidateRolesAndChannels(username string, collections base.ScopeAndCollectionNames, invalSeq uint64) error {
 
 	docID := auth.DocIDForUser(username)

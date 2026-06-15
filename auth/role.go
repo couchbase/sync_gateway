@@ -365,9 +365,14 @@ func (role *roleImpl) ChannelHistory() TimedSetHistory {
 	return role.ChannelHistory_
 }
 
+// ResyncID returns the last UUID of a resync operation that updated the sequence of this principal object. Otherwise,
+// returns empty string.
 func (role *roleImpl) ResyncID() string {
 	return role.ResyncID_
 }
+
+// SetResyncID sets an ID for the resync operation that updates this principal. Used to restrict updates for this object
+// to once per resync operation.
 func (role *roleImpl) SetResyncID(resyncID string) {
 	role.ResyncID_ = resyncID
 }

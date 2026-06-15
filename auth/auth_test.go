@@ -2991,93 +2991,11 @@ func createTestPrincipal(t *testing.T, auth *Authenticator, name string, isUser 
 	require.NoError(t, auth.Save(princ))
 }
 
-// TestInvalidateDefaultChannelsIdempotent ensures that re-invalidating default collection
-// channels at a later sequence preserves the sequence of the original invalidation.
-func TestInvalidateDefaultChannelsIdempotent(t *testing.T) {
-	testCases := []struct {
-		name   string
-		isUser bool
-	}{
-		{name: "User", isUser: true},
-		{name: "Role", isUser: false},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
-			bucket := base.GetTestBucket(t)
-			defer bucket.Close(ctx)
-
-			auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
-			createTestPrincipal(t, auth, testCase.name, testCase.isUser)
-
-			require.NoError(t, auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5))
-			princ := getRawPrincipal(t, auth, testCase.name, testCase.isUser)
-			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
-
-			// Re-invalidating at a later sequence must keep the original invalidation sequence
-			require.NoError(t, auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 20))
-			princ = getRawPrincipal(t, auth, testCase.name, testCase.isUser)
-			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
-		})
-	}
-}
-
-// TestInvalidateChannelsIdempotent exercises the multi-collection (non-subdoc) pathway of
-// InvalidateChannels: re-invalidation must preserve the original invalidation sequence, and an
-// invalidation carrying the resync ID already stamped on the principal must be skipped.
+// TestInvalidateChannelsIdempotent verifies that re-invalidating principals at the same or a
+// later sequence preserves the original invalidation sequence and does not write to the store.
+// It covers InvalidateDefaultChannels, InvalidateChannels, InvalidateRolesAndChannels, and
+// UpdateSequenceNumberForResync under a single test bucket.
 func TestInvalidateChannelsIdempotent(t *testing.T) {
-	const (
-		scopeName      = "scope1"
-		collectionName = "collection1"
-	)
-
-	testCases := []struct {
-		name   string
-		isUser bool
-	}{
-		{name: "User", isUser: true},
-		{name: "Role", isUser: false},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctx := base.TestCtx(t)
-			bucket := base.GetTestBucket(t)
-			defer bucket.Close(ctx)
-
-			options := DefaultAuthenticatorOptions(ctx)
-			options.Collections = map[string]map[string]struct{}{
-				base.DefaultScope: {base.DefaultCollection: struct{}{}},
-				scopeName:         {collectionName: struct{}{}},
-			}
-			auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &mockComputer{}, options)
-			createTestPrincipal(t, auth, testCase.name, testCase.isUser)
-
-			// Invalidating more than one collection forces the update (non-subdoc) pathway
-			collections := base.ScopeAndCollectionNames{
-				base.DefaultScopeAndCollectionName(),
-				base.NewScopeAndCollectionName(scopeName, collectionName),
-			}
-
-			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 5))
-			princ := getRawPrincipal(t, auth, testCase.name, testCase.isUser)
-			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
-			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
-
-			// Re-invalidating at a later sequence must keep the original invalidation sequence
-			require.NoError(t, auth.InvalidateChannels(testCase.name, testCase.isUser, collections, 20))
-			princ = getRawPrincipal(t, auth, testCase.name, testCase.isUser)
-			require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
-			require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
-		})
-	}
-}
-
-// TestInvalidateRolesAndChannelsIdempotent ensures that re-invalidating a user's roles and
-// channels at a later sequence preserves the original invalidation sequence, and that an
-// invalidation carrying the resync ID already stamped on the user is skipped.
-func TestInvalidateRolesAndChannelsIdempotent(t *testing.T) {
 	const (
 		scopeName      = "scope1"
 		collectionName = "collection1"
@@ -3087,33 +3005,180 @@ func TestInvalidateRolesAndChannelsIdempotent(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	computer := mockComputer{roles: ch.AtSequence(ch.BaseSetOf(t, "role1"), 1)}
-	options := DefaultAuthenticatorOptions(ctx)
-	options.Collections = map[string]map[string]struct{}{
-		base.DefaultScope: {base.DefaultCollection: struct{}{}},
-		scopeName:         {collectionName: struct{}{}},
-	}
-	auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &computer, options)
-	createTestPrincipal(t, auth, "alice", true)
-
 	collections := base.ScopeAndCollectionNames{
 		base.DefaultScopeAndCollectionName(),
 		base.NewScopeAndCollectionName(scopeName, collectionName),
 	}
 
-	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 5))
-	user := getRawPrincipal(t, auth, "alice", true).(*userImpl)
-	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
-	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
-	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+	t.Run("InvalidateDefaultChannels", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
 
-	// Re-invalidating at a later sequence must keep the original invalidation sequence
-	require.NoError(t, auth.InvalidateRolesAndChannels("alice", collections, 20))
-	user = getRawPrincipal(t, auth, "alice", true).(*userImpl)
-	require.Equal(t, uint64(5), user.GetRoleInvalSeq())
-	require.Equal(t, uint64(5), user.GetChannelInvalSeq())
-	require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+		testCases := []struct {
+			name          string
+			principalName string
+			isUser        bool
+		}{
+			{name: "User", principalName: "idempotent_default_user", isUser: true},
+			{name: "Role", principalName: "idempotent_default_role", isUser: false},
+		}
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				createTestPrincipal(t, auth, testCase.principalName, testCase.isUser)
 
+				require.NoError(t, auth.InvalidateDefaultChannels(testCase.principalName, testCase.isUser, 5))
+				princ := getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				casAfterFirst := princ.Cas()
+
+				// Re-invalidating at the same sequence must not write (CAS unchanged)
+				require.NoError(t, auth.InvalidateDefaultChannels(testCase.principalName, testCase.isUser, 5))
+				princ = getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				require.Equal(t, casAfterFirst, princ.Cas())
+
+				// Re-invalidating at a later sequence must keep the original invalidation sequence and not write
+				require.NoError(t, auth.InvalidateDefaultChannels(testCase.principalName, testCase.isUser, 20))
+				princ = getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				require.Equal(t, casAfterFirst, princ.Cas())
+			})
+		}
+	})
+
+	t.Run("InvalidateChannels", func(t *testing.T) {
+		options := DefaultAuthenticatorOptions(ctx)
+		options.Collections = map[string]map[string]struct{}{
+			base.DefaultScope: {base.DefaultCollection: struct{}{}},
+			scopeName:         {collectionName: struct{}{}},
+		}
+		auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &mockComputer{}, options)
+
+		testCases := []struct {
+			name          string
+			principalName string
+			isUser        bool
+		}{
+			{name: "User", principalName: "idempotent_channels_user", isUser: true},
+			{name: "Role", principalName: "idempotent_channels_role", isUser: false},
+		}
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				createTestPrincipal(t, auth, testCase.principalName, testCase.isUser)
+
+				// Invalidating more than one collection forces the update (non-subdoc) pathway
+				require.NoError(t, auth.InvalidateChannels(testCase.principalName, testCase.isUser, collections, 5))
+				princ := getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+				casAfterFirst := princ.Cas()
+
+				// Re-invalidating at the same sequence must not write (CAS unchanged)
+				require.NoError(t, auth.InvalidateChannels(testCase.principalName, testCase.isUser, collections, 5))
+				princ = getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+				require.Equal(t, casAfterFirst, princ.Cas())
+
+				// Re-invalidating at a later sequence must keep the original invalidation sequence and not write
+				require.NoError(t, auth.InvalidateChannels(testCase.principalName, testCase.isUser, collections, 20))
+				princ = getRawPrincipal(t, auth, testCase.principalName, testCase.isUser)
+				require.Equal(t, uint64(5), princ.GetChannelInvalSeq())
+				require.Equal(t, uint64(5), princ.getCollectionChannelInvalSeq(scopeName, collectionName))
+				require.Equal(t, casAfterFirst, princ.Cas())
+			})
+		}
+	})
+
+	t.Run("InvalidateRolesAndChannels", func(t *testing.T) {
+		computer := mockComputer{roles: ch.AtSequence(ch.BaseSetOf(t, "role1"), 1)}
+		options := DefaultAuthenticatorOptions(ctx)
+		options.Collections = map[string]map[string]struct{}{
+			base.DefaultScope: {base.DefaultCollection: struct{}{}},
+			scopeName:         {collectionName: struct{}{}},
+		}
+		auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), &computer, options)
+
+		t.Run("First invalidation sets sequence", func(t *testing.T) {
+			createTestPrincipal(t, auth, "invalidate_roles_channels_first", true)
+
+			require.NoError(t, auth.InvalidateRolesAndChannels("invalidate_roles_channels_first", collections, 5))
+			user := getRawPrincipal(t, auth, "invalidate_roles_channels_first", true).(*userImpl)
+			require.Equal(t, uint64(5), user.GetRoleInvalSeq())
+			require.Equal(t, uint64(5), user.GetChannelInvalSeq())
+			require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+		})
+
+		t.Run("Re-invalidation at later sequence preserves original", func(t *testing.T) {
+			createTestPrincipal(t, auth, "invalidate_roles_channels_reinvalidate", true)
+
+			require.NoError(t, auth.InvalidateRolesAndChannels("invalidate_roles_channels_reinvalidate", collections, 5))
+			casAfterFirst := getRawPrincipal(t, auth, "invalidate_roles_channels_reinvalidate", true).Cas()
+
+			require.NoError(t, auth.InvalidateRolesAndChannels("invalidate_roles_channels_reinvalidate", collections, 20))
+			user := getRawPrincipal(t, auth, "invalidate_roles_channels_reinvalidate", true).(*userImpl)
+			require.Equal(t, uint64(5), user.GetRoleInvalSeq())
+			require.Equal(t, uint64(5), user.GetChannelInvalSeq())
+			require.Equal(t, uint64(5), user.getCollectionChannelInvalSeq(scopeName, collectionName))
+			require.Equal(t, casAfterFirst, user.Cas())
+		})
+	})
+
+	t.Run("UpdateSequenceNumberForResync", func(t *testing.T) {
+		auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
+
+		t.Run("Empty resyncID error", func(t *testing.T) {
+			user, err := auth.NewUser("resync_user_empty", "pass", nil)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(user))
+
+			err = auth.UpdateSequenceNumberForResync(user, 10, "")
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "resyncID must not be empty")
+		})
+
+		t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
+			user, err := auth.NewUser("resync_user_match", "pass", nil)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(user))
+
+			// First call with "resync-1" - updates CAS
+			require.NoError(t, auth.UpdateSequenceNumberForResync(user, 10, "resync-1"))
+
+			dbUser, err := auth.GetUser("resync_user_match")
+			require.NoError(t, err)
+			initialCas := dbUser.Cas()
+
+			// Second call with "resync-1" - should be skipped, CAS must not update
+			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-1"))
+
+			finalUser, err := auth.GetUser("resync_user_match")
+			require.NoError(t, err)
+			assert.Equal(t, initialCas, finalUser.Cas(), "CAS should not have changed")
+			assert.Equal(t, uint64(10), finalUser.Sequence(), "Sequence should remain unchanged")
+		})
+
+		t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
+			user, err := auth.NewUser("resync_user_mismatch", "pass", nil)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(user))
+
+			// First call with "resync-1"
+			require.NoError(t, auth.UpdateSequenceNumberForResync(user, 10, "resync-1"))
+
+			dbUser, err := auth.GetUser("resync_user_mismatch")
+			require.NoError(t, err)
+			casAfterFirst := dbUser.Cas()
+
+			// Second call with "resync-2" - mismatch, should update CAS
+			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-2"))
+
+			finalUser, err := auth.GetUser("resync_user_mismatch")
+			require.NoError(t, err)
+			assert.NotEqual(t, casAfterFirst, finalUser.Cas(), "CAS must be updated")
+			assert.Equal(t, uint64(20), finalUser.Sequence(), "Sequence should be updated to 20")
+			assert.Equal(t, "resync-2", finalUser.ResyncID(), "ResyncID should be updated to resync-2")
+		})
+	})
 }
 
 func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
@@ -3173,70 +3238,3 @@ func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, cha
 	assert.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
 }
 
-func TestUpdateSequenceNumberForResyncIdempotency(t *testing.T) {
-	ctx := base.TestCtx(t)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close(ctx)
-
-	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
-
-	t.Run("Empty resyncID error", func(t *testing.T) {
-		user, err := auth.NewUser("resync_user_empty", "pass", nil)
-		require.NoError(t, err)
-		err = auth.Save(user)
-		require.NoError(t, err)
-
-		err = auth.UpdateSequenceNumberForResync(user, 10, "")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "resyncID must not be empty")
-	})
-
-	t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
-		user, err := auth.NewUser("resync_user_match", "pass", nil)
-		require.NoError(t, err)
-		err = auth.Save(user)
-		require.NoError(t, err)
-
-		// First call with "resync-1" - updates CAS
-		err = auth.UpdateSequenceNumberForResync(user, 10, "resync-1")
-		require.NoError(t, err)
-
-		dbUser, err := auth.GetUser("resync_user_match")
-		require.NoError(t, err)
-		initialCas := dbUser.Cas()
-
-		// Second call with "resync-1" - should be skipped, CAS must not update
-		err = auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-1")
-		require.NoError(t, err)
-
-		finalUser, err := auth.GetUser("resync_user_match")
-		require.NoError(t, err)
-		assert.Equal(t, initialCas, finalUser.Cas(), "CAS should not have changed")
-		assert.Equal(t, uint64(10), finalUser.Sequence(), "Sequence should remain unchanged")
-	})
-
-	t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
-		user, err := auth.NewUser("resync_user_mismatch", "pass", nil)
-		require.NoError(t, err)
-		err = auth.Save(user)
-		require.NoError(t, err)
-
-		// First call with "resync-1"
-		err = auth.UpdateSequenceNumberForResync(user, 10, "resync-1")
-		require.NoError(t, err)
-
-		dbUser, err := auth.GetUser("resync_user_mismatch")
-		require.NoError(t, err)
-		casAfterFirst := dbUser.Cas()
-
-		// Second call with "resync-2" - mismatch, should update CAS
-		err = auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-2")
-		require.NoError(t, err)
-
-		finalUser, err := auth.GetUser("resync_user_mismatch")
-		require.NoError(t, err)
-		assert.NotEqual(t, casAfterFirst, finalUser.Cas(), "CAS must be updated")
-		assert.Equal(t, uint64(20), finalUser.Sequence(), "Sequence should be updated to 20")
-		assert.Equal(t, "resync-2", finalUser.ResyncID(), "ResyncID should be updated to resync-2")
-	})
-}
