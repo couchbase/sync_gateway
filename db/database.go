@@ -102,22 +102,22 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string             // Database name
-	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                      base.Bucket        // Storage
-	BucketSpec                  base.BucketSpec    // The BucketSpec
-	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
-	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
+	Name                        string                   // Database name
+	UUID                        string                   // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore           // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket              // Storage
+	BucketSpec                  base.BucketSpec          // The BucketSpec
+	BucketUUID                  string                   // The bucket UUID for the bucket the database is created against
+	EncodedSourceID             string                   // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
 	hlc                         *base.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
-	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            changeListener     // Caching feed listener
-	ImportListener              *importListener    // Import feed listener
-	sequences                   *sequenceAllocator // Source of new sequence numbers
-	StartTime                   time.Time          // Timestamp when context was instantiated
-	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
-	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache               RevisionCache      // Cache of recently-accessed doc revisions
+	BucketLock                  sync.RWMutex             // Control Access to the underlying bucket object
+	mutationListener            changeListener           // Caching feed listener
+	ImportListener              *importListener          // Import feed listener
+	sequences                   *sequenceAllocator       // Source of new sequence numbers
+	StartTime                   time.Time                // Timestamp when context was instantiated
+	RevsLimit                   uint32                   // Max depth a document's revision tree can grow to
+	autoImport                  bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache               RevisionCache            // Cache of recently-accessed doc revisions
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
