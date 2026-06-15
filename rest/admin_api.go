@@ -496,7 +496,16 @@ func (h *handler) handlePostIndexInit() error {
 	if req.SeparatePrincipalIndexes != nil {
 		useLegacySyncDocsIndex = !(*req.SeparatePrincipalIndexes)
 	}
-	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex)
+	// Skip metadata index initialization on _default._default if it has been dropped (e.g. after a
+	// completed metadata migration) — building indexes on a missing collection would retry until the
+	// op times out. Default to attempting init on _default if existence can't be determined.
+	defaultCollectionPresent := true
+	if exists, existsErr := defaultCollectionExists(h.ctx(), h.db.Bucket); existsErr != nil {
+		base.WarnfCtx(h.ctx(), "db:%s unable to determine whether _default._default exists while reinitializing indexes: %v — will attempt index init on _default", base.MD(h.db.Name), existsErr)
+	} else {
+		defaultCollectionPresent = exists
+	}
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent)
 	if err != nil {
 		return err
 	}

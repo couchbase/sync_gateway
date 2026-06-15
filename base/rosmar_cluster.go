@@ -16,7 +16,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
@@ -28,11 +27,13 @@ var _ BootstrapConnection = &RosmarCluster{}
 type RosmarCluster struct {
 	serverURL                   string
 	bucketDirectory             string
-	useSystemMetadataCollection bool        // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
-	migrationComplete           atomic.Bool // When set, fallback reads are skipped even if useSystemMetadataCollection is true
+	useSystemMetadataCollection bool // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
 	// bucketBootstrapTargets caches the resolved bootstrap-doc target for each bucket.
 	// Mirrors CouchbaseCluster.bucketBootstrapTargets — see that comment for the decision tree.
 	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
+	// bucketsBootstrapMigrationComplete records per-bucket bootstrap-migration completion.
+	// Mirrors CouchbaseCluster.bucketsBootstrapMigrationComplete — see that comment.
+	bucketsBootstrapMigrationComplete SyncMap[string, bool]
 }
 
 // NewRosmarCluster creates a from a given URL. useSystemMetadataCollection mirrors
@@ -184,7 +185,7 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 		}
 	}
-	if c.migrationComplete.Load() {
+	if c.bucketBootstrapMigrationComplete(bucketName) {
 		return systemCol, nil, closer, nil
 	}
 	return systemCol, defaultCol, closer, nil
@@ -263,14 +264,25 @@ func (c *RosmarCluster) shouldFallback(err error, fallback *rosmar.Collection) b
 	return fallback != nil && IsDocNotFoundError(err)
 }
 
-// SetMigrationComplete marks bootstrap-metadata migration as finished; subsequent reads stop
-// falling back to _default._default. Safe to call concurrently with in-flight operations.
-func (c *RosmarCluster) SetMigrationComplete() {
-	c.migrationComplete.Store(true)
+// SetMigrationComplete marks bootstrap-metadata migration as finished for the given bucket;
+// subsequent bootstrap reads for that bucket stop falling back to _default._default. Per-bucket so
+// completing one bucket never disables another's fallback. Safe to call concurrently with in-flight
+// operations.
+func (c *RosmarCluster) SetMigrationComplete(bucketName string) {
+	c.bucketsBootstrapMigrationComplete.Store(bucketName, true)
+}
+
+// bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
+// complete for the given bucket. Absence of an entry means not-complete, so reads keep the
+// _default._default fallback.
+func (c *RosmarCluster) bucketBootstrapMigrationComplete(bucketName string) bool {
+	complete, _ := c.bucketsBootstrapMigrationComplete.Load(bucketName)
+	return complete
 }
 
 // RefreshBucketBootstrapTarget reads the bucket's metadata-migration status doc; if bootstrap.state
-// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit. ErrNotFound
+// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit and marks
+// the bucket migration-complete so reads stop falling back to _default._default. ErrNotFound
 // (no migration ever started here) and any other transient error are returned to the caller for
 // telemetry but never escalate — this is best-effort cache convergence, not a correctness path.
 func (c *RosmarCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error {
@@ -280,6 +292,7 @@ func (c *RosmarCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket
 	}
 	if status.Bootstrap.State == MigrationStateComplete {
 		c.noteBucketFallbackHit(bucket)
+		c.SetMigrationComplete(bucket)
 	}
 	return nil
 }
