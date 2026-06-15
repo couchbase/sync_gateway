@@ -31,11 +31,11 @@ type MockProcess struct {
 	lock                 sync.Mutex
 }
 
-func (m *MockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (m *MockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.InitCalled = true
-	return nil
+	return backgroundManagerInitReset, nil
 }
 
 func (m *MockProcess) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
@@ -472,7 +472,7 @@ type ResumableMockProcess struct {
 	optionsLock     sync.RWMutex
 }
 
-func (r *ResumableMockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (r *ResumableMockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	r.optionsLock.Lock()
 	r.receivedOptions = options
 	r.optionsLock.Unlock()

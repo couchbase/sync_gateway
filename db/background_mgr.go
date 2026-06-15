@@ -52,6 +52,17 @@ var errBackgroundManagerProcessAlreadyRunning = base.HTTPErrorf(http.StatusServi
 // errBackgroundManagerProcessAlreadyStopped is returned when an action to Stop a process occurs but it is already stopped.
 var errBackgroundManagerProcessAlreadyStopped = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already stopped")
 
+// backgroundManagerInitMode is the return type of BackgroundManagerProcessI.Init, indicating whether
+// the process is starting fresh or resuming a prior run.
+type backgroundManagerInitMode int
+
+const (
+	// backgroundManagerInitReset means Init started a new run, discarding any previous state.
+	backgroundManagerInitReset backgroundManagerInitMode = iota
+	// backgroundManagerInitResume means Init found a previous run and will continue from where it left off.
+	backgroundManagerInitResume
+)
+
 // backgroundManagerUpdateClusterStatusMode controls whether updateMultiNodeClusterAwareStatus enforces
 // consistency between the local and cluster states.
 type backgroundManagerUpdateClusterStatusMode int
@@ -130,7 +141,8 @@ type BackgroundManagerStatus struct {
 // Examples of this: ReSync, Compaction, Attachment Migration
 type BackgroundManagerProcessI[O any] interface {
 	// Init is called before Run for setup purposes. If Init errors, Run will not happen.
-	Init(ctx context.Context, options O, clusterStatus []byte) error
+	// Returns backgroundManagerInitResume if resuming an existing (stopped) run, backgroundManagerInitReset if starting a new one.
+	Init(ctx context.Context, options O, clusterStatus []byte) (backgroundManagerInitMode, error)
 	// Run implements all of the work of the process.
 	Run(ctx context.Context, options O, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
 	// GetProcessStatus accepts the current BackgroundManagerStatus and the previousStatus that was serialized. previousStatus is
@@ -252,7 +264,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.setStartTime(previousStatus.StartTime)
 	}
 
-	err = b.Process.Init(ctx, options, processClusterStatus)
+	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
 		return err
 	}
@@ -317,7 +329,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		var err error
 		if b.mode() == backgroundManagerModeMultiNode {
 			mode := backgroundManagerStatusStart
-			if isResume {
+			if isResume || initMode == backgroundManagerInitResume {
 				mode = backgroundManagerStatusResume
 			}
 			err = b.updateMultiNodeClusterAwareStatus(ctx, mode)

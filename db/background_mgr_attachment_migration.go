@@ -52,7 +52,7 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 	}
 }
 
-func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -76,7 +76,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
-			return newRunInit()
+			return backgroundManagerInitReset, newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
 		a.docsProcessed.Store(statusDoc.DocsProcessed)
@@ -86,10 +86,10 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 
 		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.docsProcessed.Load())
 
-		return nil
+		return backgroundManagerInitResume, nil
 	}
 
-	return newRunInit()
+	return backgroundManagerInitReset, newRunInit()
 }
 
 func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {

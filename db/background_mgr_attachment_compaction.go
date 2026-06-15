@@ -53,7 +53,7 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 	}
 }
 
-func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionAttachmentStartTime.Set(uint64(time.Now().UTC().Unix()))
 
@@ -88,7 +88,7 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID, phase and
 		// stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
-			return newRunInit()
+			return backgroundManagerInitReset, newRunInit()
 		} else {
 			a.CompactID = statusDoc.CompactID
 			a.Phase = statusDoc.Phase
@@ -100,11 +100,11 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
 		}
 
-		return nil
+		return backgroundManagerInitResume, nil
 
 	}
 
-	return newRunInit()
+	return backgroundManagerInitReset, newRunInit()
 }
 
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
@@ -222,7 +222,7 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 		}
 		if phase == MarkPhase {
 			// initialise new compaction run as we want to start the phase mark again in event of rollback
-			err = a.Init(ctx, options, nil)
+			_, err = a.Init(ctx, options, nil)
 			if err != nil {
 				base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated: %s", err)
 				return false, err
