@@ -38,6 +38,30 @@ func TestCachingFeedCollections_DualMetadataStore(t *testing.T) {
 	assert.Contains(t, got[base.DefaultScope], base.DefaultCollection)
 }
 
+// TestCachingFeedCollectionsDualMetadataStoreMigrationComplete verifies that once the dual
+// metadata store reports migration complete, the caching feed subscribes only to the primary
+// (_system._mobile) and omits the fallback (_default._default). This prevents the DCP feed Start
+// from failing when a customer has dropped _default._default after migration completed.
+func TestCachingFeedCollectionsDualMetadataStoreMigrationComplete(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	primary := bucket.GetMobileSystemDataStore() // skips if backing store does not support system collections
+	fallback := bucket.DefaultDataStore(ctx)
+	ms := base.NewMetadataStore(primary, fallback)
+	ms.SetMigrationComplete()
+
+	got := cachingFeedCollections(ms, nil)
+
+	require.Contains(t, got, base.SystemScope, "expected %s scope to be present", base.SystemScope)
+	assert.Contains(t, got[base.SystemScope], base.SystemCollectionMobile)
+
+	// The fallback (_default._default) must not be subscribed at all once migration is complete, so
+	// the _default scope must be absent from the result entirely.
+	assert.NotContains(t, got, base.DefaultScope, "fallback _default._default must not be subscribed after migration completes")
+}
+
 // TestCachingFeedCollections_SingleMetadataStore verifies that when the metadata store is a
 // plain DataStore (not the dual wrapper), the caching feed subscribes only to that store's
 // collection — preserving the pre-CBG-5223 behaviour.

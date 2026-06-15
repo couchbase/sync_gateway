@@ -35,6 +35,7 @@ type roleImpl struct {
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	UpdatedAt         time.Time                               `json:"updated_at"`
 	CreatedAt         time.Time                               `json:"created_at"`
+	ResyncID_         string                                  `json:"resync_id,omitempty"` // Last known ID for a resync operation. Used to ensure updating principals on multiple nodes is OK.
 	cas               uint64
 	docID             string // key used to store the roleImpl
 }
@@ -362,6 +363,18 @@ func (role *roleImpl) SetChannelHistory(history TimedSetHistory) {
 
 func (role *roleImpl) ChannelHistory() TimedSetHistory {
 	return role.ChannelHistory_
+}
+
+// ResyncID returns the last UUID of a resync operation that updated the sequence of this principal object. Otherwise,
+// returns empty string.
+func (role *roleImpl) ResyncID() string {
+	return role.ResyncID_
+}
+
+// SetResyncID sets an ID for the resync operation that updates this principal. Used to restrict updates for this object
+// to once per resync operation.
+func (role *roleImpl) SetResyncID(resyncID string) {
+	role.ResyncID_ = resyncID
 }
 
 // Checks whether this role object contains valid data; if not, returns an error.

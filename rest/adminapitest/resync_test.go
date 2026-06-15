@@ -70,13 +70,6 @@ func TestResyncRollback(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("Test writes xattrs directly to modify sync metadata")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		AutoImport: base.Ptr(false),
@@ -229,10 +222,6 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 }
 
 func TestResyncInvalidatePrincipals(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-
 	initialSyncFn := `
 	function(doc) {
 		access(doc.userName, "channelABC");
@@ -315,9 +304,6 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 }
 
 func TestResyncDoesNotWriteDocBody(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 	base.SkipImportTestsIfNotEnabled(t) // test requires import
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -488,7 +474,7 @@ func TestResyncPartitionsValidation(t *testing.T) {
 		}
 		resp := rt.CreateDatabase("db1", dbConfig)
 		rest.RequireStatus(t, resp, http.StatusInternalServerError)
-		assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+		assert.Contains(t, resp.BodyString(), db.DatabaseErrorMap[db.DatabaseInvalidResyncPartitions])
 	})
 
 	t.Run("valid custom partitions are used by ResyncManagerDCP", func(t *testing.T) {

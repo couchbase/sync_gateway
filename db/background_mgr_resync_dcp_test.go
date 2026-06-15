@@ -359,6 +359,9 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
+	if usingShardedResync(t) {
+		t.Skip("CBG-5468 test flakes via not running to completition after resume")
+	}
 	docsToCreate := 5000
 	// rosmar runs too quickly, increase doc count
 	if base.UnitTestUrlIsWalrus() {

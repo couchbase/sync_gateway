@@ -807,6 +807,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	//     via base.MetadataStore. For a brand-new database with no legacy metadata in
 	//     _default._default the wrapper is immediately marked MigrationComplete so reads go
 	//     straight to the primary collection — no per-DB migration arming.
+	// defaultCollectionPresent tracks whether _default._default physically exists in the bucket. It
+	// drives two decisions: whether the per-DB MetadataStore wrapper needs _default as a read-fallback,
+	// and whether index initialization should build metadata indexes on _default. Defaults to true so
+	// legacy (non-opted-in) DBs — where _default is the metadata store and always exists — and the
+	// "couldn't determine existence" case both preserve existing behavior.
+	defaultCollectionPresent := true
 	if resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		primaryMetadataStore, err := bucket.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
 		if err != nil {
@@ -817,7 +823,19 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		fallbackStore := bucket.DefaultDataStore(ctx)
 		metaStore := base.NewMetadataStore(primaryMetadataStore, fallbackStore)
-		if !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID) {
+		// It's possible that the legacy _default._default collection has been dropped by a customer,
+		// in which case we can mark the per-DB MetadataStore wrapper as MigrationComplete and skip
+		// dual-read mode. If it exists, probe for legacy _sync:seq to determine whether we need to keep
+		// dual-read mode active.
+		defaultExists, defaultErr := defaultCollectionExists(ctx, bucket)
+		switch {
+		case defaultErr != nil:
+			base.WarnfCtx(ctx, "db:%s unable to determine whether _default._default exists while resolving metadata fallback: %v — keeping dual-read mode", base.MD(dbName), defaultErr)
+		case !defaultExists:
+			defaultCollectionPresent = false
+			metaStore.SetMigrationComplete()
+			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — marking per-DB MetadataStore wrapper migration-complete (no legacy fallback collection to read from)", base.MD(dbName))
+		case !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID):
 			if sc.isPerDBMigrationInProgress(ctx, spec.BucketName, config.MetadataID) {
 				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy _sync:seq in _default._default but per-DB migration is in_progress on another node — keeping dual-read mode until migration completes", base.MD(dbName))
 			} else {
@@ -943,7 +961,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		primaryIndexStore, fallbackIndexStore := contextOptions.MetadataStore, base.DataStore(nil)
 		if dual, isDual := contextOptions.MetadataStore.(*base.MetadataStore); isDual {
 			primaryIndexStore = dual.Primary()
-			fallbackIndexStore = dual.Fallback()
+			// Only consult the fallback for syncDocs-vs-principal index-style inference while
+			// migration is still in flight. Once complete, primary is authoritative; the fallback
+			// (_default._default) may even have been dropped, in which case querying it is wasteful
+			// and noisy (ShouldUseLegacySyncDocsIndex tolerates the error but still fires the query).
+			if !dual.MigrationComplete() {
+				fallbackIndexStore = dual.Fallback()
+			}
 		}
 		metadataStore, ok := base.AsN1QLStore(primaryIndexStore)
 		if !ok {
@@ -966,8 +990,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// If database has been requested to start offline, or there's an active async initialization, use async initialization
 		isAsync = startOffline || sc.DatabaseInitManager.HasActiveInitialization(dbName)
 
-		// Initialize indexes using DatabaseInitManager.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, contextOptions.UseLegacySyncDocsIndex)
+		// Initialize indexes using DatabaseInitManager. defaultCollectionPresent prevents building
+		// metadata indexes on _default._default when it has been dropped post-migration — otherwise
+		// the index create retries until it times out and fails db initialization.
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, contextOptions.UseLegacySyncDocsIndex, defaultCollectionPresent)
 		if err != nil {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))
@@ -2306,6 +2332,29 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 		base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
 	}
 
+	// Stamp the bucket-level metadata-migration status doc into _system._mobile on every bucket
+	// this SG can see. The doc is the source-of-truth for "is migration running / done" — by being
+	// born in the destination collection it never needs migration itself, and a missing doc is
+	// treated as "no migration ever started" by the rest of the pipeline.
+	//
+	// For a bucket whose migration previously completed, stampMetadataMigrationStatusDocs also marks
+	// that bucket migration-complete on this process's connection, which stops bootstrap reads from
+	// falling back to _default._default. (The same per-bucket disable also happens lazily inside
+	// getBucket via ensureBucketBootstrapTargetCached on the first read of each migrated bucket, so a
+	// dropped _default is never the target of a fallback read — otherwise such a read retries on
+	// KV_COLLECTION_OUTDATED until the op times out, ~10s each, hanging startup and config polling.)
+	//
+	// Ordering: this runs AFTER migrateV30Configs so a genuinely-legacy (non-migrated) bucket keeps
+	// its _default fallback while its v3.0 config doc — which lives in _default — is migrated; and
+	// BEFORE fetchAndLoadConfigs so the status doc exists before any database config is loaded. The
+	// stamp only reads the registry/status doc from _system._mobile (never _default for a migrated
+	// bucket) and its writes are idempotent, so it is safe to run here.
+	if base.ValDefault(sc.Config.Bootstrap.UseSystemMetadataCollection, DefaultUseSystemMetadataCollection) {
+		if err := sc.stampMetadataMigrationStatusDocs(ctx); err != nil {
+			base.WarnfCtx(ctx, "Failed to stamp metadata-migration status docs at bootstrap: %v", err)
+		}
+	}
+
 	// Initialize the cluster compat manager before loading configs so that database loads
 	// triggered by fetchAndLoadConfigs can lazily register this node in the buckets they use.
 	sc.ClusterCompat = &clusterCompatManager{sc: sc}
@@ -2314,16 +2363,6 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	count, err := sc.fetchAndLoadConfigs(ctx, true)
 	if err != nil {
 		return err
-	}
-
-	// Stamp the bucket-level metadata-migration status doc into _system._mobile on every
-	// bucket this SG can see. The doc is the source-of-truth for "is migration running / done"
-	// — by being born in the destination collection it never needs migration itself, and a
-	// missing doc is treated as "no migration ever started" by the rest of the pipeline.
-	if base.ValDefault(sc.Config.Bootstrap.UseSystemMetadataCollection, DefaultUseSystemMetadataCollection) {
-		if err := sc.stampMetadataMigrationStatusDocs(ctx); err != nil {
-			base.WarnfCtx(ctx, "Failed to stamp metadata-migration status docs at bootstrap: %v", err)
-		}
 	}
 
 	if count > 0 {
@@ -2400,6 +2439,25 @@ func probeLegacyPerDBMetadata(ctx context.Context, fallback base.DataStore, meta
 		return true
 	}
 	return exists
+}
+
+// defaultCollectionExists reports whether _default._default is present in the bucket's current
+// collection manifest. It queries the collections manager (management API, via ListDataStores)
+// rather than issuing a KV op against the collection, so a dropped _default is reported promptly
+// from the authoritative ns_server manifest instead of triggering the KV client's
+// KV_COLLECTION_OUTDATED retry loop (which blocks for the full op timeout and surfaces as an
+// unambiguous timeout rather than a clean not-found).
+func defaultCollectionExists(ctx context.Context, bucket base.Bucket) (bool, error) {
+	dataStores, err := bucket.ListDataStores(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range dataStores {
+		if base.IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // isPerDBMigrationInProgress checks the bucket-level metadata-migration status doc for the
@@ -2508,7 +2566,7 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return fmt.Errorf("record bootstrap-migration completion on bucket %q: %w", bucketName, err)
 	}
 
-	sc.BootstrapContext.Connection.SetMigrationComplete()
+	sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
 	if wonRace {
 		base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: bootstrap copy complete, fallback reads disabled", base.MD(bucketName))
 	} else {
@@ -2591,9 +2649,10 @@ func bootstrapDocKeysToMigrate(ctx context.Context, registry *GatewayRegistry) [
 
 // stampMetadataMigrationStatusDocs ensures the bucket-level metadata-migration status doc exists
 // in _system._mobile on every bucket visible to this SG. If a doc is found with bootstrap.state
-// already complete (a previous SG instance finished the bucket migration) we immediately invoke
-// SetMigrationComplete on the cluster so this fresh process doesn't pay the fallback-read cost
-// for the lifetime of the connection.
+// already complete (a previous SG instance finished the bucket migration) we mark that bucket
+// migration-complete on the connection so this fresh process doesn't pay the fallback-read cost
+// for that bucket. Completion is tracked per-bucket, so a completed bucket disables its own
+// fallback regardless of other buckets' state.
 //
 // Idempotent across SG nodes — concurrent stamp attempts surface ErrAlreadyExists which we treat
 // as success. Caller has verified that the cluster-level use_system_metadata_collection flag is enabled.
@@ -2602,13 +2661,6 @@ func (sc *ServerContext) stampMetadataMigrationStatusDocs(ctx context.Context) e
 	if err != nil {
 		return fmt.Errorf("list buckets for status-doc stamp: %w", err)
 	}
-	// SetMigrationComplete is connection-scoped, not per-bucket. Until per-bucket migration
-	// state can be tracked on the BootstrapConnection itself, only flip the flag once every
-	// bucket-with-SG-state reports bootstrap.state=complete — otherwise an unfinished bucket
-	// would lose its legacy fallback. Empty buckets (no SG registry presence) are excluded
-	// since they can never drive the migration to completion themselves.
-	sgBucketsSeen := 0
-	sgBucketsComplete := 0
 	for _, bucket := range buckets {
 		_, err := sc.BootstrapContext.Connection.InsertMetadataMigrationStatus(ctx, bucket, base.NewMetadataMigrationStatus())
 		switch {
@@ -2621,17 +2673,14 @@ func (sc *ServerContext) stampMetadataMigrationStatusDocs(ctx context.Context) e
 			continue
 		}
 
-		// If this bucket has already finished the bootstrap migration in a prior SG lifecycle,
-		// the cluster object on this process still has migrationComplete=false (it's per-process
-		// state, not bucket-persisted). Re-apply that signal so fallback reads stay disabled
-		// from this process's first KV op.
-		// Skip buckets with no SG registry presence — they don't participate in migration
-		// and would otherwise pin the cluster in dual-read mode forever.
+		// If this bucket already finished bootstrap migration in a prior SG lifecycle, mark it
+		// complete on this process's connection so its bootstrap reads skip the _default fallback
+		// from the first KV op. Per-bucket: completing one bucket never disables another's fallback.
+		// Skip buckets with no SG registry presence — they don't participate in migration.
 		registry, regErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
 		if regErr != nil || len(registryMetadataIDs(registry)) == 0 {
 			continue
 		}
-		sgBucketsSeen++
 
 		status, _, statusErr := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucket)
 		if statusErr != nil {
@@ -2639,12 +2688,9 @@ func (sc *ServerContext) stampMetadataMigrationStatusDocs(ctx context.Context) e
 			continue
 		}
 		if status.Bootstrap.State == base.MigrationStateComplete {
-			sgBucketsComplete++
+			sc.BootstrapContext.Connection.SetMigrationComplete(bucket)
+			base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration previously completed — disabling bootstrap fallback reads for this bucket", base.MD(bucket))
 		}
-	}
-	if sgBucketsSeen > 0 && sgBucketsComplete == sgBucketsSeen {
-		sc.BootstrapContext.Connection.SetMigrationComplete()
-		base.InfofCtx(ctx, base.KeyConfig, "Bucket metadata migration previously completed on all visible buckets — disabling bootstrap fallback reads for this process")
 	}
 	return nil
 }

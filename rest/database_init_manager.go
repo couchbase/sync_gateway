@@ -56,7 +56,7 @@ type InitializeIndexesFunc func(context.Context, base.N1QLStore, db.InitializeIn
 // indexes required for each collection.
 type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
-func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc, useLegacySyncDocsIndex bool, defaultCollectionExists bool) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -66,7 +66,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 		base.MD(dbConfig.Name))
 	dbInitWorker, ok := m.workers[dbConfig.Name]
 
-	collectionSet := buildCollectionIndexData(dbConfig)
+	collectionSet := buildCollectionIndexData(dbConfig, defaultCollectionExists)
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
@@ -152,8 +152,8 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 
 // InitializeDatabase will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool) (doneChan chan error, err error) {
-	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex)
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool, defaultCollectionExists bool) (doneChan chan error, err error) {
+	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex, defaultCollectionExists)
 }
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
@@ -221,14 +221,19 @@ func (m *DatabaseInitManager) cancelWorkers() {
 }
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
-// the metadata collection
-func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
+// the metadata collection. defaultCollectionExists reports whether _default._default physically exists in the
+// bucket: _default carries metadata indexes that support dual-read principal queries during migration, but a
+// customer may drop it once migration completes, at which point those indexes are vestigial and attempting to
+// build them on the missing collection would retry until the op times out and fail initialization. When
+// _default is gone (and not itself a configured data collection) it is omitted from the index set.
+func buildCollectionIndexData(config *DatabaseConfig, defaultCollectionExists bool) CollectionInitData {
 	if len(config.Scopes) == 0 {
 		// todo: only init these mobile collection indexes when required?
 		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
 	}
 
 	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
+	defaultIsConfiguredCollection := false
 
 	collectionInitData := make(CollectionInitData)
 	for scopeName, scopeConfig := range config.Scopes {
@@ -236,13 +241,18 @@ func buildCollectionIndexData(config *DatabaseConfig) CollectionInitData {
 			scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 			if scName.IsDefault() {
 				defaultScopeAndCollectionMetadataIndexes = db.IndexesAll
+				defaultIsConfiguredCollection = true
 				continue
 			}
 			collectionInitData[scName] = db.IndexesWithoutMetadata
 		}
 	}
 
-	collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+	// Include _default for metadata indexes only when it actually exists. If _default is itself a
+	// configured data collection it necessarily exists, so it is always included in that case.
+	if defaultCollectionExists || defaultIsConfiguredCollection {
+		collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+	}
 	// todo: only init these indexes when required?
 	collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
 
