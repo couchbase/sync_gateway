@@ -92,6 +92,7 @@ const (
 	StatAddedVersion3dot2dot4     = "3.2.4"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 	StatAddedVersion4dot0dot0     = "4.0.0"
+	StatAddedVersion4dot0dot6     = "4.0.6"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -1734,7 +1735,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.HLVVersionCASRetryCount, err = NewIntStat(SubsystemDatabaseKey, "hlv_version_cas_retry_count", StatUnitNoUnits, HLVVersionCASRetryCountDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.HLVVersionCASRetryCount, err = NewIntStat(SubsystemDatabaseKey, "hlv_version_cas_retry_count", StatUnitNoUnits, HLVVersionCASRetryCountDesc, StatAddedVersion4dot0dot6, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}

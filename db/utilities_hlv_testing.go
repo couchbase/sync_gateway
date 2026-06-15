@@ -398,7 +398,7 @@ func hlvAsBlipString(_ testing.TB, hlv *HybridLogicalVector) string {
 // AlterHLVForTest will alter the HLV of an existing document in the bucket, setting it to the provided HLV. Used for
 // testing purposes to set up specific HLV scenarios.
 func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]interface{}) {
-	cas, err := dataStore.Get(ctx, key, nil)
+	cas, err := dataStore.Get(key, nil)
 	require.NoError(t, err)
 
 	hlv.CurrentVersionCAS = math.MaxUint64 // macro expand this
