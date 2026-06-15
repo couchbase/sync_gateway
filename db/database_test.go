@@ -4521,8 +4521,8 @@ type testBackgroundProcess[O any] struct {
 	isStoppable bool
 }
 
-func (i *testBackgroundProcess[O]) Init(_ context.Context, _ O, _ []byte) (bool, error) {
-	return false, nil
+func (i *testBackgroundProcess[O]) Init(_ context.Context, _ O, _ []byte) (backgroundManagerInitMode, error) {
+	return backgroundManagerInitReset, nil
 }
 
 func (i *testBackgroundProcess[O]) Run(_ context.Context, _ O, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
