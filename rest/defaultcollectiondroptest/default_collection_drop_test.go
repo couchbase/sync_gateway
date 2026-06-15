@@ -54,8 +54,7 @@ func TestDatabaseSurvivesDefaultCollectionDropAfterMetadataMigration(t *testing.
 	defer tb.Close(ctx)
 
 	// The database's documents live in a named collection (sg_test_0.sg_test_0), NOT in
-	// _default._default. That is the precondition for dropping _default safely: only legacy
-	// metadata — never user documents — is colocated there before migration.
+	// _default._default.
 	namedDataStore, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
 	namedCollection := base.ScopeAndCollectionName{Scope: namedDataStore.ScopeName(), Collection: namedDataStore.CollectionName()}
@@ -125,15 +124,12 @@ func TestDatabaseSurvivesDefaultCollectionDropAfterMetadataMigration(t *testing.
 	require.NoError(t, err)
 	require.False(t, onFallback, "user key must be removed from _default._default after migration")
 
-	// 4. Drop _default. IRREVERSIBLE — this is what poisons the bucket and forces this test into its
-	// own package. After this point the bucket must never be reused by another test.
+	// 4. Drop _default.
 	require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection}),
 		"dropping _default should succeed on Couchbase Server")
 
 	// 5. Force a full database reload by pushing a benign config change (bump revs_limit). The opt-in
-	// must stay true (it is irreversible). A config update reloads the DatabaseContext, tearing down
-	// and rebuilding the metadata store and collection connections — this is where any lingering
-	// dependency on the now-dropped _default collection would surface.
+	// must stay true (it is irreversible).
 	dbConfig.RevsLimit = base.Ptr(uint32(100))
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
 

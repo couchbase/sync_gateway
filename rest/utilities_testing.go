@@ -1111,8 +1111,12 @@ func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) 
 	conn := rt.ServerContext().BootstrapContext.Connection
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
-		require.NoError(c, err)
-		require.NotNil(c, status)
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.NotNil(c, status) {
+			return
+		}
 		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete")
 	}, timeout, pollInterval)
 }
