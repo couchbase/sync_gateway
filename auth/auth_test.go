@@ -3237,4 +3237,3 @@ func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, cha
 	require.NoError(t, err)
 	assert.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
 }
-
