@@ -488,7 +488,7 @@ func TestResyncPartitionsValidation(t *testing.T) {
 		}
 		resp := rt.CreateDatabase("db1", dbConfig)
 		rest.RequireStatus(t, resp, http.StatusInternalServerError)
-		assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+		assert.Contains(t, resp.BodyString(), db.DatabaseErrorMap[db.DatabaseInvalidResyncPartitions])
 	})
 
 	t.Run("valid custom partitions are used by ResyncManagerDCP", func(t *testing.T) {
