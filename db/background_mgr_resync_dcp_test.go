@@ -173,9 +173,14 @@ func TestResyncDCPInit(t *testing.T) {
 				assert.Equal(t, int64(0), response.DocsChanged)
 				assert.Equal(t, int64(0), response.DocsProcessed)
 			} else {
+				resyncManagerDCP, ok := any(db.ResyncManager.Process).(*ResyncManagerDCP)
+				require.True(t, ok)
 				assert.Equal(t, testCase.initialClusterState.ResyncID, response.ResyncID)
-				assert.Equal(t, testCase.initialClusterState.DocsChanged, response.DocsChanged)
-				assert.Equal(t, testCase.initialClusterState.DocsProcessed, response.DocsProcessed)
+				// Stats are only reloaded during init for non-distributed
+				if !resyncManagerDCP.Distributed {
+					assert.Equal(t, testCase.initialClusterState.DocsChanged, response.DocsChanged)
+					assert.Equal(t, testCase.initialClusterState.DocsProcessed, response.DocsProcessed)
+				}
 			}
 			assert.Equal(t, testCase.expectedDocsTargeted, response.DocsTargeted)
 			assert.Equal(t, testCase.expectedDocsTargeted, uint64(db.DbStats.Database().ResyncDocsTargeted.Value()))
