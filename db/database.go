@@ -1796,7 +1796,7 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) error {
+func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context, resyncID string) error {
 	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
@@ -1812,7 +1812,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if role == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, role)
+		err = db.regeneratePrincipalSequences(ctx, authr, role, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1826,7 +1826,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if user == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, user)
+		err = db.regeneratePrincipalSequences(ctx, authr, user, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1834,15 +1834,22 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 	return nil
 }
 
-func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal, resyncID string) error {
 	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = authr.UpdateSequenceNumber(princ, nextSeq)
+	err = authr.UpdateSequenceNumberForResync(princ, nextSeq, resyncID)
 	if err != nil {
-		return err
+		if base.IsCasMismatch(err) {
+			base.DebugfCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s to sequence %d during resync %s.  Assuming sequence updated by another node - releasing seq as unused.", base.UD(princ.Name()), nextSeq, base.UD(resyncID))
+			if releaseErr := db.sequences.releaseSequence(ctx, nextSeq); releaseErr != nil {
+				base.WarnfCtx(ctx, "Error when releasing sequence %d after a cas mismatch updating the resync principal. Falling back to skipped sequence handling.  Error:%v", nextSeq, releaseErr)
+			}
+		} else {
+			return err
+		}
 	}
 
 	return nil
@@ -1976,7 +1983,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 	return err
 }
 
-// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
+// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections.
 func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) error {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
 	users, roles, err := dbCtx.AllPrincipalIDs(ctx)

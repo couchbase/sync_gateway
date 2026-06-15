@@ -428,9 +428,17 @@ func (auth *Authenticator) Save(p Principal) error {
 	return nil
 }
 
-// Used for resync
-func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
+// Used for resync.  Cancels update if provided resyncID matches existing on the principal
+func (auth *Authenticator) UpdateSequenceNumberForResync(p Principal, seq uint64, resyncID string) error {
+
+	if resyncID == "" {
+		return errors.New("resyncID must not be empty")
+	}
+	if p.ResyncID() == resyncID {
+		return nil
+	}
 	p.SetSequence(seq)
+	p.SetResyncID(resyncID)
 	casOut, writeErr := auth.datastore.WriteCas(auth.LogCtx, p.DocID(), 0, p.Cas(), p, 0)
 	if writeErr != nil {
 		return writeErr
