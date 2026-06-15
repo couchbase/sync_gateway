@@ -1165,3 +1165,8 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 	stats := &MigrationStats{}
 	require.NoError(t, migrateSeqCounter(ctx, ms, seqKey, stats))
 }
+
+// usingShardedResync returns true if cbgt based resync will be used for test
+func usingShardedResync(t testing.TB) bool {
+	return base.IsEnterpriseEdition() && !base.UnitTestUrlIsWalrus()
+}
