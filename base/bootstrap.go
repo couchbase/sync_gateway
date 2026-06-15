@@ -478,6 +478,14 @@ func (cc *CouchbaseCluster) probeRegistryLocation(b *gocb.Bucket) (target bucket
 	if sysErr == nil && existsInSystem {
 		return bucketTargetSystemMobile, true, nil
 	}
+	// A bucket marked migration-complete has no legacy registry in _default._default to find — and
+	// _default may have been dropped (system-collection-only deployment / post-migration cleanup).
+	// Skip the _default probe so we never issue a KV op against a missing collection, which would
+	// retry KV_COLLECTION_OUTDATED to the op timeout. ensureBucketBootstrapTargetCached sets this
+	// flag (via the _default-existence check) before any caller reaches this point.
+	if cc.bucketBootstrapMigrationComplete(b.Name()) {
+		return 0, false, nil
+	}
 	defaultCol := b.DefaultCollection()
 	existsInDefault, defErr := cc.configPersistence.keyExists(defaultCol, SGRegistryKey)
 	if defErr != nil {
@@ -844,15 +852,7 @@ func (cc *CouchbaseCluster) GetMetadataMigrationStatus(ctx context.Context, buck
 		return nil, 0, err
 	}
 	defer teardown()
-	return cc.readMetadataMigrationStatus(b)
-}
 
-// readMetadataMigrationStatus reads and decodes the status doc from _system._mobile using an
-// already-resolved bucket handle. Split out from GetMetadataMigrationStatus so callers that already
-// hold a *gocb.Bucket — notably ensureBucketBootstrapTargetCached, which runs under
-// cachedBucketConnections.lock inside getBucket — can read it without re-entering getBucket. Re-entry
-// would re-acquire that non-reentrant lock on the same goroutine and deadlock.
-func (cc *CouchbaseCluster) readMetadataMigrationStatus(b *gocb.Bucket) (*MetadataMigrationStatus, uint64, error) {
 	res, err := cc.systemMobileCollection(b).Get(MetadataMigrationStatusDocID, &gocb.GetOptions{Transcoder: NewSGJSONTranscoder()})
 	if err != nil {
 		if IsDocNotFoundError(err) {
@@ -1058,21 +1058,23 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 // SetBucketBootstrapTargetHint) can still claim system._mobile; metadataCollections will fall
 // back to the connection-wide flag in the meantime. Best-effort: probe errors are swallowed.
 //
-// When the registry is found in _system._mobile (target=systemMobile), the bucket has been
-// bootstrap-migrated, so we also read its migration status doc and, if bootstrap.state=complete,
-// mark the bucket migration-complete. This disables the _default._default fallback for this bucket
-// from its very first bootstrap read — covering both cluster-level and per-DB opt-in (the status
-// doc is the source of truth regardless of opt-in source) and avoiding a fallback read against a
-// _default that may have been dropped post-migration. The status read is safe here because the
-// registry's presence in _system._mobile proves that collection exists; legacy (_default-target)
-// buckets are never probed for the status doc, so their absent _system._mobile is never touched.
-//
-// The status read uses readMetadataMigrationStatus(b) on the handle we already hold rather than
-// GetMetadataMigrationStatus, which would re-enter getBucket. This function runs under
-// cachedBucketConnections.lock (held by the getBucket call above us), and re-entering getBucket
-// would re-acquire that non-reentrant lock on the same goroutine and deadlock.
+// Before probing, it checks whether _default._default exists (via the collection manifest, not a
+// KV op). If _default is absent — a system-collection-only deployment provisioned without it, or a
+// post-migration cleanup — there is no fallback collection and no legacy registry could live there,
+// so we resolve the bucket to _system._mobile and mark it migration-complete. That disables the
+// _default fallback for this bucket from its first bootstrap read, so reads never route to the
+// missing collection (which would retry KV_COLLECTION_OUTDATED to the op timeout). Marking complete
+// also makes probeRegistryLocation skip its own _default keyExists for callers that invoke it
+// directly (SetBucketBootstrapTargetHint).
 func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 	if _, cached := cc.bucketBootstrapTargets.Load(b.Name()); cached {
+		return
+	}
+	// Manifest check (not a KV op) so an absent _default is reported promptly instead of hanging.
+	// On any error, fall through to the normal probe — no worse than prior behaviour.
+	if exists, existsErr := defaultCollectionExists(b); existsErr == nil && !exists {
+		cc.bucketBootstrapTargets.LoadOrStore(b.Name(), bucketTargetSystemMobile)
+		cc.SetMigrationComplete(b.Name())
 		return
 	}
 	target, found, err := cc.probeRegistryLocation(b)
@@ -1080,18 +1082,28 @@ func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 		return
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(b.Name(), target)
-	if target != bucketTargetSystemMobile {
-		return
+}
+
+// defaultCollectionExists reports whether _default._default is present in the bucket's collection
+// manifest. It queries the collections manager (GetAllScopes) rather than issuing a KV op, so a
+// dropped _default is reported promptly from the authoritative manifest instead of triggering the
+// KV client's KV_COLLECTION_OUTDATED retry loop (which blocks for the full op timeout).
+func defaultCollectionExists(b *gocb.Bucket) (bool, error) {
+	scopes, err := b.Collections().GetAllScopes(nil)
+	if err != nil {
+		return false, err
 	}
-	status, _, statusErr := cc.readMetadataMigrationStatus(b)
-	if statusErr != nil {
-		// ErrNotFound (no status doc yet) or a transient read error — leave the bucket
-		// not-complete so reads keep the fallback. Best-effort convergence, not correctness.
-		return
+	for _, scope := range scopes {
+		if scope.Name != DefaultScope {
+			continue
+		}
+		for _, collection := range scope.Collections {
+			if collection.Name == DefaultCollection {
+				return true, nil
+			}
+		}
 	}
-	if status.Bootstrap.State == MigrationStateComplete {
-		cc.SetMigrationComplete(b.Name())
-	}
+	return false, nil
 }
 
 func (cc *CouchbaseCluster) GetClusterConnectionForBucket(ctx context.Context, bucketName string) (connection *gocb.Cluster, teardownFn func(), err error) {

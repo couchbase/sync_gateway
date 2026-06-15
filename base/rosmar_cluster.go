@@ -183,18 +183,6 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 	if _, alreadyCached := c.bucketBootstrapTargets.Load(bucketName); !alreadyCached {
 		if target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol); found {
 			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
-			// Registry in _system._mobile means this bucket has been bootstrap-migrated. Read its
-			// status doc and, if bootstrap.state=complete, mark the bucket migration-complete so its
-			// reads skip the _default._default fallback — covering cluster-level and per-DB opt-in
-			// alike. Mirrors CouchbaseCluster.ensureBucketBootstrapTargetCached. Read from the
-			// already-open systemCol handle rather than GetMetadataMigrationStatus, which would
-			// re-open the bucket while we already hold a handle to it.
-			if target == bucketTargetSystemMobile {
-				status := &MetadataMigrationStatus{}
-				if _, getErr := systemCol.Get(ctx, MetadataMigrationStatusDocID, status); getErr == nil && status.Bootstrap.State == MigrationStateComplete {
-					c.SetMigrationComplete(bucketName)
-				}
-			}
 		}
 	}
 	if c.bucketBootstrapMigrationComplete(bucketName) {
