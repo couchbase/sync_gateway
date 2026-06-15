@@ -162,7 +162,7 @@ func TestResyncDCPInit(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err = db.ResyncManager.Process.Init(ctx, options, clusterData)
+			_, err = db.ResyncManager.Process.Init(ctx, options, clusterData)
 			require.NoError(t, err)
 
 			response := getResyncStats(t, db)
@@ -404,12 +404,9 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	stats = waitForResyncState(t, db, BackgroundProcessStateCompleted)
-	if !db.useShardedDCP() {
-		// CBG-5467 these stats are too low for distributed resync
-		assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
-		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
-		// DocsTargeted is preserved from the original run start, even after resume
-	}
+	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+	// DocsTargeted is preserved from the original run start, even after resume
 	assert.Equal(t, initialDocsTargeted, stats.DocsTargeted)
 	assert.Equal(t, int64(0), db.DbStats.Database().ResyncDocsTargeted.Value()) // resync finished so reset back to 0
 
@@ -1128,7 +1125,8 @@ func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
 		Collections: base.NewCollectionNames(),
 	}
 
-	require.NoError(t, db.ResyncManager.Process.Init(ctx, options, nil))
+	_, initErr := db.ResyncManager.Process.Init(ctx, options, nil)
+	require.NoError(t, initErr)
 
 	_, metaBytes, err := db.ResyncManager.Process.GetProcessStatus(BackgroundManagerStatus{State: BackgroundProcessStateStopped}, nil)
 	require.NoError(t, err)

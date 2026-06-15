@@ -68,7 +68,7 @@ type MigrationManagerStatusDoc struct {
 	MigrationManagerResponse `json:"status"`
 }
 
-func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -92,7 +92,7 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		// If the previous run completed, there was an error during unmarshalling the status, or
 		// the caller requested a reset, start again with a fresh migration ID and zeroed counters.
 		if status.State == BackgroundProcessStateCompleted || err != nil || reset {
-			return newRunInit()
+			return backgroundManagerInitReset, newRunInit()
 		}
 		m.docsProcessed.Store(status.DocsProcessed)
 		m.docsFailed.Store(status.DocsFailed)
@@ -100,9 +100,9 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		m.passes.Store(status.Passes)
 		m.MigrationID = status.MigrationID
 		base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resuming migration run with migration ID: %s, docs processed: %d, docs failed: %d, passes: %d", m.MigrationID, status.DocsProcessed, status.DocsFailed, status.Passes)
-		return nil
+		return backgroundManagerInitResume, nil
 	}
-	return newRunInit()
+	return backgroundManagerInitReset, newRunInit()
 }
 
 func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {

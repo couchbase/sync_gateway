@@ -34,11 +34,11 @@ func NewTombstoneCompactionManager() *BackgroundManager[map[string]any] {
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
 
-	return nil
+	return backgroundManagerInitReset, nil
 }
 
 func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {

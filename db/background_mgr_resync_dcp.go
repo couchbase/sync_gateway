@@ -137,7 +137,7 @@ func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManag
 }
 
 // Init processes the options to start a resync process and sets them as struct members.
-func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clusterStatus []byte) error {
+func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	r.setStartOptions(options)
 
 	var collections DatabaseCollections
@@ -145,7 +145,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 		var err error
 		collections, err = r.db.collections(options.Collections)
 		if err != nil {
-			return err
+			return backgroundManagerInitReset, err
 		}
 	} else {
 		collections = slices.Collect(maps.Values(r.db.CollectionByID))
@@ -171,7 +171,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	} else {
 		r.initializeFromPreviousStatus(statusDoc)
 		base.InfofCtx(ctx, base.KeyAll, "Resuming resync with ID: %q", r.ResyncID)
-		return nil
+		return backgroundManagerInitResume, nil
 	}
 
 	if statusDoc.ResyncID != "" {
@@ -183,7 +183,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 
 	newID, err := uuid.NewRandom()
 	if err != nil {
-		return err
+		return backgroundManagerInitReset, err
 	}
 
 	docsTargeted, err := totalResyncDocs(ctx, collections)
@@ -198,13 +198,13 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	if r.Distributed {
 		endSeqNosMap, err := base.GetHighSeqNos(ctx, r.db.Bucket)
 		if err != nil {
-			return err
+			return backgroundManagerInitReset, err
 		}
 		r.setEndSeqNosFromMap(endSeqNosMap)
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
-	return nil
+	return backgroundManagerInitReset, nil
 }
 
 // totalResyncDocs returns an estimate of the number of documents processed for resync.
