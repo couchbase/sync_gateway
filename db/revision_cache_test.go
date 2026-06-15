@@ -56,7 +56,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		SourceID: "test",
 		Version:  123,
 	}
-	_, _, err = doc.updateChannels(ctx, base.SetOf("*"))
+	_, err = doc.updateChannels(ctx, base.SetOf("*"))
 	if err != nil {
 		return nil, err
 	}
@@ -2008,7 +2008,7 @@ func TestGetActive(t *testing.T) {
 
 	expectedCV := Version{
 		SourceID: db.EncodedSourceID,
-		Value:    doc.Cas,
+		Value:    doc.HLV.Version,
 	}
 
 	// remove the entry form the rev cache to force the cache to not have the active version in it

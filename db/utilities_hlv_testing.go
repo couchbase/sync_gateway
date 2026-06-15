@@ -35,6 +35,17 @@ type HLVAgent struct {
 
 var defaultHelperBody = map[string]interface{}{"version": 1}
 
+// externalPeerMacroExpansions returns the macro-expansion specs a non-SGW HLV-aware peer (e.g. Couchbase
+// Server XDCR) applies when writing the given vv xattr: both the current version and cvCAS expand to the
+// document CAS at write time. SGW's own writes generate the current version as a literal and so no longer
+// macro-expand it (see computeMacroExpansions), so the agent specifies the external-peer behaviour explicitly.
+func externalPeerMacroExpansions(vvXattrName string) []sgbucket.MacroExpansionSpec {
+	return []sgbucket.MacroExpansionSpec{
+		sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(vvXattrName), sgbucket.MacroCas),
+		sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(vvXattrName), sgbucket.MacroCas),
+	}
+}
+
 func NewHLVAgent(t *testing.T, datastore base.DataStore, source string, xattrName string) *HLVAgent {
 	return &HLVAgent{
 		t:         t,
@@ -54,7 +65,7 @@ func (h *HLVAgent) InsertWithHLV(ctx context.Context, key string, body Body) (ca
 
 	vvDataBytes := base.MustJSONMarshal(h.t, hlv)
 	mutateInOpts := &sgbucket.MutateInOptions{
-		MacroExpansion: hlv.computeMacroExpansions(),
+		MacroExpansion: externalPeerMacroExpansions(h.xattrName),
 	}
 
 	var docBody []byte
@@ -81,7 +92,7 @@ func (h *HLVAgent) UpdateWithHLV(ctx context.Context, key string, inputCas uint6
 	vvXattr, err := hlv.MarshalJSON()
 	require.NoError(h.t, err)
 	mutateInOpts := &sgbucket.MutateInOptions{
-		MacroExpansion: hlv.computeMacroExpansions(),
+		MacroExpansion: externalPeerMacroExpansions(h.xattrName),
 	}
 
 	docBody := base.MustJSONMarshal(h.t, defaultHelperBody)
@@ -386,7 +397,7 @@ func hlvAsBlipString(_ testing.TB, hlv *HybridLogicalVector) string {
 
 // AlterHLVForTest will alter the HLV of an existing document in the bucket, setting it to the provided HLV. Used for
 // testing purposes to set up specific HLV scenarios.
-func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]interface{}) uint64 {
+func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore, key string, hlv *HybridLogicalVector, docBody map[string]interface{}) {
 	cas, err := dataStore.Get(key, nil)
 	require.NoError(t, err)
 
@@ -403,7 +414,10 @@ func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore
 		MacroExpansion: hlv.computeMacroExpansions(),
 	}
 
-	cas, err = dataStore.WriteWithXattrs(ctx, key, 0, cas, bodyBytes, xattrData, nil, mutateInOpts)
+	_, err = dataStore.WriteWithXattrs(ctx, key, 0, cas, bodyBytes, xattrData, nil, mutateInOpts)
 	require.NoError(t, err)
-	return cas
+}
+
+func (db *DatabaseContext) GetHLCValueForTest(floorValue uint64) uint64 {
+	return db.hlc.Now(floorValue)
 }

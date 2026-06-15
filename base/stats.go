@@ -92,6 +92,7 @@ const (
 	StatAddedVersion3dot2dot4     = "3.2.4"
 	StatAddedVersion3dot3dot0     = "3.3.0"
 	StatAddedVersion4dot0dot0     = "4.0.0"
+	StatAddedVersion4dot0dot6     = "4.0.6"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -631,6 +632,8 @@ type DatabaseStats struct {
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
 	HighSeqFeed *SgwIntStat `json:"high_seq_feed"`
+	// The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server.
+	HLVVersionCASRetryCount *SgwIntStat `json:"hlv_version_cas_retry_count"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -1732,6 +1735,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.HLVVersionCASRetryCount, err = NewIntStat(SubsystemDatabaseKey, "hlv_version_cas_retry_count", StatUnitNoUnits, HLVVersionCASRetryCountDesc, StatAddedVersion4dot0dot6, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1903,6 +1910,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytes)
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
+	prometheus.Unregister(d.DatabaseStats.HLVVersionCASRetryCount)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
 	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)

@@ -414,13 +414,13 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 
 	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
-	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalSync)
 	require.NoError(t, err)
 
 	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, entryCV.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
+	assert.Equal(t, fetchedDoc.HLV.Version, entryCV.Value)
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
@@ -443,13 +443,13 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 
-	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalSync)
 	require.NoError(t, err)
 
 	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, entryCV.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
+	assert.Equal(t, fetchedDoc.HLV.Version, entryCV.Value)
 }
 
 // TestChangesVersionType tests the /_changes REST endpoint with different version_type parameters for each possible underlying feed type and HTTP method.

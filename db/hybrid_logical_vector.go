@@ -471,16 +471,31 @@ func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	return 0, false
 }
 
+// maxValueForSource returns the highest version value recorded for sourceID in the HLV, or 0 if the source
+// is not present. It is used as the floor when generating a new version value for sourceID: the generated
+// value must strictly exceed any existing value for that source so the HLV never moves backwards for a
+// given source.
+//
+// The maps a source can appear in are constrained:
+//   - A source is never in both the current and previous versions, so the cv case need not consult PV.
+//   - A source is never in both the previous and merge versions, so the PV case is authoritative on its own.
+//   - The current and merge versions *can* share a source, so the cv case folds in the merge version.
+func (hlv *HybridLogicalVector) maxValueForSource(sourceID string) uint64 {
+	if sourceID == "" {
+		return 0
+	}
+	if sourceID == hlv.SourceID {
+		return max(hlv.Version, hlv.MergeVersions[sourceID])
+	}
+	if pv, ok := hlv.PreviousVersions[sourceID]; ok {
+		return pv
+	}
+	return hlv.MergeVersions[sourceID] // 0 if absent
+}
+
 // computeMacroExpansions returns the mutate in spec needed for the document update based off the outcome in updateHLV
 func (hlv *HybridLogicalVector) computeMacroExpansions() []sgbucket.MacroExpansionSpec {
 	var outputSpec []sgbucket.MacroExpansionSpec
-	if hlv.Version == expandMacroCASValueUint64 {
-		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionPath(base.VvXattrName), sgbucket.MacroCas)
-		outputSpec = append(outputSpec, spec)
-		// If version is being expanded, we need to also specify the macro expansion for the expanded rev property
-		currentRevSpec := sgbucket.NewMacroExpansionSpec(xattrCurrentRevVersionPath(base.SyncXattrName), sgbucket.MacroCas)
-		outputSpec = append(outputSpec, currentRevSpec)
-	}
 	if hlv.CurrentVersionCAS == expandMacroCASValueUint64 {
 		spec := sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas)
 		outputSpec = append(outputSpec, spec)
@@ -560,19 +575,6 @@ func (hlv *HybridLogicalVector) toHistoryForHLV(sortFunc func(HLVVersions) iter.
 		}
 	}
 	return s.String()
-}
-
-// appendRevocationMacroExpansions adds macro expansions for the channel map.  Not strictly an HLV operation
-// but putting the function here as it's required when the HLV's current version is being macro expanded
-func appendRevocationMacroExpansions(currentSpec []sgbucket.MacroExpansionSpec, channelNames []string) ([]sgbucket.MacroExpansionSpec, error) {
-	for _, channelName := range channelNames {
-		path, err := xattrRevokedChannelVersionPath(base.SyncXattrName, channelName)
-		if err != nil {
-			return nil, err
-		}
-		currentSpec = append(currentSpec, sgbucket.NewMacroExpansionSpec(path, sgbucket.MacroCas))
-	}
-	return currentSpec, nil
 }
 
 // extractHLVFromBlipMessage extracts the full HLV a string in the format seen over Blip
