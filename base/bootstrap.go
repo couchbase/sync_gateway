@@ -16,7 +16,6 @@ import (
 	"reflect"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"dario.cat/mergo"
@@ -49,9 +48,10 @@ type BootstrapConnection interface {
 	// GetRawDocument retrieves the document with the specified key from the bucket's default collection as raw bytes.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetRawDocument(ctx context.Context, bucket, docID string) (value []byte, exists bool, err error)
-	// SetMigrationComplete signals that bootstrap-metadata migration to _system._mobile has finished;
-	// subsequent reads stop falling back to _default._default. No-op when useSystemMetadataCollection is false.
-	SetMigrationComplete()
+	// SetMigrationComplete signals that bootstrap-metadata migration to _system._mobile has finished
+	// for the given bucket; subsequent bootstrap reads for that bucket stop falling back to
+	// _default._default. Per-bucket so completing one bucket never disables another's fallback.
+	SetMigrationComplete(bucketName string)
 	// GetMetadataMigrationStatus reads the bucket-level metadata-migration status doc directly from
 	// _system._mobile (never via the dual-collection wrapper). Returns ErrNotFound when the doc has
 	// not yet been stamped on this bucket.
@@ -116,12 +116,18 @@ type CouchbaseCluster struct {
 	cachedConnectionLock        sync.Mutex              // mutex for access to cachedBucketConnections
 	configPersistence           ConfigPersistence       // ConfigPersistence mode
 	useSystemMetadataCollection bool                    // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
-	migrationComplete           atomic.Bool             // When set, fallback reads are skipped even if useSystemMetadataCollection is true
 	// bucketBootstrapTargets caches the resolved bootstrap-doc location for each bucket.
 	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint).
 	// Absence of an entry means "fall back to the connection-wide flag."
 	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
-	useGOCBFastFailRetry   bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
+	// bucketsBootstrapMigrationComplete records, per bucket, that the bootstrap metadata migration
+	// has finished (status doc bootstrap.state=complete). When set for a bucket, its bootstrap reads
+	// skip the _default._default fallback. This is per-bucket, and the source of opt-in doesn't matter — it is
+	// driven by the persisted status doc, not the bootstrap-level use_system_metadata_collection flag — so a
+	// database that opted in only at the per-DB level still disables its fallback after migration,
+	// and completing one bucket's migration never disables another bucket's fallback.
+	bucketsBootstrapMigrationComplete SyncMap[string, bool]
+	useGOCBFastFailRetry              bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // bucketBootstrapTarget records where bootstrap docs (registry, dbconfig, cbgt cfg) live for a
@@ -399,7 +405,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 		return b.DefaultCollection(), nil
 	}
 	primary = b.Scope(SystemScope).Collection(SystemCollectionMobile)
-	if cc.migrationComplete.Load() {
+	if cc.bucketBootstrapMigrationComplete(b.Name()) {
 		return primary, nil
 	}
 	return primary, b.DefaultCollection()
@@ -489,14 +495,25 @@ func (cc *CouchbaseCluster) shouldFallback(err error, fallback *gocb.Collection)
 	return fallback != nil && IsDocNotFoundError(err)
 }
 
-// SetMigrationComplete marks bootstrap-metadata migration as finished; subsequent reads stop
-// falling back to _default._default. Safe to call concurrently with in-flight operations.
-func (cc *CouchbaseCluster) SetMigrationComplete() {
-	cc.migrationComplete.Store(true)
+// SetMigrationComplete marks bootstrap-metadata migration as finished for the given bucket;
+// subsequent bootstrap reads for that bucket stop falling back to _default._default. Per-bucket so
+// completing one bucket never disables another's fallback. Safe to call concurrently with in-flight
+// operations.
+func (cc *CouchbaseCluster) SetMigrationComplete(bucketName string) {
+	cc.bucketsBootstrapMigrationComplete.Store(bucketName, true)
+}
+
+// bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
+// complete for the given bucket. Absence of an entry means not-complete, so reads keep the
+// _default._default fallback.
+func (cc *CouchbaseCluster) bucketBootstrapMigrationComplete(bucketName string) bool {
+	complete, _ := cc.bucketsBootstrapMigrationComplete.Load(bucketName)
+	return complete
 }
 
 // RefreshBucketBootstrapTarget reads the bucket's metadata-migration status doc; if bootstrap.state
-// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit. ErrNotFound
+// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit and marks
+// the bucket migration-complete so reads stop falling back to _default._default. ErrNotFound
 // (no migration ever started here) and any other transient error are returned to the caller for
 // telemetry but never escalate — this is best-effort cache convergence, not a correctness path.
 func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error {
@@ -509,6 +526,7 @@ func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bu
 	}
 	if status.Bootstrap.State == MigrationStateComplete {
 		cc.noteBucketFallbackHit(bucket)
+		cc.SetMigrationComplete(bucket)
 	}
 	return nil
 }
@@ -826,7 +844,15 @@ func (cc *CouchbaseCluster) GetMetadataMigrationStatus(ctx context.Context, buck
 		return nil, 0, err
 	}
 	defer teardown()
+	return cc.readMetadataMigrationStatus(b)
+}
 
+// readMetadataMigrationStatus reads and decodes the status doc from _system._mobile using an
+// already-resolved bucket handle. Split out from GetMetadataMigrationStatus so callers that already
+// hold a *gocb.Bucket — notably ensureBucketBootstrapTargetCached, which runs under
+// cachedBucketConnections.lock inside getBucket — can read it without re-entering getBucket. Re-entry
+// would re-acquire that non-reentrant lock on the same goroutine and deadlock.
+func (cc *CouchbaseCluster) readMetadataMigrationStatus(b *gocb.Bucket) (*MetadataMigrationStatus, uint64, error) {
 	res, err := cc.systemMobileCollection(b).Get(MetadataMigrationStatusDocID, &gocb.GetOptions{Transcoder: NewSGJSONTranscoder()})
 	if err != nil {
 		if IsDocNotFoundError(err) {
@@ -1031,6 +1057,20 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 // When no registry exists yet the decision is left uncached so a subsequent per-DB opt-in (via
 // SetBucketBootstrapTargetHint) can still claim system._mobile; metadataCollections will fall
 // back to the connection-wide flag in the meantime. Best-effort: probe errors are swallowed.
+//
+// When the registry is found in _system._mobile (target=systemMobile), the bucket has been
+// bootstrap-migrated, so we also read its migration status doc and, if bootstrap.state=complete,
+// mark the bucket migration-complete. This disables the _default._default fallback for this bucket
+// from its very first bootstrap read — covering both cluster-level and per-DB opt-in (the status
+// doc is the source of truth regardless of opt-in source) and avoiding a fallback read against a
+// _default that may have been dropped post-migration. The status read is safe here because the
+// registry's presence in _system._mobile proves that collection exists; legacy (_default-target)
+// buckets are never probed for the status doc, so their absent _system._mobile is never touched.
+//
+// The status read uses readMetadataMigrationStatus(b) on the handle we already hold rather than
+// GetMetadataMigrationStatus, which would re-enter getBucket. This function runs under
+// cachedBucketConnections.lock (held by the getBucket call above us), and re-entering getBucket
+// would re-acquire that non-reentrant lock on the same goroutine and deadlock.
 func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 	if _, cached := cc.bucketBootstrapTargets.Load(b.Name()); cached {
 		return
@@ -1040,6 +1080,18 @@ func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 		return
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(b.Name(), target)
+	if target != bucketTargetSystemMobile {
+		return
+	}
+	status, _, statusErr := cc.readMetadataMigrationStatus(b)
+	if statusErr != nil {
+		// ErrNotFound (no status doc yet) or a transient read error — leave the bucket
+		// not-complete so reads keep the fallback. Best-effort convergence, not correctness.
+		return
+	}
+	if status.Bootstrap.State == MigrationStateComplete {
+		cc.SetMigrationComplete(b.Name())
+	}
 }
 
 func (cc *CouchbaseCluster) GetClusterConnectionForBucket(ctx context.Context, bucketName string) (connection *gocb.Cluster, teardownFn func(), err error) {

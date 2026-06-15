@@ -1094,6 +1094,29 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+// WaitForBucketMetadataMigrationComplete polls the bucket-wide metadata migration status doc until
+// its bootstrap migration reports complete. Bootstrap only transitions to complete once every per-DB
+// entry is complete, so this is the signal that metadata migration has finished for the ENTIRE bucket
+// (including bucket-global docs such as _sync:registry, _sync:dbconfig:* and cbgt cfg) rather than for
+// a single database.
+func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) {
+	timeout := 10 * time.Second
+	pollInterval := 100 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
+
+	ctx := base.TestCtx(rt.TB())
+	conn := rt.ServerContext().BootstrapContext.Connection
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		require.NoError(c, err)
+		require.NotNil(c, status)
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete")
+	}, timeout, pollInterval)
+}
+
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
