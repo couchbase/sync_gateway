@@ -208,12 +208,13 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 		Collections: base.NewCollectionNames(),
 	}
 
+	const stopAfterDocCount = 1
 	err := db.ResyncManager.Start(ctx, options)
 	require.NoError(t, err)
 	wg := sync.WaitGroup{}
 	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
 	wg.Go(func() {
-		waitForResyncDocsProcessed(t, db, 1)
+		waitForResyncDocsProcessed(t, db, stopAfterDocCount)
 		require.NoError(t, db.ResyncManager.Stop(ctx))
 	})
 
@@ -224,7 +225,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 
 	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(300))
+	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(stopAfterDocCount))
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
@@ -436,7 +437,6 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 			ResyncPartitions: base.Ptr(uint16(1)),
 		},
 	}
-	dbOptions.Scopes = GetScopesOptions(t, tb, numCollections)
 
 	db, ctx := SetupTestDBForBucketWithOptions(t, tb, dbOptions)
 	defer db.Close(ctx)

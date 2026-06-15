@@ -1167,6 +1167,6 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 }
 
 // usingShardedResync returns true if cbgt based resync will be used for test
-func usingShardedResync(t testing.TB) bool {
+func usingShardedResync(testing.TB) bool {
 	return base.IsEnterpriseEdition() && !base.UnitTestUrlIsWalrus()
 }
