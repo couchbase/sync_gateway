@@ -131,6 +131,7 @@ type TestBucketPoolOptions struct {
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 	NeedsBucketTeardown     bool     // whether the test bucket pool needs to be torn down after tests are run, used for goroutine dump
+	NumBuckets              *int     // overrides the bucket pool size; use Ptr(0) for packages that create their own buckets via CreateTestBucket
 }
 
 // XDCRConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.
@@ -167,6 +168,9 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		if err != nil {
 			FatalfCtx(ctx, "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
 		}
+	}
+	if options.NumBuckets != nil {
+		numBuckets = *options.NumBuckets
 	}
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
@@ -290,6 +294,23 @@ func (tbp *TestBucketPool) checkForViewOpsQueueEmptied(ctx context.Context, buck
 	}
 }
 
+// getRosmarURL returns the rosmar URL to use for a test bucket. Persistent buckets use a temp directory.
+func (tbp *TestBucketPool) getRosmarURL(t testing.TB, persistent bool) string {
+	if persistent {
+		return rosmarUriFromPath(t.TempDir())
+	}
+	return kTestWalrusURL
+}
+
+// openRosmarBucket opens a rosmar bucket at the given URL with the given name, dispatching between
+// in-memory and file-based URLs.
+func openRosmarBucket(url, bucketName string) (*rosmar.Bucket, error) {
+	if url == "walrus:" || url == rosmar.InMemoryURL {
+		return rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
+	}
+	return rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
+}
+
 func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func(context.Context)) {
 	testCtx := TestCtx(t)
 	if !UnitTestUrlIsWalrus() {
@@ -300,14 +321,9 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	if err != nil {
 		tbp.Fatalf(testCtx, "Couldn't get next rosmar bucket index: %v", err)
 	}
-	var walrusBucket *rosmar.Bucket
 	const typeName = "rosmar"
 	bucketName := fmt.Sprintf("rosmar%d", bucketIdx)
-	if url == "walrus:" || url == rosmar.InMemoryURL {
-		walrusBucket, err = rosmar.OpenBucket(url, bucketName, rosmar.CreateOrOpen)
-	} else {
-		walrusBucket, err = rosmar.OpenBucketIn(url, bucketName, rosmar.CreateOrOpen)
-	}
+	walrusBucket, err := openRosmarBucket(url, bucketName)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get %s bucket from <%s>: %v", typeName, url, err)
 	}
@@ -319,12 +335,6 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	tbp.Logf(ctx, "Creating new %s test bucket", typeName)
 
 	tbp.createCollections(ctx, walrusBucket)
-
-	// Create default collection here so that it gets initialized by bucketInitFunc
-	_ = walrusBucket.DefaultDataStore(ctx)
-
-	// Create mobile system collection here
-	_ = walrusBucket.MobileSystemDataStore(ctx)
 
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
@@ -393,14 +403,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket b
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
-		var walrusURL string
-		if persistentBucket {
-			dir := t.TempDir()
-			walrusURL = rosmarUriFromPath(dir)
-		} else {
-			walrusURL = kTestWalrusURL
-		}
-		return tbp.GetWalrusTestBucket(t, walrusURL)
+		return tbp.GetWalrusTestBucket(t, tbp.getRosmarURL(t, persistentBucket))
 	}
 
 	if tbp.useExistingBucket {
@@ -589,6 +592,11 @@ func (tbp *TestBucketPool) setXDCRBucketSetting(ctx context.Context, bucket Buck
 
 // createCollections will create a set of test collections on the bucket, if enabled...
 func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket) {
+	// Initialize the default and mobile system datastores. rosmar does not pre-create these on
+	// bucket creation, so accessing them here ensures they exist before any test code runs.
+	_ = bucket.DefaultDataStore(ctx)
+	_, _ = bucket.NamedDataStore(ctx, MobileSystemScopeAndCollectionName())
+
 	// If we're able to use collections, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
 	if tbp.skipCollections {
 		return
@@ -613,6 +621,104 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 	}
 }
 
+// insertAndOpenTestBucket creates a new CBS bucket, opens a connection to it, validates its
+// storage backend, and applies pool-level settings (empty prepared statements, XDCR). It does not
+// call createCollections or the pool's bucketInitFunc. On any failure after the bucket has been
+// created, it removes the bucket from the cluster before returning the error.
+func (tbp *TestBucketPool) insertAndOpenTestBucket(ctx context.Context, bucketName tbpBucketName, bucketQuotaMB int) (Bucket, error) {
+	tbp.Logf(ctx, "Creating new test bucket")
+	err := tbp.cluster.insertBucket(string(bucketName), bucketQuotaMB, tbp.xdcrConflictResolutionStrategy)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create test bucket: %w", err)
+	}
+
+	bucket, err := tbp.cluster.openTestBucket(ctx, bucketName, waitForReadyBucketTimeout)
+	if err != nil {
+		_ = tbp.cluster.removeBucket(string(bucketName))
+		return nil, fmt.Errorf("timed out trying to open new bucket: %w", err)
+	}
+
+	b, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		bucket.Close(ctx)
+		_ = tbp.cluster.removeBucket(string(bucketName))
+		return nil, fmt.Errorf("couldn't assert bucket as GocbV2Bucket: %w", err)
+	}
+	storageBackend, err := b.getStorageBackend(ctx)
+	if err != nil {
+		bucket.Close(ctx)
+		_ = tbp.cluster.removeBucket(string(bucketName))
+		return nil, fmt.Errorf("couldn't get storage backend for bucket %s: %w", bucketName, err)
+	}
+	if storageBackend != tbp.cluster.storageBackend {
+		bucket.Close(ctx)
+		_ = tbp.cluster.removeBucket(string(bucketName))
+		return nil, fmt.Errorf("bucket %s has storage backend %s, expected %s", bucketName, storageBackend, tbp.cluster.storageBackend)
+	}
+
+	tbp.emptyPreparedStatements(ctx, bucket)
+	if tbp.cluster.ee {
+		tbp.setXDCRBucketSetting(ctx, bucket)
+	}
+	return bucket, nil
+}
+
+// CreateTestBucket creates a fresh bucket outside the pool. Unlike pool buckets it does not call
+// createCollections or the pool's bucketInitFunc, so callers get a bare bucket they can configure
+// themselves. Works for both Walrus and Couchbase Server. The caller is responsible for cleanup;
+// see RemoveBucket.
+func tbpBucketNameAt(idx int, ts time.Time) tbpBucketName {
+	return tbpBucketName(fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, idx, ts.UnixNano()))
+}
+
+func createTestBucketName() tbpBucketName {
+	return tbpBucketNameAt(0, time.Now())
+}
+
+func testBucketCtx(ctx context.Context, bucketName tbpBucketName) context.Context {
+	return BucketNameCtx(ctx, string(bucketName))
+}
+
+func (tbp *TestBucketPool) CreateTestBucket(t testing.TB) *TestBucket {
+	ctx := TestCtx(t)
+	bucketName := createTestBucketName()
+	ctx = testBucketCtx(ctx, bucketName)
+
+	if !tbp.integrationMode {
+		tbp.Logf(ctx, "Creating new rosmar test bucket")
+		rosmarBucket, err := openRosmarBucket(tbp.getRosmarURL(t, false), string(bucketName))
+		require.NoError(t, err, "couldn't open rosmar bucket")
+		return &TestBucket{
+			Bucket:     rosmarBucket,
+			BucketSpec: getTestBucketSpec(tbp.clusterSpec, bucketName),
+			closeFn:    func(ctx context.Context) { require.NoError(t, rosmarBucket.CloseAndDelete(ctx)) },
+			t:          t,
+		}
+	}
+
+	bucket, err := tbp.insertAndOpenTestBucket(ctx, bucketName, tbpBucketQuotaMB(ctx))
+	require.NoError(t, err)
+	return &TestBucket{
+		Bucket:     bucket,
+		BucketSpec: getTestBucketSpec(tbp.clusterSpec, bucketName),
+		closeFn:    func(ctx context.Context) { bucket.Close(ctx) },
+		t:          t,
+	}
+}
+
+// RemoveBucket closes a bucket and, for integration-mode buckets, removes it from the cluster.
+// Intended as a t.Cleanup counterpart to CreateTestBucket.
+func (tbp *TestBucketPool) RemoveBucket(tb *TestBucket) {
+	ctx := TestCtx(tb.t)
+	tb.Close(ctx)
+	if tbp.integrationMode {
+		require.NoError(tb.t, tbp.cluster.removeBucket(tb.GetName()), "Couldn't remove bucket %s", tb.GetName())
+	}
+}
+
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
 func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc, parallelBucketInit bool) {
 
@@ -623,50 +729,25 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 
 	// Append a timestamp to all of the bucket names to ensure uniqueness across a single package.
 	// Not strictly required, but can help to prevent (index) resources from being incorrectly reused on the server side for recently deleted buckets.
-	bucketNameTimestamp := time.Now().UnixNano()
+	bucketNameTimestamp := time.Now()
 
 	// create required number of buckets (skipping any already existing ones)
 	for i := range numBuckets {
-		bucketName := fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp)
-		ctx := BucketNameCtx(ctx, bucketName)
+		bucketName := tbpBucketNameAt(i, bucketNameTimestamp)
+		ctx := testBucketCtx(ctx, bucketName)
 
 		bucketInit := func() {
 			defer wg.Done()
-			ctx := BucketNameCtx(ctx, bucketName)
+			ctx := testBucketCtx(ctx, bucketName)
 
-			tbp.Logf(ctx, "Creating new test bucket")
-			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB, tbp.xdcrConflictResolutionStrategy)
+			bucket, err := tbp.insertAndOpenTestBucket(ctx, bucketName, bucketQuotaMB)
 			if ctx.Err() != nil {
 				return
 			} else if err != nil {
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			bucket, err := tbp.cluster.openTestBucket(ctx, tbpBucketName(bucketName), waitForReadyBucketTimeout)
-			if err != nil {
-				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
-			}
-			// check storage backend once to avoid making a REST API call each time a bucket is created
-			b, err := AsGocbV2Bucket(bucket)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't assert bucket as GocbV2Bucket: %v", err)
-			}
-			storageBackend, err := b.getStorageBackend(ctx)
-			if err != nil {
-				tbp.Fatalf(ctx, "Couldn't get storage backend for bucket %s: %v", bucket.GetName(), err)
-			}
-			if storageBackend != tbp.cluster.storageBackend {
-				tbp.Fatalf(ctx, "Bucket %s has storage backend %s, expected %s", bucket.GetName(), storageBackend, tbp.cluster.storageBackend)
-			}
-
 			tbp.createCollections(ctx, bucket)
-
-			tbp.emptyPreparedStatements(ctx, bucket)
-			if tbp.cluster.ee {
-				tbp.setXDCRBucketSetting(ctx, bucket)
-			}
-
-			// All the buckets are created and opened, so now we can perform some synchronous setup (e.g. Creating GSI indexes)
 
 			itemName := "bucket"
 			err, _ = RetryLoop(ctx, bucket.GetName()+"bucketInitRetry", func() (bool, error, any) {
@@ -786,6 +867,11 @@ var NoopInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *Te
 
 // TBPBucketReadierFunc is a function that runs once a test is finished with a bucket. This runs asynchronously.
 type TBPBucketReadierFunc func(ctx context.Context, b Bucket, tbp *TestBucketPool) error
+
+// NoopTBPBucketReadierFunc does nothing to ready a bucket. For use with packages that create their own buckets via CreateTestBucket.
+var NoopTBPBucketReadierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
+	return nil
+}
 
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
 var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
