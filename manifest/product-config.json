@@ -936,12 +936,21 @@
             "start_build": 10,
             "trigger_blackduck": true
         },
+        "manifest/4.1.xml": {
+            "go_version": "1.26.4",
+            "interval": 120,
+            "production": true,
+            "release": "4.1.0",
+            "release_name": "Couchbase Sync Gateway 4.1.0",
+            "start_build": 326,
+            "trigger_blackduck": true
+        },
 
         "manifest/default.xml": {
             "go_version": "1.26.4",
             "interval": 30,
             "production": true,
-            "release": "4.1.0",
+            "release": "4.2.0",
             "release_name": "Couchbase Sync Gateway",
             "start_build": 1,
             "trigger_blackduck": true
