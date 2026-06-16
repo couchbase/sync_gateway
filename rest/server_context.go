@@ -2391,6 +2391,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					}
 					sc.ClusterCompat.Refresh(ctx)
 					sc.refreshBucketBootstrapTargets(ctx)
+					sc.RecheckPendingBucketMetadataMigrations(ctx)
 				}
 			}
 		}()
@@ -2400,6 +2401,25 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	base.InfofCtx(ctx, base.KeyAll, "Finished initializing bootstrap connection")
 
 	return nil
+}
+
+// RecheckPendingBucketMetadataMigrations will iterate through all buckets and check if any bucket metadata migrations
+// still in pending state can now be moved into in_progress state.
+func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't list buckets to re-check bucket metadata migration: %v", err)
+		return
+	}
+	for _, bucket := range buckets {
+		if done := sc.BootstrapContext.Connection.IsMigrationComplete(bucket); done {
+			// migration done for this bucket, fast path skip to next bucket
+			continue
+		}
+		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
+		}
+	}
 }
 
 // resolveUseSystemMetadataCollection returns the effective use_system_metadata_collection
@@ -2510,6 +2530,7 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		// No DBs in registry → nothing to migrate
 		return nil
 	}
+	fmt.Println("resistry ids", expected)
 
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {

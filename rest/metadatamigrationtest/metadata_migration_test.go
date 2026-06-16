@@ -1537,3 +1537,68 @@ func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) 
 	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), `"name":"bob"`, "dbnamed must remain readable after dbdefault's later migration")
 }
+
+func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.Scopes = rest.ScopesConfig{
+		dataStore1.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
+
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.Scopes = rest.ScopesConfig{
+		dataStore2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db2", db2Cfg), http.StatusCreated)
+
+	// Opt in for db1 and start migration
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, "db1")
+
+	// Delete db2
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db2/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// force a recheck of pending bucket bootstrap migration, which takes place in config polling
+	rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
+
+	conn := rt.ServerContext().BootstrapContext.Connection
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.NotNil(c, status) {
+			return
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete")
+	}, 10*time.Second, 100*time.Millisecond)
+}
