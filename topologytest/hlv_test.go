@@ -205,7 +205,7 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, d
 func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" && len(documentVersion) > 0 {
 			// Poor wall-clock precision on Windows can cause HLVs to tie, so add a small sleep between peer writes.
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -224,7 +224,7 @@ func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" && len(documentVersion) > 0 {
 			// Poor wall-clock precision on Windows can cause HLVs to tie, so add a small sleep between peer writes.
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -243,7 +243,7 @@ func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" && len(documentVersion) > 0 {
 			// Poor wall-clock precision on Windows can cause HLVs to tie, so add a small sleep between peer writes.
 			time.Sleep(50 * time.Millisecond)
 		}
