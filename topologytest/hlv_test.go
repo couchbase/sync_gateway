@@ -206,7 +206,7 @@ func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		if runtime.GOOS == "windows" {
-			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLV versions are unique
 			time.Sleep(50 * time.Millisecond)
 		}
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
@@ -225,7 +225,7 @@ func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		if runtime.GOOS == "windows" {
-			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLV versions are unique
 			time.Sleep(50 * time.Millisecond)
 		}
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
@@ -244,7 +244,7 @@ func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topolo
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		if runtime.GOOS == "windows" {
-			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLV versions are unique
 			time.Sleep(50 * time.Millisecond)
 		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
