@@ -2530,7 +2530,6 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		// No DBs in registry → nothing to migrate
 		return nil
 	}
-	fmt.Println("resistry ids", expected)
 
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
