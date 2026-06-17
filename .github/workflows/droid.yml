@@ -2,13 +2,15 @@ name: Droid
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
   pull_request_review_comment:
-    types: [created]
+    types: [created, edited]
   issues:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
+  pull_request:
+    types: [opened, edited]
 
 concurrency:
   # factory-droid[bot] dispatches get a unique per-run suffix so the bot's own status comments cannot cancel an in-flight @droid run.
@@ -35,7 +37,10 @@ jobs:
           && contains(github.event.review.body, '@droid')) ||
         (github.event_name == 'issues'
           && (contains(github.event.issue.body, '@droid')
-            || contains(github.event.issue.title, '@droid')))
+            || contains(github.event.issue.title, '@droid'))) ||
+        (github.event_name == 'pull_request'
+          && (contains(github.event.pull_request.body, '@droid')
+            || contains(github.event.pull_request.title, '@droid')))
       )
     runs-on: ubuntu-latest
     permissions:
