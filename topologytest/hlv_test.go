@@ -10,8 +10,10 @@ package topologytest
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -203,6 +205,10 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, d
 func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
+		if runtime.GOOS == "windows" {
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			time.Sleep(50 * time.Millisecond)
+		}
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
@@ -218,6 +224,10 @@ func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
+		if runtime.GOOS == "windows" {
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			time.Sleep(50 * time.Millisecond)
+		}
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
