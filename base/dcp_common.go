@@ -190,6 +190,9 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 	if unmarshalErr != nil {
 		return []byte{}, 0, 0, err
 	}
+	if c.endSeqNos != nil && snapshotMetadata.SnapStart > c.endSeqNos[vbNo] {
+		return rawValue, c.endSeqNos[vbNo], c.endSeqNos[vbNo], nil
+	}
 	return rawValue, snapshotMetadata.SnapStart, snapshotMetadata.SnapEnd, nil
 
 }
