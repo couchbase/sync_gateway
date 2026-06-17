@@ -243,6 +243,10 @@ func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
+		if runtime.GOOS == "windows" {
+			// poor nanosecond precision on Windows can cause HLVs to be equal, so add a small sleep to ensure HLVs are unique
+			time.Sleep(50 * time.Millisecond)
+		}
 		deleteVersion := peer.DeleteDocument(dsName, docID)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
 	}
