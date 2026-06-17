@@ -147,9 +147,7 @@ func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPer
 		serialNumber = h.formatSerialNumber()
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
-		if !options.skipLogDuration {
-			h.logDuration(true)
-		}
+		h.logDuration(true)
 		h.reportDbStats()
 	})
 }
@@ -178,7 +176,6 @@ func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, acc
 	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
 		runOffline:        true,
 		allowNilDBContext: true,
-		skipLogDuration:   true,
 	})
 }
 
@@ -194,7 +191,6 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 type handlerOptions struct {
 	runOffline        bool           // if true, allow handler to run when a database is offline
 	allowNilDBContext bool           // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
-	skipLogDuration   bool           // if true, will skip logging HTTP response status/duration
 	authScopeFunc     authScopeFunc  // if set, this callback function will be used to set the auth scope for a given request body
 	httpLogLevel      *base.LogLevel // if set, log HTTP requests to this handler at this level, instead of the usual info level
 	sgcollect         bool           // if true, this handler is being invoked as part of sgcollect
