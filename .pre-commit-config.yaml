@@ -9,20 +9,33 @@
 repos:
   - repo: local
     hooks:
+      - id: addlicense
+        name: addlicense
+        language: system
+        entry: go run github.com/google/addlicense@latest -f licenses/addlicense.tmpl
+        types_or: [go, python]
+
       - id: goimports
         name: goimports
         language: system
-        entry: goimports
+        entry: go run golang.org/x/tools/cmd/goimports@latest
         args: [-w]
         types: [go]
 
       - id: golangci-lint
         name: golangci-lint
         language: system
-        entry: golangci-lint
+        # version must match .github/workflows/ci.yml golangci job
+        entry: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
         args: [run, --config=.golangci-strict.yml, --fix=false]
         types: [go]
         pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run -- ruff format
+        types: [python]
 
       - id: mypy
         name: mypy
