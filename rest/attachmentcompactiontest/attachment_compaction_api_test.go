@@ -23,11 +23,6 @@ import (
 )
 
 func TestAttachmentCompactionAPI(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
@@ -114,10 +109,6 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 }
 
 func TestAttachmentCompactionPersistence(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
@@ -174,9 +165,6 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 
 func TestAttachmentCompactionDryRun(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
@@ -233,10 +221,6 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 }
 
 func TestAttachmentCompactionReset(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -271,9 +255,6 @@ func TestAttachmentCompactionReset(t *testing.T) {
 
 func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
@@ -317,9 +298,6 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 
 func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -354,10 +332,6 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 }
 
 func TestAttachmentCompactionAbort(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -382,10 +356,8 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 }
 
 func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
+	base.TestRequiresGocbDCPClient(t)
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
 	var garbageVBUUID gocbcore.VbUUID = 1234
 
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
