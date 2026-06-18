@@ -128,7 +128,7 @@ class Task(object):
         self.timeout = timeout
         self.__dict__.update(kwargs)
 
-    def execute(self, fp) -> tuple[int, str]:
+    def execute(self, fp):
         """Run the task.
 
         Returns (exit_code, error_message). exit_code is 0 on success.
@@ -229,7 +229,7 @@ class PythonTask(object):
         )
         self.__dict__.update(kwargs)
 
-    def execute(self, fp) -> tuple[int, str]:
+    def execute(self, fp):
         """Run the task.
 
         Returns (exit_code, error_message). exit_code is 0 on success.
