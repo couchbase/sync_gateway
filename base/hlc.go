@@ -10,7 +10,6 @@ package base
 
 import (
 	"sync"
-	"time"
 )
 
 // hlcLogicalBits is the number of low-order bits of a Couchbase Server CAS reserved for the logical
@@ -39,7 +38,7 @@ type HybridLogicalClock struct {
 
 // NewHybridLogicalClock returns a HybridLogicalClock backed by the system wall clock.
 func NewHybridLogicalClock() *HybridLogicalClock {
-	return &HybridLogicalClock{clock: func() uint64 { return uint64(time.Now().UnixNano()) }}
+	return &HybridLogicalClock{clock: func() uint64 { return hlcWallClock() }}
 }
 
 // SetClockForTest overrides the wall-clock source and resets the clock's high-water mark, so the next
