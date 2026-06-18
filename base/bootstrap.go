@@ -52,7 +52,7 @@ type BootstrapConnection interface {
 	// for the given bucket; subsequent bootstrap reads for that bucket stop falling back to
 	// _default._default. Per-bucket so completing one bucket never disables another's fallback.
 	SetMigrationComplete(bucketName string)
-	// IsMigrationComplete returns true if bootstrap-metadata migration to _system._mobile has finished for the given bucket
+	// IsMigrationComplete reports whether this process has marked bootstrap-metadata migration complete for the given bucket (local cache).
 	IsMigrationComplete(bucketName string) bool
 	// GetMetadataMigrationStatus reads the bucket-level metadata-migration status doc directly from
 	// _system._mobile (never via the dual-collection wrapper). Returns ErrNotFound when the doc has

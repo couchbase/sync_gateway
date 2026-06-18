@@ -2403,9 +2403,12 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	return nil
 }
 
-// RecheckPendingBucketMetadataMigrations will iterate through all buckets and check if any bucket metadata migrations
-// still in pending state can now be moved into in_progress state.
+// RecheckPendingBucketMetadataMigrations iterates through all config buckets and re-evaluates
+// whether bucket-level metadata migration can now be completed.
 func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
+	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
+		return
+	}
 	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Couldn't list buckets to re-check bucket metadata migration: %v", err)
