@@ -1,0 +1,39 @@
+# Copyright 2024-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+repos:
+  - repo: local
+    hooks:
+      - id: goimports
+        name: goimports
+        language: system
+        entry: goimports
+        args: [-w]
+        types: [go]
+
+      - id: golangci-lint
+        name: golangci-lint
+        language: system
+        entry: golangci-lint
+        args: [run, --config=.golangci-strict.yml, --fix=false]
+        types: [go]
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run -- mypy
+        pass_filenames: false
+        files: ^(pyproject\.toml|.*\.py)$
+
+      - id: manifest-product-config-sorted
+        name: manifest/product-config.json keys sorted
+        language: system
+        entry: bash -c 'diff <(jq --sort-keys . manifest/product-config.json) <(jq . manifest/product-config.json)'
+        files: ^manifest/product-config\.json$
+        pass_filenames: false
