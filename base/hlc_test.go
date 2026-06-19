@@ -35,9 +35,9 @@ func TestHybridLogicalClockMonotonic(t *testing.T) {
 // its logical bits cleared, rather than drifting off into logical-counter space from a cold start.
 func TestHybridLogicalClockTracksWallClock(t *testing.T) {
 	hlc := NewHybridLogicalClock()
-	before := uint64(time.Now().UnixNano()) &^ hlcLogicalMask
+	before := hlcWallClock() &^ hlcLogicalMask
 	got := hlc.Now(0)
-	after := uint64(time.Now().UnixNano())
+	after := hlcWallClock()
 	require.GreaterOrEqual(t, got, before)
 	require.LessOrEqual(t, got, after)
 }
