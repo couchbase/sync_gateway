@@ -36,6 +36,10 @@ const (
 	TestEnvTLSSkipVerify     = "SG_TEST_TLS_SKIP_VERIFY"
 	DefaultTestTLSSkipVerify = true
 
+	// Env variable to enable _system._mobile collection for SG metadata
+	TestEnvUseSystemMetadataCollection     = "SG_TEST_USE_SYSTEM_METADATA_COLLECTION"
+	DefaultTestUseSystemMetadataCollection = false
+
 	// Walrus by default, but can set to "Couchbase" to have it use http://127.0.0.1:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
