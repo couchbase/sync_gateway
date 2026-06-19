@@ -834,10 +834,18 @@ type ResyncManagerStatusDocDCP struct {
 
 // initializePrincipalDocsIndex creates the metadata indexes required for resync
 func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) error {
-	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
-	if !ok {
-		return errors.New("Cannot create indexes on non-Couchbase data store.")
+	var dataStores []base.DataStore
+
+	if metadataStore, ok := db.MetadataStore.(*base.MetadataStore); ok {
+		// need to ensure both primary and fallback have index
+		dataStores = append(dataStores, metadataStore.Primary())
+		if !metadataStore.MigrationComplete() {
+			dataStores = append(dataStores, metadataStore.Fallback())
+		}
+	} else {
+		dataStores = append(dataStores, db.MetadataStore)
 	}
+
 	options := InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 		NumReplicas:                db.Options.NumIndexReplicas,
@@ -846,7 +854,17 @@ func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) erro
 		NumPartitions:              db.numIndexPartitions(),
 	}
 
-	return InitializeIndexes(ctx, n1qlStore, options)
+	var me *base.MultiError
+	for _, ds := range dataStores {
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		if !ok {
+			return fmt.Errorf("Cannot create indexes on non-Couchbase data store.")
+		}
+		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
+			me = me.Append(err)
+		}
+	}
+	return me.ErrorOrNil()
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
