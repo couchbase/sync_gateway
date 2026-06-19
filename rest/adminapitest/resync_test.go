@@ -252,6 +252,12 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// this condition is not allowed via regular db config-level validation
+			// but RestTester code doesn't perform full dbconfig validation to block this
+			if test.useSystemScopeMetadataCollection && base.TestsDisableGSI() {
+				t.Skip("use_views not supported with system scoped metadata collection")
+			}
+
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				PersistentConfig:                 true,
 				SyncFn:                           initialSyncFn,
