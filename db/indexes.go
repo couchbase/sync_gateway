@@ -417,6 +417,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 		indexesMeta map[string]base.IndexMeta
 		err         error
 	)
+	// TODO: Could probably always route through `GetSystemCollectionIndexesMeta` but will defer for post-4.1 cleanup?
 	if base.IsMobileSystemCollection(n1QLStore) {
 		indexesMeta, err = base.GetSystemCollectionIndexesMeta(ctx, n1QLStore, n1QLStore.ScopeName(), n1QLStore.CollectionName(), requiredIndexes.FullIndexNames())
 	} else {
