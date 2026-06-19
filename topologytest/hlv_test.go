@@ -206,6 +206,7 @@ func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
+		fmt.Println(docVersion.docMeta.HLV.Version)
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
@@ -221,6 +222,7 @@ func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
+		fmt.Println(docVersion.docMeta.HLV.Version)
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
@@ -235,6 +237,7 @@ func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topolo
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		deleteVersion := peer.DeleteDocument(dsName, docID)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
+		fmt.Println(docVersion.docMeta.HLV.Version)
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
