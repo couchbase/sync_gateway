@@ -441,7 +441,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 	if len(requiredIndexes) == 0 {
 		// all indexes are already online so we can return early without any per-index queries
-		base.InfofCtx(ctx, base.KeyAll, "Indexes ready for %q - already online when checked", n1QLStore.GetName())
+		base.InfofCtx(ctx, base.KeyAll, "Indexes ready for %q - already online when checked", base.MD(n1QLStore.GetName()))
 		return nil
 	}
 

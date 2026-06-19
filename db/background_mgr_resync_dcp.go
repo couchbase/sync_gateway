@@ -839,7 +839,9 @@ func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) erro
 	if metadataStore, ok := db.MetadataStore.(*base.MetadataStore); ok {
 		// need to ensure both primary and fallback have index
 		dataStores = append(dataStores, metadataStore.Primary())
-		dataStores = append(dataStores, metadataStore.Fallback())
+		if !metadataStore.MigrationComplete() {
+			dataStores = append(dataStores, metadataStore.Fallback())
+		}
 	} else {
 		dataStores = append(dataStores, db.MetadataStore)
 	}
