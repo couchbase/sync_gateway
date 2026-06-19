@@ -11,38 +11,18 @@
 package base
 
 import (
-	"sync/atomic"
-	"time"
-	"unsafe"
-
 	"golang.org/x/sys/windows"
 )
 
-var (
-	procQPF = windows.NewLazySystemDLL("kernel32.dll").NewProc("QueryPerformanceFrequency")
-	procQPC = windows.NewLazySystemDLL("kernel32.dll").NewProc("QueryPerformanceCounter")
-
-	qpcFreq        int64
-	qpcAnchorTicks int64
-	qpcAnchorNanos int64
-)
-
-func init() {
-	var freq int64
-	procQPF.Call(uintptr(unsafe.Pointer(&freq)))
-	atomic.StoreInt64(&qpcFreq, freq)
-
-	var ticks int64
-	procQPC.Call(uintptr(unsafe.Pointer(&ticks)))
-	atomic.StoreInt64(&qpcAnchorTicks, ticks)
-	atomic.StoreInt64(&qpcAnchorNanos, time.Now().UnixNano())
-}
-
+// hlcWallClock returns the current wall-clock time in nanoseconds since the Unix epoch. On Windows,
+// time.Now() is backed by the coarse system timer (~0.5-15ms resolution), which is too low for the HLC:
+// successive writes land in the same physical slot, forcing logical increments and diverging from the CAS.
+// GetSystemTimePreciseAsFileTime reads the high-resolution system clock (~100ns) directly, so it is read
+// live on every call rather than anchored once. Reading live (rather than anchoring an offset against
+// QueryPerformanceCounter) keeps this in lockstep with any other clock in the same process that reads the
+// same system time, avoiding a fixed startup skew between Sync Gateway's HLC and the bucket's clock.
 func hlcWallClock() uint64 {
-	var ticks int64
-	procQPC.Call(uintptr(unsafe.Pointer(&ticks)))
-
-	elapsed := ticks - atomic.LoadInt64(&qpcAnchorTicks)
-	elapsedNanos := uint64(elapsed) * 1_000_000_000 / uint64(atomic.LoadInt64(&qpcFreq))
-	return uint64(atomic.LoadInt64(&qpcAnchorNanos)) + elapsedNanos
+	var ft windows.Filetime
+	windows.GetSystemTimePreciseAsFileTime(&ft)
+	return uint64(ft.Nanoseconds())
 }
