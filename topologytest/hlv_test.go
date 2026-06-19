@@ -237,7 +237,6 @@ func deleteConflictDocs(dsName base.ScopeAndCollectionName, docID string, topolo
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		deleteVersion := peer.DeleteDocument(dsName, docID)
 		documentVersion = append(documentVersion, BodyAndVersion{docMeta: deleteVersion, updatePeer: peerName})
-		fmt.Println(docVersion.docMeta.HLV.Version)
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
