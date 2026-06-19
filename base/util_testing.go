@@ -227,6 +227,21 @@ func TestTLSSkipVerify() bool {
 	return val
 }
 
+// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestUseSystemMetadataCollection
+func TestUseSystemMetadataCollection() bool {
+	useSystemMetadataCollection, isSet := os.LookupEnv(TestEnvUseSystemMetadataCollection)
+	if !isSet {
+		return DefaultTestUseSystemMetadataCollection
+	}
+
+	val, err := strconv.ParseBool(useSystemMetadataCollection)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvUseSystemMetadataCollection, useSystemMetadataCollection, err))
+	}
+
+	return val
+}
+
 func TestUseCouchbaseServerDockerName() (bool, string) {
 	testX509CouchbaseServerDockerName, isSet := os.LookupEnv(TestEnvCouchbaseServerDockerName)
 	if !isSet {

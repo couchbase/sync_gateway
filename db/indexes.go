@@ -413,7 +413,16 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 		return nil
 	}
 
-	indexesMeta, err := base.GetIndexesMeta(ctx, n1QLStore, requiredIndexes.FullIndexNames())
+	var (
+		indexesMeta map[string]base.IndexMeta
+		err         error
+	)
+	// TODO: Could probably always route through `GetSystemCollectionIndexesMeta` but will defer for post-4.1 cleanup?
+	if base.IsMobileSystemCollection(n1QLStore) {
+		indexesMeta, err = base.GetSystemCollectionIndexesMeta(ctx, n1QLStore, n1QLStore.ScopeName(), n1QLStore.CollectionName(), requiredIndexes.FullIndexNames())
+	} else {
+		indexesMeta, err = base.GetIndexesMeta(ctx, n1QLStore, requiredIndexes.FullIndexNames())
+	}
 	if err != nil {
 		base.WarnfCtx(ctx, "Error getting indexes meta: %v - continuing to create", err)
 	}
@@ -432,7 +441,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 	if len(requiredIndexes) == 0 {
 		// all indexes are already online so we can return early without any per-index queries
-		base.InfofCtx(ctx, base.KeyAll, "Indexes ready - already online when checked")
+		base.InfofCtx(ctx, base.KeyAll, "Indexes ready for %q - already online when checked", base.MD(n1QLStore.GetName()))
 		return nil
 	}
 
