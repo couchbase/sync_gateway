@@ -41,6 +41,14 @@ func NewHybridLogicalClock() *HybridLogicalClock {
 	return &HybridLogicalClock{clock: func() uint64 { return hlcWallClock() }}
 }
 
+// HLCWallClock returns the current wall-clock time in nanoseconds since the Unix epoch, using the same
+// high-resolution platform source the HLC is backed by (GetSystemTimePreciseAsFileTime on Windows,
+// time.Now() for other OS). Tests that simulate clock skew should derive their injected clock from this so
+// they share a time base with the bucket's clock.
+func HLCWallClock() uint64 {
+	return hlcWallClock()
+}
+
 // SetClockForTest overrides the wall-clock source and resets the clock's high-water mark, so the next
 // value returned by Now is determined solely by getTime. Test-only: used to simulate clock skew between
 // Sync Gateway and the server.
