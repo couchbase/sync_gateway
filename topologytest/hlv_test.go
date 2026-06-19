@@ -206,7 +206,12 @@ func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
-		fmt.Println(docVersion.docMeta.HLV.Version)
+		if docVersion.docMeta.ImplicitHLV != nil {
+			fmt.Println(docVersion.docMeta.ImplicitHLV.Version)
+		}
+		if docVersion.docMeta.HLV != nil {
+			fmt.Println(docVersion.docMeta.HLV.Version)
+		}
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
@@ -222,7 +227,12 @@ func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, top
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
-		fmt.Println(docVersion.docMeta.HLV.Version)
+		if docVersion.docMeta.ImplicitHLV != nil {
+			fmt.Println(docVersion.docMeta.ImplicitHLV.Version)
+		}
+		if docVersion.docMeta.HLV != nil {
+			fmt.Println(docVersion.docMeta.HLV.Version)
+		}
 	}
 	index := len(documentVersion) - 1
 	lastWrite = documentVersion[index]
