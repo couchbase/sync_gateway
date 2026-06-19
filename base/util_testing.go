@@ -227,7 +227,7 @@ func TestTLSSkipVerify() bool {
 	return val
 }
 
-// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestTLSSkipVerify
+// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestUseSystemMetadataCollection
 func TestUseSystemMetadataCollection() bool {
 	useSystemMetadataCollection, isSet := os.LookupEnv(TestEnvUseSystemMetadataCollection)
 	if !isSet {
