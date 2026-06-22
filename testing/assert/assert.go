@@ -730,10 +730,10 @@ func EventuallyWithT(t TestingT, condition func(collect *CollectT), waitFor time
 //		time.Sleep(8*time.Second)
 //		externalValue = true
 //	}()
-//	assert.EventuallyWithTf(t, func(c *assert.CollectT, "error message %s", "formatted") {
+//	assert.EventuallyWithTf(t, func(c *assert.CollectT) {
 //		// add assertions as needed; any assertion failure will fail the current tick
 //		assert.True(c, externalValue, "expected 'externalValue' to be true")
-//	}, 10*time.Second, 1*time.Second, "external state has not changed to 'true'; still false")
+//	}, 10*time.Second, 1*time.Second, "error message %s", "formatted")
 func EventuallyWithTf(t TestingT, condition func(collect *CollectT), waitFor time.Duration, tick time.Duration, msg string, args ...any) bool {
 	return assert.EventuallyWithTf(t, condition, waitFor, tick, msg, args...)
 }
