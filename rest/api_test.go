@@ -3179,7 +3179,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value()
-	assert.NotEqual(t, 0, firstStartTimeStat)
+	assert.Zero(t, firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)

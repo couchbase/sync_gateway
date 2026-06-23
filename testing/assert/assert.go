@@ -36,6 +36,9 @@ type BoolAssertionFunc = assert.BoolAssertionFunc
 //	assert.Contains(t, ["Hello", "World"], "World")
 //	assert.Contains(t, maps.Keys({"Hello": "World"}), "Hello")
 func Contains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	if seq, ok := any(s).(iter.Seq[T2]); ok {
 		return assert.Contains(t, slices.Collect(seq), contains, msgAndArgs...)
 	}
@@ -49,6 +52,9 @@ func Contains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1
 //	assert.Containsf(t, ["Hello", "World"], "World", "error message %s", "formatted")
 //	assert.Containsf(t, maps.Keys({"Hello": "World"}), "Hello", "error message %s", "formatted")
 func Containsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	if seq, ok := any(s).(iter.Seq[T2]); ok {
 		return assert.Containsf(t, slices.Collect(seq), contains, msg, args...)
 	}
@@ -62,6 +68,9 @@ func Containsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T
 //
 // assert.ElementsMatch(t, [1, 3, 2, 3], [1, 3, 3, 2])
 func ElementsMatch[T1, T2 any](t TestingT, listA T1, listB T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ElementsMatch(t, listA, listB, msgAndArgs...)
 }
 
@@ -73,6 +82,9 @@ func ElementsMatch[T1, T2 any](t TestingT, listA T1, listB T2, msgAndArgs ...any
 // assert.ElementsMatchf(t, [1, 3, 2, 3], [1, 3, 3, 2], "error message %s",
 // "formatted")
 func ElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ElementsMatchf(t, listA, listB, msg, args...)
 }
 
@@ -84,6 +96,9 @@ func ElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, args
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
 func Equal[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Equal(t, expected, actual, msgAndArgs...)
 }
 
@@ -95,6 +110,9 @@ func Equal[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
 func Equalf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Equalf(t, expected, actual, msg, args...)
 }
 
@@ -109,6 +127,9 @@ func Equalf[T any](t TestingT, expected T, actual T, msg string, args ...any) bo
 //	 assert.EqualExportedValues(t, S{1, 2}, S{1, 3}) => true
 //	 assert.EqualExportedValues(t, S{1, 2}, S{2, 3}) => false
 func EqualExportedValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualExportedValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -123,6 +144,9 @@ func EqualExportedValues[T any](t TestingT, expected T, actual T, msgAndArgs ...
 //	 assert.EqualExportedValuesf(t, S{1, 2}, S{1, 3}, "error message %s", "formatted") => true
 //	 assert.EqualExportedValuesf(t, S{1, 2}, S{2, 3}, "error message %s", "formatted") => false
 func EqualExportedValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualExportedValuesf(t, expected, actual, msg, args...)
 }
 
@@ -131,6 +155,9 @@ func EqualExportedValuesf[T any](t TestingT, expected T, actual T, msg string, a
 //
 //	assert.EqualValues(t, uint32(123), int32(123))
 func EqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -139,6 +166,9 @@ func EqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) boo
 //
 //	assert.EqualValuesf(t, uint32(123), int32(123), "error message %s", "formatted")
 func EqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualValuesf(t, expected, actual, msg, args...)
 }
 
@@ -146,6 +176,9 @@ func EqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...a
 //
 //	assert.Exactly(t, int32(123), int64(123))
 func Exactly[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Exactly(t, expected, actual, msgAndArgs...)
 }
 
@@ -153,6 +186,9 @@ func Exactly[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 //
 //	assert.Exactlyf(t, int32(123), int64(123), "error message %s", "formatted")
 func Exactlyf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Exactlyf(t, expected, actual, msg, args...)
 }
 
@@ -162,6 +198,9 @@ func Exactlyf[T any](t TestingT, expected T, actual T, msg string, args ...any) 
 //	assert.Greater(t, float64(2), float64(1))
 //	assert.Greater(t, "b", "a")
 func Greater[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
 
@@ -171,6 +210,9 @@ func Greater[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 //	assert.Greaterf(t, float64(2), float64(1), "error message %s", "formatted")
 //	assert.Greaterf(t, "b", "a", "error message %s", "formatted")
 func Greaterf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Greaterf(t, e1, e2, msg, args...)
 }
 
@@ -182,6 +224,9 @@ func Greaterf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 //	assert.GreaterOrEqual(t, "b", "a")
 //	assert.GreaterOrEqual(t, "b", "b")
 func GreaterOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.GreaterOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -193,6 +238,9 @@ func GreaterOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 //	assert.GreaterOrEqualf(t, "b", "a", "error message %s", "formatted")
 //	assert.GreaterOrEqualf(t, "b", "b", "error message %s", "formatted")
 func GreaterOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.GreaterOrEqualf(t, e1, e2, msg, args...)
 }
 
@@ -200,6 +248,9 @@ func GreaterOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) boo
 //
 //	assert.IsNotType(t, &NotMyStruct{}, &MyStruct{})
 func IsNotType[T1, T2 any](t TestingT, theType T1, object T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNotType(t, theType, object, msgAndArgs...)
 }
 
@@ -207,6 +258,9 @@ func IsNotType[T1, T2 any](t TestingT, theType T1, object T2, msgAndArgs ...any)
 //
 //	assert.IsNotTypef(t, &NotMyStruct{}, &MyStruct{}, "error message %s", "formatted")
 func IsNotTypef[T1, T2 any](t TestingT, theType T1, object T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNotTypef(t, theType, object, msg, args...)
 }
 
@@ -214,6 +268,9 @@ func IsNotTypef[T1, T2 any](t TestingT, theType T1, object T2, msg string, args 
 //
 //	assert.IsType(t, &MyStruct{}, &MyStruct{})
 func IsType[T1, T2 any](t TestingT, expectedType T1, object T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsType(t, expectedType, object, msgAndArgs...)
 }
 
@@ -221,6 +278,9 @@ func IsType[T1, T2 any](t TestingT, expectedType T1, object T2, msgAndArgs ...an
 //
 //	assert.IsTypef(t, &MyStruct{}, &MyStruct{}, "error message %s", "formatted")
 func IsTypef[T1, T2 any](t TestingT, expectedType T1, object T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsTypef(t, expectedType, object, msg, args...)
 }
 
@@ -230,6 +290,9 @@ func IsTypef[T1, T2 any](t TestingT, expectedType T1, object T2, msg string, arg
 //	assert.Less(t, float64(1), float64(2))
 //	assert.Less(t, "a", "b")
 func Less[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Less(t, e1, e2, msgAndArgs...)
 }
 
@@ -239,6 +302,9 @@ func Less[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 //	assert.Lessf(t, float64(1), float64(2), "error message %s", "formatted")
 //	assert.Lessf(t, "a", "b", "error message %s", "formatted")
 func Lessf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Lessf(t, e1, e2, msg, args...)
 }
 
@@ -250,6 +316,9 @@ func Lessf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 //	assert.LessOrEqual(t, "a", "b")
 //	assert.LessOrEqual(t, "b", "b")
 func LessOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.LessOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -261,6 +330,9 @@ func LessOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 //	assert.LessOrEqualf(t, "a", "b", "error message %s", "formatted")
 //	assert.LessOrEqualf(t, "b", "b", "error message %s", "formatted")
 func LessOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.LessOrEqualf(t, e1, e2, msg, args...)
 }
 
@@ -271,6 +343,9 @@ func LessOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 //	assert.NotContains(t, ["Hello", "World"], "Earth")
 //	assert.NotContains(t, maps.Keys({"Hello": "World"}), "Earth")
 func NotContains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	if seq, ok := any(s).(iter.Seq[T2]); ok {
 		return assert.NotContains(t, slices.Collect(seq), contains, msgAndArgs...)
 	}
@@ -284,6 +359,9 @@ func NotContains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s
 //	assert.NotContainsf(t, ["Hello", "World"], "Earth", "error message %s", "formatted")
 //	assert.NotContainsf(t, maps.Keys({"Hello": "World"}), "Earth", "error message %s", "formatted")
 func NotContainsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	if seq, ok := any(s).(iter.Seq[T2]); ok {
 		return assert.NotContainsf(t, slices.Collect(seq), contains, msg, args...)
 	}
@@ -301,6 +379,9 @@ func NotContainsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, 
 //
 // assert.NotElementsMatch(t, [1, 2, 3], [1, 2, 4]) -> true
 func NotElementsMatch[T1, T2 any](t TestingT, listA T1, listB T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotElementsMatch(t, listA, listB, msgAndArgs...)
 }
 
@@ -318,6 +399,9 @@ func NotElementsMatch[T1, T2 any](t TestingT, listA T1, listB T2, msgAndArgs ...
 // assert.NotElementsMatchf(t, [1, 2, 3], [1, 2, 4], "error message %s",
 // "formatted") -> true
 func NotElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotElementsMatchf(t, listA, listB, msg, args...)
 }
 
@@ -328,6 +412,9 @@ func NotElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, a
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
 func NotEqual[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEqual(t, expected, actual, msgAndArgs...)
 }
 
@@ -336,6 +423,9 @@ func NotEqual[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 //
 //	assert.NotEqualValues(t, obj1, obj2)
 func NotEqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -344,6 +434,9 @@ func NotEqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) 
 //
 //	assert.NotEqualValuesf(t, obj1, obj2, "error message %s", "formatted")
 func NotEqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEqualValuesf(t, expected, actual, msg, args...)
 }
 
@@ -354,6 +447,9 @@ func NotEqualValuesf[T any](t TestingT, expected T, actual T, msg string, args .
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
 func NotEqualf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEqualf(t, expected, actual, msg, args...)
 }
 
@@ -362,6 +458,9 @@ func NotEqualf[T any](t TestingT, expected T, actual T, msg string, args ...any)
 //
 //	assert.NotImplements(t, (*MyInterface)(nil), new(MyObject))
 func NotImplements[T1, T2 any](t TestingT, interfaceObject T1, object T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotImplements(t, interfaceObject, object, msgAndArgs...)
 }
 
@@ -370,6 +469,9 @@ func NotImplements[T1, T2 any](t TestingT, interfaceObject T1, object T2, msgAnd
 //
 //	assert.NotImplementsf(t, (*MyInterface)(nil), new(MyObject), "error message %s", "formatted")
 func NotImplementsf[T1, T2 any](t TestingT, interfaceObject T1, object T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotImplementsf(t, interfaceObject, object, msg, args...)
 }
 
@@ -378,6 +480,9 @@ func NotImplementsf[T1, T2 any](t TestingT, interfaceObject T1, object T2, msg s
 //	assert.NotRegexp(t, regexp.MustCompile("starts"), "it's starting")
 //	assert.NotRegexp(t, "^start", "it's not starting")
 func NotRegexp[T1, T2 any](t TestingT, rx T1, str T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotRegexp(t, rx, str, msgAndArgs...)
 }
 
@@ -386,6 +491,9 @@ func NotRegexp[T1, T2 any](t TestingT, rx T1, str T2, msgAndArgs ...any) bool {
 //	assert.NotRegexpf(t, regexp.MustCompile("starts"), "it's starting", "error message %s", "formatted")
 //	assert.NotRegexpf(t, "^start", "it's not starting", "error message %s", "formatted")
 func NotRegexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotRegexpf(t, rx, str, msg, args...)
 }
 
@@ -396,6 +504,9 @@ func NotRegexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) 
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
 func NotSame[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotSame(t, expected, actual, msgAndArgs...)
 }
 
@@ -406,6 +517,9 @@ func NotSame[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
 func NotSamef[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotSamef(t, expected, actual, msg, args...)
 }
 
@@ -419,6 +533,9 @@ func NotSamef[T any](t TestingT, expected T, actual T, msg string, args ...any) 
 //	assert.NotSubset(t, [1, 3, 4], {1: "one", 2: "two"})
 //	assert.NotSubset(t, {"x": 1, "y": 2}, ["z"])
 func NotSubset[T1, T2 any](t TestingT, list T1, subset T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotSubset(t, list, subset, msgAndArgs...)
 }
 
@@ -432,6 +549,9 @@ func NotSubset[T1, T2 any](t TestingT, list T1, subset T2, msgAndArgs ...any) bo
 //	assert.NotSubsetf(t, [1, 3, 4], {1: "one", 2: "two"}, "error message %s", "formatted")
 //	assert.NotSubsetf(t, {"x": 1, "y": 2}, ["z"], "error message %s", "formatted")
 func NotSubsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotSubsetf(t, list, subset, msg, args...)
 }
 
@@ -440,6 +560,9 @@ func NotSubsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...
 //	assert.Regexp(t, regexp.MustCompile("start"), "it's starting")
 //	assert.Regexp(t, "start...$", "it's not starting")
 func Regexp[T1, T2 any](t TestingT, rx T1, str T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Regexp(t, rx, str, msgAndArgs...)
 }
 
@@ -448,6 +571,9 @@ func Regexp[T1, T2 any](t TestingT, rx T1, str T2, msgAndArgs ...any) bool {
 //	assert.Regexpf(t, regexp.MustCompile("start"), "it's starting", "error message %s", "formatted")
 //	assert.Regexpf(t, "start...$", "it's not starting", "error message %s", "formatted")
 func Regexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Regexpf(t, rx, str, msg, args...)
 }
 
@@ -458,6 +584,9 @@ func Regexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) boo
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
 func Same[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Same(t, expected, actual, msgAndArgs...)
 }
 
@@ -468,6 +597,9 @@ func Same[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
 func Samef[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Samef(t, expected, actual, msg, args...)
 }
 
@@ -480,6 +612,9 @@ func Samef[T any](t TestingT, expected T, actual T, msg string, args ...any) boo
 //	assert.Subset(t, [1, 2, 3], {1: "one", 2: "two"})
 //	assert.Subset(t, {"x": 1, "y": 2}, ["x"])
 func Subset[T1, T2 any](t TestingT, list T1, subset T2, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Subset(t, list, subset, msgAndArgs...)
 }
 
@@ -492,6 +627,9 @@ func Subset[T1, T2 any](t TestingT, list T1, subset T2, msgAndArgs ...any) bool 
 //	assert.Subsetf(t, [1, 2, 3], {1: "one", 2: "two"}, "error message %s", "formatted")
 //	assert.Subsetf(t, {"x": 1, "y": 2}, ["x"], "error message %s", "formatted")
 func Subsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Subsetf(t, list, subset, msg, args...)
 }
 
@@ -499,16 +637,25 @@ func Subsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...any
 //
 //	assert.InDelta(t, math.Pi, 22/7.0, 0.01)
 func InDelta[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDelta(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlice is the same as InDelta, except it compares two slices.
 func InDeltaSlice[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDeltaSlice(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlicef is the same as InDelta, except it compares two slices.
 func InDeltaSlicef[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDeltaSlicef(t, expected, actual, delta, msg, args...)
 }
 
@@ -516,42 +663,63 @@ func InDeltaSlicef[T any](t TestingT, expected T, actual T, delta float64, msg s
 //
 //	assert.InDeltaf(t, math.Pi, 22/7.0, 0.01, "error message %s", "formatted")
 func InDeltaf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDeltaf(t, expected, actual, delta, msg, args...)
 }
 
 // InDeltaMapValues is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
 func InDeltaMapValues[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDeltaMapValues(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaMapValuesf is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
 func InDeltaMapValuesf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InDeltaMapValuesf(t, expected, actual, delta, msg, args...)
 }
 
 // InEpsilon asserts that expected and actual have a relative error less than
 // epsilon
 func InEpsilon[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InEpsilon(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlice is the same as InEpsilon, except it compares each value from
 // two slices.
 func InEpsilonSlice[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InEpsilonSlice(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlicef is the same as InEpsilon, except it compares each value from
 // two slices.
 func InEpsilonSlicef[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InEpsilonSlicef(t, expected, actual, epsilon, msg, args...)
 }
 
 // InEpsilonf asserts that expected and actual have a relative error less than
 // epsilon
 func InEpsilonf[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.InEpsilonf(t, expected, actual, epsilon, msg, args...)
 }
 
@@ -566,11 +734,17 @@ func CallerInfo() []string {
 
 // Condition uses a Comparison to assert a complex condition.
 func Condition(t TestingT, comp Comparison, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Condition(t, comp, msgAndArgs...)
 }
 
 // Conditionf uses a Comparison to assert a complex condition.
 func Conditionf(t TestingT, comp Comparison, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Conditionf(t, comp, msg, args...)
 }
 
@@ -578,6 +752,9 @@ func Conditionf(t TestingT, comp Comparison, msg string, args ...any) bool {
 // fails if the path is a file rather a directory or there is an error checking
 // whether it exists.
 func DirExists(t TestingT, path string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.DirExists(t, path, msgAndArgs...)
 }
 
@@ -585,6 +762,9 @@ func DirExists(t TestingT, path string, msgAndArgs ...any) bool {
 // fails if the path is a file rather a directory or there is an error checking
 // whether it exists.
 func DirExistsf(t TestingT, path string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.DirExistsf(t, path, msg, args...)
 }
 
@@ -602,6 +782,9 @@ func DirExistsf(t TestingT, path string, msg string, args ...any) bool {
 //
 //	assert.Empty(t, obj)
 func Empty(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Empty(t, object, msgAndArgs...)
 }
 
@@ -619,6 +802,9 @@ func Empty(t TestingT, object any, msgAndArgs ...any) bool {
 //
 //	assert.Emptyf(t, obj, "error message %s", "formatted")
 func Emptyf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Emptyf(t, object, msg, args...)
 }
 
@@ -628,6 +814,9 @@ func Emptyf(t TestingT, object any, msg string, args ...any) bool {
 //	actualObj, err := SomeFunction()
 //	assert.EqualError(t, err,  expectedErrorString)
 func EqualError(t TestingT, theError error, errString string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualError(t, theError, errString, msgAndArgs...)
 }
 
@@ -637,6 +826,9 @@ func EqualError(t TestingT, theError error, errString string, msgAndArgs ...any)
 //	actualObj, err := SomeFunction()
 //	assert.EqualErrorf(t, err,  expectedErrorString, "error message %s", "formatted")
 func EqualErrorf(t TestingT, theError error, errString string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EqualErrorf(t, theError, errString, msg, args...)
 }
 
@@ -645,6 +837,9 @@ func EqualErrorf(t TestingT, theError error, errString string, msg string, args 
 //	actualObj, err := SomeFunction()
 //	assert.Error(t, err)
 func Error(t TestingT, err error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Error(t, err, msgAndArgs...)
 }
 
@@ -652,6 +847,9 @@ func Error(t TestingT, err error, msgAndArgs ...any) bool {
 // target, and if so, sets target to that error value. This is a wrapper for
 // errors.As.
 func ErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorAs(t, err, target, msgAndArgs...)
 }
 
@@ -659,6 +857,9 @@ func ErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
 // target, and if so, sets target to that error value. This is a wrapper for
 // errors.As.
 func ErrorAsf(t TestingT, err error, target any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorAsf(t, err, target, msg, args...)
 }
 
@@ -668,6 +869,9 @@ func ErrorAsf(t TestingT, err error, target any, msg string, args ...any) bool {
 //	actualObj, err := SomeFunction()
 //	assert.ErrorContains(t, err,  expectedErrorSubString)
 func ErrorContains(t TestingT, theError error, contains string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorContains(t, theError, contains, msgAndArgs...)
 }
 
@@ -677,18 +881,27 @@ func ErrorContains(t TestingT, theError error, contains string, msgAndArgs ...an
 //	actualObj, err := SomeFunction()
 //	assert.ErrorContainsf(t, err,  expectedErrorSubString, "error message %s", "formatted")
 func ErrorContainsf(t TestingT, theError error, contains string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorContainsf(t, theError, contains, msg, args...)
 }
 
 // ErrorIs asserts that at least one of the errors in err's chain matches
 // target. This is a wrapper for errors.Is.
 func ErrorIs(t TestingT, err error, target error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorIs(t, err, target, msgAndArgs...)
 }
 
 // ErrorIsf asserts that at least one of the errors in err's chain matches
 // target. This is a wrapper for errors.Is.
 func ErrorIsf(t TestingT, err error, target error, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.ErrorIsf(t, err, target, msg, args...)
 }
 
@@ -697,6 +910,9 @@ func ErrorIsf(t TestingT, err error, target error, msg string, args ...any) bool
 //	actualObj, err := SomeFunction()
 //	assert.Errorf(t, err, "error message %s", "formatted")
 func Errorf(t TestingT, err error, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Errorf(t, err, msg, args...)
 }
 
@@ -705,6 +921,9 @@ func Errorf(t TestingT, err error, msg string, args ...any) bool {
 //
 //	assert.Eventually(t, func() bool { return true; }, time.Second, 10*time.Millisecond)
 func Eventually(t TestingT, condition func() bool, waitFor time.Duration, tick time.Duration, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Eventually(t, condition, waitFor, tick, msgAndArgs...)
 }
 
@@ -727,6 +946,9 @@ func Eventually(t TestingT, condition func() bool, waitFor time.Duration, tick t
 //		assert.True(c, externalValue, "expected 'externalValue' to be true")
 //	}, 10*time.Second, 1*time.Second, "external state has not changed to 'true'; still false")
 func EventuallyWithT(t TestingT, condition func(collect *CollectT), waitFor time.Duration, tick time.Duration, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EventuallyWithT(t, condition, waitFor, tick, msgAndArgs...)
 }
 
@@ -749,6 +971,9 @@ func EventuallyWithT(t TestingT, condition func(collect *CollectT), waitFor time
 //		assert.True(c, externalValue, "expected 'externalValue' to be true")
 //	}, 10*time.Second, 1*time.Second, "error message %s", "formatted")
 func EventuallyWithTf(t TestingT, condition func(collect *CollectT), waitFor time.Duration, tick time.Duration, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.EventuallyWithTf(t, condition, waitFor, tick, msg, args...)
 }
 
@@ -757,26 +982,41 @@ func EventuallyWithTf(t TestingT, condition func(collect *CollectT), waitFor tim
 //
 //	assert.Eventuallyf(t, func() bool { return true; }, time.Second, 10*time.Millisecond, "error message %s", "formatted")
 func Eventuallyf(t TestingT, condition func() bool, waitFor time.Duration, tick time.Duration, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Eventuallyf(t, condition, waitFor, tick, msg, args...)
 }
 
 // Fail reports a failure through
 func Fail(t TestingT, failureMessage string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Fail(t, failureMessage, msgAndArgs...)
 }
 
 // FailNow fails test
 func FailNow(t TestingT, failureMessage string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.FailNow(t, failureMessage, msgAndArgs...)
 }
 
 // FailNowf fails test
 func FailNowf(t TestingT, failureMessage string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.FailNowf(t, failureMessage, msg, args...)
 }
 
 // Failf reports a failure through
 func Failf(t TestingT, failureMessage string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Failf(t, failureMessage, msg, args...)
 }
 
@@ -784,6 +1024,9 @@ func Failf(t TestingT, failureMessage string, msg string, args ...any) bool {
 //
 //	assert.False(t, myBool)
 func False(t TestingT, value bool, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.False(t, value, msgAndArgs...)
 }
 
@@ -791,6 +1034,9 @@ func False(t TestingT, value bool, msgAndArgs ...any) bool {
 //
 //	assert.Falsef(t, myBool, "error message %s", "formatted")
 func Falsef(t TestingT, value bool, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Falsef(t, value, msg, args...)
 }
 
@@ -798,6 +1044,9 @@ func Falsef(t TestingT, value bool, msg string, args ...any) bool {
 // the path points to a directory or there is an error when trying to check the
 // file.
 func FileExists(t TestingT, path string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.FileExists(t, path, msgAndArgs...)
 }
 
@@ -805,6 +1054,9 @@ func FileExists(t TestingT, path string, msgAndArgs ...any) bool {
 // the path points to a directory or there is an error when trying to check the
 // file.
 func FileExistsf(t TestingT, path string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.FileExistsf(t, path, msg, args...)
 }
 
@@ -821,6 +1073,9 @@ func HTTPBody(handler http.HandlerFunc, method, url string, values url.Values) s
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPBodyContains(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, str string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPBodyContains(t, handler, method, url, values, str, msgAndArgs...)
 }
 
@@ -831,6 +1086,9 @@ func HTTPBodyContains(t TestingT, handler http.HandlerFunc, method, url string, 
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPBodyContainsf(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, str string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPBodyContainsf(t, handler, method, url, values, str, msg, args...)
 }
 
@@ -841,6 +1099,9 @@ func HTTPBodyContainsf(t TestingT, handler http.HandlerFunc, method string, url 
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPBodyNotContains(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, str string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPBodyNotContains(t, handler, method, url, values, str, msgAndArgs...)
 }
 
@@ -851,6 +1112,9 @@ func HTTPBodyNotContains(t TestingT, handler http.HandlerFunc, method, url strin
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPBodyNotContainsf(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, str string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPBodyNotContainsf(t, handler, method, url, values, str, msg, args...)
 }
 
@@ -860,6 +1124,9 @@ func HTTPBodyNotContainsf(t TestingT, handler http.HandlerFunc, method string, u
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPError(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPError(t, handler, method, url, values, msgAndArgs...)
 }
 
@@ -869,6 +1136,9 @@ func HTTPError(t TestingT, handler http.HandlerFunc, method, url string, values 
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPErrorf(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPErrorf(t, handler, method, url, values, msg, args...)
 }
 
@@ -879,6 +1149,9 @@ func HTTPErrorf(t TestingT, handler http.HandlerFunc, method string, url string,
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPRedirect(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPRedirect(t, handler, method, url, values, msgAndArgs...)
 }
 
@@ -889,6 +1162,9 @@ func HTTPRedirect(t TestingT, handler http.HandlerFunc, method, url string, valu
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPRedirectf(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPRedirectf(t, handler, method, url, values, msg, args...)
 }
 
@@ -899,6 +1175,9 @@ func HTTPRedirectf(t TestingT, handler http.HandlerFunc, method string, url stri
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPStatusCode(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, expectedStatusCode int, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPStatusCode(t, handler, method, url, values, expectedStatusCode, msgAndArgs...)
 }
 
@@ -909,6 +1188,9 @@ func HTTPStatusCode(t TestingT, handler http.HandlerFunc, method, url string, va
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPStatusCodef(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, expectedStatusCode int, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPStatusCodef(t, handler, method, url, values, expectedStatusCode, msg, args...)
 }
 
@@ -918,6 +1200,9 @@ func HTTPStatusCodef(t TestingT, handler http.HandlerFunc, method string, url st
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPSuccess(t TestingT, handler http.HandlerFunc, method, url string, values url.Values, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPSuccess(t, handler, method, url, values, msgAndArgs...)
 }
 
@@ -927,6 +1212,9 @@ func HTTPSuccess(t TestingT, handler http.HandlerFunc, method, url string, value
 //
 // Returns whether the assertion was successful (true) or not (false).
 func HTTPSuccessf(t TestingT, handler http.HandlerFunc, method string, url string, values url.Values, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.HTTPSuccessf(t, handler, method, url, values, msg, args...)
 }
 
@@ -934,6 +1222,9 @@ func HTTPSuccessf(t TestingT, handler http.HandlerFunc, method string, url strin
 //
 //	assert.Implements(t, (*MyInterface)(nil), new(MyObject))
 func Implements(t TestingT, interfaceObject any, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Implements(t, interfaceObject, object, msgAndArgs...)
 }
 
@@ -942,6 +1233,9 @@ func Implements(t TestingT, interfaceObject any, object any, msgAndArgs ...any) 
 //
 //	assert.Implementsf(t, (*MyInterface)(nil), new(MyObject), "error message %s", "formatted")
 func Implementsf(t TestingT, interfaceObject any, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Implementsf(t, interfaceObject, object, msg, args...)
 }
 
@@ -951,6 +1245,9 @@ func Implementsf(t TestingT, interfaceObject any, object any, msg string, args .
 //	assert.IsDecreasing(t, []float{2, 1})
 //	assert.IsDecreasing(t, []string{"b", "a"})
 func IsDecreasing(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsDecreasing(t, object, msgAndArgs...)
 }
 
@@ -960,6 +1257,9 @@ func IsDecreasing(t TestingT, object any, msgAndArgs ...any) bool {
 //	assert.IsDecreasingf(t, []float{2, 1}, "error message %s", "formatted")
 //	assert.IsDecreasingf(t, []string{"b", "a"}, "error message %s", "formatted")
 func IsDecreasingf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsDecreasingf(t, object, msg, args...)
 }
 
@@ -969,6 +1269,9 @@ func IsDecreasingf(t TestingT, object any, msg string, args ...any) bool {
 //	assert.IsIncreasing(t, []float{1, 2})
 //	assert.IsIncreasing(t, []string{"a", "b"})
 func IsIncreasing(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsIncreasing(t, object, msgAndArgs...)
 }
 
@@ -978,6 +1281,9 @@ func IsIncreasing(t TestingT, object any, msgAndArgs ...any) bool {
 //	assert.IsIncreasingf(t, []float{1, 2}, "error message %s", "formatted")
 //	assert.IsIncreasingf(t, []string{"a", "b"}, "error message %s", "formatted")
 func IsIncreasingf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsIncreasingf(t, object, msg, args...)
 }
 
@@ -987,6 +1293,9 @@ func IsIncreasingf(t TestingT, object any, msg string, args ...any) bool {
 //	assert.IsNonDecreasing(t, []float{1, 2})
 //	assert.IsNonDecreasing(t, []string{"a", "b"})
 func IsNonDecreasing(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNonDecreasing(t, object, msgAndArgs...)
 }
 
@@ -996,6 +1305,9 @@ func IsNonDecreasing(t TestingT, object any, msgAndArgs ...any) bool {
 //	assert.IsNonDecreasingf(t, []float{1, 2}, "error message %s", "formatted")
 //	assert.IsNonDecreasingf(t, []string{"a", "b"}, "error message %s", "formatted")
 func IsNonDecreasingf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNonDecreasingf(t, object, msg, args...)
 }
 
@@ -1005,6 +1317,9 @@ func IsNonDecreasingf(t TestingT, object any, msg string, args ...any) bool {
 //	assert.IsNonIncreasing(t, []float{2, 1})
 //	assert.IsNonIncreasing(t, []string{"b", "a"})
 func IsNonIncreasing(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNonIncreasing(t, object, msgAndArgs...)
 }
 
@@ -1014,6 +1329,9 @@ func IsNonIncreasing(t TestingT, object any, msgAndArgs ...any) bool {
 //	assert.IsNonIncreasingf(t, []float{2, 1}, "error message %s", "formatted")
 //	assert.IsNonIncreasingf(t, []string{"b", "a"}, "error message %s", "formatted")
 func IsNonIncreasingf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.IsNonIncreasingf(t, object, msg, args...)
 }
 
@@ -1021,6 +1339,9 @@ func IsNonIncreasingf(t TestingT, object any, msg string, args ...any) bool {
 //
 //	assert.JSONEq(t, `{"hello": "world", "foo": "bar"}`, `{"foo": "bar", "hello": "world"}`)
 func JSONEq(t TestingT, expected string, actual string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.JSONEq(t, expected, actual, msgAndArgs...)
 }
 
@@ -1028,6 +1349,9 @@ func JSONEq(t TestingT, expected string, actual string, msgAndArgs ...any) bool 
 //
 //	assert.JSONEqf(t, `{"hello": "world", "foo": "bar"}`, `{"foo": "bar", "hello": "world"}`, "error message %s", "formatted")
 func JSONEqf(t TestingT, expected string, actual string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.JSONEqf(t, expected, actual, msg, args...)
 }
 
@@ -1036,6 +1360,9 @@ func JSONEqf(t TestingT, expected string, actual string, msg string, args ...any
 //
 //	assert.Len(t, mySlice, 3)
 func Len(t TestingT, object any, length int, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Len(t, object, length, msgAndArgs...)
 }
 
@@ -1044,6 +1371,9 @@ func Len(t TestingT, object any, length int, msgAndArgs ...any) bool {
 //
 //	assert.Lenf(t, mySlice, 3, "error message %s", "formatted")
 func Lenf(t TestingT, object any, length int, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Lenf(t, object, length, msg, args...)
 }
 
@@ -1052,6 +1382,9 @@ func Lenf(t TestingT, object any, length int, msg string, args ...any) bool {
 //	assert.Negative(t, -1)
 //	assert.Negative(t, -1.23)
 func Negative(t TestingT, e any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Negative(t, e, msgAndArgs...)
 }
 
@@ -1060,6 +1393,9 @@ func Negative(t TestingT, e any, msgAndArgs ...any) bool {
 //	assert.Negativef(t, -1, "error message %s", "formatted")
 //	assert.Negativef(t, -1.23, "error message %s", "formatted")
 func Negativef(t TestingT, e any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Negativef(t, e, msg, args...)
 }
 
@@ -1068,6 +1404,9 @@ func Negativef(t TestingT, e any, msg string, args ...any) bool {
 //
 //	assert.Never(t, func() bool { return false; }, time.Second, 10*time.Millisecond)
 func Never(t TestingT, condition func() bool, waitFor time.Duration, tick time.Duration, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Never(t, condition, waitFor, tick, msgAndArgs...)
 }
 
@@ -1076,6 +1415,9 @@ func Never(t TestingT, condition func() bool, waitFor time.Duration, tick time.D
 //
 //	assert.Neverf(t, func() bool { return false; }, time.Second, 10*time.Millisecond, "error message %s", "formatted")
 func Neverf(t TestingT, condition func() bool, waitFor time.Duration, tick time.Duration, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Neverf(t, condition, waitFor, tick, msg, args...)
 }
 
@@ -1083,6 +1425,9 @@ func Neverf(t TestingT, condition func() bool, waitFor time.Duration, tick time.
 //
 //	assert.Nil(t, err)
 func Nil(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Nil(t, object, msgAndArgs...)
 }
 
@@ -1090,18 +1435,27 @@ func Nil(t TestingT, object any, msgAndArgs ...any) bool {
 //
 //	assert.Nilf(t, err, "error message %s", "formatted")
 func Nilf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Nilf(t, object, msg, args...)
 }
 
 // NoDirExists checks whether a directory does not exist in the given path.
 // It fails if the path points to an existing _directory_ only.
 func NoDirExists(t TestingT, path string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoDirExists(t, path, msgAndArgs...)
 }
 
 // NoDirExistsf checks whether a directory does not exist in the given path.
 // It fails if the path points to an existing _directory_ only.
 func NoDirExistsf(t TestingT, path string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoDirExistsf(t, path, msg, args...)
 }
 
@@ -1112,6 +1466,9 @@ func NoDirExistsf(t TestingT, path string, msg string, args ...any) bool {
 //		   assert.Equal(t, expectedObj, actualObj)
 //	  }
 func NoError(t TestingT, err error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoError(t, err, msgAndArgs...)
 }
 
@@ -1122,18 +1479,27 @@ func NoError(t TestingT, err error, msgAndArgs ...any) bool {
 //		   assert.Equal(t, expectedObj, actualObj)
 //	  }
 func NoErrorf(t TestingT, err error, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoErrorf(t, err, msg, args...)
 }
 
 // NoFileExists checks whether a file does not exist in a given path. It fails
 // if the path points to an existing _file_ only.
 func NoFileExists(t TestingT, path string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoFileExists(t, path, msgAndArgs...)
 }
 
 // NoFileExistsf checks whether a file does not exist in a given path. It fails
 // if the path points to an existing _file_ only.
 func NoFileExistsf(t TestingT, path string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NoFileExistsf(t, path, msg, args...)
 }
 
@@ -1143,6 +1509,9 @@ func NoFileExistsf(t TestingT, path string, msg string, args ...any) bool {
 //	  assert.Equal(t, "two", obj[1])
 //	}
 func NotEmpty(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEmpty(t, object, msgAndArgs...)
 }
 
@@ -1152,30 +1521,45 @@ func NotEmpty(t TestingT, object any, msgAndArgs ...any) bool {
 //	  assert.Equal(t, "two", obj[1])
 //	}
 func NotEmptyf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotEmptyf(t, object, msg, args...)
 }
 
 // NotErrorAs asserts that none of the errors in err's chain matches target,
 // but if so, sets target to that error value.
 func NotErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotErrorAs(t, err, target, msgAndArgs...)
 }
 
 // NotErrorAsf asserts that none of the errors in err's chain matches target,
 // but if so, sets target to that error value.
 func NotErrorAsf(t TestingT, err error, target any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotErrorAsf(t, err, target, msg, args...)
 }
 
 // NotErrorIs asserts that none of the errors in err's chain matches target.
 // This is a wrapper for errors.Is.
 func NotErrorIs(t TestingT, err error, target error, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotErrorIs(t, err, target, msgAndArgs...)
 }
 
 // NotErrorIsf asserts that none of the errors in err's chain matches target.
 // This is a wrapper for errors.Is.
 func NotErrorIsf(t TestingT, err error, target error, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotErrorIsf(t, err, target, msg, args...)
 }
 
@@ -1183,6 +1567,9 @@ func NotErrorIsf(t TestingT, err error, target error, msg string, args ...any) b
 //
 //	assert.NotNil(t, err)
 func NotNil(t TestingT, object any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotNil(t, object, msgAndArgs...)
 }
 
@@ -1190,6 +1577,9 @@ func NotNil(t TestingT, object any, msgAndArgs ...any) bool {
 //
 //	assert.NotNilf(t, err, "error message %s", "formatted")
 func NotNilf(t TestingT, object any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotNilf(t, object, msg, args...)
 }
 
@@ -1198,6 +1588,9 @@ func NotNilf(t TestingT, object any, msg string, args ...any) bool {
 //
 //	assert.NotPanics(t, func(){ RemainCalm() })
 func NotPanics(t TestingT, f PanicTestFunc, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotPanics(t, f, msgAndArgs...)
 }
 
@@ -1206,16 +1599,25 @@ func NotPanics(t TestingT, f PanicTestFunc, msgAndArgs ...any) bool {
 //
 //	assert.NotPanicsf(t, func(){ RemainCalm() }, "error message %s", "formatted")
 func NotPanicsf(t TestingT, f PanicTestFunc, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotPanicsf(t, f, msg, args...)
 }
 
 // NotZero asserts that i is not the zero value for its type.
 func NotZero(t TestingT, i any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotZero(t, i, msgAndArgs...)
 }
 
 // NotZerof asserts that i is not the zero value for its type.
 func NotZerof(t TestingT, i any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.NotZerof(t, i, msg, args...)
 }
 
@@ -1247,6 +1649,9 @@ func ObjectsExportedFieldsAreEqual(expected any, actual any) bool {
 //
 //	assert.Panics(t, func(){ GoCrazy() })
 func Panics(t TestingT, f PanicTestFunc, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Panics(t, f, msgAndArgs...)
 }
 
@@ -1256,6 +1661,9 @@ func Panics(t TestingT, f PanicTestFunc, msgAndArgs ...any) bool {
 //
 //	assert.PanicsWithError(t, "crazy error", func(){ GoCrazy() })
 func PanicsWithError(t TestingT, errString string, f PanicTestFunc, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.PanicsWithError(t, errString, f, msgAndArgs...)
 }
 
@@ -1265,6 +1673,9 @@ func PanicsWithError(t TestingT, errString string, f PanicTestFunc, msgAndArgs .
 //
 //	assert.PanicsWithErrorf(t, "crazy error", func(){ GoCrazy() }, "error message %s", "formatted")
 func PanicsWithErrorf(t TestingT, errString string, f PanicTestFunc, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.PanicsWithErrorf(t, errString, f, msg, args...)
 }
 
@@ -1273,6 +1684,9 @@ func PanicsWithErrorf(t TestingT, errString string, f PanicTestFunc, msg string,
 //
 //	assert.PanicsWithValue(t, "crazy error", func(){ GoCrazy() })
 func PanicsWithValue(t TestingT, expected any, f PanicTestFunc, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.PanicsWithValue(t, expected, f, msgAndArgs...)
 }
 
@@ -1281,6 +1695,9 @@ func PanicsWithValue(t TestingT, expected any, f PanicTestFunc, msgAndArgs ...an
 //
 //	assert.PanicsWithValuef(t, "crazy error", func(){ GoCrazy() }, "error message %s", "formatted")
 func PanicsWithValuef(t TestingT, expected any, f PanicTestFunc, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.PanicsWithValuef(t, expected, f, msg, args...)
 }
 
@@ -1288,6 +1705,9 @@ func PanicsWithValuef(t TestingT, expected any, f PanicTestFunc, msg string, arg
 //
 //	assert.Panicsf(t, func(){ GoCrazy() }, "error message %s", "formatted")
 func Panicsf(t TestingT, f PanicTestFunc, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Panicsf(t, f, msg, args...)
 }
 
@@ -1296,6 +1716,9 @@ func Panicsf(t TestingT, f PanicTestFunc, msg string, args ...any) bool {
 //	assert.Positive(t, 1)
 //	assert.Positive(t, 1.23)
 func Positive(t TestingT, e any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Positive(t, e, msgAndArgs...)
 }
 
@@ -1304,6 +1727,9 @@ func Positive(t TestingT, e any, msgAndArgs ...any) bool {
 //	assert.Positivef(t, 1, "error message %s", "formatted")
 //	assert.Positivef(t, 1.23, "error message %s", "formatted")
 func Positivef(t TestingT, e any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Positivef(t, e, msg, args...)
 }
 
@@ -1311,6 +1737,9 @@ func Positivef(t TestingT, e any, msg string, args ...any) bool {
 //
 //	assert.True(t, myBool)
 func True(t TestingT, value bool, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.True(t, value, msgAndArgs...)
 }
 
@@ -1318,6 +1747,9 @@ func True(t TestingT, value bool, msgAndArgs ...any) bool {
 //
 //	assert.Truef(t, myBool, "error message %s", "formatted")
 func Truef(t TestingT, value bool, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Truef(t, value, msg, args...)
 }
 
@@ -1326,6 +1758,9 @@ func Truef(t TestingT, value bool, msg string, args ...any) bool {
 //
 //	assert.WithinDuration(t, time.Now(), time.Now(), 10*time.Second)
 func WithinDuration(t TestingT, expected time.Time, actual time.Time, delta time.Duration, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.WithinDuration(t, expected, actual, delta, msgAndArgs...)
 }
 
@@ -1334,6 +1769,9 @@ func WithinDuration(t TestingT, expected time.Time, actual time.Time, delta time
 //
 //	assert.WithinDurationf(t, time.Now(), time.Now(), 10*time.Second, "error message %s", "formatted")
 func WithinDurationf(t TestingT, expected time.Time, actual time.Time, delta time.Duration, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.WithinDurationf(t, expected, actual, delta, msg, args...)
 }
 
@@ -1341,6 +1779,9 @@ func WithinDurationf(t TestingT, expected time.Time, actual time.Time, delta tim
 //
 //	assert.WithinRange(t, time.Now(), time.Now().Add(-time.Second), time.Now().Add(time.Second))
 func WithinRange(t TestingT, actual time.Time, start time.Time, end time.Time, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.WithinRange(t, actual, start, end, msgAndArgs...)
 }
 
@@ -1348,25 +1789,40 @@ func WithinRange(t TestingT, actual time.Time, start time.Time, end time.Time, m
 //
 //	assert.WithinRangef(t, time.Now(), time.Now().Add(-time.Second), time.Now().Add(time.Second), "error message %s", "formatted")
 func WithinRangef(t TestingT, actual time.Time, start time.Time, end time.Time, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.WithinRangef(t, actual, start, end, msg, args...)
 }
 
 // YAMLEq asserts that two YAML strings are equivalent.
 func YAMLEq(t TestingT, expected string, actual string, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.YAMLEq(t, expected, actual, msgAndArgs...)
 }
 
 // YAMLEqf asserts that two YAML strings are equivalent.
 func YAMLEqf(t TestingT, expected string, actual string, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.YAMLEqf(t, expected, actual, msg, args...)
 }
 
 // Zero asserts that i is the zero value for its type.
 func Zero(t TestingT, i any, msgAndArgs ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Zero(t, i, msgAndArgs...)
 }
 
 // Zerof asserts that i is the zero value for its type.
 func Zerof(t TestingT, i any, msg string, args ...any) bool {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 	return assert.Zerof(t, i, msg, args...)
 }

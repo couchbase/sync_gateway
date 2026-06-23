@@ -2253,7 +2253,7 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
-	require.NotEqual(t, (*uint64)(nil), respBody.HeapProfileCollectionThreshold)
+	assert.Nil(t, respBody.HeapProfileCollectionThreshold)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
