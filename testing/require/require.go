@@ -9,8 +9,10 @@
 package require
 
 import (
+	"iter"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -25,23 +27,31 @@ type BoolAssertionFunc = require.BoolAssertionFunc
 
 // Generic wrapper functions for functions taking two interface{} arguments:
 
-// Contains asserts that the specified string, list(array, slice...) or map
+// Contains asserts that the specified string, list(array, slice...) or iterator
 // contains the specified substring or element.
 //
 //	require.Contains(t, "Hello World", "World")
 //	require.Contains(t, ["Hello", "World"], "World")
-//	require.Contains(t, {"Hello": "World"}, "Hello")
-func Contains[T1, T2 any](t TestingT, s T1, contains T2, msgAndArgs ...any) {
+//	require.Contains(t, maps.Keys({"Hello": "World"}), "Hello")
+func Contains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		require.Contains(t, slices.Collect(seq), contains, msgAndArgs...)
+		return
+	}
 	require.Contains(t, s, contains, msgAndArgs...)
 }
 
-// Containsf asserts that the specified string, list(array, slice...) or map
+// Containsf asserts that the specified string, list(array, slice...) or iterator
 // contains the specified substring or element.
 //
 //	require.Containsf(t, "Hello World", "World", "error message %s", "formatted")
 //	require.Containsf(t, ["Hello", "World"], "World", "error message %s", "formatted")
-//	require.Containsf(t, {"Hello": "World"}, "Hello", "error message %s", "formatted")
-func Containsf[T1, T2 any](t TestingT, s T1, contains T2, msg string, args ...any) {
+//	require.Containsf(t, maps.Keys({"Hello": "World"}), "Hello", "error message %s", "formatted")
+func Containsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		require.Containsf(t, slices.Collect(seq), contains, msg, args...)
+		return
+	}
 	require.Containsf(t, s, contains, msg, args...)
 }
 
@@ -73,7 +83,7 @@ func ElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, args
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
-func Equal[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func Equal[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.Equal(t, expected, actual, msgAndArgs...)
 }
 
@@ -84,7 +94,7 @@ func Equal[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
-func Equalf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func Equalf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.Equalf(t, expected, actual, msg, args...)
 }
 
@@ -98,7 +108,7 @@ func Equalf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...
 //	 }
 //	 require.EqualExportedValues(t, S{1, 2}, S{1, 3}) => true
 //	 require.EqualExportedValues(t, S{1, 2}, S{2, 3}) => false
-func EqualExportedValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func EqualExportedValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.EqualExportedValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -112,7 +122,7 @@ func EqualExportedValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndA
 //	 }
 //	 require.EqualExportedValuesf(t, S{1, 2}, S{1, 3}, "error message %s", "formatted") => true
 //	 require.EqualExportedValuesf(t, S{1, 2}, S{2, 3}, "error message %s", "formatted") => false
-func EqualExportedValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func EqualExportedValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.EqualExportedValuesf(t, expected, actual, msg, args...)
 }
 
@@ -120,7 +130,7 @@ func EqualExportedValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg st
 // type and equal.
 //
 //	require.EqualValues(t, uint32(123), int32(123))
-func EqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func EqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.EqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -128,21 +138,21 @@ func EqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...a
 // type and equal.
 //
 //	require.EqualValuesf(t, uint32(123), int32(123), "error message %s", "formatted")
-func EqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func EqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.EqualValuesf(t, expected, actual, msg, args...)
 }
 
 // Exactly asserts that two objects are equal in value and type.
 //
 //	require.Exactly(t, int32(123), int64(123))
-func Exactly[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func Exactly[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.Exactly(t, expected, actual, msgAndArgs...)
 }
 
 // Exactlyf asserts that two objects are equal in value and type.
 //
 //	require.Exactlyf(t, int32(123), int64(123), "error message %s", "formatted")
-func Exactlyf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func Exactlyf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.Exactlyf(t, expected, actual, msg, args...)
 }
 
@@ -151,7 +161,7 @@ func Exactlyf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args .
 //	require.Greater(t, 2, 1)
 //	require.Greater(t, float64(2), float64(1))
 //	require.Greater(t, "b", "a")
-func Greater[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
+func Greater[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) {
 	require.Greater(t, e1, e2, msgAndArgs...)
 }
 
@@ -160,7 +170,7 @@ func Greater[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
 //	require.Greaterf(t, 2, 1, "error message %s", "formatted")
 //	require.Greaterf(t, float64(2), float64(1), "error message %s", "formatted")
 //	require.Greaterf(t, "b", "a", "error message %s", "formatted")
-func Greaterf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
+func Greaterf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) {
 	require.Greaterf(t, e1, e2, msg, args...)
 }
 
@@ -171,7 +181,7 @@ func Greaterf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
 //	require.GreaterOrEqual(t, 2, 2)
 //	require.GreaterOrEqual(t, "b", "a")
 //	require.GreaterOrEqual(t, "b", "b")
-func GreaterOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
+func GreaterOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) {
 	require.GreaterOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -182,7 +192,7 @@ func GreaterOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
 //	require.GreaterOrEqualf(t, 2, 2, "error message %s", "formatted")
 //	require.GreaterOrEqualf(t, "b", "a", "error message %s", "formatted")
 //	require.GreaterOrEqualf(t, "b", "b", "error message %s", "formatted")
-func GreaterOrEqualf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
+func GreaterOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) {
 	require.GreaterOrEqualf(t, e1, e2, msg, args...)
 }
 
@@ -219,7 +229,7 @@ func IsTypef[T1, T2 any](t TestingT, expectedType T1, object T2, msg string, arg
 //	require.Less(t, 1, 2)
 //	require.Less(t, float64(1), float64(2))
 //	require.Less(t, "a", "b")
-func Less[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
+func Less[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) {
 	require.Less(t, e1, e2, msgAndArgs...)
 }
 
@@ -228,7 +238,7 @@ func Less[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
 //	require.Lessf(t, 1, 2, "error message %s", "formatted")
 //	require.Lessf(t, float64(1), float64(2), "error message %s", "formatted")
 //	require.Lessf(t, "a", "b", "error message %s", "formatted")
-func Lessf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
+func Lessf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) {
 	require.Lessf(t, e1, e2, msg, args...)
 }
 
@@ -239,7 +249,7 @@ func Lessf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
 //	require.LessOrEqual(t, 2, 2)
 //	require.LessOrEqual(t, "a", "b")
 //	require.LessOrEqual(t, "b", "b")
-func LessOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
+func LessOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) {
 	require.LessOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -250,27 +260,35 @@ func LessOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) {
 //	require.LessOrEqualf(t, 2, 2, "error message %s", "formatted")
 //	require.LessOrEqualf(t, "a", "b", "error message %s", "formatted")
 //	require.LessOrEqualf(t, "b", "b", "error message %s", "formatted")
-func LessOrEqualf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) {
+func LessOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) {
 	require.LessOrEqualf(t, e1, e2, msg, args...)
 }
 
-// NotContains asserts that the specified string, list(array, slice...) or map
+// NotContains asserts that the specified string, list(array, slice...) or iterator
 // does NOT contain the specified substring or element.
 //
 //	require.NotContains(t, "Hello World", "Earth")
 //	require.NotContains(t, ["Hello", "World"], "Earth")
-//	require.NotContains(t, {"Hello": "World"}, "Earth")
-func NotContains[T1, T2 any](t TestingT, s T1, contains T2, msgAndArgs ...any) {
+//	require.NotContains(t, maps.Keys({"Hello": "World"}), "Earth")
+func NotContains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		require.NotContains(t, slices.Collect(seq), contains, msgAndArgs...)
+		return
+	}
 	require.NotContains(t, s, contains, msgAndArgs...)
 }
 
-// NotContainsf asserts that the specified string, list(array, slice...) or map
+// NotContainsf asserts that the specified string, list(array, slice...) or iterator
 // does NOT contain the specified substring or element.
 //
 //	require.NotContainsf(t, "Hello World", "Earth", "error message %s", "formatted")
 //	require.NotContainsf(t, ["Hello", "World"], "Earth", "error message %s", "formatted")
-//	require.NotContainsf(t, {"Hello": "World"}, "Earth", "error message %s", "formatted")
-func NotContainsf[T1, T2 any](t TestingT, s T1, contains T2, msg string, args ...any) {
+//	require.NotContainsf(t, maps.Keys({"Hello": "World"}), "Earth", "error message %s", "formatted")
+func NotContainsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		require.NotContainsf(t, slices.Collect(seq), contains, msg, args...)
+		return
+	}
 	require.NotContainsf(t, s, contains, msg, args...)
 }
 
@@ -311,7 +329,7 @@ func NotElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, a
 //
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
-func NotEqual[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func NotEqual[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.NotEqual(t, expected, actual, msgAndArgs...)
 }
 
@@ -319,7 +337,7 @@ func NotEqual[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any)
 // the same type
 //
 //	require.NotEqualValues(t, obj1, obj2)
-func NotEqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func NotEqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.NotEqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -327,7 +345,7 @@ func NotEqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs .
 // to the same type
 //
 //	require.NotEqualValuesf(t, obj1, obj2, "error message %s", "formatted")
-func NotEqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func NotEqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.NotEqualValuesf(t, expected, actual, msg, args...)
 }
 
@@ -337,7 +355,7 @@ func NotEqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string,
 //
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
-func NotEqualf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func NotEqualf[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.NotEqualf(t, expected, actual, msg, args...)
 }
 
@@ -379,7 +397,7 @@ func NotRegexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) 
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func NotSame[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func NotSame[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.NotSame(t, expected, actual, msgAndArgs...)
 }
 
@@ -389,7 +407,7 @@ func NotSame[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) 
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func NotSamef[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func NotSamef[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.NotSamef(t, expected, actual, msg, args...)
 }
 
@@ -441,7 +459,7 @@ func Regexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) {
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func Same[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
+func Same[T any](t TestingT, expected T, actual T, msgAndArgs ...any) {
 	require.Same(t, expected, actual, msgAndArgs...)
 }
 
@@ -451,7 +469,7 @@ func Same[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) {
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func Samef[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) {
+func Samef[T any](t TestingT, expected T, actual T, msg string, args ...any) {
 	require.Samef(t, expected, actual, msg, args...)
 }
 
@@ -482,60 +500,60 @@ func Subsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...any
 // InDelta asserts that the two numerals are within delta of each other.
 //
 //	require.InDelta(t, math.Pi, 22/7.0, 0.01)
-func InDelta[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) {
+func InDelta[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) {
 	require.InDelta(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlice is the same as InDelta, except it compares two slices.
-func InDeltaSlice[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) {
+func InDeltaSlice[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) {
 	require.InDeltaSlice(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlicef is the same as InDelta, except it compares two slices.
-func InDeltaSlicef[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) {
+func InDeltaSlicef[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) {
 	require.InDeltaSlicef(t, expected, actual, delta, msg, args...)
 }
 
 // InDeltaf asserts that the two numerals are within delta of each other.
 //
 //	require.InDeltaf(t, math.Pi, 22/7.0, 0.01, "error message %s", "formatted")
-func InDeltaf[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) {
+func InDeltaf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) {
 	require.InDeltaf(t, expected, actual, delta, msg, args...)
 }
 
 // InDeltaMapValues is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
-func InDeltaMapValues[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) {
+func InDeltaMapValues[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) {
 	require.InDeltaMapValues(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaMapValuesf is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
-func InDeltaMapValuesf[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) {
+func InDeltaMapValuesf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) {
 	require.InDeltaMapValuesf(t, expected, actual, delta, msg, args...)
 }
 
 // InEpsilon asserts that expected and actual have a relative error less than
 // epsilon
-func InEpsilon[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msgAndArgs ...any) {
+func InEpsilon[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) {
 	require.InEpsilon(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlice is the same as InEpsilon, except it compares each value from
 // two slices.
-func InEpsilonSlice[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msgAndArgs ...any) {
+func InEpsilonSlice[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) {
 	require.InEpsilonSlice(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlicef is the same as InEpsilon, except it compares each value from
 // two slices.
-func InEpsilonSlicef[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msg string, args ...any) {
+func InEpsilonSlicef[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) {
 	require.InEpsilonSlicef(t, expected, actual, epsilon, msg, args...)
 }
 
 // InEpsilonf asserts that expected and actual have a relative error less than
 // epsilon
-func InEpsilonf[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msg string, args ...any) {
+func InEpsilonf[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) {
 	require.InEpsilonf(t, expected, actual, epsilon, msg, args...)
 }
 

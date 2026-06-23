@@ -1208,7 +1208,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	//    receives sequence 6, last seq 13
 	switch len(changes.Results) {
 	case 0:
-		assert.Equal(t, "5::12", changes.Last_Seq)
+		assert.Equal[any](t, "5::12", changes.Last_Seq)
 	case 1:
 		switch changes.Last_Seq.String() {
 		case "5::13":

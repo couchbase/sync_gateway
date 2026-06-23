@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -932,7 +933,7 @@ func TestAttachmentGetReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.Equal(t, "bar", body["foo"])
-		assert.Contains(t, body[db.BodyAttachments], "hello.txt")
+		assert.Contains(t, maps.Keys(body[db.BodyAttachments].(map[string]any)), "hello.txt")
 	} else {
 		RequireStatus(t, response, http.StatusNotImplemented)
 	}
@@ -961,8 +962,8 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 			attachments := body[db.BodyAttachments].(map[string]any)
 			attachment1 := attachments["attach1"].(map[string]any)
 			assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", attachment1["digest"])
-			assert.Equal(t, float64(30), attachment1["length"])
-			assert.Equal(t, float64(2), attachment1["revpos"])
+			assert.Equal[any](t, float64(30), attachment1["length"])
+			assert.Equal[any](t, float64(2), attachment1["revpos"])
 			assert.True(t, attachment1["stub"].(bool))
 			assert.Equal(t, "content/type", attachment1["content_type"])
 		}
@@ -2092,7 +2093,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 			err := base.JSONUnmarshal(resp.BodyBytes(), &doc1)
 			assert.NoError(t, err)
-			require.Contains(t, doc1.Attachments, "hello.txt")
+			require.Contains(t, maps.Keys(doc1.Attachments), "hello.txt")
 			require.Equal(t, db.DocAttachment{
 				Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
 				Length: 11,
@@ -2109,7 +2110,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 
 			err = base.JSONUnmarshal(resp.BodyBytes(), &doc2)
 			assert.NoError(t, err)
-			require.NotContains(t, doc2.Attachments, "hello.txt")
+			require.NotContains(t, maps.Keys(doc2.Attachments), "hello.txt")
 
 			// Now remove the attachment in the losing rev by deleting the revision and ensure the attachment gets deleted
 			rt.DeleteDoc(docID, losingVersion3)
@@ -2853,8 +2854,8 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	// get xattrs, remove the global xattr and move attachments back to sync data in the bucket
 	xattrs, cas, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 
 	var bucketSyncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))

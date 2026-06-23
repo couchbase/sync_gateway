@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -178,8 +179,8 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
-		require.Contains(t, body, db.BodyId)
-		require.Contains(t, body, db.BodyRev)
+		require.Contains(t, maps.Keys(body), db.BodyId)
+		require.Contains(t, maps.Keys(body), db.BodyRev)
 
 		event := r.URL.Query().Get("event")
 		switch event {

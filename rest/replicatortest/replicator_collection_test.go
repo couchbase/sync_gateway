@@ -213,7 +213,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 						var docBody db.Body
 						require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 						assert.Equal(t, "passive", docBody["source"])
-						assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
+						assert.Equal[any](t, remoteCollection, docBody["sourceKeyspace"])
 					}
 
 					// check rt2 for active docs (push)
@@ -224,7 +224,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 						var docBody db.Body
 						require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 						assert.Equal(t, "active", docBody["source"])
-						assert.Equal(t, localCollection, docBody["sourceKeyspace"])
+						assert.Equal[any](t, localCollection, docBody["sourceKeyspace"])
 					}
 				}
 			}
@@ -285,7 +285,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 					var docBody db.Body
 					require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 					assert.Equal(t, "passive", docBody["source"])
-					assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
+					assert.Equal[any](t, remoteCollection, docBody["sourceKeyspace"])
 				}
 
 				// check rt2 for active docs (push)
@@ -295,7 +295,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 					var docBody db.Body
 					require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 					assert.Equal(t, "active", docBody["source"])
-					assert.Equal(t, localCollection, docBody["sourceKeyspace"])
+					assert.Equal[any](t, localCollection, docBody["sourceKeyspace"])
 				}
 			}
 

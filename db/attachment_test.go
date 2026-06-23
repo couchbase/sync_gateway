@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -703,7 +704,7 @@ func TestStoreAttachments(t *testing.T) {
 	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
 	assert.Equal(t, 8, attachment["encoded_length"])
 	assert.Equal(t, "utf-8", attachment["encoding"])
-	assert.Equal(t, float64(12), attachment["length"])
+	assert.Equal[any](t, float64(12), attachment["length"])
 	assert.NotEmpty(t, attachment["revpos"])
 	assert.True(t, attachment["stub"].(bool))
 
@@ -927,7 +928,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// It will be stamped in for 1.x clients that require it further up the stack.
 		body1, err := rev.Body()
 		require.NoError(t, err)
-		require.NotContains(t, body1, BodyAttachments)
+		require.NotContains(t, maps.Keys(body1), BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
 		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
@@ -992,7 +993,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		// It will be stamped in for 1.x clients that require it further up the stack.
 		body1, err := rev.Body()
 		require.NoError(t, err)
-		require.NotContains(t, body1, BodyAttachments)
+		require.NotContains(t, maps.Keys(body1), BodyAttachments)
 
 		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
 		require.Empty(t, GetRawSyncXattr(t, collection.dataStore, docKey).AttachmentsPre4dot0)
@@ -1141,7 +1142,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	// It will be stamped in for 1.x clients that require it further up the stack.
 	body1, err := rev.Body()
 	require.NoError(t, err)
-	require.NotContains(t, body1, BodyAttachments)
+	require.NotContains(t, maps.Keys(body1), BodyAttachments)
 
 	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
 	require.Equal(t, AttachmentsMeta{
@@ -1288,7 +1289,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	// It will be stamped in for 1.x clients that require it further up the stack.
 	body1, err := rev.Body()
 	require.NoError(t, err)
-	require.NotContains(t, body1, BodyAttachments)
+	require.NotContains(t, maps.Keys(body1), BodyAttachments)
 }
 
 func TestAllowedAttachments(t *testing.T) {

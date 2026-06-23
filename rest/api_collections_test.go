@@ -208,8 +208,8 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 		body := rt.GetDocBodyFromKeyspace(keyspace, "doc1")
 		assert.Equal(t, "bar", body["foo"])
 		assert.Equal(t, "doc1", body["_id"])
-		assert.Equal(t, version.RevTreeID, body["_rev"])
-		assert.Equal(t, version.CV.String(), body["_cv"])
+		assert.Equal[any](t, version.RevTreeID, body["_rev"])
+		assert.Equal[any](t, version.CV.String(), body["_cv"])
 	}
 }
 

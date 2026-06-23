@@ -133,7 +133,7 @@ func TestRedactableError_IsAs(t *testing.T) {
 		// errors.As extracts inner, still satisfies Redactor
 		var target *RedactableError
 		require.True(t, errors.As(outer, &target))
-		require.NotSame(t, outer, target)
+		require.NotSame[any](t, outer, target)
 
 		// Unwrapped inner still redacts
 		var r Redactor = target

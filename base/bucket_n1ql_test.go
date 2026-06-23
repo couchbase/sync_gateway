@@ -305,7 +305,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	// Attempt to create duplicate, validate duplicate error
 	duplicateErr := n1qlStore.CreateIndex(ctx, "testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
-	assert.Equal(t, ErrAlreadyExists, duplicateErr)
+	assert.Equal[error](t, ErrAlreadyExists, duplicateErr)
 
 	// Drop the index
 	err = n1qlStore.DropIndex(ctx, "testIndexDuplicateSequence")

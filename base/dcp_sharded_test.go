@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -1001,9 +1002,9 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 				assert.Fail(t, "no event received")
 			}
-			assert.Contains(t, receivedEventA, key1)
+			assert.Contains(t, maps.Keys(receivedEventA), key1)
 			assert.Equal(t, receivedEventA[key1], casA)
-			assert.Contains(t, receivedEventA, key2)
+			assert.Contains(t, maps.Keys(receivedEventA), key2)
 			assert.Equal(t, receivedEventA[key2], casB)
 		}, waitTime, 10*time.Millisecond)
 
@@ -1017,9 +1018,9 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 				assert.Fail(t, "no event received")
 			}
-			assert.Contains(t, receivedEventB, key1)
+			assert.Contains(t, maps.Keys(receivedEventB), key1)
 			assert.Equal(t, receivedEventB[key1], casA)
-			assert.Contains(t, receivedEventB, key2)
+			assert.Contains(t, maps.Keys(receivedEventB), key2)
 			assert.Equal(t, receivedEventB[key2], casB)
 		}, waitTime, 10*time.Millisecond)
 	})
@@ -1175,19 +1176,19 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 			}
 			// Node A should see all 4 keys created with correct CAS and no errors
-			assert.Contains(collectT, receivedEventsA, key1)
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key1)
 			assert.Equal(collectT, casA1, receivedEventsA[key1])
 			assert.NoError(collectT, receivedErrorsA[key1])
 
-			assert.Contains(collectT, receivedEventsA, key2)
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key2)
 			assert.Equal(collectT, casA2Initial, receivedEventsA[key2])
 			assert.NoError(collectT, receivedErrorsA[key2])
 
-			assert.Contains(collectT, receivedEventsA, key3)
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key3)
 			assert.Equal(collectT, casA3, receivedEventsA[key3])
 			assert.NoError(collectT, receivedErrorsA[key3])
 
-			assert.Contains(collectT, receivedEventsA, key4)
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key4)
 			assert.Equal(collectT, casB4, receivedEventsA[key4])
 			assert.NoError(collectT, receivedErrorsA[key4])
 		}, waitTime, 10*time.Millisecond)
@@ -1203,19 +1204,19 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 			}
 			// Node B should see all 4 keys created with correct CAS and no errors
-			assert.Contains(collectT, receivedEventsB, key1)
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key1)
 			assert.Equal(collectT, casA1, receivedEventsB[key1])
 			assert.NoError(collectT, receivedErrorsB[key1])
 
-			assert.Contains(collectT, receivedEventsB, key2)
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key2)
 			assert.Equal(collectT, casA2Initial, receivedEventsB[key2])
 			assert.NoError(collectT, receivedErrorsB[key2])
 
-			assert.Contains(collectT, receivedEventsB, key3)
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key3)
 			assert.Equal(collectT, casA3, receivedEventsB[key3])
 			assert.NoError(collectT, receivedErrorsB[key3])
 
-			assert.Contains(collectT, receivedEventsB, key4)
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key4)
 			assert.Equal(collectT, casB4, receivedEventsB[key4])
 			assert.NoError(collectT, receivedErrorsB[key4])
 		}, waitTime, 10*time.Millisecond)
@@ -1244,15 +1245,15 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 				receivedErrorsA[event.Key] = event.Error
 			default:
 			}
-			assert.Contains(collectT, receivedEventsA, key1, "Node A should detect key1 update from Node B")
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key1, "Node A should detect key1 update from Node B")
 			assert.Equal(collectT, casB1Updated, receivedEventsA[key1], "Node A should have updated CAS for key1")
 			assert.NoError(collectT, receivedErrorsA[key1], "Node A should have no error for key1")
 
-			assert.Contains(collectT, receivedEventsA, key2, "Node A should detect key2 update")
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key2, "Node A should detect key2 update")
 			assert.Equal(collectT, casA2Updated, receivedEventsA[key2], "Node A should have updated CAS for key2")
 			assert.NoError(collectT, receivedErrorsA[key2], "Node A should have no error for key2")
 
-			assert.Contains(collectT, receivedEventsA, key3, "Node A should detect key3 deletion")
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key3, "Node A should detect key3 deletion")
 			assert.Equal(collectT, delCas, receivedEventsA[key3], "Node A should have CAS=0 for deleted key3")
 			assert.NoError(collectT, receivedErrorsA[key3], "Node A should have no error for key3 deletion")
 		}, waitTime, 10*time.Millisecond)
@@ -1267,15 +1268,15 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 				receivedErrorsB[event.Key] = event.Error
 			default:
 			}
-			assert.Contains(collectT, receivedEventsB, key1, "Node B should detect key1 update")
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key1, "Node B should detect key1 update")
 			assert.Equal(collectT, casB1Updated, receivedEventsB[key1], "Node B should have updated CAS for key1")
 			assert.NoError(collectT, receivedErrorsB[key1], "Node B should have no error for key1")
 
-			assert.Contains(collectT, receivedEventsB, key2, "Node B should detect key2 update from Node A")
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key2, "Node B should detect key2 update from Node A")
 			assert.Equal(collectT, casA2Updated, receivedEventsB[key2], "Node B should have updated CAS for key2")
 			assert.NoError(collectT, receivedErrorsB[key2], "Node B should have no error for key2")
 
-			assert.Contains(collectT, receivedEventsB, key3, "Node B should detect key3 deletion from Node A")
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key3, "Node B should detect key3 deletion from Node A")
 			assert.Equal(collectT, delCas, receivedEventsB[key3], "Node B should have CAS=0 for deleted key3")
 			assert.NoError(collectT, receivedErrorsB[key3], "Node B should have no error for key3 deletion")
 		}, waitTime, 10*time.Millisecond)
@@ -1330,7 +1331,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 			}
 			// Eventually should converge to final CAS
-			assert.Contains(collectT, receivedEventsA, key)
+			assert.Contains(collectT, maps.Keys(receivedEventsA), key)
 			assert.Equal(collectT, finalCas, receivedEventsA[key], "Node A should converge to final CAS")
 		}, waitTime, 10*time.Millisecond)
 
@@ -1345,7 +1346,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			default:
 			}
 			// Eventually should converge to final CAS
-			assert.Contains(collectT, receivedEventsB, key)
+			assert.Contains(collectT, maps.Keys(receivedEventsB), key)
 			assert.Equal(collectT, finalCas, receivedEventsB[key], "Node B should converge to final CAS")
 		}, waitTime, 10*time.Millisecond)
 

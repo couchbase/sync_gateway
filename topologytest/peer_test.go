@@ -606,7 +606,7 @@ func TestPeerImplementation(t *testing.T) {
 				require.NoError(t, err)
 				require.NotEmpty(t, xattrs)
 				if tc.peerOption.Type == PeerTypeCouchbaseServer {
-					require.Contains(t, xattrs, dummySystemXattr)
+					require.Contains(t, maps.Keys(xattrs), dummySystemXattr)
 				}
 			}
 

@@ -13,6 +13,7 @@ package metadatamigrationtest
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -1112,7 +1113,7 @@ func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
 				sourceDocs[key] = docSnapshot{body: body, syncXattr: xattrs[base.SyncXattrName]}
 			}
 			// Registry plus the db's config doc must always be present and migrated.
-			require.Contains(t, sourceDocs, base.SGRegistryKey)
+			require.Contains(t, maps.Keys(sourceDocs), base.SGRegistryKey)
 			require.GreaterOrEqual(t, len(sourceDocs), 2, "expected at least the registry and one dbconfig doc to migrate")
 
 			// Drive the migration to completion.

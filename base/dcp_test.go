@@ -288,7 +288,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			// Verify single index exists, and matches expected naming
 			_, indexDefsMap, err := context.Manager.GetIndexDefs(true)
 			require.NoError(t, err)
-			require.Contains(t, indexDefsMap, tc.expectedIndexName)
+			require.Contains(t, maps.Keys(indexDefsMap), tc.expectedIndexName)
 			indexDef := indexDefsMap[tc.expectedIndexName]
 
 			assert.False(t, strings.Contains(indexDef.SourceParams, "authUser"), "sourceParams should not include authUser")
@@ -375,7 +375,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	// Verify single index defined (acts as upsert to existing)
 	_, indexDefsMap, err = context.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
-	require.Contains(t, indexDefsMap, legacyIndexName)
+	require.Contains(t, maps.Keys(indexDefsMap), legacyIndexName)
 }
 
 func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {

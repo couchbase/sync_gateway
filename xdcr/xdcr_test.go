@@ -9,11 +9,10 @@
 package xdcr
 
 import (
+	"maps"
 	"slices"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/maps"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -97,12 +96,12 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 		}, time.Second*5, time.Millisecond*100)
 		require.Equal(t, docCas[doc], cas)
 		require.JSONEq(t, startingBody, string(body))
-		require.NotContains(t, xattrs, base.MouXattrName)
+		require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
 		if !base.TestSupportsMobileXDCR() {
 			require.Len(t, xattrs, 0)
 			continue
 		}
-		require.Contains(t, xattrs, base.VvXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 		requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, cas)
 	}
 
@@ -264,12 +263,12 @@ func TestReplicateVV(t *testing.T) {
 			require.NoError(t, err, "Could not get doc %s", testCase.docID)
 			require.Equal(t, fromCAS, destCas)
 			require.JSONEq(t, testCase.body, string(body))
-			require.NotContains(t, xattrs, base.MouXattrName)
+			require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
 			if !testCase.hasHLV {
-				require.NotContains(t, xattrs, base.VvXattrName)
+				require.NotContains(t, maps.Keys(xattrs), base.VvXattrName)
 				return
 			}
-			require.Contains(t, xattrs, base.VvXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 
 			var hlv db.HybridLogicalVector
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
@@ -308,7 +307,7 @@ func TestVVWriteTwice(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCAS2, destCas)
 	require.JSONEq(t, `{"ver":2}`, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS2)
 }
 
@@ -333,8 +332,8 @@ func TestVVObeyMou(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCas1, destCas)
 	require.JSONEq(t, hlvAgent.GetHelperBody(), string(body))
-	require.NotContains(t, xattrs, base.MouXattrName)
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	var vv db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	expectedVV := db.HybridLogicalVector{
@@ -383,9 +382,9 @@ func TestVVObeyMou(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCas1, destCas)
 	require.JSONEq(t, hlvAgent.GetHelperBody(), string(body))
-	require.NotContains(t, xattrs, base.MouXattrName)
-	require.Contains(t, xattrs, base.VvXattrName)
-	require.NotContains(t, xattrs, userXattrKey)
+	require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
+	require.NotContains(t, maps.Keys(xattrs), userXattrKey)
 	vv = db.HybridLogicalVector{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	require.Equal(t, expectedVV, vv)
@@ -420,8 +419,8 @@ func TestVVMouImport(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCas1, destCas)
 	require.JSONEq(t, ver1Body, string(body))
-	require.NotContains(t, xattrs, base.MouXattrName)
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	var vv db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	expectedVV := db.HybridLogicalVector{
@@ -488,14 +487,14 @@ func TestVVMouImport(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCas3, destCas)
 	require.JSONEq(t, ver3Body, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	vv = db.HybridLogicalVector{}
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &vv))
 	require.Equal(t, db.HybridLogicalVector{
 		CurrentVersionCAS: fromCas3,
 		SourceID:          fromBucketSourceID,
 		Version:           fromCas3}, vv)
-	require.Contains(t, xattrs, base.MouXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.MouXattrName)
 	var actualMou *db.MetadataOnlyUpdate
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &actualMou))
 	// it is weird that couchbase server XDCR doesn't clear _mou but only _mou.cas and _mou.pRev but this is not a problem since eventing and couchbase server read _mou.cas to determine if _mou should be used
@@ -524,7 +523,7 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCAS, destCas)
 	require.JSONEq(t, ver1Body, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
 	// write to dest bucket again
@@ -535,7 +534,7 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, toCas2, destCas)
 	require.JSONEq(t, `{"ver":3}`, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 }
 
@@ -623,7 +622,7 @@ func TestReplicateXattrs(t *testing.T) {
 			}()
 			requireWaitForXDCRDocsProcessed(t, xdcr, 1+totalDocsProcessed)
 
-			allXattrKeys := slices.Concat(maps.Keys(testCase.startingSourceXattrs), maps.Keys(testCase.finalXattrs))
+			allXattrKeys := slices.Concat(slices.Collect(maps.Keys(testCase.startingSourceXattrs)), slices.Collect(maps.Keys(testCase.finalXattrs)))
 			_, xattrs, destCas, err := toDs.GetWithXattrs(ctx, docID, allXattrKeys)
 			require.NoError(t, err)
 			require.Equal(t, fromCas, destCas)
@@ -658,8 +657,8 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	// get xattrs, remove the global xattr and move attachments back to sync data in the bucket
 	xattrs, cas, err := srcColl.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 
 	var bucketSyncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
@@ -754,7 +753,7 @@ func TestVVMultiActor(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, toCAS, destCas)
 	require.JSONEq(t, `{"ver":2}`, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS)
 	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
@@ -771,7 +770,7 @@ func TestVVMultiActor(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, toCAS2, destCas)
 	require.JSONEq(t, `{"ver":3}`, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS2)
 	requirePV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 
@@ -788,7 +787,7 @@ func TestVVMultiActor(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fromCAS2, destCas)
 	require.JSONEq(t, `{"ver":4}`, string(body))
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS2)
 	requirePV(t, xattrs[base.VvXattrName], toBucketSourceID, toCAS2)
 

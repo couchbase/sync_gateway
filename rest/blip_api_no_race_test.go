@@ -78,7 +78,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 		// and wait for a few to be done before we proceed with updating database config underneath replication
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			changes := rt.GetChanges("/{{.keyspace}}/_changes", "")
-			assert.GreaterOrEqual(c, 5, changes.Results)
+			assert.GreaterOrEqual(c, len(changes.Results), 5)
 		}, time.Second*5, time.Millisecond*100)
 
 		// just change the sync function to cause the database to reload

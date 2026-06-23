@@ -30,16 +30,16 @@ import (
 )
 
 func TestFixJSONNumbers(t *testing.T) {
-	assert.Equal(t, 1, FixJSONNumbers(1))
-	assert.Equal(t, float64(1.23), FixJSONNumbers(float64(1.23)))
-	assert.Equal(t, int64(123456), FixJSONNumbers(float64(123456)))
-	assert.Equal(t, int64(123456789), FixJSONNumbers(float64(123456789)))
-	assert.Equal(t, float64(12345678901234567890), FixJSONNumbers(float64(12345678901234567890)))
+	assert.Equal[any](t, 1, FixJSONNumbers(1))
+	assert.Equal[any](t, float64(1.23), FixJSONNumbers(float64(1.23)))
+	assert.Equal[any](t, int64(123456), FixJSONNumbers(float64(123456)))
+	assert.Equal[any](t, int64(123456789), FixJSONNumbers(float64(123456789)))
+	assert.Equal[any](t, float64(12345678901234567890), FixJSONNumbers(float64(12345678901234567890)))
 
 	assert.Equal(t, "foo", FixJSONNumbers("foo"))
-	assert.Equal(t, []any{1, int64(123456)}, FixJSONNumbers([]any{1, float64(123456)}))
+	assert.Equal[any](t, []any{1, int64(123456)}, FixJSONNumbers([]any{1, float64(123456)}))
 
-	assert.Equal(t, map[string]any{"foo": int64(123456)}, FixJSONNumbers(map[string]any{"foo": float64(123456)}))
+	assert.Equal[any](t, map[string]any{"foo": int64(123456)}, FixJSONNumbers(map[string]any{"foo": float64(123456)}))
 
 }
 

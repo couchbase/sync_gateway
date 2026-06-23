@@ -12,6 +12,7 @@ package rest
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -43,9 +44,9 @@ func TestRosmarManagementAPI(t *testing.T) {
 		RequireStatus(t, resp, http.StatusOK)
 		var body map[string]base.CollectionNames
 		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
-		assert.Contains(t, body, bucketName)
+		assert.Contains(t, maps.Keys(body), bucketName)
 		// Should have default scope/collection at least
-		assert.Contains(t, body[bucketName], base.DefaultScope)
+		assert.Contains(t, maps.Keys(body[bucketName]), base.DefaultScope)
 	})
 
 	// DELETE scope
@@ -62,8 +63,8 @@ func TestRosmarManagementAPI(t *testing.T) {
 		resp := rt.SendAdminRequest(http.MethodGet, "/_rosmar/", "")
 		var body map[string]base.CollectionNames
 		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
-		assert.Contains(t, body, bucketName)
-		assert.Contains(t, body[bucketName], scopeName)
+		assert.Contains(t, maps.Keys(body), bucketName)
+		assert.Contains(t, maps.Keys(body[bucketName]), scopeName)
 
 		// DELETE /_rosmar/bucket.scope
 		resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/_rosmar/%s.%s", bucketName, scopeName), "")
@@ -72,7 +73,7 @@ func TestRosmarManagementAPI(t *testing.T) {
 		// Verify it's gone
 		resp = rt.SendAdminRequest(http.MethodGet, "/_rosmar/", "")
 		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
-		assert.NotContains(t, body[bucketName], scopeName)
+		assert.NotContains(t, maps.Keys(body[bucketName]), scopeName)
 	})
 
 	// DELETE collection

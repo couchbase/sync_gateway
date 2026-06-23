@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -928,7 +929,7 @@ func waitAndRequireDBState(t *testing.T, sc *rest.ServerContext, dbName string, 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr as sync data")
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr db.SyncData
 	require.NoError(t, json.Unmarshal(xattrs[base.SyncXattrName], &xattr), "Error unmarshalling sync data")
 	channel, ok := xattr.Channels[channelName]

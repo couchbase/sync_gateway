@@ -11,6 +11,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -235,7 +236,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if version.CV.IsEmpty() {
 			return
 		}
-		if !assert.Contains(c, body, db.BodyCV) {
+		if !assert.Contains(c, maps.Keys(body), db.BodyCV) {
 			return
 		}
 		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
@@ -545,7 +546,7 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	require.NotEmpty(rt.TB(), attachmentBody)
 	var rawBody db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal([]byte(body), &rawBody))
-	require.NotContains(rt.TB(), rawBody, db.BodyAttachments)
+	require.NotContains(rt.TB(), maps.Keys(rawBody), db.BodyAttachments)
 	rawBody[db.BodyAttachments] = map[string]any{
 		attachmentName: map[string]any{"data": attachmentBody},
 	}

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"strconv"
@@ -539,7 +540,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	rawVal, xattrs, getCas, err := dataStore.GetWithXattrs(ctx, key, []string{xattrName})
 	require.NoError(t, err)
 
-	require.Contains(t, xattrs, xattrName)
+	require.Contains(t, maps.Keys(xattrs), xattrName)
 	marshalledXattr, ok := xattrs[xattrName]
 	require.True(t, ok)
 	var retrievedVal map[string]any
@@ -740,7 +741,7 @@ func TestMultiXattrRoundtrip(t *testing.T) {
 	if dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
 		require.NoError(t, err)
 		for _, key := range xattrKeys {
-			require.Contains(t, xattrs, key)
+			require.Contains(t, maps.Keys(xattrs), key)
 			require.JSONEq(t, string(inputXattrs[key]), string(xattrs[key]))
 		}
 	} else {
@@ -1009,8 +1010,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	require.Equal(t, insertCas, cas)
 
 	log.Printf("Retrieval after WriteUpdate insert: doc: %v, xattr: %v", retrievedVal, retrievedXattr)
-	assert.Equal(t, float64(1), retrievedVal["counter"])
-	assert.Equal(t, float64(1), retrievedXattr["seq"])
+	assert.Equal[any](t, float64(1), retrievedVal["counter"])
+	assert.Equal[any](t, float64(1), retrievedXattr["seq"])
 
 	// Update
 	updateCas, err := dataStore.WriteUpdateWithXattrs(ctx, key, []string{xattrName}, 0, nil, nil, writeUpdateFunc)
@@ -1026,8 +1027,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	require.NoError(t, JSONUnmarshal(rawVal, &retrievedVal))
 	log.Printf("Retrieval after WriteUpdate update: doc: %v, xattr: %v", retrievedVal, retrievedXattr)
 
-	assert.Equal(t, float64(2), retrievedVal["counter"])
-	assert.Equal(t, float64(2), retrievedXattr["seq"])
+	assert.Equal[any](t, float64(2), retrievedVal["counter"])
+	assert.Equal[any](t, float64(2), retrievedXattr["seq"])
 
 }
 
@@ -1100,7 +1101,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	_, err = dataStore.Get(ctx, key, &gotBody)
 	assert.NoError(t, err)
 
-	assert.Equal(t, userXattrVal, gotBody["userXattrVal"])
+	assert.Equal[any](t, userXattrVal, gotBody["userXattrVal"])
 }
 
 func TestWriteUpdateDeleteXattr(t *testing.T) {
@@ -1204,7 +1205,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, 0, len(retrievedVal))
 	require.NoError(t, JSONUnmarshal(xattrs[xattrName], &retrievedXattr))
-	assert.Equal(t, float64(123), retrievedXattr["seq"])
+	assert.Equal[any](t, float64(123), retrievedXattr["seq"])
 
 }
 
@@ -1247,7 +1248,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	assert.Len(t, retrievedVal, 0)
 	assert.Equal(t, 0, len(retrievedVal))
 	require.NoError(t, JSONUnmarshal(xattrs[xattrName], &retrievedXattr))
-	assert.Equal(t, float64(1), retrievedXattr["seq"])
+	assert.Equal[any](t, float64(1), retrievedXattr["seq"])
 	log.Printf("Post-delete xattr (1): %s", retrievedXattr)
 	log.Printf("Post-delete cas (1): %x", getCas)
 
@@ -1266,7 +1267,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	require.Nil(t, postDeleteVal)
 	require.NoError(t, JSONUnmarshal(postDeleteXattrBytes, &postDeleteXattr))
 	assert.NoError(t, err, "Error getting document post-delete")
-	assert.Equal(t, float64(2), postDeleteXattr["seq"])
+	assert.Equal[any](t, float64(2), postDeleteXattr["seq"])
 	assert.Len(t, postDeleteVal, 0)
 	log.Printf("Post-delete xattr (2): %s", postDeleteXattr)
 	log.Printf("Post-delete cas (2): %x", getCas2)
@@ -1308,7 +1309,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	retrievedXattrBytes, ok := xattrs[xattrName]
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(retrievedXattrBytes, &retrievedXattr))
-	assert.Equal(t, float64(123), retrievedXattr["seq"])
+	assert.Equal[any](t, float64(123), retrievedXattr["seq"])
 	log.Printf("MutateInEx cas: %v", mutateCas)
 
 }
@@ -1608,15 +1609,15 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(key1xattrBytes, &key1XattrResult))
 	require.NoError(t, JSONUnmarshal(rawVal, &key1DocResult))
-	assert.Equal(t, key1, key1DocResult["type"])
+	assert.Equal[any](t, key1, key1DocResult["type"])
 	assert.Equal(t, "1-1234", key1XattrResult["rev"])
 
 	var key2DocResult map[string]any
 	rawVal, key2xattrs, _, key2err := dataStore.GetWithXattrs(ctx, key2, []string{xattrName})
 	assert.NoError(t, key2err, "Unexpected error retrieving doc w/out xattr")
-	require.NotContains(t, key2xattrs, xattrName)
+	require.NotContains(t, maps.Keys(key2xattrs), xattrName)
 	require.NoError(t, JSONUnmarshal(rawVal, &key2DocResult))
-	assert.Equal(t, key2, key2DocResult["type"])
+	assert.Equal[any](t, key2, key2DocResult["type"])
 
 	var key3DocResult map[string]any
 	var key3XattrResult map[string]any
@@ -1631,7 +1632,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	key4DocRaw, key4xattrs, _, key4err := dataStore.GetWithXattrs(ctx, key4, []string{xattrName})
 	RequireDocNotFoundError(t, key4err)
-	require.NotContains(t, key4xattrs, xattrName)
+	require.NotContains(t, maps.Keys(key4xattrs), xattrName)
 	assert.Nil(t, key4DocRaw)
 
 }
@@ -1714,7 +1715,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(key1xattrBytes, &key1XattrResult))
 	require.NoError(t, JSONUnmarshal(docRaw, &key1DocResult))
-	assert.Equal(t, fmt.Sprintf("updated_%s", key1), key1DocResult["type"])
+	assert.Equal[any](t, fmt.Sprintf("updated_%s", key1), key1DocResult["type"])
 	assert.Equal(t, "2-1234", key1XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
@@ -1728,7 +1729,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(key2xattrBytes, &key2XattrResult))
 	require.NoError(t, JSONUnmarshal(docRaw, &key2DocResult))
-	assert.Equal(t, fmt.Sprintf("updated_%s", key2), key2DocResult["type"])
+	assert.Equal[any](t, fmt.Sprintf("updated_%s", key2), key2DocResult["type"])
 	assert.Equal(t, "2-1234", key2XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
@@ -1743,7 +1744,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(key3xattrBytes, &key3XattrResult))
 	require.NoError(t, JSONUnmarshal(docRaw, &key3DocResult))
-	assert.Equal(t, fmt.Sprintf("updated_%s", key3), key3DocResult["type"])
+	assert.Equal[any](t, fmt.Sprintf("updated_%s", key3), key3DocResult["type"])
 	assert.Equal(t, "2-1234", key3XattrResult["rev"])
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key4)
@@ -1757,7 +1758,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(key4xattrBytes, &key4XattrResult))
 	require.NoError(t, JSONUnmarshal(docRaw, &key4DocResult))
-	assert.Equal(t, fmt.Sprintf("updated_%s", key4), key4DocResult["type"])
+	assert.Equal[any](t, fmt.Sprintf("updated_%s", key4), key4DocResult["type"])
 	assert.Equal(t, "2-1234", key4XattrResult["rev"])
 
 }
@@ -1920,7 +1921,7 @@ func TestGetXattrAndBody(t *testing.T) {
 	require.NoError(t, err)
 	_, xattrs, _, err = dataStore.GetWithXattrs(ctx, key2, []string{SyncXattrName})
 	assert.NoError(t, err)
-	require.Contains(t, xattrs, SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), SyncXattrName)
 
 	// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
 	_, _, _, err = dataStore.GetWithXattrs(ctx, key2, []string{"_non-exist"})
@@ -2115,7 +2116,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 				assert.Nil(t, bucket)
 				if fastFail {
 					// Fail-fast strategy surfaces the authentication failure directly.
-					assert.Equal(t, ErrAuthError, err)
+					assert.Equal[error](t, ErrAuthError, err)
 				} else {
 					// Best-effort strategy retries the auth failure until WaitUntilReady times out.
 					assert.ErrorIs(t, err, gocb.ErrUnambiguousTimeout)
@@ -2235,7 +2236,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 	retrieveXattrBytes, ok := xattrs[xattrName]
 	require.True(t, ok)
 	require.NoError(t, JSONUnmarshal(retrieveXattrBytes, &retrievedXattr))
-	require.Equal(t, float64(123), retrievedXattr["seq"])
+	require.Equal[any](t, float64(123), retrievedXattr["seq"])
 
 }
 
@@ -2371,7 +2372,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	var syncXattrValRet map[string]any
 	require.NoError(t, JSONUnmarshal(syncXattrValBytes, &syncXattrValRet))
 	assert.Equal(t, syncXattrVal, syncXattrValRet)
-	assert.NotContains(t, xattrs, "test")
+	assert.NotContains(t, maps.Keys(xattrs), "test")
 }
 
 func TestInsertTombstoneWithXattr(t *testing.T) {
@@ -2653,7 +2654,7 @@ func TestMobileSystemCollectionCRUD(t *testing.T) {
 	assert.Equal(t, casUpdate, casGet)
 	field1ValGet, ok := val[field1Key]
 	require.True(t, ok)
-	assert.Equal(t, field1Val, field1ValGet)
+	assert.Equal[any](t, field1Val, field1ValGet)
 	newFieldValGet, ok := val[newField.Key]
 	require.True(t, ok)
 	assert.Equal(t, newField.Val, newFieldValGet)
@@ -2688,8 +2689,8 @@ func TestWriteWithXattrsBodyUpdateXattrDelete(t *testing.T) {
 	_, xattrs, _, err := collection.GetWithXattrs(ctx, docID, []string{xattr1Name, xattr2Name})
 	require.NoError(t, err)
 
-	require.Contains(t, xattrs, xattr2Name)
-	require.NotContains(t, xattrs, xattr1Name, "did not expect=%s", xattrs[xattr1Name])
+	require.Contains(t, maps.Keys(xattrs), xattr2Name)
+	require.NotContains(t, maps.Keys(xattrs), xattr1Name, "did not expect=%s", xattrs[xattr1Name])
 }
 
 func TestWriteWithXattrsXattrWriteXattrDelete(t *testing.T) {
@@ -2718,9 +2719,9 @@ func TestWriteWithXattrsXattrWriteXattrDelete(t *testing.T) {
 	_, xattrs, _, err := collection.GetWithXattrs(ctx, docID, []string{xattr1Name, xattr2Name})
 	require.NoError(t, err)
 
-	require.Contains(t, xattrs, xattr2Name)
+	require.Contains(t, maps.Keys(xattrs), xattr2Name)
 	require.JSONEq(t, string(newXattrBody), string(xattrs[xattr2Name]))
-	require.NotContains(t, xattrs, xattr1Name, "did not expect=%s", xattrs[xattr1Name])
+	require.NotContains(t, maps.Keys(xattrs), xattr1Name, "did not expect=%s", xattrs[xattr1Name])
 
 }
 
@@ -2786,7 +2787,7 @@ func TestWriteUpdateWithXattrsDocumentTombstone(t *testing.T) {
 	xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{xattr1Key, xattr2Key})
 	require.NoError(t, err)
 	require.JSONEq(t, string(xattrModifiedBody), string(xattrs[xattr1Key]))
-	require.NotContains(t, xattrs, xattr2Key)
+	require.NotContains(t, maps.Keys(xattrs), xattr2Key)
 }
 
 func TestVersionPruningWindow(t *testing.T) {
@@ -3374,8 +3375,8 @@ func TestMetadataStoreWriteUpdateWithXattrsHonorsXattrsToDelete(t *testing.T) {
 	updatedBody := []byte(`{"v":2}`)
 	cas, err := metaStore.WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil,
 		func(doc []byte, xattrs map[string][]byte, cbCas uint64) (sgbucket.UpdatedDoc, error) {
-			require.Contains(t, xattrs, keepXattr, "callback should observe both fallback xattrs")
-			require.Contains(t, xattrs, dropXattr)
+			require.Contains(t, maps.Keys(xattrs), keepXattr, "callback should observe both fallback xattrs")
+			require.Contains(t, maps.Keys(xattrs), dropXattr)
 			return sgbucket.UpdatedDoc{
 				Doc:            updatedBody,
 				Xattrs:         map[string][]byte{keepXattr: []byte(`{"keep":2}`)},
@@ -3389,9 +3390,9 @@ func TestMetadataStoreWriteUpdateWithXattrsHonorsXattrsToDelete(t *testing.T) {
 	primaryBody, primaryXattrs, _, err := metaStore.Primary().GetWithXattrs(ctx, docID, xattrKeys)
 	require.NoError(t, err)
 	assert.Equal(t, updatedBody, primaryBody)
-	require.Contains(t, primaryXattrs, keepXattr)
+	require.Contains(t, maps.Keys(primaryXattrs), keepXattr)
 	assert.JSONEq(t, `{"keep":2}`, string(primaryXattrs[keepXattr]))
-	assert.NotContains(t, primaryXattrs, dropXattr, "dropped xattr must not be migrated to primary")
+	assert.NotContains(t, maps.Keys(primaryXattrs), dropXattr, "dropped xattr must not be migrated to primary")
 }
 
 // TestMetadataStoreWriteUpdateWithXattrsTombstoneFallbackOnly is the xattr analogue of
@@ -3450,7 +3451,7 @@ func TestMetadataStoreWriteUpdateWithXattrsTombstoneFallbackOnly(t *testing.T) {
 	// Xattr is still readable on fallback (it's a tombstone with retained xattr).
 	fallbackXattrs, _, xerr := metaStore.Fallback().GetXattrs(ctx, docID, []string{xattrKey})
 	require.NoError(t, xerr)
-	require.Contains(t, fallbackXattrs, xattrKey)
+	require.Contains(t, maps.Keys(fallbackXattrs), xattrKey)
 	assert.JSONEq(t, string(tombstoneXattr), string(fallbackXattrs[xattrKey]), "fallback xattr must reflect the tombstone xattr")
 }
 
@@ -3498,7 +3499,7 @@ func TestMetadataStoreWriteUpdateWithXattrsMigratesFromFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cas)
 	assert.Equal(t, originalBody, seenBody, "callback must observe fallback body")
-	require.Contains(t, seenXattrs, xattrKey)
+	require.Contains(t, maps.Keys(seenXattrs), xattrKey)
 	assert.Equal(t, originalXattr, seenXattrs[xattrKey], "callback must observe fallback xattr")
 	assert.Zero(t, seenCas, "callback must see cas=0 (fallback CAS is never propagated)")
 
@@ -3672,14 +3673,14 @@ func TestMetadataStoreWriteUpdateWithXattrsResurrectsAfterFallbackTombstone(t *t
 	require.NoError(t, err)
 	require.NotZero(t, cas, "resurrection must land in primary with a real CAS")
 	assert.Nil(t, seenBody, "callback observes nil body on a fallback tombstone")
-	require.Contains(t, seenXattrs, xattrKey, "callback observes the retained tombstone xattr")
+	require.Contains(t, maps.Keys(seenXattrs), xattrKey, "callback observes the retained tombstone xattr")
 	assert.JSONEq(t, string(tombstoneXattr), string(seenXattrs[xattrKey]))
 
 	// Resurrected doc lives in primary.
 	primaryBody, primaryXattrs, primaryCas, err := metaStore.Primary().GetWithXattrs(ctx, docID, xattrKeys)
 	require.NoError(t, err)
 	assert.Equal(t, resurrectBody, primaryBody)
-	require.Contains(t, primaryXattrs, xattrKey)
+	require.Contains(t, maps.Keys(primaryXattrs), xattrKey)
 	assert.Equal(t, resurrectXattr, primaryXattrs[xattrKey])
 	assert.Equal(t, cas, primaryCas)
 }

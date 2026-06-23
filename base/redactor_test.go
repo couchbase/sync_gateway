@@ -43,12 +43,12 @@ func TestRedactHelper(t *testing.T) {
 	assert.Equal(t, "hello", string(ptr))
 
 	// Verify that only the types implementing Redactor have changed.
-	assert.Equal(t, UserData("alice").Redact(), out[0])
-	assert.Equal(t, ptr.Redact(), out[1])
+	assert.Equal[any](t, UserData("alice").Redact(), out[0])
+	assert.Equal[any](t, ptr.Redact(), out[1])
 	assert.Equal(t, "bob", out[2])
 	assert.Equal(t, 1234, out[3])
 	assert.Equal(t, big.NewInt(1234).String(), out[4].(*big.Int).String())
-	assert.Equal(t, struct{}{}, out[5])
+	assert.Equal[any](t, struct{}{}, out[5])
 }
 
 func TestSetRedaction(t *testing.T) {

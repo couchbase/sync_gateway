@@ -9,6 +9,7 @@
 package importuserxattrtest
 
 import (
+	"maps"
 	"net/http"
 	"testing"
 	"time"
@@ -69,7 +70,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	// Get Xattr and ensure channel value set correctly
 	xattrs, cas, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
@@ -86,7 +87,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData2 db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
@@ -107,7 +108,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	var syncData3 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData3))
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
@@ -130,7 +131,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	var syncData4 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData4))
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
@@ -203,7 +204,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	xattrs, cas, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
 
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
@@ -220,7 +221,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
 
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData2 db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
@@ -297,7 +298,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	xattrs, _, err := dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	var syncData db.SyncData
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 }

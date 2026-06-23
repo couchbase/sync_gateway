@@ -9,8 +9,10 @@
 package assert
 
 import (
+	"iter"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -27,23 +29,29 @@ type BoolAssertionFunc = assert.BoolAssertionFunc
 
 // Generic wrapper functions for functions taking two interface{} arguments:
 
-// Contains asserts that the specified string, list(array, slice...) or map
+// Contains asserts that the specified string, list(array, slice...) or iterator
 // contains the specified substring or element.
 //
 //	assert.Contains(t, "Hello World", "World")
 //	assert.Contains(t, ["Hello", "World"], "World")
-//	assert.Contains(t, {"Hello": "World"}, "Hello")
-func Contains[T1, T2 any](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+//	assert.Contains(t, maps.Keys({"Hello": "World"}), "Hello")
+func Contains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		return assert.Contains(t, slices.Collect(seq), contains, msgAndArgs...)
+	}
 	return assert.Contains(t, s, contains, msgAndArgs...)
 }
 
-// Containsf asserts that the specified string, list(array, slice...) or map
+// Containsf asserts that the specified string, list(array, slice...) or iterator
 // contains the specified substring or element.
 //
 //	assert.Containsf(t, "Hello World", "World", "error message %s", "formatted")
 //	assert.Containsf(t, ["Hello", "World"], "World", "error message %s", "formatted")
-//	assert.Containsf(t, {"Hello": "World"}, "Hello", "error message %s", "formatted")
-func Containsf[T1, T2 any](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+//	assert.Containsf(t, maps.Keys({"Hello": "World"}), "Hello", "error message %s", "formatted")
+func Containsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		return assert.Containsf(t, slices.Collect(seq), contains, msg, args...)
+	}
 	return assert.Containsf(t, s, contains, msg, args...)
 }
 
@@ -75,7 +83,7 @@ func ElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, args
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
-func Equal[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func Equal[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.Equal(t, expected, actual, msgAndArgs...)
 }
 
@@ -86,7 +94,7 @@ func Equal[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bo
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses). Function equality
 // cannot be determined and will always fail.
-func Equalf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func Equalf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.Equalf(t, expected, actual, msg, args...)
 }
 
@@ -100,7 +108,7 @@ func Equalf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...
 //	 }
 //	 assert.EqualExportedValues(t, S{1, 2}, S{1, 3}) => true
 //	 assert.EqualExportedValues(t, S{1, 2}, S{2, 3}) => false
-func EqualExportedValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func EqualExportedValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.EqualExportedValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -114,7 +122,7 @@ func EqualExportedValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndA
 //	 }
 //	 assert.EqualExportedValuesf(t, S{1, 2}, S{1, 3}, "error message %s", "formatted") => true
 //	 assert.EqualExportedValuesf(t, S{1, 2}, S{2, 3}, "error message %s", "formatted") => false
-func EqualExportedValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func EqualExportedValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.EqualExportedValuesf(t, expected, actual, msg, args...)
 }
 
@@ -122,7 +130,7 @@ func EqualExportedValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg st
 // type and equal.
 //
 //	assert.EqualValues(t, uint32(123), int32(123))
-func EqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func EqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.EqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -130,21 +138,21 @@ func EqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...a
 // type and equal.
 //
 //	assert.EqualValuesf(t, uint32(123), int32(123), "error message %s", "formatted")
-func EqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func EqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.EqualValuesf(t, expected, actual, msg, args...)
 }
 
 // Exactly asserts that two objects are equal in value and type.
 //
 //	assert.Exactly(t, int32(123), int64(123))
-func Exactly[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func Exactly[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.Exactly(t, expected, actual, msgAndArgs...)
 }
 
 // Exactlyf asserts that two objects are equal in value and type.
 //
 //	assert.Exactlyf(t, int32(123), int64(123), "error message %s", "formatted")
-func Exactlyf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func Exactlyf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.Exactlyf(t, expected, actual, msg, args...)
 }
 
@@ -153,7 +161,7 @@ func Exactlyf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args .
 //	assert.Greater(t, 2, 1)
 //	assert.Greater(t, float64(2), float64(1))
 //	assert.Greater(t, "b", "a")
-func Greater[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
+func Greater[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
 
@@ -162,7 +170,7 @@ func Greater[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
 //	assert.Greaterf(t, 2, 1, "error message %s", "formatted")
 //	assert.Greaterf(t, float64(2), float64(1), "error message %s", "formatted")
 //	assert.Greaterf(t, "b", "a", "error message %s", "formatted")
-func Greaterf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) bool {
+func Greaterf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 	return assert.Greaterf(t, e1, e2, msg, args...)
 }
 
@@ -173,7 +181,7 @@ func Greaterf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) boo
 //	assert.GreaterOrEqual(t, 2, 2)
 //	assert.GreaterOrEqual(t, "b", "a")
 //	assert.GreaterOrEqual(t, "b", "b")
-func GreaterOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
+func GreaterOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 	return assert.GreaterOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -184,7 +192,7 @@ func GreaterOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) boo
 //	assert.GreaterOrEqualf(t, 2, 2, "error message %s", "formatted")
 //	assert.GreaterOrEqualf(t, "b", "a", "error message %s", "formatted")
 //	assert.GreaterOrEqualf(t, "b", "b", "error message %s", "formatted")
-func GreaterOrEqualf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) bool {
+func GreaterOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 	return assert.GreaterOrEqualf(t, e1, e2, msg, args...)
 }
 
@@ -221,7 +229,7 @@ func IsTypef[T1, T2 any](t TestingT, expectedType T1, object T2, msg string, arg
 //	assert.Less(t, 1, 2)
 //	assert.Less(t, float64(1), float64(2))
 //	assert.Less(t, "a", "b")
-func Less[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
+func Less[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 	return assert.Less(t, e1, e2, msgAndArgs...)
 }
 
@@ -230,7 +238,7 @@ func Less[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
 //	assert.Lessf(t, 1, 2, "error message %s", "formatted")
 //	assert.Lessf(t, float64(1), float64(2), "error message %s", "formatted")
 //	assert.Lessf(t, "a", "b", "error message %s", "formatted")
-func Lessf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) bool {
+func Lessf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 	return assert.Lessf(t, e1, e2, msg, args...)
 }
 
@@ -241,7 +249,7 @@ func Lessf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) bool {
 //	assert.LessOrEqual(t, 2, 2)
 //	assert.LessOrEqual(t, "a", "b")
 //	assert.LessOrEqual(t, "b", "b")
-func LessOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
+func LessOrEqual[T any](t TestingT, e1 T, e2 T, msgAndArgs ...any) bool {
 	return assert.LessOrEqual(t, e1, e2, msgAndArgs...)
 }
 
@@ -252,27 +260,33 @@ func LessOrEqual[T1, T2 any](t TestingT, e1 T1, e2 T2, msgAndArgs ...any) bool {
 //	assert.LessOrEqualf(t, 2, 2, "error message %s", "formatted")
 //	assert.LessOrEqualf(t, "a", "b", "error message %s", "formatted")
 //	assert.LessOrEqualf(t, "b", "b", "error message %s", "formatted")
-func LessOrEqualf[T1, T2 any](t TestingT, e1 T1, e2 T2, msg string, args ...any) bool {
+func LessOrEqualf[T any](t TestingT, e1 T, e2 T, msg string, args ...any) bool {
 	return assert.LessOrEqualf(t, e1, e2, msg, args...)
 }
 
-// NotContains asserts that the specified string, list(array, slice...) or map
+// NotContains asserts that the specified string, list(array, slice...) or iterator
 // does NOT contain the specified substring or element.
 //
 //	assert.NotContains(t, "Hello World", "Earth")
 //	assert.NotContains(t, ["Hello", "World"], "Earth")
-//	assert.NotContains(t, {"Hello": "World"}, "Earth")
-func NotContains[T1, T2 any](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+//	assert.NotContains(t, maps.Keys({"Hello": "World"}), "Earth")
+func NotContains[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msgAndArgs ...any) bool {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		return assert.NotContains(t, slices.Collect(seq), contains, msgAndArgs...)
+	}
 	return assert.NotContains(t, s, contains, msgAndArgs...)
 }
 
-// NotContainsf asserts that the specified string, list(array, slice...) or map
+// NotContainsf asserts that the specified string, list(array, slice...) or iterator
 // does NOT contain the specified substring or element.
 //
 //	assert.NotContainsf(t, "Hello World", "Earth", "error message %s", "formatted")
 //	assert.NotContainsf(t, ["Hello", "World"], "Earth", "error message %s", "formatted")
-//	assert.NotContainsf(t, {"Hello": "World"}, "Earth", "error message %s", "formatted")
-func NotContainsf[T1, T2 any](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+//	assert.NotContainsf(t, maps.Keys({"Hello": "World"}), "Earth", "error message %s", "formatted")
+func NotContainsf[T2 comparable, T1 ~string | ~[]T2 | iter.Seq[T2]](t TestingT, s T1, contains T2, msg string, args ...any) bool {
+	if seq, ok := any(s).(iter.Seq[T2]); ok {
+		return assert.NotContainsf(t, slices.Collect(seq), contains, msg, args...)
+	}
 	return assert.NotContainsf(t, s, contains, msg, args...)
 }
 
@@ -313,7 +327,7 @@ func NotElementsMatchf[T1, T2 any](t TestingT, listA T1, listB T2, msg string, a
 //
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
-func NotEqual[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func NotEqual[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.NotEqual(t, expected, actual, msgAndArgs...)
 }
 
@@ -321,7 +335,7 @@ func NotEqual[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any)
 // the same type
 //
 //	assert.NotEqualValues(t, obj1, obj2)
-func NotEqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func NotEqualValues[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.NotEqualValues(t, expected, actual, msgAndArgs...)
 }
 
@@ -329,7 +343,7 @@ func NotEqualValues[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs .
 // to the same type
 //
 //	assert.NotEqualValuesf(t, obj1, obj2, "error message %s", "formatted")
-func NotEqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func NotEqualValuesf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.NotEqualValuesf(t, expected, actual, msg, args...)
 }
 
@@ -339,7 +353,7 @@ func NotEqualValuesf[T1, T2 any](t TestingT, expected T1, actual T2, msg string,
 //
 // Pointer variable equality is determined based on the equality of the
 // referenced values (as opposed to the memory addresses).
-func NotEqualf[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func NotEqualf[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.NotEqualf(t, expected, actual, msg, args...)
 }
 
@@ -381,7 +395,7 @@ func NotRegexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) 
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func NotSame[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func NotSame[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.NotSame(t, expected, actual, msgAndArgs...)
 }
 
@@ -391,7 +405,7 @@ func NotSame[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) 
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func NotSamef[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func NotSamef[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.NotSamef(t, expected, actual, msg, args...)
 }
 
@@ -443,7 +457,7 @@ func Regexpf[T1, T2 any](t TestingT, rx T1, str T2, msg string, args ...any) boo
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func Same[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) bool {
+func Same[T any](t TestingT, expected T, actual T, msgAndArgs ...any) bool {
 	return assert.Same(t, expected, actual, msgAndArgs...)
 }
 
@@ -453,7 +467,7 @@ func Same[T1, T2 any](t TestingT, expected T1, actual T2, msgAndArgs ...any) boo
 //
 // Both arguments must be pointer variables. Pointer variable sameness is
 // determined based on the equality of both type and value.
-func Samef[T1, T2 any](t TestingT, expected T1, actual T2, msg string, args ...any) bool {
+func Samef[T any](t TestingT, expected T, actual T, msg string, args ...any) bool {
 	return assert.Samef(t, expected, actual, msg, args...)
 }
 
@@ -484,60 +498,60 @@ func Subsetf[T1, T2 any](t TestingT, list T1, subset T2, msg string, args ...any
 // InDelta asserts that the two numerals are within delta of each other.
 //
 //	assert.InDelta(t, math.Pi, 22/7.0, 0.01)
-func InDelta[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) bool {
+func InDelta[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
 	return assert.InDelta(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlice is the same as InDelta, except it compares two slices.
-func InDeltaSlice[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) bool {
+func InDeltaSlice[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
 	return assert.InDeltaSlice(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaSlicef is the same as InDelta, except it compares two slices.
-func InDeltaSlicef[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) bool {
+func InDeltaSlicef[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
 	return assert.InDeltaSlicef(t, expected, actual, delta, msg, args...)
 }
 
 // InDeltaf asserts that the two numerals are within delta of each other.
 //
 //	assert.InDeltaf(t, math.Pi, 22/7.0, 0.01, "error message %s", "formatted")
-func InDeltaf[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) bool {
+func InDeltaf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
 	return assert.InDeltaf(t, expected, actual, delta, msg, args...)
 }
 
 // InDeltaMapValues is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
-func InDeltaMapValues[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msgAndArgs ...any) bool {
+func InDeltaMapValues[T any](t TestingT, expected T, actual T, delta float64, msgAndArgs ...any) bool {
 	return assert.InDeltaMapValues(t, expected, actual, delta, msgAndArgs...)
 }
 
 // InDeltaMapValuesf is the same as InDelta, but it compares all values between
 // two maps. Both maps must have exactly the same keys.
-func InDeltaMapValuesf[T1, T2 any](t TestingT, expected T1, actual T2, delta float64, msg string, args ...any) bool {
+func InDeltaMapValuesf[T any](t TestingT, expected T, actual T, delta float64, msg string, args ...any) bool {
 	return assert.InDeltaMapValuesf(t, expected, actual, delta, msg, args...)
 }
 
 // InEpsilon asserts that expected and actual have a relative error less than
 // epsilon
-func InEpsilon[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msgAndArgs ...any) bool {
+func InEpsilon[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) bool {
 	return assert.InEpsilon(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlice is the same as InEpsilon, except it compares each value from
 // two slices.
-func InEpsilonSlice[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msgAndArgs ...any) bool {
+func InEpsilonSlice[T any](t TestingT, expected T, actual T, epsilon float64, msgAndArgs ...any) bool {
 	return assert.InEpsilonSlice(t, expected, actual, epsilon, msgAndArgs...)
 }
 
 // InEpsilonSlicef is the same as InEpsilon, except it compares each value from
 // two slices.
-func InEpsilonSlicef[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msg string, args ...any) bool {
+func InEpsilonSlicef[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) bool {
 	return assert.InEpsilonSlicef(t, expected, actual, epsilon, msg, args...)
 }
 
 // InEpsilonf asserts that expected and actual have a relative error less than
 // epsilon
-func InEpsilonf[T1, T2 any](t TestingT, expected T1, actual T2, epsilon float64, msg string, args ...any) bool {
+func InEpsilonf[T any](t TestingT, expected T, actual T, epsilon float64, msg string, args ...any) bool {
 	return assert.InEpsilonf(t, expected, actual, epsilon, msg, args...)
 }
 

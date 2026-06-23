@@ -273,18 +273,18 @@ func TestUserViewQuery(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, 1, result.TotalRows)
 	row := result.Rows[0]
-	assert.Equal(t, float64(7), row.Key)
+	assert.Equal[any](t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
 
 	// Admin should see both rows:
 	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	require.Len(t, result.Rows, 2)
 	row = result.Rows[0]
-	assert.Equal(t, float64(7), row.Key)
+	assert.Equal[any](t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
 
 	row = result.Rows[1]
-	assert.Equal(t, float64(10), row.Key)
+	assert.Equal[any](t, float64(10), row.Key)
 	assert.Equal(t, "ten", row.Value)
 
 	// Make sure users are not allowed to query internal views:

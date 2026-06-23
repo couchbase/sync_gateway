@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"log"
 	"net/http"
 	"net/url"
@@ -1123,7 +1124,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	RequireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
-	require.Contains(t, responseBody, db.BodyDeleted)
+	require.Contains(t, maps.Keys(responseBody), db.BodyDeleted)
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
 	assert.True(t, deletedOK)
 	assert.True(t, deletedValue)

@@ -10,6 +10,7 @@ package db
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -187,8 +188,8 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.GlobalXattrName)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))

@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"testing"
 	"time"
@@ -131,7 +132,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < n; i++ {
 		uuid := fmt.Sprintf("node-%d", i)
-		assert.Contains(t, registry.Nodes, uuid, "node %s should be in registry after concurrent registration", uuid)
+		assert.Contains(t, maps.Keys(registry.Nodes), uuid, "node %s should be in registry after concurrent registration", uuid)
 	}
 }
 
@@ -171,7 +172,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < n; i++ {
 		uuid := fmt.Sprintf("node-%d", i)
-		assert.NotContains(t, registry.Nodes, uuid, "node %s should have been deregistered", uuid)
+		assert.NotContains(t, maps.Keys(registry.Nodes), uuid, "node %s should have been deregistered", uuid)
 	}
 }
 
@@ -242,9 +243,9 @@ func TestClusterCompatPruneStaleOnRefresh(t *testing.T) {
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	assert.NotContains(t, registry.Nodes, stalePeer, "stale peer should have been pruned by Refresh")
-	assert.Contains(t, registry.Nodes, rt.ServerContext().NodeUID, "self should remain after Refresh")
-	assert.NotContains(t, ccm.NodeVersions(), stalePeer, "stale peer should not be in cached node set")
+	assert.NotContains(t, maps.Keys(registry.Nodes), stalePeer, "stale peer should have been pruned by Refresh")
+	assert.Contains(t, maps.Keys(registry.Nodes), rt.ServerContext().NodeUID, "self should remain after Refresh")
+	assert.NotContains(t, maps.Keys(ccm.NodeVersions()), stalePeer, "stale peer should not be in cached node set")
 }
 
 // TestClusterCompatPruneStaleOnRegisterBucket seeds a peer with an expired heartbeat and
@@ -272,8 +273,8 @@ func TestClusterCompatPruneStaleOnRegisterBucket(t *testing.T) {
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	assert.NotContains(t, registry.Nodes, stalePeer, "stale peer should have been pruned by RegisterBucket")
-	assert.Contains(t, registry.Nodes, rt.ServerContext().NodeUID, "self should be present after RegisterBucket")
+	assert.NotContains(t, maps.Keys(registry.Nodes), stalePeer, "stale peer should have been pruned by RegisterBucket")
+	assert.Contains(t, maps.Keys(registry.Nodes), rt.ServerContext().NodeUID, "self should be present after RegisterBucket")
 }
 
 // TestClusterCompatPruneSelfNotPruned verifies that even with self's HeartbeatAt rewritten
@@ -312,7 +313,7 @@ func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
 		RatchetHWM:      true,
 	})
 	require.NoError(t, err)
-	require.Contains(t, registry.Nodes, selfUID)
+	require.Contains(t, maps.Keys(registry.Nodes), selfUID)
 	assert.True(t, registry.Nodes[selfUID].HeartbeatAt.After(staleTime), "self's heartbeat must have been refreshed")
 }
 
@@ -337,7 +338,7 @@ func TestClusterCompatPruneFreshPeerNotPruned(t *testing.T) {
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	assert.Contains(t, registry.Nodes, freshPeer, "fresh peer should not be pruned")
+	assert.Contains(t, maps.Keys(registry.Nodes), freshPeer, "fresh peer should not be pruned")
 }
 
 // TestClusterCompatHeartbeatExpiryConfigurable verifies the runtime expiry getter trusts
@@ -572,7 +573,7 @@ func TestClusterCompatAppliedDBVersionTracked(t *testing.T) {
 	bucketName := rt.Bucket().GetName()
 
 	tracked := ccm.getAppliedDBVersionsForBucket(bucketName)
-	require.Contains(t, tracked, "db", "applied version should be tracked after _applyConfig")
+	require.Contains(t, maps.Keys(tracked), "db", "applied version should be tracked after _applyConfig")
 	assert.NotEmpty(t, tracked["db"], "tracked version should not be empty")
 
 	ccm.mu.Lock()
@@ -821,7 +822,7 @@ func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 	setNodeHeartbeatAt(t, rtA, bucketName, rtB.ServerContext().NodeUID, time.Now().Add(-2*rtA.ServerContext().ClusterCompat.heartbeatExpiry()))
 
 	registry := refreshAndGetRegistry(t, rtA, bucketName)
-	assert.NotContains(t, registry.Nodes, rtB.ServerContext().NodeUID, "stale node B should be pruned")
+	assert.NotContains(t, maps.Keys(registry.Nodes), rtB.ServerContext().NodeUID, "stale node B should be pruned")
 
 	dbVersion := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", dbVersion)
@@ -929,12 +930,12 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 	// assert both db's are there, to verify the cross-group node is not being ignored entirely
 	nodeA := registry.Nodes[rtA.ServerContext().NodeUID]
 	require.NotNil(t, nodeA, "node A should be in registry")
-	assert.Contains(t, nodeA.Databases, "db1", "node A registry entry should track db1")
+	assert.Contains(t, maps.Keys(nodeA.Databases), "db1", "node A registry entry should track db1")
 	nodeADbVersion := nodeA.Databases["db1"]
 
 	nodeC := registry.Nodes[rtB.ServerContext().NodeUID]
 	require.NotNil(t, nodeC, "node B should be in registry")
-	assert.Contains(t, nodeC.Databases, "db1", "node B registry entry should track db1 even though it's in a different group")
+	assert.Contains(t, maps.Keys(nodeC.Databases), "db1", "node B registry entry should track db1 even though it's in a different group")
 	nodeCDbVersion := nodeC.Databases["db1"]
 	// assert that versions are different to verify that both nodes are actually tracking their own db's config versions, not just blindly sharing the same version across groups
 	assert.NotEqual(t, nodeADbVersion, nodeCDbVersion)
@@ -1033,7 +1034,7 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	registryBefore := refreshAndGetRegistry(t, rtB, bucketName)
 	nodeB := registryBefore.Nodes[rtB.ServerContext().NodeUID]
 	require.NotNil(t, nodeB, "node B should be in registry")
-	require.Contains(t, nodeB.Databases, "db", "node B registry entry should track the db version after loading it")
+	require.Contains(t, maps.Keys(nodeB.Databases), "db", "node B registry entry should track the db version after loading it")
 
 	resp = rtA.SendAdminRequest(http.MethodDelete, "/db/", "")
 	RequireStatus(t, resp, http.StatusOK)
@@ -1043,7 +1044,7 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	registryAfter := refreshAndGetRegistry(t, rtB, bucketName)
 	nodeB = registryAfter.Nodes[rtB.ServerContext().NodeUID]
 	require.NotNil(t, nodeB, "node B should still be in registry")
-	assert.NotContains(t, nodeB.Databases, "db", "node B registry entry should no longer track version for deleted db")
+	assert.NotContains(t, maps.Keys(nodeB.Databases), "db", "node B registry entry should no longer track version for deleted db")
 }
 
 // TestIsConfigFullyAppliedDeleteDBRemovesTrackingOnDeletingNode tests a node taking remove request for a database will
@@ -1063,17 +1064,17 @@ func TestIsConfigFullyAppliedDeleteDBRemovesTrackingOnDeletingNode(t *testing.T)
 	registryBefore := refreshAndGetRegistry(t, rt, bucketName)
 	nodeBefore := registryBefore.Nodes[sc.NodeUID]
 	require.NotNil(t, nodeBefore, "self should be in registry before delete")
-	require.Contains(t, nodeBefore.Databases, "db", "self registry entry should track the db version before delete")
+	require.Contains(t, maps.Keys(nodeBefore.Databases), "db", "self registry entry should track the db version before delete")
 
 	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	assert.NotContains(t, ccm.getAppliedDBVersionsForBucket(bucketName), "db", "appliedDBVersions should be cleared on the deleting node")
+	assert.NotContains(t, maps.Keys(ccm.getAppliedDBVersionsForBucket(bucketName)), "db", "appliedDBVersions should be cleared on the deleting node")
 
 	registryAfter := refreshAndGetRegistry(t, rt, bucketName)
 	nodeAfter := registryAfter.Nodes[sc.NodeUID]
 	require.NotNil(t, nodeAfter, "self should still be in registry after delete (still heartbeating)")
-	assert.NotContains(t, nodeAfter.Databases, "db", "self registry entry should no longer track version for deleted db")
+	assert.NotContains(t, maps.Keys(nodeAfter.Databases), "db", "self registry entry should no longer track version for deleted db")
 }
 
 // TestClusterCompatAppliedDBVersionUpdatedByMutateDbConfig verifies that mutating a database
@@ -1139,8 +1140,8 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 
 	ccm := rt.ServerContext().ClusterCompat
 	tracked := ccm.getAppliedDBVersionsForBucket(bucketName)
-	require.Contains(t, tracked, "db1", "db1 version should be tracked")
-	require.Contains(t, tracked, "db2", "db2 version should be tracked")
+	require.Contains(t, maps.Keys(tracked), "db1", "db1 version should be tracked")
+	require.Contains(t, maps.Keys(tracked), "db2", "db2 version should be tracked")
 	assert.NotEmpty(t, tracked["db1"])
 	assert.NotEmpty(t, tracked["db2"])
 
@@ -1203,8 +1204,8 @@ func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 
 	ccmB := rtB.ServerContext().ClusterCompat
 	trackedB := ccmB.getAppliedDBVersionsForBucket(bucketName)
-	require.Contains(t, trackedB, "db1", "node B should have tracked db1 after poll")
-	require.Contains(t, trackedB, "db2", "node B should have tracked db2 after poll")
+	require.Contains(t, maps.Keys(trackedB), "db1", "node B should have tracked db1 after poll")
+	require.Contains(t, maps.Keys(trackedB), "db2", "node B should have tracked db2 after poll")
 
 	registry := refreshAndGetRegistry(t, rtB, bucketName)
 	nodeB, ok := registry.Nodes[rtB.ServerContext().NodeUID]
@@ -1669,7 +1670,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerCapsHWM(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Contains(t, registry.PreCCVAwareNodes, peerUUID)
+	require.Contains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID)
 	assert.False(t, registry.PreCCVAwareNodes[peerUUID].LastObservedAt.IsZero(), "LastObservedAt must be stamped on upsert")
 
 	// HWM must be capped at PreSGNodeVersionFallback (no observed version → conservative fallback).
@@ -1709,7 +1710,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerIdempotentRefresh(t *testing.T) {
 	}
 	registry, err := bc.RegisterNodeVersion(ctx, opts)
 	require.NoError(t, err)
-	require.Contains(t, registry.PreCCVAwareNodes, peerUUID)
+	require.Contains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID)
 	firstObserved := registry.PreCCVAwareNodes[peerUUID].LastObservedAt
 
 	// Force time to advance a touch — UTC timestamps with monotonic-stripped seconds resolution
@@ -1749,7 +1750,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 
 	registry, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
-	require.Contains(t, registry.PreCCVAwareNodes, peerUUID)
+	require.Contains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID)
 	registry.PreCCVAwareNodes[peerUUID].LastObservedAt = time.Now().Add(-2 * time.Hour)
 	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 
@@ -1763,7 +1764,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 		RatchetHWM:      true,
 	})
 	require.NoError(t, err)
-	assert.NotContains(t, registry.PreCCVAwareNodes, peerUUID, "stale pre-CCV-aware-peer entry must be pruned")
+	assert.NotContains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID, "stale pre-CCV-aware-peer entry must be pruned")
 	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM must advance after pre-CCV-aware-peer entry is pruned")
 }
 
@@ -1887,7 +1888,7 @@ func TestFreezeAndPreCCVAwareInteraction(t *testing.T) {
 
 	// The peer is still visible via the API for operator visibility.
 	observed := ccm.PreCCVAwareNodeVersions()
-	assert.Contains(t, observed, "frozen-era-peer", "pre-CCV-aware peer must remain reported even when excluded from CCV computation")
+	assert.Contains(t, maps.Keys(observed), "frozen-era-peer", "pre-CCV-aware peer must remain reported even when excluded from CCV computation")
 	assert.Equal(t, base.PreSGNodeVersionFallback, observed["frozen-era-peer"], "reported observed version must reflect the observation, not the HWM floor")
 }
 
@@ -1914,7 +1915,7 @@ func TestMergeRegistryIntoCache_PreCCVAwarePeerLowerWins(t *testing.T) {
 		bucketB := map[string]*base.RegistryPreCCVAwareNode{peerUUID: {Version: v33, LastObservedAt: later}}
 		m.mergeRegistryIntoCache(nil, nil, bucketB, base.ClusterCompatVersion{})
 
-		require.Contains(t, m.cachedPreCCVAwareNodes, peerUUID)
+		require.Contains(t, maps.Keys(m.cachedPreCCVAwareNodes), peerUUID)
 		assert.Equal(t, v33, m.cachedPreCCVAwareNodes[peerUUID].Version, "lower reading must win")
 		assert.Equal(t, later, m.cachedPreCCVAwareNodes[peerUUID].LastObservedAt, "LastObservedAt must advance to the most recent observation")
 	})
@@ -1930,7 +1931,7 @@ func TestMergeRegistryIntoCache_PreCCVAwarePeerLowerWins(t *testing.T) {
 		bucketB := map[string]*base.RegistryPreCCVAwareNode{peerUUID: {Version: v40, LastObservedAt: later}}
 		m.mergeRegistryIntoCache(nil, nil, bucketB, base.ClusterCompatVersion{})
 
-		require.Contains(t, m.cachedPreCCVAwareNodes, peerUUID)
+		require.Contains(t, maps.Keys(m.cachedPreCCVAwareNodes), peerUUID)
 		assert.Equal(t, v33, m.cachedPreCCVAwareNodes[peerUUID].Version, "lower reading must remain after a higher second observation")
 		assert.Equal(t, later, m.cachedPreCCVAwareNodes[peerUUID].LastObservedAt, "LastObservedAt must advance even when the higher reading is discarded")
 	})

@@ -114,7 +114,7 @@ func (a *activeBlipTesterClients) add(name string) {
 func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	require.Contains(tb, a.m, name, "Can not remove blip tester client '%s' that was never added", name)
+	require.Contains(tb, maps.Keys(a.m), name, "Can not remove blip tester client '%s' that was never added", name)
 	a.m[name]--
 	if a.m[name] == 0 {
 		delete(a.m, name)
@@ -1640,7 +1640,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	resp := scm.Response()
 	body, err := resp.Body()
 	require.NoError(bt.TB(), err)
-	require.NotContains(bt.TB(), resp.Properties, "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
+	require.NotContains(bt.TB(), maps.Keys(resp.Properties), "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
 	return &db.SetCheckpointResponse{Message: resp}
 }
 
@@ -1662,7 +1662,7 @@ func (bt *BlipTester) newRevMessage(docID, docRev string, body []byte, propertie
 
 // SendRevWithHistory sends an unsolicited rev message and waits for the response. The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
 func (bt *BlipTester) SendRevWithHistory(docID, docRev string, revHistory []string, body []byte, properties blip.Properties) (res *blip.Message) {
-	require.NotContains(bt.TB(), properties, "history", "If specifying history, use BlipTester.SendRev")
+	require.NotContains(bt.TB(), maps.Keys(properties), "history", "If specifying history, use BlipTester.SendRev")
 	if len(revHistory) > 0 {
 		properties[db.RevMessageHistory] = strings.Join(revHistory, ",")
 	}
@@ -2148,7 +2148,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	bt.Send(subChangesRequest)
 	subChangesResponse := subChangesRequest.Response()
 	require.Equal(bt.TB(), subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
-	require.NotContains(bt.TB(), subChangesResponse.Properties, db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
+	require.NotContains(bt.TB(), maps.Keys(subChangesResponse.Properties), db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
 }
 
 // Helper for comparing BLIP changes received with expected BLIP changes

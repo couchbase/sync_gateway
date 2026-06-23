@@ -81,7 +81,7 @@ func TestRequireAdmin(t *testing.T) {
 func assertRejected(t *testing.T, result any, err *base.HTTPError) {
 	r, ok := result.(*ChannelMapperOutput)
 	assert.True(t, ok)
-	assert.Equal(t, r.Rejection, err)
+	assert.Equal[error](t, r.Rejection, err)
 }
 
 func assertNotRejected(t *testing.T, result any) {

@@ -129,7 +129,7 @@ func TestDocumentNumbers(t *testing.T) {
 			var rawResponse RawDocResponse
 			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			assert.Equal(ts, 1, len(rawResponse.Xattrs.Sync.Channels))
-			assert.Containsf(ts, rawResponse.Xattrs.Sync.Channels, test.expectedFormatChannel, "Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name)
+			assert.Containsf(ts, maps.Keys(rawResponse.Xattrs.Sync.Channels), test.expectedFormatChannel, "Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name)
 		})
 	}
 

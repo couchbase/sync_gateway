@@ -363,7 +363,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	// Successful save (as admin):
 	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
-	assert.EqualValues(t, docID, result) // save() returns docID
+	assert.EqualValues[any](t, docID, result) // save() returns docID
 
 	// Existing document:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
@@ -374,7 +374,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, strings.HasPrefix(revID, "1-"))
 	body["_id"] = docID
 	body["_rev"] = revID
-	assert.EqualValues(t, body, result)
+	assert.EqualValues[any](t, body, result)
 
 	// Update document with revID:
 	body["key2"] = 2
@@ -393,7 +393,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	delete(body, "_revid")
 	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
-	assert.Equal(t, docID, result)
+	assert.Equal[any](t, docID, result)
 
 	// Get doc again to verify revision:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)

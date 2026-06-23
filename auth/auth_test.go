@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -1617,7 +1618,7 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 75, EndSeq: 85}, channelHistory.Entries[0])
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1680,7 +1681,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.Len(t, fooPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 55)
@@ -1722,7 +1723,7 @@ func TestRevocationScenario2(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1791,7 +1792,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	testMockComputer.addRole(t, auth, "alice", "foo", 65)
@@ -1836,7 +1837,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1902,7 +1903,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 75)
@@ -1939,7 +1940,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2023,7 +2024,7 @@ func TestRevocationScenario5(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2090,7 +2091,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 95)
@@ -2184,7 +2185,7 @@ func TestRevocationScenario7(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	// Get Principals / Rebuild Seq 110
@@ -2461,7 +2462,7 @@ func TestRevocationScenario11(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2633,7 +2634,7 @@ func TestRevocationScenario14(t *testing.T) {
 	// Ensure that a since 25 shows the revocation
 	revokedChannelsCombined, err := aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	// Ensure that the user cannot see the channel at this point (after 45)

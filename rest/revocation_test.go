@@ -10,6 +10,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1371,7 +1372,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
 	role, err := authenticator.GetRole("foo")
 	assert.NoError(t, err)
-	require.Contains(t, role.CollectionChannelHistory(s, c), "a")
+	require.Contains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "a")
 	require.Len(t, role.CollectionChannelHistory(s, c)["a"].Entries, 10)
 	assert.Equal(t, role.CollectionChannelHistory(s, c)["a"].Entries[0], auth.GrantHistorySequencePair{StartSeq: 4, EndSeq: 26})
 
@@ -1409,8 +1410,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 
-	assert.NotContains(t, role.CollectionChannelHistory(s, c), "a")
-	assert.Contains(t, role.CollectionChannelHistory(s, c), "b")
+	assert.NotContains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "a")
+	assert.Contains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "b")
 }
 
 func TestChannelRevocationWithContiguousSequences(t *testing.T) {

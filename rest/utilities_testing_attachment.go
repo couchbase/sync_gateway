@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"slices"
 	"testing"
@@ -69,7 +70,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		require.NoError(t, err)
-		require.Contains(t, xattrs, base.SyncXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 		xattr := xattrs[base.SyncXattrName]
 		xattr, err = base.InjectJSONPropertiesFromBytes(xattr, base.KVPairBytes{
 			Key: "attachments",

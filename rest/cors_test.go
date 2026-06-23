@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -300,9 +301,9 @@ func TestCORSResponseHeadersEmptyConfig(t *testing.T) {
 	response := rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", reqHeaders)
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-	assert.NotContains(t, response.Header(), "Access-Control-Allow-Origin")
-	assert.NotContains(t, response.Header(), "Access-Control-Allow-Credentials")
-	assert.NotContains(t, response.Header(), "Access-Control-Allow-Headers")
+	assert.NotContains(t, maps.Keys(response.Header()), "Access-Control-Allow-Origin")
+	assert.NotContains(t, maps.Keys(response.Header()), "Access-Control-Allow-Credentials")
+	assert.NotContains(t, maps.Keys(response.Header()), "Access-Control-Allow-Headers")
 }
 
 func TestCORSOriginPerDatabase(t *testing.T) {

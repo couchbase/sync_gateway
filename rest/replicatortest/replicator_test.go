@@ -1372,7 +1372,7 @@ func TestValidateReplication(t *testing.T) {
 					Status:  http.StatusBadRequest,
 					Message: tc.expectedErrorMsg,
 				}
-				assert.Equal(t, expectedError, err)
+				assert.Equal[error](t, expectedError, err)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -1947,7 +1947,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		// and wait for a few to be done before we proceed with updating database config underneath replication
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			changes := rt2.GetChanges("/{{.keyspace}}/_changes", "")
-			assert.GreaterOrEqual(c, 5, changes.Results)
+			assert.GreaterOrEqual(c, len(changes.Results), 5)
 		}, time.Second*5, time.Millisecond*100)
 
 		// just change the sync function to cause the database to reload
@@ -3277,7 +3277,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt1", body["source"])
-		assert.Equal(t, json.Number("1"), body["doc_num"])
+		assert.Equal[any](t, json.Number("1"), body["doc_num"])
 
 		assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
@@ -3293,7 +3293,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		body, err = doc2.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt1", body["source"])
-		assert.Equal(t, json.Number("2"), body["doc_num"])
+		assert.Equal[any](t, json.Number("2"), body["doc_num"])
 
 		// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
 		// the attachment only once. However, targeting a Lithium node sends the attachment twice like
