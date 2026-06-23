@@ -26,6 +26,7 @@ def assert_zip_all_nonempty(zip_path: str):
         for info in zf.infolist():
             assert info.file_size > 0, f"{info.filename} is zero-sized in zip"
 
+
 VERBOSE = 2
 
 INPUT_CONFIG = """\
@@ -349,14 +350,18 @@ def test_python_task_execute_str(python_task_fp):
 
 
 def test_python_task_execute_exception_silent(python_task_fp):
-    task = _make_python_task(lambda: (_ for _ in ()).throw(ValueError("boom")), log_exception=False)
+    task = _make_python_task(
+        lambda: (_ for _ in ()).throw(ValueError("boom")), log_exception=False
+    )
     exit_code, message = task.execute(python_task_fp)
     assert exit_code == 1
     assert message == ""
 
 
 def test_python_task_execute_exception_logged(python_task_fp, capsys):
-    task = _make_python_task(lambda: (_ for _ in ()).throw(ValueError("boom")), log_exception=True)
+    task = _make_python_task(
+        lambda: (_ for _ in ()).throw(ValueError("boom")), log_exception=True
+    )
     exit_code, message = task.execute(python_task_fp)
     assert exit_code == 1
     assert message == ""
