@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2673,7 +2674,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		require.Nil(t, sessionResponse.UserCtx["channels"])
 	} else {
-		require.NotContains[any](t, sessionResponse.UserCtx["channels"].([]any), testChannelName)
+		require.Equal(t, slices.Collect(maps.Keys(sessionResponse.UserCtx["channels"].(map[string]any))), []string{"!"})
 
 	}
 }
