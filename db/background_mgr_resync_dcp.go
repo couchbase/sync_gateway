@@ -311,8 +311,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection, ok := db.CollectionByID[event.CollectionID]
 		if !ok {
-			// turn to AssertfCtx in CBG-5440
-			base.WarnfCtx(ctx, "Received DCP event for collection ID %d, but no collection found with that ID, skipping document %q", event.CollectionID, base.UD(docID))
+			base.AssertfCtx(ctx, "Received DCP event for collection ID %d, but no collection found with that ID, skipping document %q", event.CollectionID, base.UD(docID))
 			return false
 		}
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)

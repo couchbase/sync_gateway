@@ -140,8 +140,8 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 
 	collection, ok := il.collections[event.CollectionID]
 	if !ok {
-		base.WarnfCtx(ctx, "Received import event for unrecognised collection 0x%x", event.CollectionID)
-		return shouldPersistCheckpoint
+		base.AssertfCtx(ctx, "Received import event for doc %q on an unrecognised collection 0x%x", event.Key, event.CollectionID)
+		return false
 	}
 	ctx = collection.AddCollectionContext(ctx)
 
