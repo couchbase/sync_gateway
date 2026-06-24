@@ -50,3 +50,40 @@ repos:
         entry: bash -c 'diff <(jq --sort-keys . manifest/product-config.json) <(jq . manifest/product-config.json)'
         files: ^manifest/product-config\.json$
         pass_filenames: false
+
+      - id: redocly-lint
+        name: redocly lint
+        language: system
+        entry: npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
+        files: ^(docs/api/|\.redocly\.yaml$)
+        pass_filenames: false
+
+      - id: yamllint
+        name: yamllint
+        language: system
+        entry: yamllint
+        args: [docs/api]
+        files: ^docs/api/
+        pass_filenames: false
+
+      - id: shellcheck
+        name: shellcheck
+        language: system
+        entry: shellcheck
+        types: [shell]
+        exclude: >-
+          (?x)^(
+            build\.sh|
+            bootstrap\.sh|
+            bench\.sh|
+            integration-test/service-test\.sh|
+            integration-test/service-install-tests\.sh|
+            rewrite-manifest\.sh|
+            snap-manifest\.sh|
+            set-version-stamp\.sh|
+            service/sync_gateway_service_install\.sh|
+            service/sync_gateway_service_uninstall\.sh|
+            service/sync_gateway_service_upgrade\.sh|
+            test-integration-init\.sh|
+            test\.sh
+          )$
