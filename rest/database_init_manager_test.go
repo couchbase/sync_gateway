@@ -519,6 +519,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		config                  *DatabaseConfig
 		defaultCollectionExists bool
 		want                    CollectionInitData
+		startupConfig           *StartupConfig
 	}{
 		// Scope variations — verifies index sets are computed correctly per collection layout.
 		// Uses per-DB opt-in to show the full output including mobile collection.
@@ -615,8 +616,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			defaultCollectionExists: true,
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():      db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
 		{
@@ -653,7 +654,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			name: "named collection with _default dropped",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: false,
@@ -662,23 +664,10 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
-		{
-			name: "explicit default collection, migration complete, mobile enabled",
-			config: &DatabaseConfig{DbConfig: DbConfig{
-				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
-				UseSystemMobileMetadataCollection: base.Ptr(true),
-			}},
-			metadataMigrationComplete: true,
-			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
-				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
-			},
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := buildCollectionIndexData(test.config, test.defaultCollectionExists)
+			actual := buildCollectionIndexData(test.startupConfig, test.config, test.defaultCollectionExists)
 			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v, %v)", test.config, test.defaultCollectionExists)
 		})
 	}
