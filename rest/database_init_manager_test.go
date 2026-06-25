@@ -676,7 +676,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			actual := buildCollectionIndexData(test.startupConfig, test.config, test.defaultCollectionExists)
-			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v, %v)", test.config, test.defaultCollectionExists)
+			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(startup=%v, config=%v, defaultCollectionExists=%v)", test.startupConfig, test.config, test.defaultCollectionExists)
 		})
 	}
 }
