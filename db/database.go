@@ -113,7 +113,7 @@ type DatabaseContext struct {
 	bucketUsername              string                   // name of the connecting user for audit logging
 	BucketUUID                  string                   // The bucket UUID for the bucket the database is created against
 	EncodedSourceID             string                   // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
-	hlc                         *base.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
+	hlc                         *sgbucket.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
 	BucketLock                  sync.RWMutex             // Control Access to the underlying bucket object
 	mutationListener            *changeListener          // Caching feed listener
 	ImportListener              *importListener          // Import feed listener
@@ -458,7 +458,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
-		hlc:                  base.NewHybridLogicalClock(),
+		hlc:                  sgbucket.NewHybridLogicalClock(),
 		StartTime:            time.Now(),
 		autoImport:           autoImport,
 		Options:              options,

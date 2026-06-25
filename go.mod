@@ -13,11 +13,11 @@ require (
 	github.com/couchbase/gocb/v2 v2.12.3
 	github.com/couchbase/gocbcore/v10 v10.9.3
 	github.com/couchbase/gomemcached v0.2.1
-	github.com/couchbase/sg-bucket v0.0.0-20260519125731-9e05bfca7027
+	github.com/couchbase/sg-bucket v0.0.0-20260625135331-d9dd0c058146
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
-	github.com/couchbaselabs/rosmar v0.0.0-20260619123053-9443ab613870
+	github.com/couchbaselabs/rosmar v0.0.0-20260624141203-43636b0c9e21
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.1.4
@@ -40,7 +40,6 @@ require (
 	golang.org/x/net v0.56.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -68,7 +67,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.44 // indirect
+	github.com/mattn/go-sqlite3 v1.14.47 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -90,6 +89,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect

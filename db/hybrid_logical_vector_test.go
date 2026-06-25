@@ -529,7 +529,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 		// Derive from the same wall-clock source the bucket uses (HLCWallClock) so the only difference is the
 		// injected offset; using time.Now() directly diverges from the bucket's clock on Windows.
 		offset := uint64(100 * time.Millisecond)
-		db.hlc.SetClockForTest(func() uint64 { return base.HLCWallClock() + offset })
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedWithinBound", Body{"foo": "bar"})
@@ -546,7 +546,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 	t.Run("beyond max wait is left uncorrected", func(t *testing.T) {
 		// SG clock 2s ahead (> maxVersionCASCorrectionWait): correction is skipped with a warning.
 		offset := uint64(2 * time.Second)
-		db.hlc.SetClockForTest(func() uint64 { return base.HLCWallClock() + offset })
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedBeyondBound", Body{"foo": "bar"})
