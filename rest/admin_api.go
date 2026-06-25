@@ -438,10 +438,13 @@ func (h *handler) handlePostIndexInit() error {
 	action := cmp.Or(h.getQuery("action"), "start")
 
 	if action == "stop" {
-		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
+		// Stop (closing the terminator) must happen before Cancel (which sends context.Canceled to doneChan).
+		// AsyncIndexInitManager.Run suppresses errors when terminator.IsClosed(); if Cancel fires first,
+		// Run may receive the error before the terminator is closed and return it as a real failure.
 		if err := h.db.AsyncIndexInitManager.Stop(h.ctx()); err != nil {
 			return err
 		}
+		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
 		b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
 		if err != nil {
 			return err
