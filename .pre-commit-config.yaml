@@ -76,6 +76,8 @@ repos:
             build\.sh|
             bootstrap\.sh|
             bench\.sh|
+            build/postinst\.tmpl|
+            build/postrm\.tmpl|
             integration-test/service-test\.sh|
             integration-test/service-install-tests\.sh|
             rewrite-manifest\.sh|
