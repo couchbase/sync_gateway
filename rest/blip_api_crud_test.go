@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,8 +33,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -1123,7 +1124,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	RequireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
-	require.Contains(t, responseBody, db.BodyDeleted)
+	require.Contains(t, maps.Keys(responseBody), db.BodyDeleted)
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
 	assert.True(t, deletedOK)
 	assert.True(t, deletedValue)

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,14 +27,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
@@ -1875,7 +1876,7 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	assert.NotNil(t, rawXattrs)
 	globalSync = db.GlobalSyncData{}
 	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
-	assert.NotContains(t, globalSync.Attachments, "att1")
+	assert.NotContains(t, maps.Keys(globalSync.Attachments), "att1")
 	assert.Equal(t, len(att2), int(globalSync.Attachments["att2"].(map[string]any)["length"].(float64)))
 }
 
@@ -2252,7 +2253,7 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
-	require.NotEqual(t, 0, respBody.HeapProfileCollectionThreshold)
+	assert.Nil(t, respBody.HeapProfileCollectionThreshold)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2780,7 +2781,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), runtimeServerConfigResponse.Bootstrap.Username)
 	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
@@ -2811,7 +2812,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that db revs limit is there now and error logging config
-	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	assert.Equal(t, base.Ptr(uint32(100)), runtimeServerConfigResponse.Databases["db"].RevsLimit)
 
 	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
@@ -2841,8 +2842,8 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
-	require.Contains(t, runtimeServerConfigResponse.Databases["db"].Replications, "repl")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases["db"].Replications), "repl")
 	replCfg := runtimeServerConfigResponse.Databases["db"].Replications["repl"]
 	assert.Equal(t, "repl", replCfg.ID)
 	assert.Equal(t, "http://remote:4985/db", replCfg.Remote)
@@ -3072,7 +3073,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	runtimeServerConfigDatabase := runtimeServerConfigResponse.Databases["db"]
 	assert.Equal(t, channels.DocChannelsSyncFunction, *runtimeServerConfigDatabase.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
@@ -3094,7 +3095,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db2")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db2")
 	runtimeServerConfigDatabase = runtimeServerConfigResponse.Databases["db2"]
 	assert.True(t, runtimeServerConfigDatabase.Unsupported.DisableCleanSkippedQuery)
 }
@@ -3553,7 +3554,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
 	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
-	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
+	assert.Equal[error](t, base.ErrNotFound, fetchDb1DestErr)
 	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.NoError(t, fetchDb2DestErr)
 }
@@ -4235,7 +4236,7 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 
 	var statusResponse rest.Status
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
-	require.Contains(t, statusResponse.Databases, "db")
+	require.Contains(t, maps.Keys(statusResponse.Databases), "db")
 	assert.Empty(t, statusResponse.Databases["db"].MetadataStoreMode, "default DB should not report a dual-store mode")
 
 	// Opt in to the dual metadata store but do not yet start the migration.

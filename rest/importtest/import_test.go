@@ -13,6 +13,7 @@ package importtest
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,8 +27,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
@@ -163,7 +164,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	rawInsertResponse := getRawDocWithOnDemandImport(rt, key)
-	assert.Containsf(t, rawInsertResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK insert")
+	assert.Containsf(t, maps.Keys(rawInsertResponse.Xattrs.Sync.Channels), "oldDocNil", "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -178,7 +179,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// If delta sync is enabled, old doc may be available based on the backup used for delta generation, if it hasn't already
 	// been converted to a delta
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.Containsf(t, rawUpdateResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK update")
+		assert.Containsf(t, maps.Keys(rawUpdateResponse.Xattrs.Sync.Channels), "oldDocNil", "oldDoc was not nil during import of SDK update")
 	}
 
 	// 3. Test oldDoc behaviour during SDK delete
@@ -187,9 +188,9 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	rawDeleteResponse := getRawDocWithOnDemandImport(rt, key)
 	if !rt.GetDatabase().DeltaSyncEnabled() {
-		assert.Containsf(t, rawDeleteResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK delete")
+		assert.Containsf(t, maps.Keys(rawDeleteResponse.Xattrs.Sync.Channels), "oldDocNil", "oldDoc was not nil during import of SDK delete")
 	}
-	assert.Containsf(t, rawDeleteResponse.Xattrs.Sync.Channels, "docDeleted", "doc did not set _deleted:true for SDK delete")
+	assert.Containsf(t, maps.Keys(rawDeleteResponse.Xattrs.Sync.Channels), "docDeleted", "doc did not set _deleted:true for SDK delete")
 }
 
 // Test import ancestor handling
@@ -229,7 +230,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	assert.NoError(t, err)
 
 	rawResponse := getRawDocWithOnDemandImport(rt, docID)
-	assert.Containsf(t, rawResponse.Xattrs.Sync.Channels, "oldDocNil", "oldDoc was not nil during import of SDK update")
+	assert.Containsf(t, maps.Keys(rawResponse.Xattrs.Sync.Channels), "oldDocNil", "oldDoc was not nil during import of SDK update")
 }
 
 // Validate tombstone w/ xattrs
@@ -422,7 +423,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
 	rawUpdateResponse := getRawDocWithOnDemandImport(rt, key)
-	assert.Containsf(t, rawUpdateResponse.Xattrs.Sync.Channels, "HBO", "Didn't find expected channel (HBO) on resurrected doc")
+	assert.Containsf(t, maps.Keys(rawUpdateResponse.Xattrs.Sync.Channels), "HBO", "Didn't find expected channel (HBO) on resurrected doc")
 }
 
 // Attempt to delete a document that's already been deleted via the SDK
@@ -1517,7 +1518,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		var syncData db.SyncData
 		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
-		require.Contains(t, xattrs, base.SyncXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 		assert.NotEqualf(t, "", syncData.GetRevTreeID(), "Expecting non-empty rev ID for imported doc %v", docID)
@@ -1581,7 +1582,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		var syncData db.SyncData
 		docBody, xattrs, _, err := dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
 		require.NoError(t, err)
-		require.Contains(t, xattrs, base.SyncXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 		assert.NotEqualf(t, "", syncData.GetRevTreeID(), "Expecting non-empty rev ID for imported doc %v", docID)
@@ -1848,7 +1849,7 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr")
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	require.NotEmpty(t, syncData.GetRevTreeID())
@@ -2403,20 +2404,20 @@ func TestImportUpdateExpiry(t *testing.T) {
 		name         string
 		syncFn       string
 		startExpiry  uint32
-		assertion    func(t require.TestingT, expected, actual any, msgAndArgs ...any)
+		assertion    func(t require.TestingT, expected, actual int, msgAndArgs ...any)
 		shouldBeZero bool
 	}{
 		{
 			name:        "Decrease expiry",
 			syncFn:      `function(doc, oldDoc, meta) { expiry(1000); }`,
 			startExpiry: 2000,
-			assertion:   require.Less,
+			assertion:   require.Less[int],
 		},
 		{
 			name:        "Increase expiry",
 			syncFn:      `function(doc, oldDoc, meta) { expiry(2000); }`,
 			startExpiry: 1000,
-			assertion:   require.Greater,
+			assertion:   require.Greater[int],
 		},
 		{
 			name:         "Unset TTL",
@@ -2428,7 +2429,7 @@ func TestImportUpdateExpiry(t *testing.T) {
 			name:        "no modification to TTL",
 			syncFn:      `function(doc, oldDoc, meta) { }`,
 			startExpiry: 2000,
-			assertion:   require.LessOrEqual, // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
+			assertion:   require.LessOrEqual[int], // in 6.0, we reset the expiry to a new offset so it can be slightly less than the original TTL. In 7.0 + this will be an exact match
 		},
 	}
 	for _, test := range testCases {

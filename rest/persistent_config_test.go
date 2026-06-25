@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestAutomaticConfigUpgrade(t *testing.T) {
@@ -812,7 +812,7 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 			//  - attempt to delete c3_db1, rollback will remove from registry, then return 'not found' for the attempted delete
 			simulateCreateFailure(t, collection3db1Config)
 			deleteErr = bc.DeleteConfig(ctx, bucketName, groupID, "c3_db1")
-			require.Equal(t, base.ErrNotFound, deleteErr)
+			require.Equal[error](t, base.ErrNotFound, deleteErr)
 		})
 	}
 }
@@ -1050,7 +1050,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 				bucketDbConfig.Version = "2-a"
 				return bucketDbConfig, nil
 			})
-			require.Equal(t, base.ErrNotFound, err)
+			require.Equal[error](t, base.ErrNotFound, err)
 		})
 	}
 

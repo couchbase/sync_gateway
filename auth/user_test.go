@@ -18,8 +18,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -266,11 +266,11 @@ func TestCanSeeChannelSince(t *testing.T) {
 
 	role, err := auth.NewRole("music", channels.BaseSetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	role, err = auth.NewRole("video", channels.BaseSetOf(t, "Netflix", "Hulu"))
 	assert.Nil(t, err)
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	user.(*userImpl).setRolesSince(channels.TimedSet{
 		"music": channels.NewVbSimpleSequence(1),
@@ -296,11 +296,11 @@ func TestGetAddedChannels(t *testing.T) {
 
 	role, err := auth.NewRole("music", channels.BaseSetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	role, err = auth.NewRole("video", channels.BaseSetOf(t, "Netflix", "Hulu"))
 	assert.Nil(t, err)
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	user, err := auth.NewUser("alice", "password", channels.BaseSetOf(t, "ESPN", "HBO", "FX", "AMC"))
 	assert.Nil(t, err)

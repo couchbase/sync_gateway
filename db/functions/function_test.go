@@ -19,8 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 var allowAll = &Allow{Channels: []string{"*"}}
@@ -349,7 +349,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	// Missing document:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
 	assert.NoError(t, err)
-	assert.EqualValues(t, nil, result)
+	assert.Nil(t, result)
 
 	docParams := map[string]any{
 		"docID": docID,
@@ -363,7 +363,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	// Successful save (as admin):
 	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
-	assert.EqualValues(t, docID, result) // save() returns docID
+	assert.EqualValues[any](t, docID, result) // save() returns docID
 
 	// Existing document:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)
@@ -374,7 +374,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, strings.HasPrefix(revID, "1-"))
 	body["_id"] = docID
 	body["_rev"] = revID
-	assert.EqualValues(t, body, result)
+	assert.EqualValues[any](t, body, result)
 
 	// Update document with revID:
 	body["key2"] = 2
@@ -393,7 +393,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	delete(body, "_revid")
 	result, err = dbCtx.CallUserFunction(ctx, "putDoc", docParams, true)
 	assert.NoError(t, err)
-	assert.Equal(t, docID, result)
+	assert.Equal[any](t, docID, result)
 
 	// Get doc again to verify revision:
 	result, err = dbCtx.CallUserFunction(ctx, "getDoc", map[string]any{"docID": docID}, true)

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -24,15 +25,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -260,7 +261,7 @@ func TestDatabase(t *testing.T) {
 	require.NoError(t, err)
 	revisions := gotbody[BodyRevisions].(Revisions)
 	assert.Equal(t, 2, revisions[RevisionsStart])
-	assert.Equal(t, []string{"488724414d0ed6b398d6d2aeb228d797",
+	assert.Equal[any](t, []string{"488724414d0ed6b398d6d2aeb228d797",
 		"cb0c9a22be0e5a1b01084ec019defa81"}, revisions[RevisionsIds])
 
 	// Test RevDiff:
@@ -1471,12 +1472,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -1493,12 +1494,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -1595,12 +1596,12 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -3425,7 +3426,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	revBody, err := rev.Body()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
-	assert.Equal(t, map[string]any{"subkey1": "subvalue1"}, revBody["key2"])
+	assert.Equal[any](t, map[string]any{"subkey1": "subvalue1"}, revBody["key2"])
 	log.Printf("rev: %s", rev.BodyBytes)
 
 }
@@ -3469,7 +3470,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	assert.Equal(t, revId, doc.RevID)
 	assert.NoError(t, err, "Couldn't retrieve document")
 	assert.Equal(t, "Bob", doc.Body(ctx)["name"])
-	assert.Equal(t, json.Number("52"), doc.Body(ctx)["age"])
+	assert.Equal[any](t, json.Number("52"), doc.Body(ctx)["age"])
 }
 
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
@@ -3646,14 +3647,14 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	revBody, err := rev.Body()
 	assert.NoError(t, err, "Retrieve body of revision 3-b1")
 	assert.Equal(t, "Joshua", revBody["name"])
-	assert.Equal(t, json.Number("11"), revBody["age"])
+	assert.Equal[any](t, json.Number("11"), revBody["age"])
 
 	rev, err = collection.GetRev(ctx, "doc1", "3-b2", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b2")
 	revBody, err = rev.Body()
 	assert.NoError(t, err, "Retrieve body of revision 3-b2")
 	assert.Equal(t, "Liam", revBody["name"])
-	assert.Equal(t, json.Number("12"), revBody["age"])
+	assert.Equal[any](t, json.Number("12"), revBody["age"])
 }
 
 func TestIncreasingRecentSequences(t *testing.T) {
@@ -3787,7 +3788,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 		assert.NoError(c, err)
 	}, time.Second*5, time.Millisecond*100)
 
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
@@ -4613,7 +4614,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	assert.NotNil(t, revs)
 	assert.Equal(t, "doc", resBody[BodyId])
 	assert.Equal(t, "2-abc", resBody[BodyRev])
-	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal[any](t, exp.Format(time.RFC3339), resBody[BodyExpiry])
 	assert.Equal(t, "value", resBody["key"])
 
 	// mock doc deleted
@@ -4631,7 +4632,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	assert.NotNil(t, revs)
 	assert.Equal(t, "doc", resBody[BodyId])
 	assert.Equal(t, "2-abc", resBody[BodyRev])
-	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal[any](t, exp.Format(time.RFC3339), resBody[BodyExpiry])
 	assert.Equal(t, "value", resBody["key"])
 	assert.True(t, resBody[BodyDeleted].(bool))
 }

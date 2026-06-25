@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestRegistryHelpers unmarshals a registry and performs upserts and removals
@@ -165,11 +165,11 @@ func TestUpsertDatabaseConfig(t *testing.T) {
 
 	// Test previous version removal
 	err = registry.removePreviousVersion("cg2", "db1", "1") // config group mismatch
-	require.Equal(t, base.ErrNotFound, err)
+	require.Equal[error](t, base.ErrNotFound, err)
 	err = registry.removePreviousVersion("cg1", "db2", "1") // db name mismatch
-	require.Equal(t, base.ErrNotFound, err)
+	require.Equal[error](t, base.ErrNotFound, err)
 	err = registry.removePreviousVersion("cg1", "db1", "2") // config version mismatch
-	require.Equal(t, base.ErrConfigVersionMismatch, err)
+	require.Equal[error](t, base.ErrConfigVersionMismatch, err)
 	err = registry.removePreviousVersion("cg1", "db1", "1") // config version mismatch
 	require.NoError(t, err)
 	registryDatabase, ok = registry.ConfigGroups["cg1"].Databases["db1"]

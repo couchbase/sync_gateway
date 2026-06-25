@@ -17,8 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -273,18 +273,18 @@ func TestUserViewQuery(t *testing.T) {
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, 1, result.TotalRows)
 	row := result.Rows[0]
-	assert.Equal(t, float64(7), row.Key)
+	assert.Equal[any](t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
 
 	// Admin should see both rows:
 	result = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	require.Len(t, result.Rows, 2)
 	row = result.Rows[0]
-	assert.Equal(t, float64(7), row.Key)
+	assert.Equal[any](t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
 
 	row = result.Rows[1]
-	assert.Equal(t, float64(10), row.Key)
+	assert.Equal[any](t, float64(10), row.Key)
 	assert.Equal(t, "ten", row.Value)
 
 	// Make sure users are not allowed to query internal views:

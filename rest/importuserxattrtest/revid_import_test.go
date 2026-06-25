@@ -10,14 +10,15 @@ package importuserxattrtest
 
 import (
 	"log"
+	"maps"
 	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
@@ -55,7 +56,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	var syncData db.SyncData
 	xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
@@ -78,7 +79,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	var syncData2 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	assert.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
 	docRev2, err := collection.GetRevisionCacheForTest().Get(ctx, docKey, syncData.GetRevTreeID(), db.RevCacheLoadBackupRev)
@@ -102,7 +103,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	var syncData3 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData3))
 
 	assert.NotEqual(t, syncData2.GetRevTreeID(), syncData3.GetRevTreeID())

@@ -9,11 +9,12 @@
 package db
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestCachingFeedCollections_DualMetadataStore verifies that when the metadata store is a
@@ -31,11 +32,11 @@ func TestCachingFeedCollections_DualMetadataStore(t *testing.T) {
 
 	got := cachingFeedCollections(ms, nil)
 
-	require.Contains(t, got, base.SystemScope, "expected %s scope to be present", base.SystemScope)
-	assert.Contains(t, got[base.SystemScope], base.SystemCollectionMobile)
+	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
+	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
 
-	require.Contains(t, got, base.DefaultScope, "expected %s scope to be present", base.DefaultScope)
-	assert.Contains(t, got[base.DefaultScope], base.DefaultCollection)
+	require.Contains(t, maps.Keys(got), base.DefaultScope, "expected %s scope to be present", base.DefaultScope)
+	assert.Contains(t, maps.Keys(got[base.DefaultScope]), base.DefaultCollection)
 }
 
 // TestCachingFeedCollectionsDualMetadataStoreMigrationComplete verifies that once the dual
@@ -54,12 +55,12 @@ func TestCachingFeedCollectionsDualMetadataStoreMigrationComplete(t *testing.T) 
 
 	got := cachingFeedCollections(ms, nil)
 
-	require.Contains(t, got, base.SystemScope, "expected %s scope to be present", base.SystemScope)
-	assert.Contains(t, got[base.SystemScope], base.SystemCollectionMobile)
+	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
+	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
 
 	// The fallback (_default._default) must not be subscribed at all once migration is complete, so
 	// the _default scope must be absent from the result entirely.
-	assert.NotContains(t, got, base.DefaultScope, "fallback _default._default must not be subscribed after migration completes")
+	assert.NotContains(t, maps.Keys(got), base.DefaultScope, "fallback _default._default must not be subscribed after migration completes")
 }
 
 // TestCachingFeedCollections_SingleMetadataStore verifies that when the metadata store is a
@@ -74,8 +75,8 @@ func TestCachingFeedCollections_SingleMetadataStore(t *testing.T) {
 
 	got := cachingFeedCollections(metadataStore, nil)
 
-	require.Contains(t, got, base.DefaultScope)
-	assert.Contains(t, got[base.DefaultScope], base.DefaultCollection)
+	require.Contains(t, maps.Keys(got), base.DefaultScope)
+	assert.Contains(t, maps.Keys(got[base.DefaultScope]), base.DefaultCollection)
 	// Should not have added any other scope (notably _system).
 	assert.Len(t, got, 1, "expected exactly one scope in single-metadata-store case, got %v", got)
 }
@@ -102,11 +103,11 @@ func TestCachingFeedCollections_UserScopesIncluded(t *testing.T) {
 
 	got := cachingFeedCollections(ms, scopes)
 
-	require.Contains(t, got, base.SystemScope)
-	assert.Contains(t, got[base.SystemScope], base.SystemCollectionMobile)
-	require.Contains(t, got, base.DefaultScope)
-	assert.Contains(t, got[base.DefaultScope], base.DefaultCollection)
-	require.Contains(t, got, "myScope")
-	assert.Contains(t, got["myScope"], "collA")
-	assert.Contains(t, got["myScope"], "collB")
+	require.Contains(t, maps.Keys(got), base.SystemScope)
+	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
+	require.Contains(t, maps.Keys(got), base.DefaultScope)
+	assert.Contains(t, maps.Keys(got[base.DefaultScope]), base.DefaultCollection)
+	require.Contains(t, maps.Keys(got), "myScope")
+	assert.Contains(t, maps.Keys(got["myScope"]), "collA")
+	assert.Contains(t, maps.Keys(got["myScope"]), "collB")
 }

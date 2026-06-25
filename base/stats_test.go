@@ -14,9 +14,9 @@ import (
 	"expvar"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func BenchmarkExpvarString(b *testing.B) {

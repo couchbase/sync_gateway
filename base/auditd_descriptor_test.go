@@ -11,7 +11,7 @@ package base
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestGenerateAuditdModuleDescriptor outputs a generated auditd module descriptor for AuditEvents.
