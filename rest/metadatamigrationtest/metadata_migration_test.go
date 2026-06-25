@@ -26,7 +26,6 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/google/uuid"
 )
 
 // TestMetadataMigrationNotStartedWithoutOptIn creates a database without setting
@@ -68,23 +67,10 @@ func TestMetadataMigrationNotStartedWithExplicitFalse(t *testing.T) {
 //  2. Once node B applies the config and the registry reflects this, the migration starts.
 func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
-		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
-		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
-		// create ("Duplicate database name").
-		GroupID: base.Ptr(uuid.NewString()),
-	}
-
-	rtA := rest.NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := rest.NewRestTester(t, rtConfig)
-	defer rtB.Close()
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
 
 	// Create db on node A with migration disabled.
 	dbConfig := rtA.NewDbConfig()
@@ -110,7 +96,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	// flag, which the SGJSONTranscoder used by GetCounter can't decode into a *uint64 —
 	// fine on Rosmar (relaxed datatype handling) but a hard failure on Couchbase Server.
 	dbCtxBefore := rtA.GetDatabase()
-	_, err := tb.Bucket.DefaultDataStore(ctx).Incr(ctx, dbCtxBefore.MetadataKeys.SyncSeqKey(), 1, 0, 0)
+	_, err := rtA.TestBucket.Bucket.DefaultDataStore(ctx).Incr(ctx, dbCtxBefore.MetadataKeys.SyncSeqKey(), 1, 0, 0)
 	require.NoError(t, err)
 
 	// Update db config on node A to enable the system metadata collection.
@@ -1172,22 +1158,10 @@ func TestMetadataMigrationRESTStartRejectedWithoutOptIn(t *testing.T) {
 // writes. The POST must be rejected until every node has applied the config.
 func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
-		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
-		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
-		// create ("Duplicate database name").
-		GroupID: base.Ptr(uuid.NewString()),
-	}
-	rtA := rest.NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := rest.NewRestTester(t, rtConfig)
-	defer rtB.Close()
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
 
 	// Create db on node A with migration disabled, let node B pick it up, register both nodes.
 	dbConfig := rtA.NewDbConfig()
@@ -1199,7 +1173,7 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 
 	// Seed a legacy seq counter so the new-DB fast path doesn't auto-complete the migration (see
 	// TestMetadataMigrationStartsAfterAllNodesApplyConfig for the rationale on using Incr).
-	_, err := tb.Bucket.DefaultDataStore(ctx).Incr(ctx, rtA.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 0, 0)
+	_, err := rtA.TestBucket.Bucket.DefaultDataStore(ctx).Incr(ctx, rtA.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 0, 0)
 	require.NoError(t, err)
 
 	// Opt in on node A and flush its registry entry. Node B has NOT applied the new config version.

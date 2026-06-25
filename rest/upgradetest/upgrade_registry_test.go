@@ -272,14 +272,12 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	group1RT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
 		PersistentConfig: true,
-		GroupID:          base.Ptr("group1"),
 	})
 	defer group1RT.Close()
 
 	group2RT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb1,
 		PersistentConfig: true,
-		GroupID:          base.Ptr("group2"),
 	})
 	defer group2RT.Close()
 
