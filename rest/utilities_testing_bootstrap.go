@@ -15,9 +15,9 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // BootstrapStartupConfigForTest returns a default config for use to start a Sync Gateway server. It will run APIs on randomly chosen ports.

@@ -11,7 +11,7 @@ package base
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestLoggingMutex(t *testing.T) {

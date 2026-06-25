@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -20,8 +21,8 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestAttachmentMark(t *testing.T) {
@@ -69,7 +70,7 @@ func TestAttachmentMark(t *testing.T) {
 	for _, attDocKey := range attKeys {
 		xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName})
 		assert.NoError(t, err)
-		require.Contains(t, xattrs, base.AttachmentCompactionXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.AttachmentCompactionXattrName)
 		var attachmentData Body
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.AttachmentCompactionXattrName], &attachmentData))
 		compactIDSection, ok := attachmentData[CompactionIDKey]
@@ -217,11 +218,11 @@ func TestAttachmentCleanup(t *testing.T) {
 		xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
 		xattrs, _, err := dataStore.GetXattrs(ctx, docID, []string{xattrName})
 		require.NoError(t, err)
-		require.Contains(t, xattrs, xattrName)
+		require.Contains(t, maps.Keys(xattrs), xattrName)
 		var xattr map[string]any
 		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
-		assert.NotContains(t, xattr, t.Name())
-		assert.Contains(t, xattr, "rand")
+		assert.NotContains(t, maps.Keys(xattr), t.Name())
+		assert.Contains(t, maps.Keys(xattr), "rand")
 	}
 
 	for _, docID := range oldMultiMarkedAttIDs {
@@ -238,9 +239,9 @@ func TestAttachmentCleanup(t *testing.T) {
 		var xattr map[string]any
 		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
 
-		assert.NotContains(t, xattr, t.Name())
-		assert.NotContains(t, xattr, "old")
-		assert.Contains(t, xattr, "recent")
+		assert.NotContains(t, maps.Keys(xattr), t.Name())
+		assert.NotContains(t, maps.Keys(xattr), "old")
+		assert.Contains(t, maps.Keys(xattr), "recent")
 	}
 
 }
@@ -371,10 +372,10 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 			xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
 			xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{xattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, xattrName)
+			require.Contains(t, maps.Keys(xattrs), xattrName)
 			var xattr map[string]any
 			require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
-			assert.Contains(t, xattr, t.Name())
+			assert.Contains(t, maps.Keys(xattr), t.Name())
 		}
 	}
 

@@ -17,12 +17,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,11 +33,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/gorilla/mux"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // A forceError is being used when you want to force an error of type 'forceErrorType'
@@ -893,7 +895,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+			assert.Equal[any](t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
 			// Refresh auth token using the refresh token received from OP.
 			mockAuthServer.options.forceError = tc.forceRefreshError
@@ -931,7 +933,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+			assert.Equal[any](t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
 			// Make a keyspace-scoped request
 			request, err = http.NewRequest(http.MethodPut, mockSyncGatewayURL+"/"+restTester.GetSingleKeyspace()+"/doc1", bytes.NewBufferString(`{"foo":"bar"}`))
@@ -2358,7 +2360,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			defer func() { assert.NoError(t, response.Body.Close()) }()
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
-			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+			assert.Equal[any](t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 		})
 	}
 }
@@ -2631,8 +2633,8 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &adminResult))
 
 	assert.Equal(t, subject, adminResult["name"])
-	assert.Equal(t, mockAuthServer.options.issuer, adminResult["jwt_issuer"])
-	assert.Equal(t, []any{testChannelName}, adminResult["jwt_channels"])
+	assert.Equal[any](t, mockAuthServer.options.issuer, adminResult["jwt_issuer"])
+	assert.Equal[any](t, []any{testChannelName}, adminResult["jwt_channels"])
 	assert.NotEmpty(t, adminResult["jwt_last_updated"])
 	// check it's a valid time
 	_, err = time.Parse(time.RFC3339Nano, adminResult["jwt_last_updated"].(string))
@@ -2653,7 +2655,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	adminResult = db.Body{}
 	require.NoError(t, base.JSONUnmarshal(res.Body.Bytes(), &adminResult))
 
-	assert.NotContains(t, adminResult, "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
+	assert.NotContains(t, maps.Keys(adminResult), "jwt_issuer", "Expected to not have jwt_issuer in /_user response")
 
 	// Check that the user can't authenticate anymore
 	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + jwt}), http.StatusUnauthorized)
@@ -2672,7 +2674,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		require.Nil(t, sessionResponse.UserCtx["channels"])
 	} else {
-		require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)
+		require.Equal(t, slices.Collect(maps.Keys(sessionResponse.UserCtx["channels"].(map[string]any))), []string{"!"})
 
 	}
 }

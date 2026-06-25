@@ -22,15 +22,33 @@ Download Sync Gateway and other Couchbase packages for Linux, Windows and macOS 
 
 ### Pre-requisites
 
-To build Sync Gateway from source, you must have the following installed:
-
-* Go 1.21 or later ([Installing Go](https://golang.org/doc/install))
 * Building the Enterprise Edition requires access to private code, and cannot be built by third-parties.
 
-### Build Instructions 
+### Build Instructions
 
 ```shell
 $ go build
+```
+
+## Contributing
+
+### Pre-commit hooks
+
+Pre-commit is optional — it's a convenience to catch issues locally before CI does. Run once per checkout to enable it:
+
+```shell
+uvx pre-commit install
+```
+
+After that, the hooks run automatically whenever you `git commit`. `uvx` ships with [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
+#### Running hooks manually
+
+If you need to run the hooks outside of a commit:
+
+```shell
+uvx pre-commit run            # staged files only
+uvx pre-commit run --all-files  # entire repo
 ```
 
 ## Resources

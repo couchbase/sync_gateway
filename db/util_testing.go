@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -28,8 +29,8 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func (db *DatabaseContext) CacheCompactActive() bool {
@@ -816,7 +817,7 @@ func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, sou
 	require.NoError(t, err)
 	if doc.HLV == nil {
 		require.Equal(t, "", source)
-		require.Equal(t, "", version)
+		require.Equal(t, uint64(0), version)
 		return
 	}
 
@@ -964,7 +965,7 @@ func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) SyncData {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.SyncXattrName})
 	require.NoError(t, err, "Could not find _sync xattr for %s", docID)
-	require.Contains(t, xattrs, base.SyncXattrName, "Could not find _sync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName, "Could not find _sync xattr for %s", docID)
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	return syncData
@@ -974,7 +975,7 @@ func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) Sync
 func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) GlobalSyncData {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
 	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
-	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
 	var globalSyncData GlobalSyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
 	return globalSyncData
@@ -984,7 +985,7 @@ func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) Glo
 func GetRawGlobalSyncAttachments(t *testing.T, collection base.DataStore, docID string) AttachmentMap {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
 	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
-	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
 	var globalSyncData struct {
 		Attachments AttachmentMap `json:"attachments_meta"`
 	}

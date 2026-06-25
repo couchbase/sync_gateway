@@ -14,14 +14,15 @@ package indextest
 
 import (
 	"fmt"
+	"maps"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestDualMetadataStoreIndexes verifies that InitializeDualMetadataStoreIndexes creates the
@@ -174,9 +175,9 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		require.NoError(t, iter.Close(ctx))
 
 		require.Len(t, results, 3, "expected exactly 3 unique principals after deduplication")
-		require.Contains(t, results, aliceKey, "alice should be present")
-		require.Contains(t, results, bobKey, "bob should be present")
-		require.Contains(t, results, carolKey, "carol should be present")
+		require.Contains(t, maps.Keys(results), aliceKey, "alice should be present")
+		require.Contains(t, maps.Keys(results), bobKey, "bob should be present")
+		require.Contains(t, maps.Keys(results), carolKey, "carol should be present")
 
 		// Primary version of bob must be returned.
 		assert.Equal(t, "bob-primary", results[bobKey].Name,
@@ -197,9 +198,9 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 		require.NoError(t, iter.Close(ctx))
 
 		require.Len(t, results, 3, "expected exactly 3 unique users after deduplication")
-		require.Contains(t, results, aliceKey)
-		require.Contains(t, results, bobKey)
-		require.Contains(t, results, carolKey)
+		require.Contains(t, maps.Keys(results), aliceKey)
+		require.Contains(t, maps.Keys(results), bobKey)
+		require.Contains(t, maps.Keys(results), carolKey)
 
 		assert.Equal(t, "bob-primary", results[bobKey].Name,
 			"primary datastore version of bob should be preferred")
@@ -299,9 +300,9 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 	require.NoError(t, iter.Close(ctx))
 
 	require.Len(t, results, 3, "expected exactly 3 unique users after deduplication across both datastores")
-	require.Contains(t, results, "alice", "alice (primary store only) should be present")
-	require.Contains(t, results, "bob", "bob should appear exactly once after deduplication")
-	require.Contains(t, results, "carol", "carol (fallback store only) should be present")
+	require.Contains(t, maps.Keys(results), "alice", "alice (primary store only) should be present")
+	require.Contains(t, maps.Keys(results), "bob", "bob should appear exactly once after deduplication")
+	require.Contains(t, maps.Keys(results), "carol", "carol (fallback store only) should be present")
 
 	// The primary-store version of bob must take precedence over the fallback-store version.
 	assert.Equal(t, "bob@primary.example", results["bob"].Email,
@@ -412,19 +413,19 @@ func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
 	// Verify all primary-only users are present.
 	for i := range 10 {
 		name := fmt.Sprintf("primary-only-%03d", i)
-		assert.Contains(t, usersByName, name)
+		assert.Contains(t, maps.Keys(usersByName), name)
 	}
 
 	// Verify all fallback-only users are present.
 	for i := range 10 {
 		name := fmt.Sprintf("fallback-only-%03d", i)
-		assert.Contains(t, usersByName, name)
+		assert.Contains(t, maps.Keys(usersByName), name)
 	}
 
 	// Verify duplicate users are present with primary-store email (primary takes priority).
 	for i := range 5 {
 		name := fmt.Sprintf("dup-user-%03d", i)
-		require.Contains(t, usersByName, name)
+		require.Contains(t, maps.Keys(usersByName), name)
 		require.NotNil(t, usersByName[name].Email)
 		assert.Equal(t, name+"@primary.example", *usersByName[name].Email,
 			"duplicate user %q should use the primary-store version", name)
@@ -517,9 +518,9 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 		viewerKey := metaKeys.RoleKey("viewer")
 
 		require.Len(t, results, 3, "expected exactly 3 unique roles after deduplication")
-		assert.Contains(t, results, adminKey, "admin should be present")
-		assert.Contains(t, results, editorKey, "editor should be present")
-		assert.Contains(t, results, viewerKey, "viewer should be present")
+		assert.Contains(t, maps.Keys(results), adminKey, "admin should be present")
+		assert.Contains(t, maps.Keys(results), editorKey, "editor should be present")
+		assert.Contains(t, maps.Keys(results), viewerKey, "viewer should be present")
 	})
 
 	t.Run("QueryAllRoles", func(t *testing.T) {
@@ -533,8 +534,8 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 		viewerKey := metaKeys.RoleKey("viewer")
 
 		require.Len(t, results, 3, "expected exactly 3 unique roles after deduplication")
-		assert.Contains(t, results, adminKey, "admin should be present")
-		assert.Contains(t, results, editorKey, "editor should be present")
-		assert.Contains(t, results, viewerKey, "viewer should be present")
+		assert.Contains(t, maps.Keys(results), adminKey, "admin should be present")
+		assert.Contains(t, maps.Keys(results), editorKey, "editor should be present")
+		assert.Contains(t, maps.Keys(results), viewerKey, "viewer should be present")
 	})
 }

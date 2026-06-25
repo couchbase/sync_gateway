@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -21,9 +22,9 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -72,14 +73,14 @@ func TestValidateUser(t *testing.T) {
 
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	user, err := auth.NewUser("invalid:name", "", nil)
-	assert.Equal(t, user, (User)(nil))
+	assert.Nil(t, user)
 	assert.True(t, err != nil)
 	user, err = auth.NewUser("ValidName", "", nil)
 	assert.True(t, user != nil)
-	assert.Equal(t, err, nil)
+	assert.Nil(t, err)
 	user, err = auth.NewUser("ValidName", "letmein", nil)
 	assert.True(t, user != nil)
-	assert.Equal(t, err, nil)
+	assert.Nil(t, err)
 }
 
 func TestValidateRole(t *testing.T) {
@@ -92,14 +93,14 @@ func TestValidateRole(t *testing.T) {
 
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	role, err := auth.NewRole("invalid:name", nil)
-	assert.Equal(t, (User)(nil), role)
+	assert.Nil(t, role)
 	assert.True(t, err != nil)
 	role, err = auth.NewRole("ValidName", nil)
 	assert.True(t, role != nil)
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 	role, err = auth.NewRole("ValidName", nil)
 	assert.True(t, role != nil)
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 }
 
 func TestValidateUserEmail(t *testing.T) {
@@ -318,10 +319,10 @@ func TestSaveRoles(t *testing.T) {
 	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
 	role, _ := auth.NewRole("testRole", ch.BaseSetOf(t, "test"))
 	err := auth.Save(role)
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 
 	role2, err := auth.GetRole("testRole")
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 	assert.Equal(t, role, role2)
 }
 
@@ -496,7 +497,7 @@ func TestRebuildChannelsError(t *testing.T) {
 	err = auth.Save(role)
 	require.NoError(t, err)
 
-	assert.Equal(t, nil, auth.InvalidateDefaultChannels("testRole2", false, 1))
+	assert.Nil(t, auth.InvalidateDefaultChannels("testRole2", false, 1))
 
 	computer.err = errors.New("I'm sorry, Dave.")
 
@@ -520,7 +521,7 @@ func TestRebuildUserRoles(t *testing.T) {
 
 	// Retrieve the user, triggers initial build of roles
 	user1, err := auth.GetUser("testUser")
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 	expected := ch.AtSequence(base.SetOf("role1", "role3"), 1)
 	expected.AddChannel("role2", 3)
 	assert.Equal(t, expected, user1.RoleNames())
@@ -530,7 +531,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	require.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
-	assert.Equal(t, nil, err)
+	assert.Nil(t, err)
 	expected = ch.AtSequence(base.SetOf("role1", "role3"), 1)
 	expected.AddChannel("role2", 3)
 	assert.Equal(t, expected, user2.RoleNames())
@@ -548,7 +549,7 @@ func TestRoleInheritance(t *testing.T) {
 	require.NoError(t, auth.Save(role))
 	role, err = auth.NewRole("frood", ch.BaseSetOf(t, "hoopy", "hoopier", "hoopiest"))
 	require.NoError(t, err)
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	user, err := auth.NewUser("arthur", "password", ch.BaseSetOf(t, "britain"))
 	require.NoError(t, err)
@@ -1239,11 +1240,11 @@ func TestGetPrincipal(t *testing.T) {
 
 	// Create a new role named root with access to read, write and execute channels
 	role, _ := auth.NewRole(roleRoot, ch.BaseSetOf(t, channelRead, channelWrite, channelExecute))
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	// Create another role named user with access to read and execute channels; no write channel access.
 	role, _ = auth.NewRole(roleUser, ch.BaseSetOf(t, channelRead, channelExecute))
-	assert.Equal(t, nil, auth.Save(role))
+	assert.Nil(t, auth.Save(role))
 
 	// Get the principal against root role and verify the details.
 	principal, err := auth.GetPrincipal(roleRoot, false)
@@ -1617,7 +1618,7 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 75, EndSeq: 85}, channelHistory.Entries[0])
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1680,7 +1681,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.Len(t, fooPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 55)
@@ -1722,7 +1723,7 @@ func TestRevocationScenario2(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1791,7 +1792,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	testMockComputer.addRole(t, auth, "alice", "foo", 65)
@@ -1836,7 +1837,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -1902,7 +1903,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 75)
@@ -1939,7 +1940,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2023,7 +2024,7 @@ func TestRevocationScenario5(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2090,7 +2091,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.Len(t, aliceUserPrincipal.ChannelHistory(), 0)
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 95)
@@ -2184,7 +2185,7 @@ func TestRevocationScenario7(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	// Get Principals / Rebuild Seq 110
@@ -2461,7 +2462,7 @@ func TestRevocationScenario11(t *testing.T) {
 
 	revokedChannelsCombined, err = aliceUserPrincipal.revokedChannels(80, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
 
@@ -2633,7 +2634,7 @@ func TestRevocationScenario14(t *testing.T) {
 	// Ensure that a since 25 shows the revocation
 	revokedChannelsCombined, err := aliceUserPrincipal.revokedChannels(25, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, revokedChannelsCombined, "ch1")
+	require.Contains(t, maps.Keys(revokedChannelsCombined), "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	// Ensure that the user cannot see the channel at this point (after 45)

@@ -13,10 +13,10 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/robertkrimen/otto"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -253,7 +253,7 @@ func TestChannelMapperReject(t *testing.T) {
 	mapper := NewChannelMapper(ctx, `function(doc) {reject(403, "bad");}`, 0)
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, "bad"), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, "bad"), res.Rejection)
 }
 
 // Rejection by calling throw()
@@ -262,7 +262,7 @@ func TestChannelMapperThrow(t *testing.T) {
 	mapper := NewChannelMapper(ctx, `function(doc) {throw({forbidden:"bad"});}`, 0)
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, "bad"), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, "bad"), res.Rejection)
 }
 
 // Test other runtime exception
@@ -291,16 +291,16 @@ func TestCheckUser(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "channels": []string{}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test the userCtx name parameter with a list
@@ -312,16 +312,16 @@ func TestCheckUserArray(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "channels": []string{}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test the userCtx role parameter
@@ -333,16 +333,16 @@ func TestCheckRole(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test the userCtx role parameter with a list
@@ -354,16 +354,16 @@ func TestCheckRoleArray(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["kid","girl"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test the userCtx.channels parameter
@@ -375,16 +375,16 @@ func TestCheckAccess(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "party"}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "work"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "magic"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test the userCtx.channels parameter with a list
@@ -396,16 +396,16 @@ func TestCheckAccessArray(t *testing.T) {
 	var sally = map[string]any{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["swim","party"]}`), `{}`, emptyMetaMap(), sally)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["work"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
+	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["magic"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	assert.Nil(t, res.Rejection)
 }
 
 // Test changing the function

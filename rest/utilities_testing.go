@@ -39,9 +39,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -51,33 +51,34 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
-	SyncFn                          string                      // put the sync() function source in here (optional)
-	ImportFilter                    string                      // put the import filter function source in here (optional)
-	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
-	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	AllowConflicts                  bool                        // Enable conflicts mode.  By default, conflicts will not allowed
-	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
-	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
-	LeakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
-	adminInterface                  string                      // adminInterface overrides the default admin interface.
-	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
-	AutoImport                      *bool
-	HideProductInfo                 bool
-	AdminInterfaceAuthentication    bool
-	metricsInterfaceAuthentication  bool
-	enableAdminAuthPermissionsCheck bool
-	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
-	PersistentConfig                bool
-	GroupID                         *string
-	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
-	collectionConfig                collectionConfiguration
-	numCollections                  int
-	nodeClusterCompatVersion        *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
-	allowDbConfigEnvVars            *bool
-	maxConcurrentRevs               *int
-	UseXattrConfig                  bool
+	GuestEnabled                     bool                        // If this is true, Admin Party is in full effect
+	SyncFn                           string                      // put the sync() function source in here (optional)
+	ImportFilter                     string                      // put the import filter function source in here (optional)
+	DatabaseConfig                   *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	MutateStartupConfig              func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
+	InitSyncSeq                      uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	AllowConflicts                   bool                        // Enable conflicts mode.  By default, conflicts will not allowed
+	EnableUserQueries                bool                        // Enable the feature-flag for user N1QL/etc queries
+	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
+	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	adminInterface                   string                      // adminInterface overrides the default admin interface.
+	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
+	AutoImport                       *bool
+	HideProductInfo                  bool
+	AdminInterfaceAuthentication     bool
+	metricsInterfaceAuthentication   bool
+	enableAdminAuthPermissionsCheck  bool
+	useTLSServer                     bool // If true, TLS will be required for communications with CBS. Default: false
+	PersistentConfig                 bool
+	GroupID                          *string
+	serverless                       bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
+	collectionConfig                 collectionConfiguration
+	numCollections                   int
+	nodeClusterCompatVersion         *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
+	allowDbConfigEnvVars             *bool
+	maxConcurrentRevs                *int
+	UseXattrConfig                   bool
+	UseSystemScopeMetadataCollection *bool
 }
 
 type collectionConfiguration uint8
@@ -114,7 +115,7 @@ func (a *activeBlipTesterClients) add(name string) {
 func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	require.Contains(tb, a.m, name, "Can not remove blip tester client '%s' that was never added", name)
+	require.Contains(tb, maps.Keys(a.m), name, "Can not remove blip tester client '%s' that was never added", name)
 	a.m[name]--
 	if a.m[name] == 0 {
 		delete(a.m, name)
@@ -272,6 +273,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 				Password: base.TestClusterPassword(),
 			},
 		}
+	}
+
+	if rt.RestTesterConfig.UseSystemScopeMetadataCollection != nil {
+		sc.Bootstrap.UseSystemMetadataCollection = rt.RestTesterConfig.UseSystemScopeMetadataCollection
+	} else {
+		sc.Bootstrap.UseSystemMetadataCollection = base.Ptr(base.TestUseSystemMetadataCollection())
 	}
 
 	if rt.RestTesterConfig.GroupID != nil {
@@ -1640,7 +1647,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	resp := scm.Response()
 	body, err := resp.Body()
 	require.NoError(bt.TB(), err)
-	require.NotContains(bt.TB(), resp.Properties, "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
+	require.NotContains(bt.TB(), maps.Keys(resp.Properties), "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
 	return &db.SetCheckpointResponse{Message: resp}
 }
 
@@ -1662,7 +1669,7 @@ func (bt *BlipTester) newRevMessage(docID, docRev string, body []byte, propertie
 
 // SendRevWithHistory sends an unsolicited rev message and waits for the response. The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
 func (bt *BlipTester) SendRevWithHistory(docID, docRev string, revHistory []string, body []byte, properties blip.Properties) (res *blip.Message) {
-	require.NotContains(bt.TB(), properties, "history", "If specifying history, use BlipTester.SendRev")
+	require.NotContains(bt.TB(), maps.Keys(properties), "history", "If specifying history, use BlipTester.SendRev")
 	if len(revHistory) > 0 {
 		properties[db.RevMessageHistory] = strings.Join(revHistory, ",")
 	}
@@ -2148,7 +2155,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	bt.Send(subChangesRequest)
 	subChangesResponse := subChangesRequest.Response()
 	require.Equal(bt.TB(), subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
-	require.NotContains(bt.TB(), subChangesResponse.Properties, db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
+	require.NotContains(bt.TB(), maps.Keys(subChangesResponse.Properties), db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
 }
 
 // Helper for comparing BLIP changes received with expected BLIP changes

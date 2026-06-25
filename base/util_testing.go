@@ -34,9 +34,9 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -222,6 +222,21 @@ func TestTLSSkipVerify() bool {
 	val, err := strconv.ParseBool(tlsSkipVerify)
 	if err != nil {
 		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvTLSSkipVerify, tlsSkipVerify, err))
+	}
+
+	return val
+}
+
+// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestUseSystemMetadataCollection
+func TestUseSystemMetadataCollection() bool {
+	useSystemMetadataCollection, isSet := os.LookupEnv(TestEnvUseSystemMetadataCollection)
+	if !isSet {
+		return DefaultTestUseSystemMetadataCollection
+	}
+
+	val, err := strconv.ParseBool(useSystemMetadataCollection)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvUseSystemMetadataCollection, useSystemMetadataCollection, err))
 	}
 
 	return val

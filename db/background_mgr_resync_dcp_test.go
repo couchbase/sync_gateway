@@ -22,9 +22,9 @@ import (
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestResyncDCPInit(t *testing.T) {
@@ -359,9 +359,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
-	if usingShardedResync(t) {
-		t.Skip("CBG-5468 test flakes via not running to completition after resume")
-	}
 	docsToCreate := 5000
 	// rosmar runs too quickly, increase doc count
 	if base.UnitTestUrlIsWalrus() {

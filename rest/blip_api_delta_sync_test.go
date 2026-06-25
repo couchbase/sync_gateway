@@ -12,6 +12,7 @@ package rest
 
 import (
 	"encoding/base64"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -19,8 +20,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
@@ -252,7 +253,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[0])
+		assert.Equal[any](t, map[string]any{"hi": "alice"}, greetings[0])
 
 		require.Equal(t, db.AttachmentMap{
 			"hello.txt": {
@@ -981,7 +982,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			// Validate that generation of a delta didn't mutate the revision body in the revision cache
 			docRev, cacheErr := collection.GetRevisionCacheForTest().Get(ctx, "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheLoadBackupRev)
 			assert.NoError(t, cacheErr)
-			assert.NotContains(t, docRev.BodyBytes, "bob")
+			assert.NotContains(t, string(docRev.BodyBytes), "bob")
 		} else {
 			// Check the request was NOT sent with a deltaSrc property
 			assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
@@ -998,9 +999,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, "doc1", respBody[db.BodyId])
 		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 3)
-		assert.Equal(t, map[string]any{"hello": "world!"}, greetings[0])
-		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[1])
-		assert.Equal(t, map[string]any{"howdy": "bob"}, greetings[2])
+		assert.Equal[any](t, map[string]any{"hello": "world!"}, greetings[0])
+		assert.Equal[any](t, map[string]any{"hi": "alice"}, greetings[1])
+		assert.Equal[any](t, map[string]any{"howdy": "bob"}, greetings[2])
 
 		// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
 		deletedVersion := rt.DeleteDoc(docID, newRev)
@@ -1037,8 +1038,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 			} else {
 				// Pushing a full body revision on top of a tombstone is valid.
 				// CBL clients should fall back to this. The test client doesn't.
-				require.NotContains(t, revResp.Properties, "Error-Domain")
-				require.NotContains(t, revResp.Properties, "Error-Code")
+				require.NotContains(t, maps.Keys(revResp.Properties), "Error-Domain")
+				require.NotContains(t, maps.Keys(revResp.Properties), "Error-Code")
 			}
 
 			var deltaPushDocCountEnd int64

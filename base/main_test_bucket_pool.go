@@ -25,9 +25,9 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/require"
 )
 
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.

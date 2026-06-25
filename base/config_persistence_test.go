@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestConfigPersistence ensures that all implementations of ConfigPersistence behave as expected for common operations.
@@ -62,7 +62,7 @@ func TestConfigPersistence(t *testing.T) {
 
 			// attempt to re-insert, must return ErrAlreadyExists
 			_, reinsertErr := cp.insertConfig(c, configKey, configBody)
-			require.Equal(t, ErrAlreadyExists, reinsertErr)
+			require.Equal[error](t, ErrAlreadyExists, reinsertErr)
 
 			ctx := TestCtx(t)
 			var loadedConfig map[string]any
@@ -111,7 +111,7 @@ func TestConfigPersistence(t *testing.T) {
 			// attempt to retrieve config, validate not found
 			var deletedConfig map[string]any
 			_, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
-			assert.Equal(t, ErrNotFound, loadErr)
+			assert.Equal[error](t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
 			_, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
@@ -156,7 +156,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// attempt to re-insert, must return ErrAlreadyExists
 	_, reinsertErr := cp.insertConfig(c, configKey, configBody)
-	require.Equal(t, ErrAlreadyExists, reinsertErr)
+	require.Equal[error](t, ErrAlreadyExists, reinsertErr)
 
 	// Retrieve the config
 	var loadedConfig map[string]any

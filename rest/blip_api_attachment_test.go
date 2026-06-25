@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"testing"
 
@@ -21,8 +22,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Test pushing and pulling v2 attachments with v2 client
@@ -76,7 +77,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]any{"hi": "bob"}, greetings[0])
+		assert.Equal[any](t, map[string]any{"hi": "bob"}, greetings[0])
 
 		attachments, ok := respBody[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
@@ -84,8 +85,8 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(1), hello["revpos"])
+		assert.Equal[any](t, float64(11), hello["length"])
+		assert.Equal[any](t, float64(1), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
@@ -146,7 +147,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		assert.Equal(t, docID, respBody[db.BodyId])
 		greetings := respBody["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]any{"hi": "bob"}, greetings[0])
+		assert.Equal[any](t, map[string]any{"hi": "bob"}, greetings[0])
 
 		attachments, ok := respBody[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
@@ -154,8 +155,8 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
-		assert.Equal(t, float64(1), hello["revpos"])
+		assert.Equal[any](t, float64(11), hello["length"])
+		assert.Equal[any](t, float64(1), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
@@ -391,7 +392,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		body := rt.GetDocBody(docID)
 		greetings := body["greetings"].([]any)
 		assert.Len(t, greetings, 1)
-		assert.Equal(t, map[string]any{"hi": "alice"}, greetings[0])
+		assert.Equal[any](t, map[string]any{"hi": "alice"}, greetings[0])
 
 		attachments, ok := body[db.BodyAttachments].(map[string]any)
 		require.True(t, ok)
@@ -399,9 +400,9 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 		hello, ok := attachments["hello.txt"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-		assert.Equal(t, float64(11), hello["length"])
+		assert.Equal[any](t, float64(11), hello["length"])
 
-		assert.Equal(t, float64(4), hello["revpos"])
+		assert.Equal[any](t, float64(4), hello["revpos"])
 		assert.True(t, hello["stub"].(bool))
 
 		// Check the number of sendProveAttachment/sendGetAttachment calls.
@@ -479,7 +480,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		attachmentDigest: digest,
 	}
 	resp := bt.SendRevWithAttachment(input)
-	require.NotContains(t, resp.Properties, "Error-Code")
+	require.NotContains(t, maps.Keys(resp.Properties), "Error-Code")
 
 	// Get all docs and attachment via subChanges request
 	allDocs := bt.WaitForNumDocsViaChanges(1)

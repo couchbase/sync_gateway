@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Bucket names start with a fixed prefix and end with a sequential bucket number and a creation timestamp for uniqueness
