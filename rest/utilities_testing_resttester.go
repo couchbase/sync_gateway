@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // Run is equivalent to testing.T.Run() but updates the RestTester's TB to the new testing.T
@@ -428,52 +429,60 @@ func (rt *RestTester) WaitForResyncDCPStatusForDB(status db.BackgroundProcessSta
 	return rt.waitForResyncDCPStatus(status, dbName)
 }
 
-func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
-	timeout := 10 * time.Second
+// backgroundManagerResponse is satisfied by any REST response type that embeds db.BackgroundManagerStatus.
+type backgroundManagerResponse interface {
+	GetState() db.BackgroundProcessState
+}
+
+// waitForBackgroundManagerState polls url via GET until the background manager response reaches the expected state.
+// T must be a struct that embeds db.BackgroundManagerStatus, which carries the JSON "status" field.
+// Timeouts are adaptive via sgtest.GetBackgroundManagerStatusTransitionTimeout: shorter for Walrus/unit tests,
+// longer for CBS or CI environments. The CBS/CI timeout is larger than db.RequireBackgroundManagerState
+// (which uses direct in-process access) to cover HTTP round-trip overhead.
+func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, url string, state db.BackgroundProcessState) T {
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(rt.TB())
 	pollInterval := 10 * time.Millisecond
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
-		timeout = 60 * time.Second
+	if !sgtest.UnitTestUrlIsWalrus() || sgtest.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
 		pollInterval = 500 * time.Millisecond
 	}
-	var resyncStatus db.ResyncManagerResponseDCP
+	var response T
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		response := rt.SendAdminRequest("GET", "/"+dbName+"/_resync", "")
-		RequireStatus(rt.TB(), response, http.StatusOK)
-		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &resyncStatus))
-
-		assert.Equal(c, status, resyncStatus.State)
+		resp := rt.SendAdminRequest("GET", url, "")
+		// Use c (not rt.TB()) for all assertions so that failures are recorded on the
+		// CollectT and not on the real testing.T. EventuallyWithT runs the condition in a
+		// goroutine; calling rt.TB().Errorf/FailNow from that goroutine after the test
+		// has completed causes a "Fail in goroutine after TestXxx has completed" panic.
+		require.Equal(c, http.StatusOK, resp.Code)
+		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response))
+		assert.Equal(c, state, response.GetState())
 	}, timeout, pollInterval)
+	return response
+}
+
+func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+	resyncStatus := waitForBackgroundManagerState[db.ResyncManagerResponseDCP](rt, "/"+dbName+"/_resync", status)
 	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
 		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
 	}
 	return resyncStatus
 }
 
+// WaitForTombstoneCompactionStatus waits for the expectedState of the tombstone compaction background job to be reached by polling
+// the REST API until that state is reached. Fails test harness if it is not reached within timeout.
+func (rt *RestTester) WaitForTombstoneCompactionStatus(state db.BackgroundProcessState) db.TombstoneManagerResponse {
+	return waitForBackgroundManagerState[db.TombstoneManagerResponse](rt, "/{{.db}}/_compact", state)
+}
+
+// WaitForMetadataMigrationStatus waits for the expectedState of the metadata migration background job to be reached by polling
+// the REST API until that state is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcessState) db.MigrationManagerResponse {
-	return rt.waitForMetadataMigrationStatus(status, "{{.db}}")
+	return rt.WaitForMetadataMigrationStatusForDB(status, "{{.db}}")
 }
 
+// WaitForMetadataMigrationStatusForDB waits for the expectedState of the metadata migration background job to be reached by polling
+// the REST API until that state is reached on the named db. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForMetadataMigrationStatusForDB(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
-	return rt.waitForMetadataMigrationStatus(status, dbName)
-}
-
-func (rt *RestTester) waitForMetadataMigrationStatus(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
-	timeout := 10 * time.Second
-	pollInterval := 10 * time.Millisecond
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
-		timeout = 60 * time.Second
-		pollInterval = 500 * time.Millisecond
-	}
-
-	var migrationStatus db.MigrationManagerResponse
-	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		response := rt.SendAdminRequest("GET", "/"+dbName+"/_metadata_migration", "")
-		RequireStatus(rt.TB(), response, http.StatusOK)
-		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &migrationStatus))
-
-		assert.Equal(c, status, migrationStatus.State)
-	}, timeout, pollInterval)
-	return migrationStatus
+	return waitForBackgroundManagerState[db.MigrationManagerResponse](rt, "/"+dbName+"/_metadata_migration", status)
 }
 
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters

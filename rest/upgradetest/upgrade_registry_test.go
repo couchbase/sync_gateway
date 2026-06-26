@@ -198,7 +198,7 @@ func TestLegacyMetadataID(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus( db.BackgroundProcessStateCompleted)
 
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
@@ -265,7 +265,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus( db.BackgroundProcessStateCompleted)
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
 

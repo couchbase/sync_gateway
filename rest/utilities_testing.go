@@ -41,6 +41,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -181,7 +182,7 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
-	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
+	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(sgtest.UnitTestUrl())
 	return &rt
 }
 
@@ -362,7 +363,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
-		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || base.UnitTestUrlIsWalrus()) {
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || sgtest.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
@@ -925,7 +926,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
 	if db.HasCachingFeedDelay(rt.TB()) {
 		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
-	} else if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
+	} else if sgtest.UnitTestUrlIsWalrus() && !sgtest.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
 		// local rosmar will never take a long time, but it is sometimes slower in jenkins/github actions
 		waitTime = 1 * time.Second
 	}
@@ -1109,7 +1110,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) {
 	timeout := 10 * time.Second
 	pollInterval := 100 * time.Millisecond
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+	if !sgtest.UnitTestUrlIsWalrus() || sgtest.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
 		timeout = 60 * time.Second
 		pollInterval = 500 * time.Millisecond
 	}
@@ -2579,7 +2580,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 	if base.TestsDisableGSI() {
 		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
-		if !base.UnitTestUrlIsWalrus() {
+		if !sgtest.UnitTestUrlIsWalrus() {
 			config.UseViews = base.Ptr(true)
 		}
 	} else {
@@ -2597,7 +2598,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 
 	// Setup scopes.
-	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (sgtest.UnitTestUrlIsWalrus() || config.useGSI()) {
 		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
 		config.Sync = stringPtrOrNil(rt.SyncFn)
@@ -2695,21 +2696,21 @@ func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 
 // RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
 func RequireBucketSpecificCredentials(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
 	}
 }
 
 // RequireN1QLIndexes skips tests if N1QL indexes are required
 func RequireN1QLIndexes(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for N1QL indexes")
 	}
 }
 
 // RequireGocbDCPResync skips tests if not gocb backed buckets.
 func RequireGocbDCPResync(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
+	if !sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }
