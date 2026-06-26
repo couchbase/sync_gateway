@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -24,15 +25,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -48,6 +49,9 @@ func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		AllowConflicts: base.Ptr(true),
 		CacheOptions:   base.Ptr(DefaultCacheOptions()),
+		UnsupportedOptions: &UnsupportedOptions{
+			ResyncPartitions: base.Ptr(uint16(2)),
+		},
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }
@@ -257,7 +261,7 @@ func TestDatabase(t *testing.T) {
 	require.NoError(t, err)
 	revisions := gotbody[BodyRevisions].(Revisions)
 	assert.Equal(t, 2, revisions[RevisionsStart])
-	assert.Equal(t, []string{"488724414d0ed6b398d6d2aeb228d797",
+	assert.Equal[any](t, []string{"488724414d0ed6b398d6d2aeb228d797",
 		"cb0c9a22be0e5a1b01084ec019defa81"}, revisions[RevisionsIds])
 
 	// Test RevDiff:
@@ -1468,12 +1472,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -1490,12 +1494,12 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2ID, rev3ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -1592,12 +1596,12 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 				rev2 := docRev2.HLV.ExtractCurrentVersionFromHLV()
 				rev3 := docRev3.HLV.ExtractCurrentVersionFromHLV()
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev2.String(), rev3.String())
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			} else {
 				delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
-				require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+				require.Equal[error](t, base.HTTPErrorf(404, "missing"), err)
 				assert.Nil(t, delta)
 				assert.Nil(t, redactedRev)
 			}
@@ -3422,7 +3426,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	revBody, err := rev.Body()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
-	assert.Equal(t, map[string]any{"subkey1": "subvalue1"}, revBody["key2"])
+	assert.Equal[any](t, map[string]any{"subkey1": "subvalue1"}, revBody["key2"])
 	log.Printf("rev: %s", rev.BodyBytes)
 
 }
@@ -3466,7 +3470,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	assert.Equal(t, revId, doc.RevID)
 	assert.NoError(t, err, "Couldn't retrieve document")
 	assert.Equal(t, "Bob", doc.Body(ctx)["name"])
-	assert.Equal(t, json.Number("52"), doc.Body(ctx)["age"])
+	assert.Equal[any](t, json.Number("52"), doc.Body(ctx)["age"])
 }
 
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
@@ -3643,14 +3647,14 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	revBody, err := rev.Body()
 	assert.NoError(t, err, "Retrieve body of revision 3-b1")
 	assert.Equal(t, "Joshua", revBody["name"])
-	assert.Equal(t, json.Number("11"), revBody["age"])
+	assert.Equal[any](t, json.Number("11"), revBody["age"])
 
 	rev, err = collection.GetRev(ctx, "doc1", "3-b2", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b2")
 	revBody, err = rev.Body()
 	assert.NoError(t, err, "Retrieve body of revision 3-b2")
 	assert.Equal(t, "Liam", revBody["name"])
-	assert.Equal(t, json.Number("12"), revBody["age"])
+	assert.Equal[any](t, json.Number("12"), revBody["age"])
 }
 
 func TestIncreasingRecentSequences(t *testing.T) {
@@ -3784,7 +3788,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 		assert.NoError(c, err)
 	}, time.Second*5, time.Millisecond*100)
 
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
 
@@ -3966,7 +3970,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 		require.NoError(t, err)
 		userSequences[i] = user.Sequence()
 	}
-	err := db.updateAllPrincipalsSequences(ctx)
+	err := db.updateAllPrincipalsSequences(ctx, "resyncID")
 	require.NoError(t, err)
 
 	for i := range 5 {
@@ -4162,7 +4166,7 @@ func Test_resyncDocument(t *testing.T) {
 				require.NotNil(t, postResyncDoc.HLV)
 				require.Equal(t, Version{
 					SourceID: db.EncodedSourceID,
-					Value:    preResyncDoc.Cas,
+					Value:    preResyncDoc.HLV.Version,
 				}, Version{
 					SourceID: postResyncDoc.HLV.SourceID,
 					Value:    postResyncDoc.HLV.Version,
@@ -4356,39 +4360,37 @@ func Test_stopBackgroundManagers(t *testing.T) {
 	defer db.Close(ctx)
 
 	testCases := []struct {
-		resyncManager               *BackgroundManager
-		tombstoneCompactionManager  *BackgroundManager
-		attachmentCompactionManager *BackgroundManager
+		resyncManager               *BackgroundManager[ResyncOptions]
+		tombstoneCompactionManager  *BackgroundManager[map[string]any]
+		attachmentCompactionManager *BackgroundManager[map[string]any]
 		expected                    int
 	}{
 		{
 			expected: 0,
 		},
 		{
-			resyncManager: &BackgroundManager{
+			resyncManager: &BackgroundManager[ResyncOptions]{
 				name:    "test_resync",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[ResyncOptions]{isStoppable: true},
 			},
 			expected: 1,
 		},
 		{
-			resyncManager: &BackgroundManager{
+			resyncManager: &BackgroundManager[ResyncOptions]{
 				name:    "test_resync",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[ResyncOptions]{isStoppable: true},
 			},
-			tombstoneCompactionManager: &BackgroundManager{
+			tombstoneCompactionManager: &BackgroundManager[map[string]any]{
 				name:    "test_tombstone",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 			},
-			attachmentCompactionManager: &BackgroundManager{
+			attachmentCompactionManager: &BackgroundManager[map[string]any]{
 				name:    "test_attachment",
-				Process: &testBackgroundProcess{isStoppable: true},
+				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 			},
 			expected: 3,
 		},
 	}
-
-	emptyOptions := map[string]any{}
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -4396,15 +4398,15 @@ func Test_stopBackgroundManagers(t *testing.T) {
 			db.AttachmentCompactionManager = testCase.attachmentCompactionManager
 			db.TombstoneCompactionManager = testCase.tombstoneCompactionManager
 			if db.ResyncManager != nil {
-				err := db.ResyncManager.Start(ctx, emptyOptions)
+				err := db.ResyncManager.Start(ctx, ResyncOptions{})
 				assert.NoError(t, err)
 			}
 			if db.AttachmentCompactionManager != nil {
-				err := db.AttachmentCompactionManager.Start(ctx, emptyOptions)
+				err := db.AttachmentCompactionManager.Start(ctx, map[string]any{})
 				assert.NoError(t, err)
 			}
 			if db.TombstoneCompactionManager != nil {
-				err := db.TombstoneCompactionManager.Start(ctx, emptyOptions)
+				err := db.TombstoneCompactionManager.Start(ctx, map[string]any{})
 				assert.NoError(t, err)
 			}
 
@@ -4448,9 +4450,9 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		waitTime = 1 * time.Second
 	}
 	t.Run("single unstoppable process", func(t *testing.T) {
-		bgMngr := &BackgroundManager{
+		bgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_unstoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: false},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: false},
 		}
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
@@ -4460,15 +4462,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{bgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopping, bgMngr.GetRunState())
 	})
 
 	t.Run("single stoppable process", func(t *testing.T) {
-		bgMngr := &BackgroundManager{
+		bgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_stoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: true},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
 		err := bgMngr.Start(ctx, map[string]any{})
@@ -4478,15 +4480,15 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{bgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{bgMngr})
 		assert.Less(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, bgMngr.GetRunState())
 	})
 
 	t.Run("one stoppable process and one unstoppable process", func(t *testing.T) {
-		stoppableBgMngr := &BackgroundManager{
+		stoppableBgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_stoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: true},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
 		}
 		ctx := base.TestCtx(t)
 		err := stoppableBgMngr.Start(ctx, map[string]any{})
@@ -4494,9 +4496,9 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 		err = stoppableBgMngr.Stop(ctx)
 		require.NoError(t, err)
 
-		unstoppableBgMngr := &BackgroundManager{
+		unstoppableBgMngr := &BackgroundManager[map[string]any]{
 			name:    "test_unstoppable_runner",
-			Process: &testBackgroundProcess{isStoppable: false},
+			Process: &testBackgroundProcess[map[string]any]{isStoppable: false},
 		}
 
 		err = unstoppableBgMngr.Start(ctx, map[string]any{})
@@ -4506,7 +4508,7 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 
 		startTime := time.Now()
 		deadline := waitTime
-		waitForBackgroundManagersToStop(ctx, deadline, []*BackgroundManager{stoppableBgMngr, unstoppableBgMngr})
+		waitForBackgroundManagersToStop(ctx, deadline, []StoppableBackgroundManager{stoppableBgMngr, unstoppableBgMngr})
 		assert.Greater(t, time.Since(startTime), deadline)
 		assert.Equal(t, BackgroundProcessStateStopped, stoppableBgMngr.GetRunState())
 		assert.Equal(t, BackgroundProcessStateStopping, unstoppableBgMngr.GetRunState())
@@ -4514,17 +4516,17 @@ func Test_waitForBackgroundManagersToStop(t *testing.T) {
 }
 
 // Test BackgroundManagerProcessI which can be configured to stop or run forever
-var _ BackgroundManagerProcessI = &testBackgroundProcess{}
+var _ BackgroundManagerProcessI[map[string]any] = &testBackgroundProcess[map[string]any]{}
 
-type testBackgroundProcess struct {
+type testBackgroundProcess[O any] struct {
 	isStoppable bool
 }
 
-func (i *testBackgroundProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
-	return nil
+func (i *testBackgroundProcess[O]) Init(_ context.Context, _ O, _ []byte) (backgroundManagerInitMode, error) {
+	return backgroundManagerInitReset, nil
 }
 
-func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (i *testBackgroundProcess[O]) Run(_ context.Context, _ O, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	<-terminator.Done()
 	if i.isStoppable {
 		return nil
@@ -4534,9 +4536,9 @@ func (i *testBackgroundProcess) Run(ctx context.Context, options map[string]any,
 	return nil
 }
 
-func (i *testBackgroundProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+func (i *testBackgroundProcess[O]) SetProcessStatus(context.Context, []byte, []byte) {}
 
-func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
+func (i *testBackgroundProcess[O]) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
 	statusJSON, err := base.JSONMarshal(status)
 	if err != nil {
 		return nil, nil, err
@@ -4545,7 +4547,7 @@ func (i *testBackgroundProcess) GetProcessStatus(status BackgroundManagerStatus,
 	return statusJSON, nil, nil
 }
 
-func (i *testBackgroundProcess) ResetStatus() {
+func (i *testBackgroundProcess[O]) ResetStatus() {
 }
 
 // Make sure that closing a database context after a mutation feed fails to start results does not panic
@@ -4612,7 +4614,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	assert.NotNil(t, revs)
 	assert.Equal(t, "doc", resBody[BodyId])
 	assert.Equal(t, "2-abc", resBody[BodyRev])
-	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal[any](t, exp.Format(time.RFC3339), resBody[BodyExpiry])
 	assert.Equal(t, "value", resBody["key"])
 
 	// mock doc deleted
@@ -4630,7 +4632,7 @@ func TestInject1xBodyProperties(t *testing.T) {
 	assert.NotNil(t, revs)
 	assert.Equal(t, "doc", resBody[BodyId])
 	assert.Equal(t, "2-abc", resBody[BodyRev])
-	assert.Equal(t, exp.Format(time.RFC3339), resBody[BodyExpiry])
+	assert.Equal[any](t, exp.Format(time.RFC3339), resBody[BodyExpiry])
 	assert.Equal(t, "value", resBody["key"])
 	assert.True(t, resBody[BodyDeleted].(bool))
 }

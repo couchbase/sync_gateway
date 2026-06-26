@@ -73,10 +73,12 @@ func (lds *LeakyDataStore) GetName() string {
 	return lds.dataStore.GetName()
 }
 
+// ScopeName returns the scope name for the DataStore.
 func (lds *LeakyDataStore) ScopeName() string {
 	return lds.dataStore.ScopeName()
 }
 
+// CollectionName returns the collection name for the DataStore.
 func (lds *LeakyDataStore) CollectionName() string {
 	return lds.dataStore.CollectionName()
 }

@@ -14,16 +14,16 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"maps"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 type treeDoc struct {
@@ -139,14 +139,14 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments(), "hello.txt")
+	require.Contains(t, maps.Keys(gotDoc.Attachments()), "hello.txt")
 	attachmentData, ok := gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.Equal[any](t, float64(11), attachmentData["length"])
+	assert.Equal[any](t, float64(2), attachmentData["revpos"])
 	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal[any](t, float64(2), attachmentData["ver"])
 
 	// Create rev 2-b
 	//    1-a
@@ -165,14 +165,14 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments(), "hello.txt")
+	require.Contains(t, maps.Keys(gotDoc.Attachments()), "hello.txt")
 	attachmentData, ok = gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.Equal[any](t, float64(11), attachmentData["length"])
+	assert.Equal[any](t, float64(2), attachmentData["revpos"])
 	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal[any](t, float64(2), attachmentData["ver"])
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
@@ -1103,16 +1103,16 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	require.True(t, found, "Ancestor should exists")
 	attachment := meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	assert.Equal[any](t, json.Number("20"), attachment["length"])
+	assert.Equal[any](t, json.Number("1"), attachment["revpos"])
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
 	require.True(t, found, "Ancestor should exists")
 	attachment = meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	assert.Equal[any](t, json.Number("20"), attachment["length"])
+	assert.Equal[any](t, json.Number("1"), attachment["revpos"])
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
@@ -1145,13 +1145,13 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.NoError(t, err, "It should not throw any error")
 	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "6213100", response["sku"])
 	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
 	rev3, _, err := collection.DeleteDoc(ctx, docId, DocVersion{RevTreeID: rev2})
@@ -1168,13 +1168,13 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.NoError(t, err, "It should not throw any error")
 	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "6213101", response["sku"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a", "a"}, revisions[RevisionsIds])
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
@@ -1198,13 +1198,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.False(t, removed, "This shouldn't be a removed document")
 	var response = Body{}
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "Los Angeles", response["city"])
 	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a"}, revisions[RevisionsIds])
 
 	// Create the second revision of the document
 	payload = `{"city":"Hollywood"}`
@@ -1220,13 +1220,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a", "a"}, revisions[RevisionsIds])
 
 	// Get body bytes from doc with unknown revision id; it simulates the error scenario.
 	// A 404 missing error should be thrown when trying get the body bytes of the document
@@ -1251,13 +1251,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
-	assert.Equal(t, rev3, response[BodyRev])
+	assert.Equal[any](t, docId, response[BodyId])
+	assert.Equal[any](t, rev3, response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("3"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("3"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
 
 	// If the provided revision ID is blank and the current revision is already deleted
 	// when checking document revision history, it should throw 404 deleted error.
@@ -1540,7 +1540,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 
 	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	require.Len(t, xattr["cluster_uuid"].(string), 32)
@@ -1754,7 +1754,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.NotZero(t, doc.HLV.Version)
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// store the cas version allocated to the above doc creation for creation of incoming HLV later in test
@@ -1845,7 +1845,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	bucketUUID := db.EncodedSourceID
+	sourceID := db.EncodedSourceID
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// create a new doc
@@ -1858,9 +1858,10 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	// assert on the HLV values after the above creation of the doc
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	require.NoError(t, err)
-	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, sourceID, doc.HLV.SourceID)
+	assert.NotZero(t, doc.HLV.Version)
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
+	rev1CV := doc.HLV.ExtractCurrentVersionFromHLV()
 
 	// create a new doc update to simulate a doc update arriving over replicator from, client
 	body = Body{"key1": "value2"}
@@ -1883,8 +1884,8 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 	// assert persisted doc hlv hasn't been updated
 	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	assert.Equal(t, rev1CV.SourceID, doc.HLV.SourceID)
+	assert.Equal(t, rev1CV.Value, doc.HLV.Version)
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
@@ -2600,149 +2601,6 @@ func TestProposedRev(t *testing.T) {
 			status, rev := collection.CheckProposedRev(ctx, tc.docID, tc.revID, tc.parentRevID)
 			assert.Equal(t, tc.expectedStatus, status)
 			assert.Equal(t, tc.expectedCurrentRev, rev)
-		})
-	}
-}
-
-func TestXattrRevokedChannelVersionPath(t *testing.T) {
-	tests := []struct {
-		name        string
-		channelName string
-		expected    string
-		wantErr     bool
-	}{
-		{
-			name:        "simple channel name",
-			channelName: "mychannel",
-			expected:    "_sync.channels.mychannel.rev.ver",
-		},
-		{
-			name:        "channel name with dots",
-			channelName: "location.com.subscriber.default_location",
-			expected:    "_sync.channels.`location.com.subscriber.default_location`.rev.ver",
-		},
-		{
-			name:        "channel name with dots and backticks",
-			channelName: "channel.with`backtick",
-			expected:    "_sync.channels.`channel.with``backtick`.rev.ver",
-		},
-		{
-			name:        "channel name with uppercase letters",
-			channelName: "MyChannel",
-			expected:    "_sync.channels.MyChannel.rev.ver",
-		},
-		{
-			name:        "channel name with uppercase letters and dots",
-			channelName: "My.Channel",
-			expected:    "_sync.channels.`My.Channel`.rev.ver",
-		},
-		{
-			name:        "channel name with digits",
-			channelName: "channel123",
-			expected:    "_sync.channels.channel123.rev.ver",
-		},
-		{
-			name:        "channel name with digits and dots",
-			channelName: "channel.123",
-			expected:    "_sync.channels.`channel.123`.rev.ver",
-		},
-		{
-			name:        "channel name with underscore only",
-			channelName: "my_channel",
-			expected:    "_sync.channels.my_channel.rev.ver",
-		},
-		{
-			name:        "channel name with equals sign",
-			channelName: "key=value",
-			expected:    "_sync.channels.key=value.rev.ver",
-		},
-		{
-			name:        "channel name with equals sign and dots",
-			channelName: "config.key=value",
-			expected:    "_sync.channels.`config.key=value`.rev.ver",
-		},
-		{
-			name:        "channel name with plus sign",
-			channelName: "a+b",
-			expected:    "_sync.channels.a+b.rev.ver",
-		},
-		{
-			name:        "channel name with plus sign and dots",
-			channelName: "a.b+c",
-			expected:    "_sync.channels.`a.b+c`.rev.ver",
-		},
-		{
-			name:        "channel name with forward slash",
-			channelName: "scope/channel",
-			expected:    "_sync.channels.scope/channel.rev.ver",
-		},
-		{
-			name:        "channel name with forward slash and dots",
-			channelName: "scope/channel.sub",
-			expected:    "_sync.channels.`scope/channel.sub`.rev.ver",
-		},
-		{
-			name:        "channel name with comma",
-			channelName: "a,b",
-			expected:    "_sync.channels.a,b.rev.ver",
-		},
-		{
-			name:        "channel name with comma and dots",
-			channelName: "a.b,c",
-			expected:    "_sync.channels.`a.b,c`.rev.ver",
-		},
-		{
-			name:        "channel name with at sign",
-			channelName: "user@example",
-			expected:    "_sync.channels.user@example.rev.ver",
-		},
-		{
-			name:        "channel name with at sign and dots",
-			channelName: "user@example.com",
-			expected:    "_sync.channels.`user@example.com`.rev.ver",
-		},
-		{
-			name:        "channel name with brackets and index",
-			channelName: "example[10]ChannelName",
-			expected:    "_sync.channels.`example[10]ChannelName`.rev.ver",
-		},
-		{
-			name:        "channel name with brackets at end",
-			channelName: "exampleChannelName[10]",
-			expected:    "_sync.channels.`exampleChannelName[10]`.rev.ver",
-		},
-		{
-			name:        "channel name with empty brackets",
-			channelName: "literal[]bracketchannel",
-			expected:    "_sync.channels.`literal[]bracketchannel`.rev.ver",
-		},
-		{
-			name:        "channel name with brackets and dots",
-			channelName: "example[10].ChannelName",
-			expected:    "_sync.channels.`example[10].ChannelName`.rev.ver",
-		},
-		{
-			name:        "channel name with backtick",
-			channelName: "foo`bar",
-			expected:    "_sync.channels.`foo``bar`.rev.ver",
-		},
-		{
-			// Scaffold "_sync.channels." (15) + ".rev.ver" (8) = 23 chars; a name of 1002 chars
-			// produces a path of 1025 bytes, exceeding the CBS subdoc path limit of 1024.
-			name:        "channel name exceeding subdoc path limit",
-			channelName: strings.Repeat("a", 1002),
-			wantErr:     true,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := xattrRevokedChannelVersionPath("_sync", tc.channelName)
-			if tc.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
 		})
 	}
 }

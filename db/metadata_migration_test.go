@@ -10,11 +10,13 @@ package db
 
 import (
 	"context"
+	"maps"
 	"testing"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func newMigrationTestStore(t *testing.T, bucket *base.TestBucket) *base.MetadataStore {
@@ -33,6 +35,10 @@ func seedFallback(ctx context.Context, t *testing.T, ms *base.MetadataStore, key
 	t.Helper()
 	_, err := ms.Fallback().AddRaw(ctx, key, 0, body)
 	require.NoError(t, err, "seed fallback %s", key)
+	// KV range scans read from a per-vBucket snapshot view, so a scan issued immediately after
+	// the write can miss the just-seeded doc until the vBucket's scan view catches up. Block here
+	// so callers can't forget to wait for visibility before exercising scan-backed code.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{key})
 }
 
 // TestMigrateMetadataEmptyFallback verifies the new-DB fast path: empty fallback yields a
@@ -45,7 +51,7 @@ func TestMigrateMetadataEmptyFallback(t *testing.T) {
 	ms := newMigrationTestStore(t, bucket)
 	stats := &MigrationStats{}
 
-	remaining, err := MigrateMetadata(ctx, ms, "testEmpty", stats)
+	remaining, err := MigrateMetadata(ctx, ms, "testEmpty", nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Zero(t, stats.DocsScannedTotal.Load())
@@ -96,7 +102,7 @@ func TestMigrateMetadataUnknownPrefixCountedAsRemaining(t *testing.T) {
 	seedFallback(ctx, t, ms, unknownKey, []byte(`{"body":"unknown"}`))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 1, remaining, "unknown-prefix doc should be reported as remaining")
 	assert.Equal(t, int64(1), stats.DocsUnknownPrefix.Load())
@@ -121,7 +127,7 @@ func TestMigrateMetadataNamespacedExcludesSiblingDB(t *testing.T) {
 	seedFallback(ctx, t, ms, siblingKey, []byte(`{"heartbeat":"sibling"}`))
 
 	stats := &MigrationStats{}
-	_, err := MigrateMetadata(ctx, ms, "myDB", stats)
+	_, err := MigrateMetadata(ctx, ms, "myDB", nil, nil, stats)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(1), stats.DocsOutOfScope.Load())
@@ -179,7 +185,7 @@ func TestMigrateMetadataMovesUserAndRoleDocs(t *testing.T) {
 	}
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(len(seeded)), stats.DocsMigrated.Load())
@@ -226,8 +232,11 @@ func TestMigrateMetadataMovesUserEmailAndSession(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, seededSessionExpiry, "fallback should have a non-zero absolute expiry after a TTL write")
 
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{emailKey, sessionKey})
+
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(2), stats.DocsMigrated.Load(), "useremail and session should both be moved")
@@ -279,7 +288,7 @@ func TestMigrateMetadataUserDocPrimaryWinsOnConflict(t *testing.T) {
 	seedFallback(ctx, t, ms, key, stalerFallback)
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "already-exists short-circuit should count as migrated")
@@ -314,7 +323,7 @@ func TestMigrateMetadataLegacyDefaultUserAndRole(t *testing.T) {
 	}
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(len(seeded)), stats.DocsMigrated.Load())
@@ -349,7 +358,7 @@ func TestMigrateMetadataDefaultModeUnknownPreservedHeartbeatDeleted(t *testing.T
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 1, remaining, "unknown-prefix doc must keep the migration in 'work remaining' state")
 	assert.Equal(t, int64(1), stats.DocsUnknownPrefix.Load(), "%q must be classified as unknown-prefix, not as a heartbeat", unknownKey)
@@ -385,7 +394,7 @@ func TestMigrateMetadataNamespacedHeartbeatWithGroupIDDeletedViaShapeMatch(t *te
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining, "groupID-suffixed heartbeat must not surface as unknown-prefix")
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "groupID-suffixed heartbeat doc should be deleted via the shape match")
@@ -411,7 +420,7 @@ func TestMigrateMetadataNamespacedHeartbeatDeletedViaShapeMatch(t *testing.T) {
 	seedFallback(ctx, t, ms, heartbeatKey, []byte("nodeA"))
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "namespaced heartbeat doc should be deleted via the shape match")
@@ -431,9 +440,9 @@ func TestMigrateMetadataNamespacedHeartbeatDeletedViaShapeMatch(t *testing.T) {
 func TestHandleMigrationKeyScoping(t *testing.T) {
 	ctx := base.TestCtx(t)
 
-	classify := func(metadataID, key string) *MigrationStats {
+	classify := func(metadataID string, siblingMetadataIDs []string, key string) *MigrationStats {
 		stats := &MigrationStats{}
-		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, key, stats)
+		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats)
 		return stats
 	}
 
@@ -444,7 +453,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 			"_sync:m_otherDB:seq",
 			"_sync:m_otherDB:hb:groupA",
 		} {
-			s := classify("myDB", k)
+			s := classify("myDB", nil, k)
 			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q should be out of scope for myDB", k)
 		}
 	})
@@ -454,7 +463,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 			"_sync:dbconfig:default",
 			"_sync:syncInfo",
 		} {
-			s := classify("myDB", k)
+			s := classify("myDB", nil, k)
 			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is a bucket-level doc — out of scope", k)
 		}
 	})
@@ -469,28 +478,225 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 			"_sync:somethingnew:foo",
 			"_sync:futurefeature",
 		} {
-			s := classify(base.DefaultMetadataID, k)
+			s := classify(base.DefaultMetadataID, nil, k)
 			assert.Equal(t, int64(1), s.DocsUnknownPrefix.Load(), "%q must be unknown-prefix, not classified as a heartbeat", k)
 			assert.Zero(t, s.DocsOutOfScope.Load(), "%q is in-scope (default mode owns `_sync:…`) so should not be out-of-scope", k)
 		}
 	})
 
 	// LegacySiblingInvertedFormOutOfScope pins the sibling-side of the corner-case fix:
-	// the inverted-form keys for a real sibling DB (with a trailing `:` after the
-	// metadataID) must still be classified out-of-scope when the local DB is in legacy
-	// default mode. The ours-side counterpart — a legacy default user literally named
-	// `m_alice` — is covered end-to-end by TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername
-	// below (the dispatcher would call moveFallbackDoc on a real bucket for those).
+	// when the local DB has default metadataID, a co-located sibling's inverted-form
+	// keys must be classified out-of-scope. The classifier recognises them by matching
+	// the segment after the inverted prefix against the authoritative sibling-metadataID
+	// list from the registry (`<siblingID>:`) — there is no `m_` in inverted keys
+	// (`formatInvertedMetadataKey` omits it, so a real sibling "otherDB" produces
+	// `_sync:user:otherDB:alice`. Without the sibling list the default DB cannot tell these from its own
+	// keys, so the list must be supplied.
 	t.Run("LegacySiblingInvertedFormOutOfScope", func(t *testing.T) {
 		for _, k := range []string{
-			"_sync:user:m_otherDB:alice",
-			"_sync:role:m_otherDB:admins",
-			"_sync:useremail:m_otherDB:alice@example.com",
-			"_sync:session:m_otherDB:tok1",
+			"_sync:user:otherDB:alice",
+			"_sync:role:otherDB:admins",
+			"_sync:useremail:otherDB:alice@example.com",
+			"_sync:session:otherDB:tok1",
 		} {
-			s := classify(base.DefaultMetadataID, k)
+			s := classify(base.DefaultMetadataID, []string{"otherDB"}, k)
 			assert.Equal(t, int64(1), s.DocsOutOfScope.Load(), "%q is a sibling-DB inverted-form key — must remain out-of-scope", k)
 		}
+	})
+}
+
+// migrationDisposition is the per-key routing decision handleMigrationKey makes for a
+// single fallback key. It is the unit of coverage for TestHandleMigrationKeyClassification.
+type migrationDisposition int
+
+const (
+	// dispMigrated: an in-scope metadata doc moved from fallback to primary (DocsMigrated++).
+	dispMigrated migrationDisposition = iota
+	// dispDeleted: a transient heartbeater doc removed from fallback, NOT copied to primary.
+	// deleteFallbackDoc also counts toward DocsMigrated, so the distinguishing assertion is
+	// "absent from primary" rather than the counter.
+	dispDeleted
+	// dispOutOfScope: a sibling-DB or bucket-level doc left on fallback (DocsOutOfScope++).
+	dispOutOfScope
+	// dispUnknown: an unrecognised `_sync:` key left on fallback (DocsUnknownPrefix++).
+	dispUnknown
+)
+
+// TestHandleMigrationKeyClassification is the exhaustive per-key routing matrix for
+// handleMigrationKey: every switch arm, for the default metaID migrating DB (with and
+// without a sibling) and for a namespaced migrating DB (the inverse direction). It asserts which collection
+// each key family is routed to, not the byte-fidelity of the move (datatype/TTL/body
+// equality live in the MigrateMetadata full-scan tests).
+//
+// Keys are built through the real base.MetadataKeys formatters rather than hardcoded, so a
+// future change to a key shape is reflected here automatically.
+func TestHandleMigrationKeyClassification(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	existsOnPrimary := func(t *testing.T, key string) bool {
+		_, _, err := ms.Primary().GetRaw(ctx, key)
+		if base.IsDocNotFoundError(err) {
+			return false
+		}
+		require.NoError(t, err)
+		return true
+	}
+	fallbackHas := func(t *testing.T, key string) bool {
+		_, _, err := ms.Fallback().GetRaw(ctx, key)
+		if base.IsDocNotFoundError(err) {
+			return false
+		}
+		require.NoError(t, err)
+		return true
+	}
+
+	type keyCase struct {
+		name string
+		key  string
+		want migrationDisposition
+	}
+
+	// run executes one subtest per key under a fixed (migratingID, siblings, syncFnKeys)
+	// configuration. Keys destined to move/delete are seeded on the fallback first (an
+	// in-scope key with no fallback doc is a silent no-op in moveFallbackDoc).
+	run := func(t *testing.T, migratingID string, siblings []string, syncFnKeys map[string]struct{}, cases []keyCase) {
+		keys := base.NewMetadataKeys(migratingID)
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if tc.want == dispMigrated || tc.want == dispDeleted {
+					_, err := ms.Fallback().AddRaw(ctx, tc.key, 0, []byte(`{"x":1}`))
+					require.NoError(t, err, "seed fallback %s", tc.key)
+				}
+				stats := &MigrationStats{}
+				handleMigrationKey(ctx, ms, keys, migratingID, siblings, syncFnKeys, tc.key, stats)
+
+				switch tc.want {
+				case dispMigrated:
+					assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "%q should migrate", tc.key)
+					assert.Zero(t, stats.DocsOutOfScope.Load(), "%q must not be out-of-scope", tc.key)
+					assert.Zero(t, stats.DocsUnknownPrefix.Load(), "%q must not be unknown-prefix", tc.key)
+					assert.Zero(t, stats.Errors.Load(), "%q should move without error", tc.key)
+					assert.True(t, existsOnPrimary(t, tc.key), "%q should land on primary", tc.key)
+					assert.False(t, fallbackHas(t, tc.key), "%q fallback shadow should be removed", tc.key)
+				case dispDeleted:
+					assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "%q delete is counted as migrated", tc.key)
+					assert.Zero(t, stats.DocsOutOfScope.Load(), "%q must not be out-of-scope", tc.key)
+					assert.Zero(t, stats.Errors.Load(), "%q should delete without error", tc.key)
+					assert.False(t, existsOnPrimary(t, tc.key), "transient heartbeater %q must NOT be copied to primary", tc.key)
+					assert.False(t, fallbackHas(t, tc.key), "%q should be removed from fallback", tc.key)
+				case dispOutOfScope:
+					assert.Equal(t, int64(1), stats.DocsOutOfScope.Load(), "%q should be out-of-scope", tc.key)
+					assert.Zero(t, stats.DocsMigrated.Load(), "%q must not migrate (data theft / loss)", tc.key)
+					assert.Zero(t, stats.DocsUnknownPrefix.Load(), "%q is recognised, not unknown", tc.key)
+				case dispUnknown:
+					assert.Equal(t, int64(1), stats.DocsUnknownPrefix.Load(), "%q should be unknown-prefix", tc.key)
+					assert.Zero(t, stats.DocsMigrated.Load(), "%q must not migrate", tc.key)
+					assert.Zero(t, stats.DocsOutOfScope.Load(), "%q must not be out-of-scope", tc.key)
+				}
+			})
+		}
+	}
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2 := base.NewMetadataKeys("db2")
+
+	// Direction 1 — the legacy-default DB migrates while a namespaced sibling "db2" shares
+	// the bucket. The default DB's bare inverted prefixes overlap every sibling's inverted key,
+	// so without the sibling list the default DB would steal db2's user/role/useremail/session/dcp_ck docs.
+	t.Run("DefaultDB_with_namespaced_sibling_db2", func(t *testing.T) {
+		run(t, base.DefaultMetadataID, []string{"db2"}, nil, []keyCase{
+			// inverted families — ours (no sibling-id segment after the prefix)
+			{"own user", def.UserKey("alice"), dispMigrated},
+			{"own role", def.RoleKey("admins"), dispMigrated},
+			{"own useremail", def.UserEmailKey("alice@example.com"), dispMigrated},
+			{"own session", def.SessionKey("sessAlice"), dispMigrated},
+			// own dcp_ck: group id "default" + vbno — colons in the body, but the
+			// first segment ("default") is not the sibling id "db2", so it stays ours. This is
+			// the case the naive "any colon ⇒ sibling" heuristic could not handle.
+			{"own dcp_ck (group default)", def.DCPCheckpointPrefix("default") + "1", dispMigrated},
+
+			// inverted families — sibling db2's keys (prefix + "db2:" + …) must stay put
+			{"sibling user", db2.UserKey("bob"), dispOutOfScope},
+			{"sibling role", db2.RoleKey("readers"), dispOutOfScope},
+			{"sibling useremail", db2.UserEmailKey("bob@example.com"), dispOutOfScope},
+			{"sibling session", db2.SessionKey("sessBob"), dispOutOfScope},
+			{"sibling dcp_ck", db2.DCPCheckpointPrefix("default") + "1", dispOutOfScope},
+
+			// non-inverted owned families (plain isOurs prefix match) — migrated
+			{"own unusedSeq (binary)", def.UnusedSeqKey(5), dispMigrated},
+			{"own unusedSeqRange (binary)", def.UnusedSeqRangeKey(5, 9), dispMigrated},
+			{"own database state", def.DatabaseStateKey(), dispMigrated},
+			{"own replication status", def.ReplicationStatusKey("repl1"), dispMigrated},
+			{"own sgcfg", def.SGCfgPrefix("") + "nodeDefs-known", dispMigrated},
+			{"own resync cfg", def.ResyncCfgPrefix() + cbgt.PLAN_PINDEXES_KEY, dispMigrated},
+			{"own background process status", def.BackgroundProcessStatusPrefix("resync"), dispMigrated},
+
+			// non-inverted sibling family (`_sync:m_db2:…`) — out-of-scope via SyncDocMetadataPrefix arm
+			{"sibling non-inverted seq", db2.SyncSeqKey(), dispOutOfScope},
+			{"sibling non-inverted unusedSeq", db2.UnusedSeqKey(7), dispOutOfScope},
+
+			// heartbeater — deleted, never moved
+			{"own heartbeater", def.HeartbeaterPrefix("") + "heartbeat_timeout:node1", dispDeleted},
+
+			// the seq counter is NEVER range-scan migrated (the orchestrator promotes it
+			// out-of-band) — out-of-scope even for the owning DB
+			{"own seq counter (not migrated)", def.SyncSeqKey(), dispOutOfScope},
+
+			// bucket-level docs — never migrated, never per-DB
+			{"registry", base.SGRegistryKey, dispOutOfScope},
+			{"syncInfo", base.SGSyncInfo, dispOutOfScope},
+			{"dbconfig", base.PersistentConfigPrefixWithoutGroupID + "default", dispOutOfScope},
+			{"unowned sync-function doc", base.SyncFunctionKeyWithoutGroupID + "_collection1", dispOutOfScope},
+
+			// genuinely unrecognised `_sync:` key — must surface as unknown, not be swallowed
+			{"unknown prefix", "_sync:somethingnew:foo", dispUnknown},
+		})
+	})
+
+	// Direction 2 (the inverse) — a namespaced DB "db2" migrates while the legacy-default DB
+	// is the sibling. isOursInverted early-returns true after the prefix check here (the
+	// `m_<id>`/`<id>:` segment already uniquely identifies db2), so the sibling list is not
+	// even consulted: behaviour is identical with or without it. This proves the direction
+	// that already worked is left untouched.
+	t.Run("NamespacedDB_db2_with_default_sibling", func(t *testing.T) {
+		run(t, "db2", []string{base.DefaultMetadataID}, nil, []keyCase{
+			// inverted families — ours
+			{"own user", db2.UserKey("bob"), dispMigrated},
+			{"own role", db2.RoleKey("readers"), dispMigrated},
+			{"own useremail", db2.UserEmailKey("bob@example.com"), dispMigrated},
+			{"own session", db2.SessionKey("sessBob2"), dispMigrated},
+			{"own dcp_ck", db2.DCPCheckpointPrefix("default") + "1", dispMigrated},
+
+			// the default sibling's inverted keys — out-of-scope (inverted-default arms)
+			{"default-sibling user", def.UserKey("alice"), dispOutOfScope},
+			{"default-sibling dcp_ck", def.DCPCheckpointPrefix("default") + "1", dispOutOfScope},
+
+			// non-inverted owned — migrated
+			{"own unusedSeq (binary)", db2.UnusedSeqKey(5), dispMigrated},
+			{"own database state", db2.DatabaseStateKey(), dispMigrated},
+
+			// a DIFFERENT sibling's non-inverted key — out-of-scope
+			{"otherDB non-inverted key", base.NewMetadataKeys("otherDB").SGCfgPrefix(""), dispOutOfScope},
+
+			// own heartbeater (namespaced shape `_sync:m_db2:hb:…heartbeat_timeout:`) — deleted
+			{"own heartbeater", db2.HeartbeaterPrefix("") + "heartbeat_timeout:node1", dispDeleted},
+
+			// own seq counter — out-of-scope (not range-scan migrated)
+			{"own seq counter (not migrated)", db2.SyncSeqKey(), dispOutOfScope},
+		})
+	})
+
+	// Sync-function docs are not metadataID-namespaced — ownership is an exact match against
+	// the per-DB key set, not a prefix/registry decision. Cover both sides here.
+	t.Run("SyncFunctionDocOwnership", func(t *testing.T) {
+		ownedSyncFnKey := base.SyncFunctionKeyWithoutGroupID + ":scope1.collection1"
+		run(t, base.DefaultMetadataID, []string{"db2"}, map[string]struct{}{ownedSyncFnKey: {}}, []keyCase{
+			{"owned sync-function doc", ownedSyncFnKey, dispMigrated},
+			{"unowned sync-function doc", base.SyncFunctionKeyWithoutGroupID + ":scope1.collection2", dispOutOfScope},
+		})
 	})
 }
 
@@ -530,8 +736,11 @@ func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
 	_, err = ms.Fallback().AddRaw(ctx, rangeKey, 0, rangeBody)
 	require.NoError(t, err, "seed fallback unusedSeqs range")
 
+	// Wait for the fallback docs to be visible to range scans before running the migration.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{singletonKey, rangeKey})
+
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, metadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, metadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining, "unused-seq docs must clear in a single pass")
 	assert.Equal(t, int64(2), stats.DocsMigrated.Load())
@@ -562,7 +771,7 @@ func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
 	seedFallback(ctx, t, ms, mUserKey, body)
 
 	stats := &MigrationStats{}
-	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, stats)
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, nil, nil, stats)
 	require.NoError(t, err)
 	assert.Equal(t, 0, remaining)
 	assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "m_alice user in default mode must be migrated, not skipped as a sibling-DB shape")
@@ -572,4 +781,231 @@ func TestMigrateMetadataLegacyDefaultUserWithMPrefixUsername(t *testing.T) {
 	assert.Equal(t, body, got)
 	_, _, getErr = ms.Fallback().GetRaw(ctx, mUserKey)
 	assert.True(t, base.IsDocNotFoundError(getErr))
+}
+
+// TestSyncFunctionKeysForDB verifies the owned sync-function key set is built per configured
+// collection, using the legacy `_sync:syncdata` shape for the default collection and the
+// `_sync:syncdata_collection:scope.collection` shape for named collections, with groupID
+// applied to both.
+func TestSyncFunctionKeysForDB(t *testing.T) {
+	collections := map[string]map[string]struct{}{
+		base.DefaultScope: {base.DefaultCollection: {}},
+	}
+
+	// default collection
+	noGroup := syncFunctionKeysForDB("", collections)
+	require.Len(t, noGroup, 1)
+	assert.Contains(t, maps.Keys(noGroup), base.SyncFunctionKeyWithoutGroupID)
+
+	withGroup := syncFunctionKeysForDB("group1", collections)
+	require.Len(t, withGroup, 1)
+	assert.Contains(t, maps.Keys(withGroup), base.SyncFunctionKeyWithoutGroupID+":group1")
+
+	// named collection
+	collections = map[string]map[string]struct{}{
+		"myScope": {"collA": {}, "collB": {}},
+	}
+	noGroup = syncFunctionKeysForDB("", collections)
+	require.Len(t, noGroup, 2)
+	assert.Contains(t, maps.Keys(noGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA")
+	assert.Contains(t, maps.Keys(noGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB")
+
+	withGroup = syncFunctionKeysForDB("group1", collections)
+	require.Len(t, withGroup, 2)
+	assert.Contains(t, maps.Keys(withGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA:group1")
+	assert.Contains(t, maps.Keys(withGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB:group1")
+}
+
+// requireSiblingExclusionScan seeds the own + sibling docs on the fallback, runs a full
+// MigrateMetadata pass for migratingID with the given sibling list, and asserts the whole-run
+// outcome: every own doc was promoted to primary byte-identically and removed from the
+// fallback, every sibling doc stayed put on the fallback (and never reached primary), the
+// run is clean (remaining/unknown/errors all zero), and the counters match the seed split.
+func requireSiblingExclusionScan(ctx context.Context, t *testing.T, ms *base.MetadataStore, migratingID string, siblings []string, own, sibling map[string][]byte) {
+	t.Helper()
+	allKeys := make([]string, 0, len(own)+len(sibling))
+	for k, v := range own {
+		_, err := ms.Fallback().AddRaw(ctx, k, 0, v)
+		require.NoError(t, err, "seed own %s", k)
+		allKeys = append(allKeys, k)
+	}
+	for k, v := range sibling {
+		_, err := ms.Fallback().AddRaw(ctx, k, 0, v)
+		require.NoError(t, err, "seed sibling %s", k)
+		allKeys = append(allKeys, k)
+	}
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), allKeys)
+
+	stats := &MigrationStats{}
+	remaining, err := MigrateMetadata(ctx, ms, migratingID, siblings, nil, stats)
+	require.NoError(t, err)
+	assert.Equal(t, 0, remaining, "no in-scope doc should be left unclassified")
+	assert.Equal(t, int64(len(own)), stats.DocsMigrated.Load(), "all own docs should migrate")
+	assert.Equal(t, int64(len(sibling)), stats.DocsOutOfScope.Load(), "all sibling docs should be out-of-scope")
+	assert.Zero(t, stats.DocsUnknownPrefix.Load(), "no doc should be unknown-prefix (would stall the run)")
+	assert.Zero(t, stats.Errors.Load(), "no per-doc move errors")
+
+	for k, want := range own {
+		got, _, getErr := ms.Primary().GetRaw(ctx, k)
+		require.NoError(t, getErr, "primary should hold own %s", k)
+		assert.Equal(t, want, got, "primary body for own %s must match the seed", k)
+		_, _, getErr = ms.Fallback().GetRaw(ctx, k)
+		assert.True(t, base.IsDocNotFoundError(getErr), "fallback shadow for own %s should be gone", k)
+	}
+	for k, want := range sibling {
+		got, _, getErr := ms.Fallback().GetRaw(ctx, k)
+		require.NoError(t, getErr, "fallback should still hold sibling %s", k)
+		assert.Equal(t, want, got, "sibling fallback body for %s must be unchanged", k)
+		_, _, getErr = ms.Primary().GetRaw(ctx, k)
+		assert.True(t, base.IsDocNotFoundError(getErr), "sibling %s must NOT be promoted to primary", k)
+	}
+}
+
+// TestMigrateMetadataDefaultDBExcludesNamespacedSibling is the full-scan counterpart to the
+// classification matrix for Direction 1: the default metadataID DB migrates while a namespaced
+// sibling "db2" shares the fallback collection. Every one of the default DB's own metadata
+// families (inverted and non-inverted) is promoted to primary, and every one of db2's
+// co-located docs is left untouched on the fallback.
+func TestMigrateMetadataDefaultDBExcludesNamespacedSibling(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2 := base.NewMetadataKeys("db2")
+
+	own := map[string][]byte{
+		def.UserKey("alice"):                  []byte(`{"name":"alice"}`),
+		def.RoleKey("admins"):                 []byte(`{"name":"admins"}`),
+		def.UserEmailKey("alice@example.com"): []byte(`{"username":"alice"}`),
+		def.SessionKey("sessAlice"):           []byte(`{"session_id":"sessAlice"}`),
+		def.DCPCheckpointPrefix("") + "1":     []byte(`{"seq":42}`),
+		def.UnusedSeqKey(5):                   []byte(`{"unused":5}`),
+		def.DatabaseStateKey():                []byte(`{"state":"Online"}`),
+	}
+	sibling := map[string][]byte{
+		db2.UserKey("bob"):                  []byte(`{"name":"bob"}`),
+		db2.RoleKey("readers"):              []byte(`{"name":"readers"}`),
+		db2.UserEmailKey("bob@example.com"): []byte(`{"username":"bob"}`),
+		db2.SessionKey("sessBob"):           []byte(`{"session_id":"sessBob"}`),
+		db2.DCPCheckpointPrefix("") + "1":   []byte(`{"seq":7}`),
+		db2.SyncSeqKey():                    []byte(`{"seq":100}`),
+		db2.DatabaseStateKey():              []byte(`{"state":"Online"}`),
+	}
+
+	requireSiblingExclusionScan(ctx, t, ms, base.DefaultMetadataID, []string{"db2"}, own, sibling)
+}
+
+// TestMigrateMetadataNamespacedDBExcludesDefaultSibling is the inverse direction: a namespaced
+// DB "db2" migrates while default metadataID DB (plus an unrelated namespaced sibling
+// "otherDB") share the fallback. db2's own keys migrate; the default DB's inverted, dcp_ck,
+// non-inverted and seq-counter docs all stay, as does otherDB's standard-form key.
+func TestMigrateMetadataNamespacedDBExcludesDefaultSibling(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2 := base.NewMetadataKeys("db2")
+
+	own := map[string][]byte{
+		db2.UserKey("bob"):                  []byte(`{"name":"bob"}`),
+		db2.RoleKey("readers"):              []byte(`{"name":"readers"}`),
+		db2.UserEmailKey("bob@example.com"): []byte(`{"username":"bob"}`),
+		db2.SessionKey("sessBob"):           []byte(`{"session_id":"sessBob"}`),
+		db2.DCPCheckpointPrefix("") + "1":   []byte(`{"seq":7}`),
+		db2.UnusedSeqKey(5):                 []byte(`{"unused":5}`),
+		db2.DatabaseStateKey():              []byte(`{"state":"Online"}`),
+	}
+	sibling := map[string][]byte{
+		def.UserKey("alice"):                         []byte(`{"name":"alice"}`),
+		def.DCPCheckpointPrefix("") + "1":            []byte(`{"seq":42}`),
+		def.DatabaseStateKey():                       []byte(`{"state":"Online"}`),
+		def.SyncSeqKey():                             []byte(`{"seq":100}`),
+		base.NewMetadataKeys("otherDB").SyncSeqKey(): []byte(`{"seq":5}`),
+	}
+
+	requireSiblingExclusionScan(ctx, t, ms, "db2", []string{base.DefaultMetadataID}, own, sibling)
+}
+
+// TestMigrateMetadataDefaultDBExcludesNamespacedSiblingWhenUserIsNamedSiblingMetadataID tests when you name a user
+// on default metadataID db the same as a metadataID from a different db, the user is not misclassified
+// as a sibling key and left on fallback.
+func TestMigrateMetadataDefaultDBExcludesNamespacedSiblingWhenUserIsNamedSiblingMetadataID(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2 := base.NewMetadataKeys("db2")
+
+	own := map[string][]byte{
+		def.UserKey("db2"): []byte(`{"name":"alice"}`),
+	}
+	sibling := map[string][]byte{
+		db2.UserKey("bob"): []byte(`{"name":"bob"}`),
+	}
+
+	requireSiblingExclusionScan(ctx, t, ms, base.DefaultMetadataID, []string{"db2"}, own, sibling)
+}
+
+// TestMigrateMetadataNamespacedDBExcludesDefaultSiblingWithUserNamedSiblingMetadataID is the inverse of the above test:
+// a migration happening in the other direction
+func TestMigrateMetadataNamespacedDBExcludesDefaultSiblingWithUserNamedSiblingMetadataID(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2 := base.NewMetadataKeys("db2")
+
+	own := map[string][]byte{
+		db2.UserKey("bob"): []byte(`{"name":"bob"}`),
+	}
+	sibling := map[string][]byte{
+		def.UserKey("db2"): []byte(`{"name":"alice"}`),
+	}
+
+	requireSiblingExclusionScan(ctx, t, ms, "db2", []string{base.DefaultMetadataID}, own, sibling)
+}
+
+// TestMigrateMetadataDcpCheckpointGroupIDCollisionKnownLimitation pins the one documented
+// residual ambiguity of the registry-id approach. The default DB's own DCP checkpoint embeds
+// its config group ID as the first body segment (`_sync:dcp_ck:<groupID>:<ver>:<vb>`), and the
+// classifier excludes a key when that first segment matches a sibling metadataID. So a sibling
+// DB whose metadataID is literally equal to the default DB's DCP group ID ("default") makes the
+// default DB's own checkpoint look like that sibling's — and it is stranded on the fallback.
+//
+// This is a KNOWN, accepted limitation: calling a sibling db the same name as a groupID the default
+// metadataID db is using collides. The effect of this means the default DB's checkpoint is not migrated,
+// but we should self-heal by writing new checkpoints to the new primary.
+func TestMigrateMetadataDcpCheckpointGroupIDCollisionKnownLimitation(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	def := base.NewMetadataKeys(base.DefaultMetadataID)
+	ownCheckpoint := def.DCPCheckpointPrefix("default") + "1" // _sync:dcp_ck:default:1
+	seedFallback(ctx, t, ms, ownCheckpoint, []byte(`{"seq":42}`))
+
+	stats := &MigrationStats{}
+	// Pathological sibling whose metadataID == this default DB's DCP group ID ("default").
+	remaining, err := MigrateMetadata(ctx, ms, base.DefaultMetadataID, []string{"default"}, nil, stats)
+	require.NoError(t, err)
+	assert.Equal(t, 0, remaining, "out-of-scope docs do not count as remaining, so the run still 'completes'")
+
+	// KNOWN LIMITATION: the default DB's own checkpoint is misclassified as the sibling's and
+	// left on the fallback rather than migrated.
+	assert.Zero(t, stats.DocsMigrated.Load(), "known limitation: own checkpoint is NOT migrated under the group-id/sibling-id collision")
+	assert.Equal(t, int64(1), stats.DocsOutOfScope.Load(), "own checkpoint is (mis)classified out-of-scope")
+
+	_, _, getErr := ms.Fallback().GetRaw(ctx, ownCheckpoint)
+	assert.NoError(t, getErr, "own checkpoint is stranded on the fallback under the known limitation")
+	_, _, getErr = ms.Primary().GetRaw(ctx, ownCheckpoint)
+	assert.True(t, base.IsDocNotFoundError(getErr), "own checkpoint did not reach primary")
 }

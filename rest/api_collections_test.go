@@ -20,8 +20,8 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
@@ -208,8 +208,8 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 		body := rt.GetDocBodyFromKeyspace(keyspace, "doc1")
 		assert.Equal(t, "bar", body["foo"])
 		assert.Equal(t, "doc1", body["_id"])
-		assert.Equal(t, version.RevTreeID, body["_rev"])
-		assert.Equal(t, version.CV.String(), body["_cv"])
+		assert.Equal[any](t, version.RevTreeID, body["_rev"])
+		assert.Equal[any](t, version.CV.String(), body["_cv"])
 	}
 }
 

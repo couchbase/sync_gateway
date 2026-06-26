@@ -14,17 +14,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestFeedImport(t *testing.T) {
@@ -88,7 +89,7 @@ func TestFeedImport(t *testing.T) {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
 	}
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	var hlv HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 	require.Equal(t, db.EncodedSourceID, hlv.SourceID)
@@ -132,7 +133,7 @@ func TestFeedImport(t *testing.T) {
 
 			xattrs, _, err = collection.dataStore.GetXattrs(ctx, docID, []string{base.VvXattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, base.VvXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 			require.Equal(t, testCase.expectedSourceID, hlv.SourceID)
 		})
@@ -247,12 +248,84 @@ func TestOnDemandImport(t *testing.T) {
 					require.Error(t, err)
 				}
 				var hlv HybridLogicalVector
-				require.Contains(t, xattrs, base.VvXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 				require.Equal(t, db.EncodedSourceID, hlv.SourceID)
 			})
 		}
 	})
+
+	// Verify that the reload performed before an on-demand import (crud.go GetDocumentWithRaw)
+	// fetches the _mou xattr, so rawBucketDoc returned to the caller contains it.
+	t.Run("on-demand get includes mou xattr in reload", func(t *testing.T) {
+		if !db.UseMou() {
+			t.Skip("Test requires MOU support")
+		}
+		docKey := baseKey + "_mouReload"
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+		// SDK write: creates the doc without _sync or _mou
+		_, err := collection.dataStore.WriteCas(ctx, docKey, 0, 0, []byte(`{"foo":"bar"}`), 0)
+		require.NoError(t, err)
+
+		// First on-demand import via GetDocument: SG writes _sync and _mou
+		importedDoc, err := collection.GetDocument(ctx, docKey, DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotNil(t, importedDoc.MetadataOnlyUpdate)
+
+		// External SDK write to the body: changes the CRC32 so IsSGWrite returns false on the
+		// next read. Rosmar's WriteCas with a non-zero CAS preserves existing xattrs (including _mou).
+		_, err = collection.dataStore.WriteCas(ctx, docKey, 0, importedDoc.Cas, []byte(`{"foo":"baz"}`), 0)
+		require.NoError(t, err)
+
+		// GetDocumentWithRaw detects a non-SG write, reloads the doc, then imports it.
+		// The reload must include _mou in its xattr list so the returned rawBucketDoc is complete.
+		_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, docKey, DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotNil(t, rawBucketDoc)
+
+		// rawBucketDoc.Xattrs reflects the pre-import state fetched at the reload step.
+		// Without the fix, _mou was absent from the reload xattr list, so this would be nil
+		// even though the bucket has a _mou xattr from the first import.
+		mouBytes := rawBucketDoc.Xattrs[base.MouXattrName]
+		require.NotNil(t, mouBytes, "_mou must be fetched during the on-demand import reload")
+		var mou MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(mouBytes, &mou))
+		require.NotEmpty(t, mou.HexCAS)
+	})
+
+	// Verify that GetDocSyncData fetches _revseqno so the on-demand import it triggers
+	// records the correct PreviousRevSeqNo in _mou (not 0).
+	t.Run("on-demand GetDocSyncData sets correct mou pRev", func(t *testing.T) {
+		if !db.UseMou() {
+			t.Skip("Test requires MOU support")
+		}
+		docKey := baseKey + "_syncDataMou"
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+		// SDK write: creates doc without _sync or _mou
+		_, err := collection.dataStore.WriteCas(ctx, docKey, 0, 0, []byte(`{"foo":"bar"}`), 0)
+		require.NoError(t, err)
+
+		// Capture revSeqNo before import — it must appear as _mou.pRev after import.
+		// Without the fix, GetDocSyncData fetches without _revseqno, so doc.RevSeqNo=0
+		// and _mou.pRev is written as 0 instead of the correct value.
+		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, docKey)
+		require.NoError(t, err)
+
+		// GetDocSyncData detects a non-SG-write and triggers on-demand import.
+		_, err = collection.GetDocSyncData(ctx, docKey)
+		require.NoError(t, err)
+
+		// Read _mou from the bucket to verify PreviousRevSeqNo was set correctly.
+		xattrs, _, err := collection.dataStore.GetXattrs(ctx, docKey, []string{base.MouXattrName})
+		require.NoError(t, err)
+		var mou MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+		require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo,
+			"_mou.pRev must equal the pre-import revSeqNo, not 0")
+	})
+
 	testCases := []struct {
 		name             string
 		eccv             bool
@@ -657,7 +730,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			rawDoc, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, testcase.docname, []string{base.SyncXattrName})
 			assert.NoError(t, err)
 
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 			var xattrOut map[string]any
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattrOut))
 			require.NoError(t, base.JSONUnmarshal(rawDoc, &bodyOut))
@@ -721,7 +794,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -745,14 +818,14 @@ func TestImportNullDocRaw(t *testing.T) {
 		mode:     ImportFromFeed,
 	}
 	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	_, xattrs, _, err := dataStore.GetWithXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr")
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	require.NotEmpty(t, syncData.GetRevTreeID())
@@ -858,7 +931,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 
 	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	require.Len(t, xattr["cluster_uuid"].(string), 32)

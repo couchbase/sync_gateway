@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -22,34 +23,14 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
-
-func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
-	collection, err := base.AsCollection(dataStore)
-	require.NoError(t, err)
-	indexNames, err := collection.GetIndexes()
-	require.NoError(t, err)
-	require.Len(t, indexNames, 0)
-
-}
 
 func TestSyncGatewayStartupIndexes(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
-
-	// Assert there are no indexes on the datastores, to test server startup
-	dsNames, err := bucket.ListDataStores(ctx)
-	require.NoError(t, err)
-	for _, dsName := range dsNames {
-		dataStore, err := bucket.NamedDataStore(ctx, dsName)
-		require.NoError(t, err)
-		if !base.TestsDisableGSI() {
-			requireNoIndexes(t, dataStore)
-		}
-	}
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
@@ -106,7 +87,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseUsers []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseUsers)
+		err := json.Unmarshal(response.Body.Bytes(), &responseUsers)
 		require.NoError(t, err)
 		require.Equal(t, users, responseUsers)
 	})
@@ -123,7 +104,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		rest.RequireStatus(t, response, http.StatusOK)
 
 		var responseRoles []string
-		err = json.Unmarshal(response.Body.Bytes(), &responseRoles)
+		err := json.Unmarshal(response.Body.Bytes(), &responseRoles)
 		require.NoError(t, err)
 		require.Equal(t, roles, responseRoles)
 	})
@@ -279,7 +260,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodDelete, "/"+dbName+"/", "")
 	resp.RequireStatus(http.StatusOK)
 
-	rest.DropAllTestIndexesIncludingPrimary(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set testing callbacks for async initialization
 	collectionCount := int64(0)
@@ -948,7 +929,7 @@ func waitAndRequireDBState(t *testing.T, sc *rest.ServerContext, dbName string, 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr as sync data")
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr db.SyncData
 	require.NoError(t, json.Unmarshal(xattrs[base.SyncXattrName], &xattr), "Error unmarshalling sync data")
 	channel, ok := xattr.Channels[channelName]

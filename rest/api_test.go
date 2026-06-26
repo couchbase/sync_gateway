@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand"
 	"mime"
 	"mime/multipart"
@@ -36,9 +37,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -176,12 +177,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -192,12 +193,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
@@ -1122,7 +1123,7 @@ func TestOpenRevs(t *testing.T) {
 	assert.NotNil(t, ok)
 	assert.Equal(t, "or1", ok[db.BodyId])
 	assert.Equal(t, "12-abc", ok[db.BodyRev])
-	assert.Equal(t, float64(1), ok["n"])
+	assert.Equal[any](t, float64(1), ok["n"])
 
 	assert.Equal(t, "10-ten", respBody[1]["missing"])
 }
@@ -1231,7 +1232,7 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			assert.Equal(t, nil, partJSON[db.BodyRevisions])
+			assert.Nil(t, partJSON[db.BodyRevisions])
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
@@ -1283,7 +1284,7 @@ func TestLocalDocs(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
 	assert.Equal(t, "0-3", respBody[db.BodyRev])
-	assert.Equal(t, float64(123456789), respBody["big"])
+	assert.Equal[any](t, float64(123456789), respBody["big"])
 
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 409)
@@ -1356,8 +1357,8 @@ func TestResponseEncoding(t *testing.T) {
 	assert.NoError(t, err)
 	unjson := base.JSONDecoder(unzip)
 	var body db.Body
-	assert.Equal(t, nil, unjson.Decode(&body))
-	assert.Equal(t, str, body["long"])
+	assert.Nil(t, unjson.Decode(&body))
+	assert.Equal[any](t, str, body["long"])
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
@@ -1782,7 +1783,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	// Fetch the xattr and make sure it contains the above value
 	xattrs, _, err := rt.GetSingleDataStore().GetXattrs(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var retrievedSyncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedSyncData))
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.GetRevTreeID())
@@ -2061,9 +2062,9 @@ func TestWebhookSpecialProperties(t *testing.T) {
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
-		require.Contains(t, body, db.BodyId)
-		require.Contains(t, body, db.BodyRev)
-		require.Contains(t, body, db.BodyDeleted)
+		require.Contains(t, maps.Keys(body), db.BodyId)
+		require.Contains(t, maps.Keys(body), db.BodyRev)
+		require.Contains(t, maps.Keys(body), db.BodyDeleted)
 		assert.True(t, body[db.BodyDeleted].(bool))
 	}
 
@@ -3024,7 +3025,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	version2 := rt.UpdateDoc(docID, version1, `{"new": "update!"}`)
 	newDoc, _, err := collection.GetDocWithXattrs(ctx, existingHLVKey, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	casV2 := newDoc.Cas
+	hlvVersionV2 := newDoc.HLV.Version
 	encodedSourceV2 := testSource
 
 	// assert that we have a prev CV drop to pv and a new CV pair, assert pv values are as expected after delta conversions
@@ -3049,7 +3050,7 @@ func TestPvDeltaReadAndWrite(t *testing.T) {
 	assert.Equal(t, casV3, bucketDoc.HLV.Version)
 	assert.Len(t, bucketDoc.HLV.PreviousVersions, 2)
 	assert.Equal(t, casV1, bucketDoc.HLV.PreviousVersions[encodedSourceV1])
-	assert.Equal(t, casV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
+	assert.Equal(t, hlvVersionV2, bucketDoc.HLV.PreviousVersions[encodedSourceV2])
 }
 
 // TestPutDocUpdateVersionVector:
@@ -3071,7 +3072,10 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Put a new revision of this doc and assert that the version vector SourceID and Version is updated
@@ -3082,7 +3086,10 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Delete doc and assert that the version vector SourceID and Version is updated
@@ -3093,7 +3100,10 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
@@ -3123,7 +3133,10 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 
 	// Put a doc that will be rejected by the import filter on the attempt to perform on demand import for write
@@ -3135,7 +3148,10 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, bucketUUID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
@@ -3163,7 +3179,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value()
-	assert.NotEqual(t, 0, firstStartTimeStat)
+	assert.Zero(t, firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
@@ -3311,6 +3327,37 @@ func TestContinuousChangesDoesNotBlockOffline(t *testing.T) {
 	}, 0)
 }
 
+func TestDocWriteManyChannelRemovals(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
+	defer rt.Close()
+
+	const docID = "doc1"
+	doc := rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"}})
+
+	// update doc to have only one channel
+	updateVersion := rt.UpdateDoc(docID, doc.ExtractDocVersion(), `{"channels": ["A"]}`)
+	assert.NotEmpty(t, updateVersion.CV.String())
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	updatedDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalNoHistory)
+	require.NoError(t, err)
+
+	// assert channel removals are present in sync data
+	channelRemovals := updatedDoc.SyncData.Channels
+	require.Len(t, channelRemovals, 20)  // 19 removals but should also include non-removed channel "A" but just with no removal info
+	require.Nil(t, channelRemovals["A"]) // channel "A" should not have removal info since it's not removed
+	for _, channel := range []string{"B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"} {
+		channelRemovalInfo, ok := channelRemovals[channel]
+		require.True(t, ok)
+		require.NotNil(t, channelRemovalInfo)
+		assert.Equal(t, updatedDoc.Sequence, channelRemovalInfo.Seq)
+		assert.Equal(t, updatedDoc.GetRevTreeID(), channelRemovalInfo.Rev.RevTreeID)
+		assert.Equal(t, updatedDoc.HLV.GetCurrentVersionString(), channelRemovalInfo.Rev.CV())
+	}
+}
+
 func TestPublicAllDocsApiStats(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
@@ -3419,7 +3466,10 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, rt.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
-	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.Version)
+	// Version is generated by the SG HLC, so it is independent of (and must not exceed) the document CAS;
+	// cvCAS still macro-expands to the CAS. (MB-72252)
+	assert.NotZero(t, doc.HLV.Version)
+	assert.LessOrEqual(t, doc.HLV.Version, base.HexCasToUint64(doc.SyncData.Cas))
 	assert.Equal(t, base.HexCasToUint64(doc.SyncData.Cas), doc.HLV.CurrentVersionCAS)
 }
 
@@ -3906,8 +3956,8 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
 	require.NoError(t, err)
 	assert.Equal(t, "data", body["test"].(string))
-	assert.Equal(t, docID, body[db.BodyId])
-	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
+	assert.Equal[any](t, docID, body[db.BodyId])
+	assert.Equal[any](t, createVersion.RevTreeID, body[db.BodyRev])
 	assert.Nil(t, body[db.BodyCV])
 }
 
@@ -4017,7 +4067,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc4", docSeq)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"a", "a"}, compactedChannels)
+		assert.Equal(t, []string{"a"}, compactedChannels)
 
 		syncDataAfter, err := collection.GetDocSyncData(ctx, "doc4")
 		require.NoError(t, err)
@@ -4046,6 +4096,15 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		// Compacting nonexistent doc should return not found error
 		_, err := collection.CompactDocChannelHistory(ctx, "nonexistent", 1)
 		assert.Error(t, err)
+
+		req := CompactDocChannelHistoryRequest{
+			Seq: 999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/nonexistent/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusNotFound)
 	})
 
 	t.Run("multiple channels with mixed history", func(t *testing.T) {
@@ -4061,7 +4120,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		require.NoError(t, err)
 		compactedChannels, err := collection.CompactDocChannelHistory(ctx, "doc7", docSeq)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"b", "b"}, compactedChannels)
+		assert.Equal(t, []string{"b"}, compactedChannels)
 
 		syncData, err := collection.GetDocSyncData(ctx, "doc7")
 		require.NoError(t, err)
@@ -4103,6 +4162,58 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		syncData, err := collection.GetDocSyncData(ctx, "doc10")
 		require.NoError(t, err)
 		assert.NotNil(t, syncData)
+	})
+
+	t.Run("test rest api endpoint", func(t *testing.T) {
+
+		version := rt.PutDoc("doc11", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc11", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc11", version, `{"channels": ["test", "test2"]}`)
+
+		version = rt.PutDoc("doc12", `{"channels": ["a", "b"]}`)
+		version = rt.UpdateDoc("doc12", version, `{"channels": ["a"]}`)
+		_ = rt.UpdateDoc("doc12", version, `{"channels": ["a", "c"]}`)
+		req := CompactDocChannelHistoryRequest{
+			Seq: 999999,
+		}
+
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc11/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusOK)
+
+		var chanOutput1 map[string][]string
+		err = base.JSONUnmarshal(resp.Body.Bytes(), &chanOutput1)
+		require.NoError(t, err)
+
+		expectedOutput1 := map[string][]string{
+			"compacted_channels": []string{"test"},
+		}
+
+		assert.Equal(t, expectedOutput1, chanOutput1)
+
+		resp2 := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc12/compact", string(bodyBytes))
+		RequireStatus(t, resp2, http.StatusOK)
+
+		var chanOutput2 map[string][]string
+		err = base.JSONUnmarshal(resp2.Body.Bytes(), &chanOutput2)
+		require.NoError(t, err)
+
+		expectedOutput2 := map[string][]string{
+			"compacted_channels": []string{"b"},
+		}
+
+		assert.Equal(t, expectedOutput2, chanOutput2)
+	})
+
+	t.Run("seq zero returns 400", func(t *testing.T) {
+		req := CompactDocChannelHistoryRequest{
+			Seq: 0,
+		}
+		bodyBytes, err := base.JSONMarshal(req)
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc1/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusBadRequest)
 	})
 }
 
@@ -4204,4 +4315,174 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	err = json.Unmarshal(docFromBucket, &finalBody)
 	require.NoError(t, err)
 	assert.Equal(t, "test", finalBody["type"])
+}
+
+// TestGetDocChannelHistory tests the GetDocChannelHistory function and the
+// GET /{keyspace}/_channel_history/{docid} REST endpoint. It verifies that
+// the channel revocation history is correctly collected from the Channels map,
+// ChannelSet, and ChannelSetHistory, and that the REST endpoint returns the
+// same result serialised as JSON.
+func TestGetDocChannelHistory(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	t.Run("basic channel history", func(t *testing.T) {
+		// Create doc in chan1, revoke it, re-add with chan2, revoke again, then add chan3+chan2
+		version := rt.PutDoc("doc1", `{"channels": ["chan1"]}`)
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		chanRevocationSeq1 := rt.GetDocumentSequence("doc1")
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": ["chan1","chan2"]}`)
+
+		version = rt.UpdateDoc("doc1", version, `{"channels": []}`)
+		chanRevocationSeq2 := rt.GetDocumentSequence("doc1")
+
+		rt.UpdateDoc("doc1", version, `{"channels": ["chan3","chan2"]}`)
+
+		expectedChanHistory := map[string][]uint64{
+			"chan1": {chanRevocationSeq2, chanRevocationSeq1},
+			"chan2": {chanRevocationSeq2},
+		}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc1")
+		require.NoError(t, err)
+		require.Len(t, chanHistory, len(expectedChanHistory))
+		for chanName, expectedSeq := range expectedChanHistory {
+			assert.ElementsMatch(t, expectedSeq, chanHistory[chanName])
+		}
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc1", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		require.Len(t, apiResult, len(expectedChanHistory))
+		for chanName, expectedSeq := range expectedChanHistory {
+			assert.ElementsMatch(t, expectedSeq, apiResult[chanName])
+		}
+	})
+
+	t.Run("nonexistent document", func(t *testing.T) {
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "nonexistent")
+		assert.Error(t, err)
+		assert.Nil(t, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/nonexistent", "")
+		RequireStatus(t, resp, http.StatusNotFound)
+	})
+
+	t.Run("channel never revoked", func(t *testing.T) {
+		rt.PutDoc("doc2", `{"channels": ["chan1"]}`)
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc2")
+		require.NoError(t, err)
+		assert.Empty(t, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc2", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Empty(t, apiResult)
+	})
+
+	t.Run("channel revoked once", func(t *testing.T) {
+		version := rt.PutDoc("doc3", `{"channels": ["chan1"]}`)
+		rt.UpdateDoc("doc3", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc3")
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc3")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc3", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("multiple channels revoked simultaneously", func(t *testing.T) {
+		version := rt.PutDoc("doc4", `{"channels": ["chan1", "chan2", "chan3"]}`)
+		rt.UpdateDoc("doc4", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc4")
+		expected := map[string][]uint64{
+			"chan1": {revocationSeq},
+			"chan2": {revocationSeq},
+			"chan3": {revocationSeq},
+		}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc4")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc4", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("history from ChannelSetHistory overflow", func(t *testing.T) {
+		// Cycle a channel enough times to push entries into ChannelSetHistory
+		version := rt.PutDoc("doc5", `{"channels": ["chan1"]}`)
+		for range db.DocumentHistoryMaxEntriesPerChannel {
+			version = rt.UpdateDoc("doc5", version, `{"channels": []}`)
+			version = rt.UpdateDoc("doc5", version, `{"channels": ["chan1"]}`)
+		}
+		rt.UpdateDoc("doc5", version, `{"channels": []}`)
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc5")
+		require.NoError(t, err)
+		assert.NotEmpty(t, chanHistory["chan1"])
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc5", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.NotEmpty(t, apiResult["chan1"])
+	})
+
+	t.Run("partially revoked channels", func(t *testing.T) {
+		// Doc starts in chan1+chan2, chan1 is removed but chan2 stays active
+		version := rt.PutDoc("doc6", `{"channels": ["chan1", "chan2"]}`)
+		rt.UpdateDoc("doc6", version, `{"channels": ["chan2"]}`)
+		revocationSeq := rt.GetDocumentSequence("doc6")
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc6")
+		require.NoError(t, err)
+		// chan1 was revoked; chan2 is still active so it should not appear
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc6", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
+
+	t.Run("channel re-added after revocation still appears in history", func(t *testing.T) {
+		version := rt.PutDoc("doc8", `{"channels": ["chan1"]}`)
+		version = rt.UpdateDoc("doc8", version, `{"channels": []}`)
+		revocationSeq := rt.GetDocumentSequence("doc8")
+
+		// Re-add chan1 — it should still appear in history from the earlier revocation
+		rt.UpdateDoc("doc8", version, `{"channels": ["chan1"]}`)
+		expected := map[string][]uint64{"chan1": {revocationSeq}}
+
+		chanHistory, err := collection.GetDocChannelHistory(ctx, "doc8")
+		require.NoError(t, err)
+		assert.Equal(t, expected, chanHistory)
+
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_channel_history/doc8", "")
+		RequireStatus(t, resp, http.StatusOK)
+		var apiResult map[string][]uint64
+		require.NoError(t, json.Unmarshal(resp.BodyBytes(), &apiResult))
+		assert.Equal(t, expected, apiResult)
+	})
 }

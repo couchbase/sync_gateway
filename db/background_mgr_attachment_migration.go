@@ -31,14 +31,14 @@ type AttachmentMigrationManager struct {
 	lock          sync.RWMutex
 }
 
-var _ BackgroundManagerProcessI = &AttachmentMigrationManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &AttachmentMigrationManager{}
 
 const MetaVersionValue = "4.0.0" // Meta version to set in syncInfo document upon completion of attachment migration for collection
 
-func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager {
+func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager[map[string]any] {
 	metadataStore := database.MetadataStore
 	metaKeys := database.MetadataKeys
-	return &BackgroundManager{
+	return &BackgroundManager[map[string]any]{
 		name: "attachment_migration",
 		Process: &AttachmentMigrationManager{
 			databaseCtx: database,
@@ -52,7 +52,7 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 	}
 }
 
-func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -76,7 +76,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
-			return newRunInit()
+			return backgroundManagerInitReset, newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
 		a.docsProcessed.Store(statusDoc.DocsProcessed)
@@ -86,10 +86,10 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 
 		base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resuming migration with migration ID: %s, %d already processed", a.MigrationID, a.docsProcessed.Load())
 
-		return nil
+		return backgroundManagerInitResume, nil
 	}
 
-	return newRunInit()
+	return backgroundManagerInitReset, newRunInit()
 }
 
 func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
@@ -166,7 +166,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string
 
 	// check for mismatch in collection id's between current collections on the db and prev run
 
-	err = a.resetDCPMetadataIfNeeded(ctx, db, dcpOptions.CheckpointPrefix, currCollectionIDs)
+	err = a.resetDCPMetadataIfNeeded(ctx, db, currCollectionIDs)
 	if err != nil {
 		return err
 	}
@@ -292,9 +292,8 @@ func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerSt
 
 // getCheckpointPrefix returns the checkpoint prefix for attachment migration checkpoints.
 func (a *AttachmentMigrationManager) getCheckpointPrefix(migrationID string) string {
-	return fmt.Sprintf("%s:sg-%v:att_migration:%v",
+	return fmt.Sprintf("%s:sg:att_migration:%v",
 		a.databaseCtx.MetadataKeys.DCPCheckpointPrefix(a.databaseCtx.Options.GroupID),
-		base.ProductAPIVersion,
 		migrationID,
 	)
 }
@@ -341,28 +340,31 @@ func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *D
 	)
 }
 
+// getCollectionIDs returns a copy of the sorted collection IDs that are being processed in the current migration run.
+func (a *AttachmentMigrationManager) getCollectionIDs() []uint32 {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	c := slices.Clone(a.CollectionIDs)
+	slices.Sort(c)
+	return c
+}
+
+// matchingCollectionIDs returns true if the collectionIDs passed in are the same as the collectionIDs configured
+func (a *AttachmentMigrationManager) matchingCollectionIDs(collectionIDs []uint32) bool {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	lhs := slices.Clone(collectionIDs)
+	slices.Sort(lhs)
+	return slices.Compare(a.getCollectionIDs(), lhs) == 0
+}
+
 // resetDCPMetadataIfNeeded will check for mismatch between current collectionIDs and collectionIDs on previous run
-func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, metadataKeyPrefix string, collectionIDs []uint32) error {
-	// if we are on our first run, no collections will be defined on the manager yet
-	if len(a.CollectionIDs) == 0 {
+func (a *AttachmentMigrationManager) resetDCPMetadataIfNeeded(ctx context.Context, database *DatabaseContext, collectionIDs []uint32) error {
+	if a.matchingCollectionIDs(collectionIDs) {
 		return nil
 	}
-	if len(a.CollectionIDs) != len(collectionIDs) {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		err := a.purgeCheckpoints(ctx, database, a.MigrationID)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	slices.Sort(collectionIDs)
-	slices.Sort(a.CollectionIDs)
-	purgeNeeded := slices.Compare(collectionIDs, a.CollectionIDs)
-	if purgeNeeded != 0 {
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
-		return a.purgeCheckpoints(ctx, database, a.MigrationID)
-	}
-	return nil
+	base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.MigrationID)
+	return a.purgeCheckpoints(ctx, database, a.MigrationID)
 }
 
 // getCollectionsForAttachmentMigration will get all datastores.

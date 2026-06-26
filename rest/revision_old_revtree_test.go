@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // TestGetOldRevisionBodyByRevTreeID ensures that fetching an older revision body using a legacy RevTree ID after flushing the revision cache works with store_legacy_revtree_data set.

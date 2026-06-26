@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 	"sort"
@@ -29,6 +30,8 @@ import (
 // Resync Implementation of Background Manager Process using DCP stream
 // =====================================================================
 
+const DefaultResyncPartitions uint16 = 64
+
 type ResyncManagerDCP struct {
 	db                           *DatabaseContext
 	docsProcessedLocal           atomic.Int64  // number of documents processed locally on this node since the last start or resume of resync
@@ -43,13 +46,13 @@ type ResyncManagerDCP struct {
 	docsTargeted                 atomic.Uint64 // number of documents targeted for resync, computed once at the start of a new run
 	ResyncID                     string
 	VBUUIDs                      []uint64
+	EndSeqNos                    []uint64 // EndSeqNos for resync, stored as a slice to optimize persistence in status doc
 	ResyncedCollections          base.CollectionNames
+	startOptions                 ResyncOptions // options from the most recent Start call, persisted to meta for Resume
 	resyncCollectionInfo
-	lock        sync.RWMutex
-	Distributed bool
-	dcpDoneChan chan error // mark when the DCP feed is completed
-	// TODO: put this into data set by GetProcessStatus / SetProcessStatus so this can be determined for other nodes
-	// running resync
+	lock              sync.RWMutex
+	Distributed       bool
+	dcpDoneChan       chan error      // mark when the DCP feed is completed
 	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
 }
 
@@ -72,43 +75,77 @@ func (v *vBucketTracker) clear() {
 	v.m = make(map[string]struct{})
 }
 
+// union returns a slice containing all vBuckets from v and other (deduplicated).
+func (v *vBucketTracker) union(other iter.Seq[string]) []string {
+	v.lock.RLock()
+	defer v.lock.RUnlock()
+	result := make(map[string]struct{}, len(v.m))
+	for vb := range v.m {
+		result[vb] = struct{}{}
+	}
+	if other != nil {
+		for vb := range other {
+			result[vb] = struct{}{}
+		}
+	}
+	return slices.Collect(maps.Keys(result))
+}
+
 // resyncCollectionInfo contains information on collections included on resync run, populated in init() and used in Run()
 type resyncCollectionInfo struct {
 	collectionIDs     []uint32
 	hasAllCollections bool
 }
 
-var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
+// ResyncOptions are used to initialize a resync process.
+type ResyncOptions struct {
+	Collections         base.CollectionNames `json:"collections,omitempty"`
+	Reset               bool                 `json:"reset,omitempty"`
+	RegenerateSequences bool                 `json:"regenerateSequences,omitempty"`
+}
 
-func NewResyncManagerDCP(metadataStore base.DataStore, metaKeys *base.MetadataKeys, db *DatabaseContext) *BackgroundManager {
-	return &BackgroundManager{
+var _ BackgroundManagerProcessI[ResyncOptions] = &ResyncManagerDCP{}
+
+// NewResyncManagerDCP returns a new instance of ResyncManagerDCP wrapped in a BackgroundManager. If distributed is
+// true, the manager will be set up to run in a distributed manner across multiple nodes, otherwise it will run on a
+// single node.
+func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManager[ResyncOptions] {
+	b := &BackgroundManager[ResyncOptions]{
 		name: "resync",
 		Process: &ResyncManagerDCP{
 			db:                db,
 			completedvBuckets: newvBucketTracker(),
+			Distributed:       distributed,
 		},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			metadataStore: metadataStore,
-			metaKeys:      metaKeys,
+			metadataStore: db.MetadataStore,
+			metaKeys:      db.MetadataKeys,
 			processSuffix: "resync",
+			multiNode:     distributed,
 		},
 		terminator: base.NewSafeTerminator(),
 	}
+	if distributed {
+		b.updateDatabaseState = func(ctx context.Context, running bool) error {
+			if db.DBStateManager == nil {
+				return nil
+			}
+			return db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+		}
+	}
+	return b
 }
 
-// Init processes the options to start a resync process and sets them as struct memebers.
-func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
-	resyncCollections, ok := options["collections"].(base.CollectionNames)
-	if !ok {
-		return errors.New("collections option is required and must be of type base.CollectionNames")
-	}
+// Init processes the options to start a resync process and sets them as struct members.
+func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
+	r.setStartOptions(options)
 
 	var collections DatabaseCollections
-	if len(resyncCollections) > 0 {
+	if len(options.Collections) > 0 {
 		var err error
-		collections, err = r.db.collections(resyncCollections)
+		collections, err = r.db.collections(options.Collections)
 		if err != nil {
-			return err
+			return backgroundManagerInitReset, err
 		}
 	} else {
 		collections = slices.Collect(maps.Values(r.db.CollectionByID))
@@ -123,7 +160,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	var statusDoc ResyncManagerStatusDocDCP
 	if clusterStatus == nil {
 		resetMsg = "no previous run found"
-	} else if resetOpt, _ := options["reset"].(bool); resetOpt {
+	} else if options.Reset {
 		resetMsg = "reset option requested"
 	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
 		resetMsg = "failed to unmarshal cluster status"
@@ -134,7 +171,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	} else {
 		r.initializeFromPreviousStatus(statusDoc)
 		base.InfofCtx(ctx, base.KeyAll, "Resuming resync with ID: %q", r.ResyncID)
-		return nil
+		return backgroundManagerInitResume, nil
 	}
 
 	if statusDoc.ResyncID != "" {
@@ -146,7 +183,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 
 	newID, err := uuid.NewRandom()
 	if err != nil {
-		return err
+		return backgroundManagerInitReset, err
 	}
 
 	docsTargeted, err := totalResyncDocs(ctx, collections)
@@ -157,8 +194,17 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]any, clu
 	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(docsTargeted))
 
 	r.ResyncID = newID.String()
+
+	if r.Distributed {
+		endSeqNosMap, err := base.GetHighSeqNos(ctx, r.db.Bucket)
+		if err != nil {
+			return backgroundManagerInitReset, err
+		}
+		r.setEndSeqNosFromMap(endSeqNosMap)
+	}
+
 	base.InfofCtx(ctx, base.KeyAll, "Running new resync process with ID: %q - %s", r.ResyncID, resetMsg)
-	return nil
+	return backgroundManagerInitReset, nil
 }
 
 // totalResyncDocs returns an estimate of the number of documents processed for resync.
@@ -184,6 +230,13 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, resyncID string
 	)
 }
 
+// setStartOptions stores the options used to start the current run so that Resume can reconstruct them.
+func (r *ResyncManagerDCP) setStartOptions(options ResyncOptions) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.startOptions = options
+}
+
 // SetVBUUIDs updates vbuuids in the manager.
 func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 	r.lock.Lock()
@@ -192,13 +245,11 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 }
 
 // Run starts a DCP feed to process documents for resync.
-func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db := r.db
-	regenerateSequences, ok := options["regenerateSequences"].(bool)
-	if !ok {
-		return errors.New("regenerateSequences option is required and must be of type bool")
-	}
+	regenerateSequences := options.RegenerateSequences
 	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
+	ctx = db.AddDatabaseLogContext(ctx)
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
 	defer func() {
@@ -260,7 +311,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 		db.DbStats.Database().ResyncNumProcessed.Add(1)
 		databaseCollection, ok := db.CollectionByID[event.CollectionID]
 		if !ok {
-			base.AssertfCtx(ctx, "Received DCP event for collection ID %d, but no collection found with that ID, skipping document %q", event.CollectionID, base.UD(docID))
+			// turn to AssertfCtx in CBG-5440
+			base.WarnfCtx(ctx, "Received DCP event for collection ID %d, but no collection found with that ID, skipping document %q", event.CollectionID, base.UD(docID))
 			return false
 		}
 		databaseCollection.collectionStats.ResyncNumProcessed.Add(1)
@@ -314,10 +366,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 
 		r.dcpDoneChan = make(chan error)
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db, r.ResyncID, true)
-		endSeqNos, err := base.GetHighSeqNos(ctx, db.Bucket)
-		if err != nil {
-			return err
-		}
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
 			resyncDest, err := base.NewDCPDest(
@@ -328,7 +376,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 					MaxVbNo:            db.numVBuckets,
 					PersistCheckpoints: true,
 					CheckpointPrefix:   checkPointPrefix,
-					EndSeqNos:          endSeqNos,
+					EndSeqNos:          r.endSeqNosMap(),
 				},
 			)
 			if err != nil {
@@ -365,12 +413,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return fmt.Errorf("Error generating CBGT index name: %v", err)
 		}
 
-		var partitionCount uint16
-		if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
-			partitionCount = *db.Options.UnsupportedOptions.ResyncPartitions
-		} else {
-			partitionCount = db.Options.ImportOptions.ImportPartitions
-		}
+		partitionCount := r.db.GetResyncPartitionCount()
 		base.DebugfCtx(ctx, base.KeyAll, "Using %d partitions for resync", partitionCount)
 
 		opts := base.ShardedDCPOptions{
@@ -386,7 +429,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			IndexName:              indexName,
 			Datastore:              db.MetadataStore,
 			FeedType:               base.ShardedDCPFeedTypeResync,
-			EndSeqNos:              endSeqNos,
+			EndSeqNos:              r.endSeqNosMap(),
 			UnregisterFeedCallback: r.getUnregisterFeedFunc(ctx, db.numVBuckets),
 		}
 		resyncCbgtContext, err := base.StartShardedDCPFeed(ctx, opts)
@@ -431,7 +474,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 			return err
 		}
 
-		if err := invalidatePrincipals(ctx, db, regenerateSequences, r.hasAllCollections, r.DocsChanged()); err != nil {
+		if err := r.invalidatePrincipals(ctx, db, regenerateSequences); err != nil {
 			return err
 		}
 
@@ -456,23 +499,24 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]any, pers
 }
 
 // invalidatePrincipals invalidates principal documents after documents have been resynced.
-func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool, resyncAllCollections bool, docsChanged int64) error {
+func (r *ResyncManagerDCP) invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSequences bool) error {
 	// If the principal docs sequences are regenerated, or the user doc need to be invalidated after a dynamic channel grant, db.QueryPrincipals is called to find the principal docs.
 	// In the case that a database is created with "start_offline": true, it is possible the index needed to create this is not yet ready, so make sure it is ready for use.
-	if !db.UseViews() && ((regenerateSequences && resyncAllCollections) || docsChanged > 0) {
+	if !db.UseViews() && ((regenerateSequences && r.hasAllCollections) || r.DocsChanged() > 0) {
 		err := initializePrincipalDocsIndex(ctx, db)
 		if err != nil {
 			return err
 		}
 	}
-	if regenerateSequences && resyncAllCollections {
-		err := db.updateAllPrincipalsSequences(ctx)
+	if regenerateSequences && r.hasAllCollections {
+		err := db.updateAllPrincipalsSequences(ctx, r.ResyncID)
 		if err != nil {
 			return fmt.Errorf("Error updating principal sequences: %w", err)
 		}
+		return nil
 	}
 
-	if docsChanged > 0 {
+	if r.DocsChanged() > 0 {
 		endSeq, err := db.sequences.getSequence(ctx)
 		if err != nil {
 			return err
@@ -482,6 +526,7 @@ func invalidatePrincipals(ctx context.Context, db *DatabaseContext, regenerateSe
 		for _, databaseCollection := range db.CollectionByID {
 			collectionNames = append(collectionNames, databaseCollection.ScopeAndCollectionName())
 		}
+		// No-op if the principal is already invalidated at an earlier sequence.
 		err = db.invalidateAllPrincipals(ctx, collectionNames, endSeq)
 		if err != nil {
 			return fmt.Errorf("Could not invalidate principal documents: %w", err)
@@ -536,15 +581,38 @@ func (r *ResyncManagerDCP) ResetStatus() {
 
 // initializeFromPreviousStatus restores the in-memory state of the manager from a previously persisted status
 // document so that a resumed run starts with the correct accumulated counts.
+// Does not set local stats (*Local) from persisted stats (cluster-wide).  These start again from zero on resume,
+// and follow the standard status update process to aggregate those with the previously persisted stats.
 func (r *ResyncManagerDCP) initializeFromPreviousStatus(statusDoc ResyncManagerStatusDocDCP) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	r.ResyncID = statusDoc.ResyncID
-	r.docsChangedLocal.Store(statusDoc.DocsChanged)
-	r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
-	r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	r.EndSeqNos = statusDoc.EndSeqNos
+	if !r.Distributed {
+		r.docsChangedLocal.Store(statusDoc.DocsChanged)
+		r.docsProcessedLocal.Store(statusDoc.DocsProcessed)
+		r.docsErroredLocal.Store(statusDoc.DocsErrored)
+	}
 	r.docsTargeted.Store(statusDoc.DocsTargeted)
 	r.db.DbStats.Database().ResyncDocsTargeted.Set(int64(statusDoc.DocsTargeted))
+}
+
+// makeEndSeqNosMap converts a slice of end sequence numbers by vBucket to a map
+func (r *ResyncManagerDCP) endSeqNosMap() map[uint16]uint64 {
+	endSeqNoMap := make(map[uint16]uint64, len(r.EndSeqNos))
+	for vb, endSeq := range r.EndSeqNos {
+		endSeqNoMap[uint16(vb)] = endSeq
+	}
+	return endSeqNoMap
+}
+
+// makeEndSeqNosSlice converts a map of end sequence numbers by vBucket to a slice, filling in any missing vBuckets with 0
+func (r *ResyncManagerDCP) setEndSeqNosFromMap(endSeqMap map[uint16]uint64) {
+	r.EndSeqNos = make([]uint64, r.db.numVBuckets)
+	for vb := uint16(0); vb < r.db.numVBuckets; vb++ {
+		r.EndSeqNos[vb] = endSeqMap[vb]
+	}
+
 }
 
 // setCollectionStatus sets the active collections being resynced.
@@ -578,19 +646,21 @@ type resyncStats struct {
 func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus []byte, newStatus []byte) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
+	// previousStatus is the full status document ({"status":{...},"meta":{...}}) from the bucket before this update.
 	var previousStats resyncStats
 	if len(previousStatus) > 0 {
-		err := base.JSONUnmarshal(previousStatus, &previousStats)
-		if err != nil {
-			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %w", string(previousStatus), err)
+		var previousStatusDoc ResyncManagerStatusDocDCP
+		if err := base.JSONUnmarshal(previousStatus, &previousStatusDoc); err != nil {
+			base.AssertfCtx(ctx, "Could not process previous status: %q, resync will lose track of its stats: %v", string(previousStatus), err)
 			return
 		}
+		previousStats = previousStatusDoc.resyncStats
 	}
+	// newStatus is the flat status subdoc (output of GetProcessStatus) just written to the bucket.
 	var newStats resyncStats
 	if len(newStatus) > 0 {
-		err := base.JSONUnmarshal(newStatus, &newStats)
-		if err != nil {
-			base.AssertfCtx(ctx, "Could not process current status: %q, resync will lose track of its stats: %s", string(newStatus), err)
+		if err := base.JSONUnmarshal(newStatus, &newStats); err != nil {
+			base.AssertfCtx(ctx, "Could not process current status: %q, resync will lose track of its stats: %v", string(newStatus), err)
 			return
 		}
 	}
@@ -601,18 +671,28 @@ func (r *ResyncManagerDCP) SetProcessStatus(ctx context.Context, previousStatus 
 	r.docsProcessedLocalSerialized.Add(newStats.DocsProcessed - previousStats.DocsProcessed)
 	r.docsChangedLocalSerialized.Add(newStats.DocsChanged - previousStats.DocsChanged)
 	r.docsErroredLocalSerialized.Add(newStats.DocsErrored - previousStats.DocsErrored)
+
+	// Mark any vBuckets completed by other nodes (from the previous bucket state) on this node's tracker.
+	prevVBuckets, err := getCompletedVBucketsFromMeta(previousStatus)
+	if err != nil {
+		base.WarnfCtx(ctx, "Could not get completed vBuckets from previous status: %v", err)
+	} else {
+		r.markVBucketsCompleted(ctx, slices.Values(prevVBuckets), r.db.numVBuckets)
+	}
 }
 
 func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, previousStatus []byte) ([]byte, []byte, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
+	// previousStatus is the full status document ({"status":{...},"meta":{...}}) from the bucket.
 	var previousStats resyncStats
 	if len(previousStatus) > 0 {
-		err := base.JSONUnmarshal(previousStatus, &previousStats)
-		if err != nil {
+		var previousStatusDoc ResyncManagerStatusDocDCP
+		if err := base.JSONUnmarshal(previousStatus, &previousStatusDoc); err != nil {
 			return nil, nil, fmt.Errorf("Could not process previous status: %q", string(previousStatus))
 		}
+		previousStats = previousStatusDoc.resyncStats
 	}
 
 	response := ResyncManagerResponseDCP{
@@ -637,7 +717,15 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 	meta := ResyncManagerMeta{
 		VBUUIDs:       r.VBUUIDs,
 		CollectionIDs: r.collectionIDs,
+		Options:       r.startOptions,
+		EndSeqNos:     r.EndSeqNos,
 	}
+
+	prevVBuckets, err := getCompletedVBucketsFromMeta(previousStatus)
+	if err != nil {
+		return nil, nil, err
+	}
+	meta.CompletedVBuckets = r.completedvBuckets.union(slices.Values(prevVBuckets))
 
 	statusJSON, err := base.JSONMarshal(response)
 	if err != nil {
@@ -649,6 +737,19 @@ func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus, prev
 		return nil, nil, err
 	}
 	return statusJSON, metaJSON, err
+}
+
+// getCompletedVBucketsFromMeta extracts the completed vBuckets list from a serialized ResyncManagerStatusDocDCP.
+// Returns an empty slice with no error when statusBytes is empty.
+func getCompletedVBucketsFromMeta(statusBytes []byte) ([]string, error) {
+	if len(statusBytes) == 0 {
+		return []string{}, nil
+	}
+	var statusDoc ResyncManagerStatusDocDCP
+	if err := base.JSONUnmarshal(statusBytes, &statusDoc); err != nil {
+		return nil, fmt.Errorf("Failed on %q: %w", string(statusBytes), err)
+	}
+	return statusDoc.CompletedVBuckets, nil
 }
 
 // writeSharededDCPCheckpoints writes any outstanding DCP checkpoints.
@@ -673,13 +774,13 @@ func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuck
 			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)
 			return
 		}
-		r.markVBucketsCompleted(ctx, f.CompletedPartitions(), totalVBuckets)
+		r.markVBucketsCompleted(ctx, maps.Keys(f.CompletedPartitions()), totalVBuckets)
 	}
 }
 
 // markVBucketsCompleted marks the provided vBuckets as completed, and if all vBuckets are completed, closes doneChan to
 // allow the resync process to complete. This function is thread safe and can be called multiple times.
-func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, completedPartitions map[string]struct{}, totalVbuckets uint16) {
+func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, vbNos iter.Seq[string], totalVbuckets uint16) {
 	r.completedvBuckets.lock.Lock()
 	defer r.completedvBuckets.lock.Unlock()
 
@@ -688,7 +789,7 @@ func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, completedP
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
 		return
 	}
-	for vbNo := range completedPartitions {
+	for vbNo := range vbNos {
 		r.completedvBuckets.m[vbNo] = struct{}{}
 	}
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
@@ -714,9 +815,16 @@ func (r *ResyncManagerDCP) DocsErrored() int64 {
 	return r.docsErroredCrossNode.Load() + r.docsErroredLocal.Load() - r.docsErroredLocalSerialized.Load()
 }
 
+type resyncManagerCompletedVBuckets struct {
+	CompletedVBuckets []string `json:"completed_vbuckets,omitempty"`
+}
+
 type ResyncManagerMeta struct {
-	VBUUIDs       []uint64 `json:"vbuuids"`
-	CollectionIDs []uint32 `json:"collection_ids,omitempty"`
+	VBUUIDs       []uint64      `json:"vbuuids"`
+	CollectionIDs []uint32      `json:"collection_ids,omitempty"`
+	EndSeqNos     []uint64      `json:"end_seq_nos"`       // end seq nos, persisted for Resume
+	Options       ResyncOptions `json:"options,omitempty"` // start options, persisted for Resume
+	resyncManagerCompletedVBuckets
 }
 
 type ResyncManagerStatusDocDCP struct {
@@ -726,10 +834,18 @@ type ResyncManagerStatusDocDCP struct {
 
 // initializePrincipalDocsIndex creates the metadata indexes required for resync
 func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) error {
-	n1qlStore, ok := base.AsN1QLStore(db.MetadataStore)
-	if !ok {
-		return errors.New("Cannot create indexes on non-Couchbase data store.")
+	var dataStores []base.DataStore
+
+	if metadataStore, ok := db.MetadataStore.(*base.MetadataStore); ok {
+		// need to ensure both primary and fallback have index
+		dataStores = append(dataStores, metadataStore.Primary())
+		if !metadataStore.MigrationComplete() {
+			dataStores = append(dataStores, metadataStore.Fallback())
+		}
+	} else {
+		dataStores = append(dataStores, db.MetadataStore)
 	}
+
 	options := InitializeIndexOptions{
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 		NumReplicas:                db.Options.NumIndexReplicas,
@@ -738,7 +854,17 @@ func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) erro
 		NumPartitions:              db.numIndexPartitions(),
 	}
 
-	return InitializeIndexes(ctx, n1qlStore, options)
+	var me *base.MultiError
+	for _, ds := range dataStores {
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		if !ok {
+			return fmt.Errorf("Cannot create indexes on non-Couchbase data store.")
+		}
+		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
+			me = me.Append(err)
+		}
+	}
+	return me.ErrorOrNil()
 }
 
 // getResyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync. collectionIDs
@@ -762,16 +888,14 @@ func GetResyncDCPCheckpointPrefix(db *DatabaseContext, resyncID string, distribu
 	var checkpointPrefix string
 	if distributed {
 		checkpointPrefix = fmt.Sprintf(
-			"%s:sg-%v:resync-distributed:%v",
+			"%s:sg:resync-distributed:%v",
 			db.MetadataKeys.DCPCheckpointPrefix(""),
-			base.ProductAPIVersion,
 			resyncID,
 		)
 	} else {
 		checkpointPrefix = fmt.Sprintf(
-			"%s:sg-%v:resync:%v",
+			"%s:sg:resync:%v",
 			db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID),
-			base.ProductAPIVersion,
 			resyncID,
 		)
 	}

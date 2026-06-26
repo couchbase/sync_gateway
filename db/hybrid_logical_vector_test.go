@@ -9,6 +9,7 @@
 package db
 
 import (
+	"maps"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -17,8 +18,8 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestInternalHLVFunctions:
@@ -135,14 +136,14 @@ func TestHLVCompact(t *testing.T) {
 	hlv.compactWithValue(ctx, t.Name(), compactValue)
 	assert.Equal(t, minPVEntriesRetained, len(hlv.PreviousVersions))
 
-	assert.Contains(t, hlv.PreviousVersions, "sourceD")
-	assert.Contains(t, hlv.PreviousVersions, "sourceE") // Was a candidate for compaction but retained 3 PVs
-	assert.Contains(t, hlv.PreviousVersions, "sourceF") // Was a candidate for compaction but retained 3 PVs
-	assert.NotContains(t, hlv.PreviousVersions, "sourceG")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceK")
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceD")
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceE") // Was a candidate for compaction but retained 3 PVs
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceF") // Was a candidate for compaction but retained 3 PVs
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceG")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceH")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceI")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceJ")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceK")
 
 	// Ensure Compact didn't touch anything else in the HLV
 	assert.Equal(t, startingHLV.SourceID, hlv.SourceID)
@@ -483,7 +484,7 @@ func TestHLVImport(t *testing.T) {
 			require.NotEqual(t, preImportCas, finalCas)
 
 			// validate _sync.cas was expanded to document cas
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 			var syncData *SyncData
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 			require.Equal(t, finalCas, base.HexCasToUint64(syncData.Cas))
@@ -501,10 +502,10 @@ func TestHLVImport(t *testing.T) {
 			}
 
 			if testCase.expectedMou != nil {
-				require.Contains(t, xattrs, base.MouXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.MouXattrName)
 				var mou *MetadataOnlyUpdate
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
-				require.Contains(t, xattrs, base.MouXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.MouXattrName)
 				require.Equal(t, *testCase.expectedMou(&output), *mou)
 			}
 			var hlv *HybridLogicalVector
@@ -513,6 +514,48 @@ func TestHLVImport(t *testing.T) {
 		})
 	}
 
+}
+
+// TestHLVVersionAheadOfCASCorrection exercises correctVersionAheadOfCAS by simulating the Sync Gateway
+// clock running ahead of the server, so the generated current version exceeds the committed CAS.
+func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	retryCount := db.DbStats.Database().HLVVersionCASRetryCount
+
+	t.Run("within max wait is corrected", func(t *testing.T) {
+		// SG clock 100ms ahead of the server: the generated version exceeds the CAS, within the wait bound.
+		// Derive from the same wall-clock source the bucket uses (HLCWallClock) so the only difference is the
+		// injected offset; using time.Now() directly diverges from the bucket's clock on Windows.
+		offset := uint64(100 * time.Millisecond)
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
+
+		before := retryCount.Value()
+		_, doc, err := collection.Put(ctx, "skewedWithinBound", Body{"foo": "bar"})
+		require.NoError(t, err)
+		require.NotNil(t, doc.HLV)
+		// The version is preserved (not moved backwards) and the re-stamped CAS now satisfies cv.ver <= cas.
+		assert.Equal(t, db.EncodedSourceID, doc.HLV.SourceID)
+		assert.NotZero(t, doc.HLV.Version)
+		assert.LessOrEqual(t, doc.HLV.Version, doc.Cas, "version should be corrected to <= CAS")
+		assert.Equal(t, doc.Cas, doc.HLV.CurrentVersionCAS)
+		assert.Equal(t, before+1, retryCount.Value(), "corrective re-stamp should increment the stat")
+	})
+
+	t.Run("beyond max wait is left uncorrected", func(t *testing.T) {
+		// SG clock 2s ahead (> maxVersionCASCorrectionWait): correction is skipped with a warning.
+		offset := uint64(2 * time.Second)
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
+
+		before := retryCount.Value()
+		_, doc, err := collection.Put(ctx, "skewedBeyondBound", Body{"foo": "bar"})
+		require.NoError(t, err)
+		require.NotNil(t, doc.HLV)
+		assert.Greater(t, doc.HLV.Version, doc.Cas, "version beyond the wait bound should be left ahead of CAS")
+		assert.Equal(t, before, retryCount.Value(), "skipped correction should not increment the stat")
+	})
 }
 
 // TestHLVMapToCBLString:
@@ -1791,4 +1834,48 @@ func TestFindGenerationFromLegacyRev(t *testing.T) {
 			assert.Equal(t, tc.expGen, gen)
 		})
 	}
+}
+
+// TestHLVMaxValueForSource asserts the floor returned for a source across the current, previous and merge
+// versions of an HLV, including the absent-source (0) cases that drive new-document version generation.
+func TestHLVMaxValueForSource(t *testing.T) {
+	const cvSource = "cv"
+	const pvSource = "pv"
+	const mvSource = "mv"
+	const sharedSource = "shared"
+
+	hlv := HybridLogicalVector{
+		SourceID:         cvSource,
+		Version:          100,
+		PreviousVersions: HLVVersions{pvSource: 50},
+		MergeVersions:    HLVVersions{mvSource: 75},
+	}
+
+	testCases := []struct {
+		name     string
+		sourceID string
+		expected uint64
+	}{
+		{name: "current version source", sourceID: cvSource, expected: 100},
+		{name: "previous version source", sourceID: pvSource, expected: 50},
+		{name: "merge version source", sourceID: mvSource, expected: 75},
+		{name: "absent source returns 0", sourceID: "missing", expected: 0},
+		{name: "empty source returns 0", sourceID: "", expected: 0},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, hlv.maxValueForSource(tc.sourceID))
+		})
+	}
+
+	// A source can be both the current version and a merge version (see MergeWithIncomingHLV), so the cv
+	// case must fold in the merge version. (PV+MV and CV+PV overlaps cannot occur, so are not tested here.)
+	t.Run("merge version folded in when source is also current", func(t *testing.T) {
+		hlv := HybridLogicalVector{
+			SourceID:      sharedSource,
+			Version:       100,
+			MergeVersions: HLVVersions{sharedSource: 150},
+		}
+		assert.Equal(t, uint64(150), hlv.maxValueForSource(sharedSource))
+	})
 }

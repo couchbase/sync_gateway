@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -28,8 +29,8 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func (db *DatabaseContext) CacheCompactActive() bool {
@@ -183,20 +184,17 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 
 	var purgeErrors *base.MultiError
 
-	dataStores, err := bucket.ListDataStores(ctx)
+	// Include the mobile system collection so we also purge Sync Gateway metadata from it, avoiding
+	// interference between test runs.
+	dataStores, err := base.GetAllDataStores(ctx, bucket)
 	if err != nil {
 		return err
 	}
 	collections := make(map[uint32]sgbucket.DataStore, len(dataStores))
 	collectionNames := base.NewCollectionNameSet()
-	for _, dataStoreName := range dataStores {
-		collection, err := bucket.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		collectionNames.Add(dataStoreName)
-		collections[collection.GetCollectionID()] = collection
-
+	for _, dataStore := range dataStores {
+		collectionNames.Add(dataStore)
+		collections[dataStore.GetCollectionID()] = dataStore
 	}
 
 	purgeCallback := func(event sgbucket.FeedEvent) bool {
@@ -320,20 +318,14 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 	if err != nil {
 		return err
 	}
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped too.
+	n1qlStores, err := base.GetAllN1QLStores(ctx, b)
 	if err != nil {
 		return err
 	}
-	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
-		n1qlStore, ok := base.AsN1QLStore(dataStore)
-		if !ok {
-			return errors.New("attempting to empty indexes with non-N1QL store")
-		}
-		tbp.Logf(ctx, "dropping existing bucket indexes %s.%s.%s", b.GetName(), dataStore.ScopeName(), dataStore.CollectionName())
+	for _, n1qlStore := range n1qlStores {
+		ctx := base.DataStoreLogCtx(ctx, n1qlStore)
+		tbp.Logf(ctx, "dropping existing bucket indexes %s", n1qlStore.GetName())
 		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 			return err
@@ -344,52 +336,25 @@ var deleteDocsAndIndexesBucketReadier base.TBPBucketReadierFunc = func(ctx conte
 
 // viewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-	skipGSI := false
-
-	if base.TestsDisableGSI() {
-		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
-		skipGSI = true
-	}
-
 	tbp.Logf(ctx, "Starting bucket init function")
 
-	if !skipGSI {
-		mobileSystemDataStore, err := b.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
-		if err != nil {
-			return err
-		}
-		systemCollectionInitOptions := InitializeIndexOptions{
-			UseXattrs:                  true,
-			NumReplicas:                0,
-			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
-			LegacySyncDocsIndex:        false,
-			MetadataIndexes:            IndexesMetadataOnly,
-			NumPartitions:              DefaultNumIndexPartitions,
-		}
-		systemN1QLStore, ok := base.AsN1QLStore(mobileSystemDataStore)
-		if !ok {
-			return fmt.Errorf("bucket %T was not a N1QL store", b)
-		}
-
-		if err := InitializeIndexes(ctx, systemN1QLStore, systemCollectionInitOptions); err != nil {
-			return err
-		}
-	}
-
-	dataStores, err := b.ListDataStores(ctx)
+	// Include the mobile system collection so its indexes are dropped and recreated alongside the
+	// other collections, rather than being left with stale indexes between bucket reuses.
+	dataStores, err := base.GetAllDataStores(ctx, b)
 	if err != nil {
 		return err
 	}
 
-	for _, dataStoreName := range dataStores {
-		ctx := base.KeyspaceLogCtx(ctx, b.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
-		dataStore, err := b.NamedDataStore(ctx, dataStoreName)
-		if err != nil {
-			return err
-		}
+	for _, dataStore := range dataStores {
+		ctx := base.DataStoreLogCtx(ctx, dataStore)
 
 		// Views
-		if skipGSI || base.TestsDisableGSI() {
+		if base.TestsDisableGSI() {
+			// create views if walrus (GSI=true), all collections
+			// Couchbase Server doesn't support views on a non-default collection and neither does Sync Gateway for CBS
+			if !base.UnitTestUrlIsWalrus() && !base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+				continue
+			}
 			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
 				return err
 			}
@@ -416,7 +381,10 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			MetadataIndexes:            IndexesWithoutMetadata,
 			NumPartitions:              DefaultNumIndexPartitions,
 		}
-		if base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+		switch {
+		case base.IsMobileSystemCollection(dataStore):
+			options.MetadataIndexes = IndexesMetadataOnly
+		case base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()):
 			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
@@ -849,7 +817,7 @@ func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, sou
 	require.NoError(t, err)
 	if doc.HLV == nil {
 		require.Equal(t, "", source)
-		require.Equal(t, "", version)
+		require.Equal(t, uint64(0), version)
 		return
 	}
 
@@ -947,7 +915,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 // After a background manager state transition to completed, stopped, error is followed by immediate removal of the
 // heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
 // for a small race if you try to stop and immediately restart a background manager.
-func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundManager) {
+func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *BackgroundManager[O]) {
 	if mgr.mode() != backgroundManagerModeSingleNode {
 		return
 	}
@@ -961,7 +929,7 @@ func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundMa
 }
 
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
-func RequireBackgroundManagerState(t testing.TB, mgr *BackgroundManager, expState BackgroundProcessState) BackgroundManagerStatus {
+func RequireBackgroundManagerState[O any](t testing.TB, mgr *BackgroundManager[O], expState BackgroundProcessState) BackgroundManagerStatus {
 	waitTime := 10 * time.Second
 	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
 		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
@@ -997,7 +965,7 @@ func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
 func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) SyncData {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.SyncXattrName})
 	require.NoError(t, err, "Could not find _sync xattr for %s", docID)
-	require.Contains(t, xattrs, base.SyncXattrName, "Could not find _sync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName, "Could not find _sync xattr for %s", docID)
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	return syncData
@@ -1007,7 +975,7 @@ func GetRawSyncXattr(t *testing.T, collection base.DataStore, docID string) Sync
 func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) GlobalSyncData {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
 	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
-	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
 	var globalSyncData GlobalSyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalSyncData))
 	return globalSyncData
@@ -1017,7 +985,7 @@ func GetRawGlobalSync(t *testing.T, collection base.DataStore, docID string) Glo
 func GetRawGlobalSyncAttachments(t *testing.T, collection base.DataStore, docID string) AttachmentMap {
 	xattrs, _, err := collection.GetXattrs(base.TestCtx(t), docID, []string{base.GlobalXattrName})
 	require.NoError(t, err, "Could not find _globalSync xattr for %s", docID)
-	require.Contains(t, xattrs, base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
+	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName, "Could not find _globalSync xattr for %s", docID)
 	var globalSyncData struct {
 		Attachments AttachmentMap `json:"attachments_meta"`
 	}
@@ -1154,7 +1122,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("primary datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Primary())
 	}
-	primaryCtx := base.CollectionLogCtx(ctx, metadataStore.Primary().ScopeName(), metadataStore.Primary().CollectionName())
+	primaryCtx := base.DataStoreLogCtx(ctx, metadataStore.Primary())
 	primaryOptions.MetadataIndexes = IndexesMetadataOnly // primary store only needs metadata indexes (no other data can be stored here)
 	if err := InitializeIndexes(primaryCtx, primaryN1QL, primaryOptions); err != nil {
 		return fmt.Errorf("initializing indexes on primary metadata store: %w", err)
@@ -1164,7 +1132,7 @@ func InitializeDualMetadataStoreIndexes(t *testing.T, ctx context.Context, metad
 	if !ok {
 		return fmt.Errorf("fallback datastore (%T) is not an N1QL store; cannot initialize dual metadata store indexes", metadataStore.Fallback())
 	}
-	fallbackCtx := base.CollectionLogCtx(ctx, metadataStore.Fallback().ScopeName(), metadataStore.Fallback().CollectionName())
+	fallbackCtx := base.DataStoreLogCtx(ctx, metadataStore.Fallback())
 	if err := InitializeIndexes(fallbackCtx, fallbackN1QL, options); err != nil {
 		return fmt.Errorf("initializing indexes on fallback metadata store: %w", err)
 	}
@@ -1192,26 +1160,14 @@ func (db *DatabaseContext) FlushChannelCache(t testing.TB) {
 	db.RestartChangeListener(t, true)
 }
 
-type ResyncTestCase struct {
-	Name        string // name of test case
-	Distributed bool   // use distributed resync
+// MigrateSeqCounterForTest exposes the unexported migrateSeqCounter for cross-package tests.
+func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.MetadataStore, seqKey string) {
+	t.Helper()
+	stats := &MigrationStats{}
+	require.NoError(t, migrateSeqCounter(ctx, ms, seqKey, stats))
 }
 
-// ResyncTestModes returns the test modes to run resync tests in for a given test run. Distributed resync requires Couchbase Server and EE.
-func ResyncTestModes() []ResyncTestCase {
-	testCases := []ResyncTestCase{
-		{
-			Name:        "distributed=false",
-			Distributed: false,
-		},
-	}
-	/* CBG-5419 enable tests
-	if !base.UnitTestUrlIsWalrus() && base.IsEnterpriseEdition() {
-		testCases = append(testCases, ResyncTestCase{
-			Name:        "distributed=true",
-			Distributed: true,
-		})
-	}
-	*/
-	return testCases
+// usingShardedResync returns true if cbgt based resync will be used for test
+func usingShardedResync(testing.TB) bool {
+	return base.IsEnterpriseEdition() && !base.UnitTestUrlIsWalrus()
 }

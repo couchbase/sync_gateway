@@ -83,11 +83,14 @@ const (
 	AuditIDDatabaseFlush        AuditID = 54045
 
 	// User principal events
-	AuditIDUserCreate AuditID = 54100
-	AuditIDUserRead   AuditID = 54101
-	AuditIDUserUpdate AuditID = 54102
-	AuditIDUserDelete AuditID = 54103
-	AuditIDUsersAll   AuditID = 54104
+	AuditIDUserCreate               AuditID = 54100
+	AuditIDUserRead                 AuditID = 54101
+	AuditIDUserUpdate               AuditID = 54102
+	AuditIDUserDelete               AuditID = 54103
+	AuditIDUsersAll                 AuditID = 54104
+	AuditIDUserAccessHistoryRead    AuditID = 54105
+	AuditIDUserAccessHistoryCompact AuditID = 54106
+
 	// Role principal events
 	AuditIDRoleCreate AuditID = 54110
 	AuditIDRoleRead   AuditID = 54111
@@ -115,14 +118,16 @@ const (
 	AuditIDISGRAllRead   AuditID = 54421
 
 	// Documents events
-	AuditIDDocumentCreate       AuditID = 55000
-	AuditIDDocumentRead         AuditID = 55001
-	AuditIDDocumentUpdate       AuditID = 55002
-	AuditIDDocumentDelete       AuditID = 55003
-	AuditIDDocumentMetadataRead AuditID = 55004
-	AuditIDDocumentImport       AuditID = 55005
-	AuditIDDocumentResync       AuditID = 55006
-	AuditIDDocumentRevoke       AuditID = 55007
+	AuditIDDocumentCreate                AuditID = 55000
+	AuditIDDocumentRead                  AuditID = 55001
+	AuditIDDocumentUpdate                AuditID = 55002
+	AuditIDDocumentDelete                AuditID = 55003
+	AuditIDDocumentMetadataRead          AuditID = 55004
+	AuditIDDocumentImport                AuditID = 55005
+	AuditIDDocumentResync                AuditID = 55006
+	AuditIDDocumentRevoke                AuditID = 55007
+	AuditIDDocumentChannelHistoryCompact AuditID = 55008
+
 	// Document attachments events
 	AuditIDAttachmentCreate AuditID = 55010
 	AuditIDAttachmentRead   AuditID = 55011
@@ -797,6 +802,29 @@ var AuditEvents = events{
 		FilteringPermitted: true,
 		EventType:          eventTypeAdmin,
 	},
+	AuditIDUserAccessHistoryRead: {
+		Name:        "Read user access history",
+		Description: "User access history was read",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
+	AuditIDUserAccessHistoryCompact: {
+		Name:        "Compact user access history",
+		Description: "User access history was compacted",
+		MandatoryFields: AuditFields{
+			AuditFieldUserName: "username",
+			AuditFieldDatabase: "database name",
+			AuditFieldChannels: map[string]map[string][]string{"scopeName": {"collectionName": {"list", "of", "channels"}}},
+		},
+		EnabledByDefault:   true,
+		FilteringPermitted: true,
+		EventType:          eventTypeAdmin,
+	},
 	AuditIDRoleCreate: {
 		Name:        "Create role",
 		Description: "A new role was created",
@@ -1188,6 +1216,25 @@ var AuditEvents = events{
 		},
 		mandatoryFieldGroups: []fieldGroup{
 			fieldGroupKeyspace,
+		},
+		EnabledByDefault:   false,
+		FilteringPermitted: true,
+		EventType:          eventTypeData,
+	},
+	AuditIDDocumentChannelHistoryCompact: {
+		Name:        "Compact document channel history",
+		Description: "Document channel history was compacted",
+		MandatoryFields: AuditFields{
+			AuditFieldDocID:    "document id",
+			AuditFieldChannels: []string{"list", "of", "channels"},
+			AuditFieldSequence: "sequence",
+		},
+		mandatoryFieldGroups: []fieldGroup{
+			fieldGroupAuthenticated,
+			fieldGroupKeyspace,
+		},
+		optionalFieldGroups: []fieldGroup{
+			fieldGroupRequest,
 		},
 		EnabledByDefault:   false,
 		FilteringPermitted: true,

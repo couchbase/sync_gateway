@@ -11,11 +11,12 @@ package base
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestWriteTombstoneWithXattrs(t *testing.T) {
@@ -1278,7 +1279,7 @@ func TestWriteWithXattrs(t *testing.T) {
 			require.JSONEq(t, string(test.body), string(doc))
 			require.Equal(t, len(test.xattrs), len(xattrs), "Length of output doesn't match xattrs=%+v doesn't match input xattrs=%+v", xattrs, test.xattrs)
 			for k, v := range test.xattrs {
-				require.Contains(t, xattrs, k)
+				require.Contains(t, maps.Keys(xattrs), k)
 				require.JSONEq(t, string(v), string(xattrs[k]))
 			}
 		})
@@ -1331,7 +1332,7 @@ func TestWriteWithXattrsInsertAndDeleteError(t *testing.T) {
 func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[string][]byte) {
 	require.Len(t, actual, len(expected), "Expected xattrs to be the same length %v, got %v", expected, actual)
 	for k, v := range expected {
-		require.Contains(t, actual, k)
+		require.Contains(t, maps.Keys(actual), k)
 		require.JSONEq(t, string(v), string(actual[k]))
 	}
 }

@@ -22,10 +22,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/rosmar"
 )
 
-var hlc = rosmar.NewHybridLogicalClock(0)
+var hlc = sgbucket.NewHybridLogicalClock()
 
 type dcpDataGen struct {
 	seqAlloc          *sequenceAllocator
@@ -73,7 +72,7 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 			} else {
 				sgwSeqno = dcp.seqAlloc.nextSeq()
 			}
-			casVal := uint64(hlc.Now())
+			casVal := hlc.Now(0)
 			select {
 			case <-ctx.Done():
 				return
@@ -117,7 +116,7 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 		} else {
 			sgwSeqno = dcp.seqAlloc.nextSeq()
 		}
-		casVal := uint64(hlc.Now())
+		casVal := hlc.Now(0)
 		select {
 		case <-ctx.Done():
 			return
@@ -176,7 +175,7 @@ func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, 
 					Flags:    0,
 					RevNo:    1,
 					Expiry:   0,
-					Cas:      uint64(hlc.Now()),
+					Cas:      hlc.Now(0),
 					Datatype: 5,
 					Key:      []byte("_sync:seq"),
 					Value:    sgbucket.EncodeValueWithXattrs([]byte{50}),
@@ -190,7 +189,7 @@ func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, 
 		// only allocate sgw seqno on actual write (not sync seq event) and BEFORE the delay as sgw will have allocated
 		// it's seqno before any delay on vBuckets
 		sgwSeqno := dcp.seqAlloc.nextSeq()
-		casVal := uint64(hlc.Now())
+		casVal := hlc.Now(0)
 		select {
 		case <-ctx.Done():
 			return

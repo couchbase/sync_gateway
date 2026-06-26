@@ -438,10 +438,13 @@ func (h *handler) handlePostIndexInit() error {
 	action := cmp.Or(h.getQuery("action"), "start")
 
 	if action == "stop" {
-		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
+		// Stop (closing the terminator) must happen before Cancel (which sends context.Canceled to doneChan).
+		// AsyncIndexInitManager.Run suppresses errors when terminator.IsClosed(); if Cancel fires first,
+		// Run may receive the error before the terminator is closed and return it as a real failure.
 		if err := h.db.AsyncIndexInitManager.Stop(h.ctx()); err != nil {
 			return err
 		}
+		h.server.DatabaseInitManager.Cancel(h.db.Name, fmt.Sprintf("Initialization stopped by %s", h.rq.URL))
 		b, err := h.db.AsyncIndexInitManager.GetStatus(h.ctx())
 		if err != nil {
 			return err
@@ -496,7 +499,16 @@ func (h *handler) handlePostIndexInit() error {
 	if req.SeparatePrincipalIndexes != nil {
 		useLegacySyncDocsIndex = !(*req.SeparatePrincipalIndexes)
 	}
-	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex)
+	// Skip metadata index initialization on _default._default if it has been dropped (e.g. after a
+	// completed metadata migration) — building indexes on a missing collection would retry until the
+	// op times out. Default to attempting init on _default if existence can't be determined.
+	defaultCollectionPresent := true
+	if exists, existsErr := defaultCollectionExists(h.ctx(), h.db.Bucket); existsErr != nil {
+		base.WarnfCtx(h.ctx(), "db:%s unable to determine whether _default._default exists while reinitializing indexes: %v — will attempt index init on _default", base.MD(h.db.Name), existsErr)
+	} else {
+		defaultCollectionPresent = exists
+	}
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent)
 	if err != nil {
 		return err
 	}
@@ -1665,6 +1677,7 @@ type DatabaseStatus struct {
 	RequireResync     []string                `json:"require_resync"`
 	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
+	MetadataStoreMode base.MetadataStoreMode  `json:"metadata_store_mode,omitempty"`
 }
 
 type RuntimeStatus struct {
@@ -1728,6 +1741,7 @@ func (h *handler) handleGetStatus() error {
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
+			MetadataStoreMode: base.GetMetadataStoreMode(database.MetadataStore),
 		}
 	}
 
@@ -2465,8 +2479,10 @@ type ClusterInfo struct {
 }
 
 type BucketInfo struct {
-	Registry                     *GatewayRegistry `json:"registry,omitempty"`
-	EnableCrossClusterVersioning bool             `json:"enable_cross_cluster_versioning"`
+	Registry                     *GatewayRegistry              `json:"registry,omitempty"`
+	MigrationStatus              *base.MetadataMigrationStatus `json:"migration_status,omitempty"`
+	EnableCrossClusterVersioning bool                          `json:"enable_cross_cluster_versioning"`
+	BootstrapTarget              string                        `json:"bootstrap_target,omitempty"`
 }
 
 // Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
@@ -2500,6 +2516,22 @@ func (h *handler) handleGetClusterInfo() error {
 				Registry:                     registry,
 				EnableCrossClusterVersioning: eccv[bucketName],
 			}
+
+			// Grab metadata migration status for bucket, if it exists, and add to response
+			migrationStatus, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
+			if err != nil && !base.IsDocNotFoundError(err) {
+				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during /_cluster_info: %v. Returning response without this information.", base.MD(bucketName), err)
+			} else {
+				bucketInfo.MigrationStatus = migrationStatus
+			}
+
+			// If there's a cached bootstrap target for this bucket, add it to the response. getGatewayRegistry above
+			// can populate the cache, so we need to refresh for each iteration.
+			cachedTargets := h.server.BootstrapContext.Connection.CachedBootstrapTargets()
+			if target, ok := cachedTargets[bucketName]; ok {
+				bucketInfo.BootstrapTarget = target
+			}
+
 			clusterInfo.Buckets[bucketName] = bucketInfo
 		}
 	} else {
@@ -2543,6 +2575,11 @@ func (h *handler) getUserChannelHistory() error {
 		Channels: collectionAccessHistory,
 	}
 
+	base.Audit(h.ctx(), base.AuditIDUserAccessHistoryRead, base.AuditFields{
+		base.AuditFieldDatabase: h.db.Name,
+		base.AuditFieldUserName: username,
+	})
+
 	h.writeJSON(userChannelHistory)
 
 	return err
@@ -2582,6 +2619,16 @@ func (h *handler) compactUserChannelHistory() error {
 	if err != nil {
 		return err
 	}
+
+	chanHistory := reqUserChannelHistory.Channels
+	if chanHistory == nil {
+		chanHistory = auth.CollectionAccessHistory{}
+	}
+	base.Audit(h.ctx(), base.AuditIDUserAccessHistoryCompact, base.AuditFields{
+		base.AuditFieldDatabase: h.db.Name,
+		base.AuditFieldUserName: username,
+		base.AuditFieldChannels: chanHistory,
+	})
 
 	h.writeJSON(userCompactedChannelHistory)
 	return nil

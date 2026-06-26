@@ -106,21 +106,22 @@ const metadataMigrationArmRetryInterval = 10 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string             // Database name
-	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                      base.Bucket        // Storage
-	bucketUsername              string             // name of the connecting user for audit logging
-	BucketUUID                  string             // The bucket UUID for the bucket the database is created against
-	EncodedSourceID             string             // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
-	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
-	mutationListener            *changeListener    // Caching feed listener
-	ImportListener              *importListener    // Import feed listener
-	sequences                   *sequenceAllocator // Source of new sequence numbers
-	StartTime                   time.Time          // Timestamp when context was instantiated
-	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
-	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache               RevisionCache      // Cache of recently-accessed doc revisions
+	Name                        string                       // Database name
+	UUID                        string                       // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore               // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket                  // Storage
+	bucketUsername              string                       // name of the connecting user for audit logging
+	BucketUUID                  string                       // The bucket UUID for the bucket the database is created against
+	EncodedSourceID             string                       // The md5 hash of bucket UUID + cluster UUID for the bucket/cluster the database is created against but encoded in base64
+	hlc                         *sgbucket.HybridLogicalClock // Generates HLV current-version values for writes under EncodedSourceID
+	BucketLock                  sync.RWMutex                 // Control Access to the underlying bucket object
+	mutationListener            *changeListener              // Caching feed listener
+	ImportListener              *importListener              // Import feed listener
+	sequences                   *sequenceAllocator           // Source of new sequence numbers
+	StartTime                   time.Time                    // Timestamp when context was instantiated
+	RevsLimit                   uint32                       // Max depth a document's revision tree can grow to
+	autoImport                  bool                         // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache               RevisionCache                // Cache of recently-accessed doc revisions
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
@@ -128,12 +129,12 @@ type DatabaseContext struct {
 	Options                     DatabaseContextOptions // Database Context Options
 	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
 	State                       uint32                 // The runtime state of the DB from a service perspective
-	ResyncManager               *BackgroundManager
-	TombstoneCompactionManager  *BackgroundManager
-	AttachmentCompactionManager *BackgroundManager
-	AttachmentMigrationManager  *BackgroundManager
-	AsyncIndexInitManager       *BackgroundManager
-	MetadataMigrationManager    *BackgroundManager
+	ResyncManager               *BackgroundManager[ResyncOptions]
+	TombstoneCompactionManager  *BackgroundManager[map[string]any]
+	AttachmentCompactionManager *BackgroundManager[map[string]any]
+	AttachmentMigrationManager  *BackgroundManager[map[string]any]
+	AsyncIndexInitManager       *BackgroundManager[map[string]any]
+	MetadataMigrationManager    *BackgroundManager[map[string]any]
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
@@ -160,26 +161,30 @@ type DatabaseContext struct {
 	// complete in the status doc. Triggers the bucket-level all-complete check + bootstrap copy
 	// + SetMigrationComplete on the cluster.
 	PostMetadataMigrationCompleteFunc func(ctx context.Context) error
-	ClusterCompatVersionFunc          func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
-	UserFunctionTimeout               time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
-	Scopes                            map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	CollectionByID                    map[uint32]*DatabaseCollection    // A map keyed by collection ID to Collection
-	CollectionNames                   map[string]map[string]struct{}    // Map of scope, collection names
-	MetadataKeys                      *base.MetadataKeys                // Factory to generate metadata document keys
-	RequireResync                     base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
-	RequireAttachmentMigration        base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
-	CORS                              *auth.CORSConfig                  // CORS configuration
-	EnableMou                         bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
-	WasInitializedSynchronously       bool                              // true if the database was initialized synchronously
-	BroadcastSlowMode                 atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
-	DatabaseStartupError              *DatabaseError                    // Error that occurred during database online processes startup
-	CachedPurgeInterval               atomic.Pointer[time.Duration]     // If set, the cached value of the purge interval to avoid repeated lookups
-	CachedVersionPruningWindow        atomic.Pointer[time.Duration]     // If set, the cached value of the version pruning window to avoid repeated lookups
-	CachedCCVStartingCas              *base.VBucketCAS                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
-	CachedCCVEnabled                  atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
-	numVBuckets                       uint16                            // Number of vbuckets in the bucket
-	SameSiteCookieMode                http.SameSite
-	DBStateManager                    *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	// SiblingMetadataIDFunc returns metadataIDs of all sibling databases sharing the same bucket (excluding this database).
+	// Used by metadata migration to recognise co-located sibling databases' metadata documents, avoid migrating them, and
+	// classify them as out-of-scope.
+	SiblingMetadataIDFunc       func(ctx context.Context) ([]string, error)
+	ClusterCompatVersionFunc    func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
+	UserFunctionTimeout         time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
+	Scopes                      map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	CollectionByID              map[uint32]*DatabaseCollection    // A map keyed by collection ID to Collection
+	CollectionNames             map[string]map[string]struct{}    // Map of scope, collection names
+	MetadataKeys                *base.MetadataKeys                // Factory to generate metadata document keys
+	RequireResync               base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
+	RequireAttachmentMigration  base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
+	CORS                        *auth.CORSConfig                  // CORS configuration
+	EnableMou                   bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
+	WasInitializedSynchronously bool                              // true if the database was initialized synchronously
+	BroadcastSlowMode           atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
+	DatabaseStartupError        *DatabaseError                    // Error that occurred during database online processes startup
+	CachedPurgeInterval         atomic.Pointer[time.Duration]     // If set, the cached value of the purge interval to avoid repeated lookups
+	CachedVersionPruningWindow  atomic.Pointer[time.Duration]     // If set, the cached value of the version pruning window to avoid repeated lookups
+	CachedCCVStartingCas        *base.VBucketCAS                  // If set, the cached value of the CCV starting CAS value to avoid repeated lookups
+	CachedCCVEnabled            atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
+	numVBuckets                 uint16                            // Number of vbuckets in the bucket
+	SameSiteCookieMode          http.SameSite
+	DBStateManager              *DatabaseStateMgr // Manager used to manage the state of processes across nodes
 
 	scopeName string // name of the single scope for the database
 }
@@ -453,6 +458,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		bucketUsername:       bucketUsername,
 		BucketUUID:           bucketUUID,
 		EncodedSourceID:      sourceID,
+		hlc:                  sgbucket.NewHybridLogicalClock(),
 		StartTime:            time.Now(),
 		autoImport:           autoImport,
 		Options:              options,
@@ -466,6 +472,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.numVBuckets, err = bucket.GetMaxVbno(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if dbContext.useShardedDCP() {
+		if partitionCount := dbContext.GetResyncPartitionCount(); partitionCount > dbContext.numVBuckets {
+			return nil, NewDatabaseError(DatabaseInvalidResyncPartitions)
+		}
 	}
 	err = dbContext.updateCCVSettings(ctx)
 	if err != nil {
@@ -624,10 +635,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, metaKeys, dbContext)
+	distributedResync := dbContext.useShardedDCP()
+	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
 
-	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey())
+	var resumeResync resyncResumeFunc
+	if distributedResync {
+		resumeResync = dbContext.ResyncManager.Resume
+	}
+	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), resumeResync)
 
 	return dbContext, nil
 }
@@ -787,17 +803,31 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
-// Returns a list of BackgroundManager it signalled to stop
-func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []*BackgroundManager) {
-	for _, manager := range []*BackgroundManager{
-		dbCtx.ResyncManager,
-		dbCtx.AttachmentCompactionManager,
-		dbCtx.TombstoneCompactionManager,
-		dbCtx.AsyncIndexInitManager,
-		dbCtx.AttachmentMigrationManager,
-		dbCtx.MetadataMigrationManager,
-	} {
-		if manager != nil && !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
+// Returns a list of StoppableBackgroundManager it signalled to stop.
+func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []StoppableBackgroundManager) {
+	// Nil-check each typed pointer before adding to the interface slice to avoid the
+	// nil-pointer-wrapped-in-interface pitfall.
+	var managers []StoppableBackgroundManager
+	if dbCtx.ResyncManager != nil {
+		managers = append(managers, dbCtx.ResyncManager)
+	}
+	if dbCtx.AttachmentCompactionManager != nil {
+		managers = append(managers, dbCtx.AttachmentCompactionManager)
+	}
+	if dbCtx.TombstoneCompactionManager != nil {
+		managers = append(managers, dbCtx.TombstoneCompactionManager)
+	}
+	if dbCtx.AsyncIndexInitManager != nil {
+		managers = append(managers, dbCtx.AsyncIndexInitManager)
+	}
+	if dbCtx.AttachmentMigrationManager != nil {
+		managers = append(managers, dbCtx.AttachmentMigrationManager)
+	}
+	if dbCtx.MetadataMigrationManager != nil {
+		managers = append(managers, dbCtx.MetadataMigrationManager)
+	}
+	for _, manager := range managers {
+		if !isBackgroundManagerStopped(manager.GetRunState()) && manager.Stop(ctx) == nil {
 			stopped = append(stopped, manager)
 		}
 	}
@@ -805,7 +835,7 @@ func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopp
 }
 
 // waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
-func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
+func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []StoppableBackgroundManager) {
 	timeout := time.NewTicker(waitTimeMax)
 	defer timeout.Stop()
 	retryInterval := 1 * time.Millisecond
@@ -1766,7 +1796,7 @@ func (db *DatabaseContext) updateCCVSettings(ctx context.Context) error {
 	return nil
 }
 
-func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) error {
+func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context, resyncID string) error {
 	users, roles, err := db.AllPrincipalIDs(ctx)
 	if err != nil {
 		return err
@@ -1782,7 +1812,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if role == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, role)
+		err = db.regeneratePrincipalSequences(ctx, authr, role, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1796,7 +1826,7 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 		if user == nil {
 			continue
 		}
-		err = db.regeneratePrincipalSequences(ctx, authr, user)
+		err = db.regeneratePrincipalSequences(ctx, authr, user, resyncID)
 		if err != nil {
 			return err
 		}
@@ -1804,15 +1834,22 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context) err
 	return nil
 }
 
-func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal) error {
+func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal, resyncID string) error {
 	nextSeq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = authr.UpdateSequenceNumber(princ, nextSeq)
+	err = authr.UpdateSequenceNumberForResync(princ, nextSeq, resyncID)
 	if err != nil {
-		return err
+		if base.IsCasMismatch(err) {
+			base.DebugfCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s to sequence %d during resync %s.  Assuming sequence updated by another node - releasing seq as unused.", base.UD(princ.Name()), nextSeq, base.UD(resyncID))
+			if releaseErr := db.sequences.releaseSequence(ctx, nextSeq); releaseErr != nil {
+				base.WarnfCtx(ctx, "Error when releasing sequence %d after a cas mismatch updating the resync principal. Falling back to skipped sequence handling.  Error:%v", nextSeq, releaseErr)
+			}
+		} else {
+			return err
+		}
 	}
 
 	return nil
@@ -1873,7 +1910,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, _, err := doc.updateChannels(ctx, channels)
+			changedChannels, err := doc.updateChannels(ctx, channels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)
@@ -1946,7 +1983,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 	return err
 }
 
-// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections:
+// invalidateAllPrincipals invalidates computed channels and roles for all users/roles, for the specified collections.
 func (dbCtx *DatabaseContext) invalidateAllPrincipals(ctx context.Context, collectionNames base.ScopeAndCollectionNames, endSeq uint64) error {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
 	users, roles, err := dbCtx.AllPrincipalIDs(ctx)
@@ -2703,13 +2740,20 @@ func (db *DatabaseContext) NumVBuckets() uint16 {
 	return db.numVBuckets
 }
 
+// GetResyncPartitionCount returns the number of partitions to use for the DCP resync feed.
+// Returns the configured ResyncPartitions value if set, otherwise DefaultResyncPartitions.
+func (db *DatabaseContext) GetResyncPartitionCount() uint16 {
+	if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.ResyncPartitions != nil && *db.Options.UnsupportedOptions.ResyncPartitions > 0 {
+		return *db.Options.UnsupportedOptions.ResyncPartitions
+	}
+	return DefaultResyncPartitions
+}
+
 // InitializeOfflineMode starts polling the database state when the database transitions to offline mode.
 // This enables the database to detect state changes (such as resync requests) from other nodes in the cluster
 // while it is offline. The polling mechanism watches the metadata store for updates to the database state
 // document and invokes registered handlers when changes are detected.
 func (db *DatabaseContext) InitializeOfflineMode() {
-	// TODO: Add the appropriate handler function to handle this - CBG-5183
-	db.DBStateManager.SetResyncFunc(TempResyncHandler)
 	db.DBStateManager.StartPolling(db.CancelContext)
 }
 

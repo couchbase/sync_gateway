@@ -265,6 +265,8 @@ const (
 
 	HighSeqFeedDesc = "Highest sequence number seen on the caching DCP feed."
 
+	HLVVersionCASRetryCountDesc = "The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server."
+
 	NumAttachmentsCompactedDesc = "The number of attachments compacted import_feed"
 
 	ImportFeedDesc = "Contains low level dcp stats: (a). dcp_backfill_expected - the expected number of sequences in backfill (b). dcp_backfill_completed - the number of backfill items processed (c). dcp_rollback_count - the number of DCP rollbacks"
@@ -426,6 +428,13 @@ const (
 	MetadataMigrationSeqPoisonPillAppliedDesc = "The total number of times this node applied the seq-counter poison pill to initiate fallback→primary sequence handoff. Typically 0 or 1 per migration run."
 
 	MetadataMigrationPassesDesc = "The total number of MigrateMetadata range-scan passes executed for this database."
+
+	MetadataMigrationAbandonedRunsDesc = "The total number of metadata migration runs that the " +
+		"orchestrator gave up on after the bounded pass loop exhausted itself without a clean pass. " +
+		"Runs that exit early via a hard error from MigrateMetadata, or are stopped cooperatively via " +
+		"the terminator, are not counted here. This stat specifically captures the \"hit the retry " +
+		"ceiling\" failure mode, useful for distinguishing transient/abortive errors from buckets that " +
+		"need operator intervention."
 )
 
 // DB Replicators stats descriptions (ISGR Specific)

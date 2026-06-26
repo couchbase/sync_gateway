@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"sort"
 	"sync"
@@ -23,8 +24,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestUsersAPI tests pagination of QueryPrincipals
@@ -1155,7 +1156,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			xattrs, cas, err := dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 
 			var syncData db.SyncData
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
@@ -1176,7 +1177,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			// Ensure old channel set with user xattr has been removed
 			xattrs, _, err = dataStore.GetXattrs(rt.Context(), docKey, []string{base.SyncXattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 			var syncData2 db.SyncData
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData2))
 
@@ -1258,11 +1259,11 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, 200)
-	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+	assert.NotContains(t, string(userResponse.Body.Bytes()), collection2Name)
 
 	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, userResponse, 200)
-	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+	assert.NotContains(t, string(userResponse.Body.Bytes()), collection2Name)
 
 	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
 	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {

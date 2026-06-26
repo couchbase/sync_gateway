@@ -7,14 +7,15 @@
 # the file licenses/APL2.txt.
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/docid
 post:
   summary: Compact Channel History of Document
   description: |-
-    Compacts inactive channel history entries from one or more documents before a specified sequence number.
+    Compacts channel history for a specified document.  Channel history older than the specified sequence will be removed.
 
-    This endpoint removes all inactive channel entries (for sequences before the specified sequence number where the document left the channel),
+    This endpoint removes all channel entries (for sequences before the specified sequence number where the document left the channel),
     effectively cleaning up historical channel membership information while preserving active channels and recent changes.
-    This is useful for reducing storage overhead when maintaining large document histories.
+    This can be useful for reducing metadata size for documents that frequently gain and lose access to channels.
 
     Required Sync Gateway RBAC roles:
 
@@ -25,32 +26,22 @@ post:
         schema:
           type: object
           required:
-            - doc_ids
             - seq
           properties:
-            doc_ids:
-              description: |-
-                List of document IDs whose inactive channels should be compacted.
-              type: array
-              items:
-                type: string
-              example:
-                - doc1
-                - doc2
             seq:
               description: |-
-                Channel history for inactive channels having end sequences earlier than this sequence will be removed from the specified document's metadata.
+                Channel history having end sequences earlier than this sequence will be removed from the specified document's metadata.
               type: integer
               format: int64
-              minimum: 0
+              minimum: 1
               example: 12345
   responses:
     '200':
       description: |-
-        Successfully compacted channel history from the specified documents.
-        Returns a mapping of document IDs to the list of channels that were compacted.
+        Successfully compacted channel history from the specified document.
+        Returns a list of channels that were compacted.
 
-        If a document ID has an empty array, it means no channels were pruned for that document.
+        If the response has an empty array, it means either no channels were compacted.
 
       content:
         application/json:
@@ -64,16 +55,13 @@ post:
               description: |-
                 Array of channel names that were compacted.
             description: |-
-              A mapping of document IDs (keys) to arrays of compacted channels (values).
+              A array of all the compacted channels
             example:
-              doc1:
+              compacted_channels:
                 - channel1
                 - channel2
-              doc2:
-                - channel2
-                - channel3
     '400':
-      description: 'Bad request. This could be due to invalid request parameters such as missing or malformed doc_ids array or invalid seq value.'
+      description: 'Bad request. This could be due to invalid request parameters such as invalid seq value.'
       content:
         application/json:
           schema:

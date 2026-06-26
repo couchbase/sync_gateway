@@ -13,7 +13,7 @@ package rest
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestUserAgentVersion(t *testing.T) {

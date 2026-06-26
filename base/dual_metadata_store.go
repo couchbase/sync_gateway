@@ -62,6 +62,32 @@ func (ms *MetadataStore) MigrationComplete() bool {
 	return ms.migrationComplete.Load()
 }
 
+// MetadataStoreMode classifies a database's metadata store for support / observability.
+type MetadataStoreMode string
+
+const (
+	// MetadataStoreModeFallbackActive means the dual store is wrapping primary+fallback and
+	// fallback reads are still in play (migration not yet complete).
+	MetadataStoreModeFallbackActive MetadataStoreMode = "fallback_active"
+	// MetadataStoreModeFallbackInactive means the dual store is wrapping primary+fallback but
+	// migration has completed, so reads no longer fall back.
+	MetadataStoreModeFallbackInactive MetadataStoreMode = "fallback_inactive"
+)
+
+// GetMetadataStoreMode classifies the given datastore. Returns an empty string when the
+// datastore isn't a *MetadataStore (single-store databases); callers should use JSON
+// omitempty so the field is dropped in that case rather than emitted as "".
+func GetMetadataStoreMode(ds DataStore) MetadataStoreMode {
+	ms, ok := ds.(*MetadataStore)
+	if !ok {
+		return ""
+	}
+	if ms.MigrationComplete() {
+		return MetadataStoreModeFallbackInactive
+	}
+	return MetadataStoreModeFallbackActive
+}
+
 // readFromFallback returns true when err indicates the key was not found in primary and metadata migration has
 // not yet complete, meaning the operation should be retried against the fallback DataStore.
 func (ms *MetadataStore) readFromFallback(ctx context.Context, err error) bool {

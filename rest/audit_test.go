@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -24,8 +25,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestAuditLoggingFields(t *testing.T) {
@@ -1513,7 +1514,7 @@ func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID stri
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentMetadataRead {
 			continue
 		}
-		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
+		require.Equal[any](rt.TB(), docID, event[base.AuditFieldDocID])
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound)
@@ -1528,7 +1529,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 		if base.AuditID(event[base.AuditFieldID].(float64)) != base.AuditIDDocumentRead {
 			continue
 		}
-		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
+		require.Equal[any](rt.TB(), docID, event[base.AuditFieldDocID])
 		docVersionsFound = append(docVersionsFound, event[base.AuditFieldDocVersion].(string))
 	}
 	require.Len(rt.TB(), docVersions, len(docVersionsFound), "expected exactly %d document read events, got %d", len(docVersions), len(docVersionsFound))
@@ -1544,9 +1545,9 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
+		require.Equal[any](rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersionStr, event[base.AuditFieldDocVersion].(string))
-		require.Equal(rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
+		require.Equal[any](rt.TB(), attachmentName, event[base.AuditFieldAttachmentID])
 		countFound++
 	}
 	require.Equal(rt.TB(), count, countFound, "expected exactly %d %s events, got %d", count, base.AuditEvents[eventID].Name, countFound)
@@ -1561,7 +1562,7 @@ func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, 
 		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
 			continue
 		}
-		require.Equal(rt.TB(), docID, event[base.AuditFieldDocID])
+		require.Equal[any](rt.TB(), docID, event[base.AuditFieldDocID])
 		require.Equal(rt.TB(), docVersion, event[base.AuditFieldDocVersion].(string))
 		countFound++
 	}
@@ -1594,7 +1595,7 @@ func requireChangesStartEvent(t testing.TB, output []byte, expectedFields map[st
 			base.AuditFieldSince,
 		} {
 			if _, ok := expectedFields[fieldName]; !ok {
-				require.NotContains(t, event, fieldName, fmt.Sprintf("Unexpected field %v present", fieldName))
+				require.NotContains(t, maps.Keys(event), fieldName, fmt.Sprintf("Unexpected field %v present", fieldName))
 			}
 		}
 	}
@@ -1788,12 +1789,12 @@ func TestAuditLoggingGlobals(t *testing.T) {
 			})
 			var event map[string]any
 			require.NoError(t, json.Unmarshal(output, &event))
-			require.Contains(t, event, base.AuditFieldAuthMethod)
+			require.Contains(t, maps.Keys(event), base.AuditFieldAuthMethod)
 			for k, v := range globalFields {
 				if testCase.globalAuditEvents != nil {
 					require.Equal(t, v, event[k])
 				} else {
-					require.NotContains(t, event, k)
+					require.NotContains(t, maps.Keys(event), k)
 				}
 			}
 		})
@@ -1954,9 +1955,9 @@ func TestDatabaseAuditChanges(t *testing.T) {
 				for _, event := range events {
 					eventID := base.AuditID(event[base.AuditFieldID].(float64))
 					if eventID == expectedEventID {
-						require.Equal(rt.TB(), "db", event[base.AuditFieldDatabase])
+						require.Equal[any](rt.TB(), "db", event[base.AuditFieldDatabase])
 						if testCase.expectedEnabledEventList != nil {
-							require.Equal(rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
+							require.Equal[any](rt.TB(), testCase.expectedEnabledEventList, event[base.AuditFieldEnabledEvents])
 						}
 						found = true
 					}
@@ -1965,6 +1966,140 @@ func TestDatabaseAuditChanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAuditUserAccessHistoryRead verifies that AuditIDUserAccessHistoryRead is emitted with
+// the expected db and username fields when the user access history endpoint is called.
+func TestAuditUserAccessHistoryRead(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDUserAccessHistoryRead),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	output := base.AuditLogContents(t, func(t testing.TB) {
+		RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/db/_user/"+username+"/_access_history", ""), http.StatusOK)
+	})
+	events := jsonLines(t, output)
+	require.Len(t, events, 1)
+	event := events[0]
+	assert.Equal[any](t, float64(base.AuditIDUserAccessHistoryRead), event[base.AuditFieldID])
+	assert.Equal[any](t, "db", event[base.AuditFieldDatabase])
+	assert.Equal[any](t, username, event[base.AuditFieldUserName])
+}
+
+// TestAuditUserAccessHistoryCompact verifies that AuditIDUserAccessHistoryCompact is emitted
+// with the expected db, username, and channels fields when the compact endpoint is called.
+func TestAuditUserAccessHistoryCompact(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDUserAccessHistoryCompact),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"*"})
+
+	body := `{"channels":{"_default":{"_default":["A","B"]}}}`
+	output := base.AuditLogContents(t, func(t testing.TB) {
+		RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_user/"+username+"/_access_history/compact", body), http.StatusOK)
+	})
+	events := jsonLines(t, output)
+	require.Len(t, events, 1)
+	event := events[0]
+	assert.Equal[any](t, float64(base.AuditIDUserAccessHistoryCompact), event[base.AuditFieldID])
+	assert.Equal[any](t, "db", event[base.AuditFieldDatabase])
+	assert.Equal[any](t, username, event[base.AuditFieldUserName])
+	assert.Equal[any](t, map[string]any{base.DefaultScope: map[string]any{base.DefaultCollection: []any{"A", "B"}}}, event[base.AuditFieldChannels])
+}
+
+func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
+	rt := createAuditLoggingRestTester(t)
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Logging = &DbLoggingConfig{
+		Audit: &DbAuditLoggingConfig{
+			Enabled: base.Ptr(true),
+			EnabledEvents: base.Ptr([]uint{
+				uint(base.AuditIDDocumentChannelHistoryCompact),
+			}),
+		},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	testCases := []struct {
+		name   string
+		docIDs []string
+	}{
+		{
+			name:   "single doc",
+			docIDs: []string{"single_doc"},
+		},
+		{
+			name:   "multiple docs",
+			docIDs: []string{"multi_doc_1", "multi_doc_2", "multi_doc_3"},
+		},
+	}
+
+	for _, tc := range testCases {
+		rt.Run(tc.name, func(t *testing.T) {
+			for _, docID := range tc.docIDs {
+				rt.CreateTestDoc(docID)
+			}
+
+			body := string(base.MustJSONMarshal(t, CompactDocChannelHistoryRequest{
+				Seq: 1,
+			}))
+			output := base.AuditLogContents(t, func(t testing.TB) {
+				for _, docID := range tc.docIDs {
+					RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_channel_history/"+docID+"/compact", body), http.StatusOK)
+				}
+			})
+
+			for _, docID := range tc.docIDs {
+				requireDocChannelAuditEvent(t, output, base.AuditIDDocumentChannelHistoryCompact, docID, "1", []any{})
+			}
+		})
+	}
+}
+
+func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID, expectedSeq string, expectedChannels []any) {
+	t.Helper()
+	events := jsonLines(t, output)
+	countFound := 0
+	for _, event := range events {
+		if base.AuditID(event[base.AuditFieldID].(float64)) != eventID {
+			continue
+		}
+		if event[base.AuditFieldDocID] != docID {
+			continue
+		}
+		countFound++
+		require.Equal[any](t, expectedSeq, event[base.AuditFieldSequence])
+		require.Equal[any](t, expectedChannels, event[base.AuditFieldChannels])
+	}
+	require.Equal(t, 1, countFound, "expected exactly 1 %s event for doc %q, got %d",
+		base.AuditEvents[eventID].Name, docID, countFound)
 }
 
 // getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129

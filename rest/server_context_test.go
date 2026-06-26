@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,9 +28,127 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
+
+// TestIsPerDBMigrationInProgress verifies the guard that prevents a joining node from marking
+// its MetadataStore wrapper migration-complete while another node's migration is still running.
+func TestIsPerDBMigrationInProgress(t *testing.T) {
+	rt := NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+	conn := sc.BootstrapContext.Connection
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	primary, err := rt.Bucket().NamedDataStore(ctx, base.ScopeAndCollectionName{Scope: base.SystemScope, Collection: base.SystemCollectionMobile})
+	require.NoError(t, err)
+	fallback := rt.Bucket().DefaultDataStore(ctx)
+
+	const metadataID = "test-in-progress-guard"
+	metaKeys := base.NewMetadataKeys(metadataID)
+	seqKey := metaKeys.SyncSeqKey()
+	bucketName := tb.GetName()
+
+	// Seed legacy metadata on fallback.
+	_, err = fallback.Incr(ctx, seqKey, 0, 42, 0)
+	require.NoError(t, err)
+	legacyDocs := map[string][]byte{
+		metaKeys.UserKey("alice"):      []byte(`{"name":"alice"}`),
+		metaKeys.RoleKey("admin"):      []byte(`{"name":"admin"}`),
+		metaKeys.SessionKey("sess123"): []byte(`{"session_id":"sess123"}`),
+	}
+	for k, v := range legacyDocs {
+		_, err := fallback.AddRaw(ctx, k, 0, v)
+		require.NoError(t, err)
+	}
+
+	// Stamp the initial (empty) migration status doc.
+	_, err = conn.InsertMetadataMigrationStatus(ctx, bucketName, base.NewMetadataMigrationStatus())
+	require.NoError(t, err)
+
+	// --- Subtest: no per-DB entry → not in progress ---
+	t.Run("no entry means not in progress", func(t *testing.T) {
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, metadataID,
+			"missing per-DB entry should not be treated as in_progress")
+	})
+
+	// --- Subtest: per-DB entry is in_progress → guard fires ---
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		s.Databases[metadataID] = &base.DatabaseMigrationStatus{State: base.MigrationStateInProgress}
+		return nil
+	})
+	require.NoError(t, err)
+
+	t.Run("in_progress entry detected", func(t *testing.T) {
+		requireDBMigrationInProgress(t, sc, ctx, bucketName, metadataID,
+			"in_progress per-DB entry must be detected")
+	})
+
+	// --- Subtest: full race scenario with the fix ---
+	// Migrate the seq counter (Node A's first step) and verify the guard keeps
+	// dual-read mode so fallback docs remain accessible.
+	nodeAStore := base.NewMetadataStore(primary, fallback)
+	db.MigrateSeqCounterForTest(t, ctx, nodeAStore, seqKey)
+
+	t.Run("race scenario with fix applied", func(t *testing.T) {
+		nodeBStore := base.NewMetadataStore(primary, fallback)
+
+		hasLegacy := probeLegacyPerDBMetadata(ctx, fallback, metadataID)
+		require.False(t, hasLegacy, "probe returns false — seq was migrated")
+
+		requireDBMigrationInProgress(t, sc, ctx, bucketName, metadataID,
+			"status doc shows in_progress — guard must fire")
+
+		// Node B does NOT call SetMigrationComplete — the fix keeps dual-read mode.
+		for k, want := range legacyDocs {
+			got, _, getErr := nodeBStore.GetRaw(ctx, k)
+			require.NoError(t, getErr, "with fix: wrapper must still find %s on fallback", k)
+			assert.Equal(t, want, got)
+		}
+
+		assert.False(t, nodeBStore.MigrationComplete(),
+			"wrapper must NOT be marked migration-complete while another node is mid-migration")
+	})
+
+	// --- Subtest: per-DB entry is complete → safe to mark complete ---
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, bucketName, func(s *base.MetadataMigrationStatus) error {
+		s.Databases[metadataID] = &base.DatabaseMigrationStatus{State: base.MigrationStateComplete}
+		return nil
+	})
+	require.NoError(t, err)
+
+	t.Run("complete entry means not in progress", func(t *testing.T) {
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, metadataID,
+			"completed migration should not be treated as in_progress")
+	})
+
+	// --- Subtest: metadataID doesn't exist → not in progress ---
+	t.Run("missing metadataID in doc means not in progress", func(t *testing.T) {
+		requireDBMigrationNotInProgress(t, sc, ctx, bucketName, "nonexistent-metadata-id",
+			"missing status doc should not be treated as in_progress")
+	})
+}
+
+// requireDBMigrationInProgress asserts that isPerDBMigrationInProgress reports true, logging the
+// bucketName and metadataID under test if the assertion fails.
+func requireDBMigrationInProgress(t *testing.T, sc *ServerContext, ctx context.Context, bucketName, metadataID, msg string) {
+	t.Helper()
+	require.True(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		"%s (bucketName=%q, metadataID=%q)", msg, bucketName, metadataID)
+}
+
+// requireDBMigrationNotInProgress asserts that isPerDBMigrationInProgress reports false, logging the
+// bucketName and metadataID under test if the assertion fails.
+func requireDBMigrationNotInProgress(t *testing.T, sc *ServerContext, ctx context.Context, bucketName, metadataID, msg string) {
+	t.Helper()
+	require.False(t, sc.isPerDBMigrationInProgress(ctx, bucketName, metadataID),
+		"%s (bucketName=%q, metadataID=%q)", msg, bucketName, metadataID)
+}
 
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 

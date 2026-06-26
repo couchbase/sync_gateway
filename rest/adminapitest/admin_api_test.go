@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,14 +27,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
@@ -623,178 +624,107 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
-
-			syncFn := `
+	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
-			rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
-			defer rt.Close()
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
+	defer rt.Close()
 
-			// create documents in DB to cause resync to take a few seconds
-			for i := range 1000 {
-				rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
-			}
-			assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-
-			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
-
-			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			// Send a second _resync request. This must return a 503 since the first one is still processing.
-			rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
-
-			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-			// offline call above resets stats to 0, so sync function count will only include resync run started above
-			assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-		})
+	// create documents in DB to cause resync to take a few seconds
+	for i := range 1000 {
+		rt.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	rt.TakeDbOffline()
+
+	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// Send a second _resync request. This must return a 503 since the first one is still processing.
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	// offline call above resets stats to 0, so sync function count will only include resync run started above
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
 func TestDCPResyncCollectionsStatus(t *testing.T) {
 	base.TestRequiresCollections(t)
-	for _, distributedTestCase := range db.ResyncTestModes() {
-		t.Run(distributedTestCase.Name, func(t *testing.T) {
 
-			testCases := []struct {
-				name              string
-				collectionNames   []string
-				expectedResult    map[string][]string
-				specifyCollection bool
-			}{
-				{
-					name:            "collections_specified",
-					collectionNames: []string{"sg_test_0"},
-					expectedResult: map[string][]string{
-						"sg_test_0": {"sg_test_0"},
-					},
-					specifyCollection: true,
-				},
-				{
-					name: "collections_not_specified",
-					expectedResult: map[string][]string{
-						"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
-					},
-					collectionNames: nil,
-				},
+	testCases := []struct {
+		name              string
+		collectionNames   []string
+		expectedResult    map[string][]string
+		specifyCollection bool
+	}{
+		{
+			name:            "collections_specified",
+			collectionNames: []string{"sg_test_0"},
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0"},
+			},
+			specifyCollection: true,
+		},
+		{
+			name: "collections_not_specified",
+			expectedResult: map[string][]string{
+				"sg_test_0": {"sg_test_0", "sg_test_1", "sg_test_2"},
+			},
+			collectionNames: nil,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
+			defer rt.Close()
+			scopeName := "sg_test_0"
+
+			// create documents in DB to cause resync to take a few seconds
+			for i := range 1000 {
+				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
+				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
-			for _, testCase := range testCases {
-				t.Run(testCase.name, func(t *testing.T) {
-					rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
-					defer rt.Close()
-					scopeName := "sg_test_0"
 
-					// create documents in DB to cause resync to take a few seconds
-					for i := range 1000 {
-						resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
-						rest.RequireStatus(t, resp, http.StatusCreated)
-					}
+			rt.TakeDbOffline()
 
-					rt.TakeDbOffline()
-					rt.SetDistributedResync(distributedTestCase.Distributed)
-
-					if !testCase.specifyCollection {
-						resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-						rest.RequireStatus(t, resp, http.StatusOK)
-					} else {
-						payload := `{"scopes": {"sg_test_0":["sg_test_0"]}}`
-						resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
-						rest.RequireStatus(t, resp, http.StatusOK)
-					}
-					statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-					assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
-
-					statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-					assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
-				})
+			if !testCase.specifyCollection {
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
+			} else {
+				payload := `{"scopes": {"sg_test_0":["sg_test_0"]}}`
+				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			}
+			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+
+			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
 		})
 	}
 }
 
 func TestResyncUsingDCPStream(t *testing.T) {
-	for _, distributedTestCase := range db.ResyncTestModes() {
-		t.Run(distributedTestCase.Name, func(t *testing.T) {
-
-			testCases := []struct {
-				docsCreated int
-			}{
-				{
-					docsCreated: 0,
-				},
-				{
-					docsCreated: 1000,
-				},
-			}
-
-			syncFn := `
-	function(doc) {
-		channel("x")
-	}`
-
-			for _, testCase := range testCases {
-				t.Run(fmt.Sprintf("Docs %d", testCase.docsCreated), func(t *testing.T) {
-					rt := rest.NewRestTester(t,
-						&rest.RestTesterConfig{
-							SyncFn: syncFn,
-						},
-					)
-					defer rt.Close()
-
-					for i := 0; i < testCase.docsCreated; i++ {
-						rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
-					}
-
-					err := rt.WaitForCondition(func() bool {
-						return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
-					})
-					assert.NoError(t, err)
-					rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
-
-					response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-					rest.RequireStatus(t, response, http.StatusServiceUnavailable)
-
-					rt.TakeDbOffline()
-					rt.SetDistributedResync(distributedTestCase.Distributed)
-
-					response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-					rest.RequireStatus(t, response, http.StatusOK)
-
-					resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
-					assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-					if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
-						// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
-						// test.
-						// 1. doc1 mutation
-						// 2. doc1 deletion
-						//
-						// In a test, these will not be resynced but docsProcessed is incremented. Relax
-						// the assertion to greater than the number of documents.
-						assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), testCase.docsCreated)
-					} else {
-						assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
-					}
-					assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-				})
-			}
-		})
+	testCases := []struct {
+		docsCreated int
+	}{
+		{
+			docsCreated: 0,
+		},
+		{
+			docsCreated: 1000,
+		},
 	}
-}
 
-func TestResyncUsingDCPStreamReset(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
-
-			syncFn := `
+	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("Docs %d", testCase.docsCreated), func(t *testing.T) {
 			rt := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					SyncFn: syncFn,
@@ -802,39 +732,30 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 			)
 			defer rt.Close()
 
-			const numDocs = 1000
-
-			// create some docs
-			for i := range numDocs {
+			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
-			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
+			err := rt.WaitForCondition(func() bool {
+				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
+			})
+			assert.NoError(t, err)
+			rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
 
-			// start a resync run
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+			rt.TakeDbOffline()
+
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
-			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-			resyncID := resyncManagerStatus.ResyncID
+			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			// stop resync before it completes, assert it has been aborted
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			rest.RequireStatus(t, response, http.StatusOK)
+			dbCtx := rt.GetDatabase()
+			assert.Equal(t, db.DefaultResyncPartitions, dbCtx.GetResyncPartitionCount())
 
-			_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
-
-			// reset the resync process through the endpoint
-			response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			// grab new resync status from rest run, assert the resync id is not the same as the first
-			// run and that the docs processed is equal to number of docs we have created
-			resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-			assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
-
-			resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 			if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
 				// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
 				// test.
@@ -843,12 +764,72 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 				//
 				// In a test, these will not be resynced but docsProcessed is incremented. Relax
 				// the assertion to greater than the number of documents.
-				assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), numDocs)
+				assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), testCase.docsCreated)
 			} else {
-
-				assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
+				assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
 			}
+			assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 		})
+	}
+}
+
+func TestResyncUsingDCPStreamReset(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
+
+	const numDocs = 1000
+
+	// create some docs
+	for i := range numDocs {
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	}
+
+	rt.TakeDbOffline()
+
+	// start a resync run
+	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	resyncID := resyncManagerStatus.ResyncID
+
+	// stop resync before it completes, assert it has been aborted
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+
+	// reset the resync process through the endpoint
+	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// grab new resync status from rest run, assert the resync id is not the same as the first
+	// run and that the docs processed is equal to number of docs we have created
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
+
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
+		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
+		// test.
+		// 1. doc1 mutation
+		// 2. doc1 deletion
+		//
+		// In a test, these will not be resynced but docsProcessed is incremented. Relax
+		// the assertion to greater than the number of documents.
+		assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), numDocs)
+	} else {
+
+		assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
 	}
 }
 
@@ -857,130 +838,119 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
 
-			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-			syncFn := `
+	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
-			rt := rest.NewRestTesterMultipleCollections(t,
-				&rest.RestTesterConfig{
-					SyncFn:           syncFn,
-					PersistentConfig: true,
-				},
-				numCollections,
-			)
-			defer rt.Close()
+	rt := rest.NewRestTesterMultipleCollections(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			PersistentConfig: true,
+		},
+		numCollections,
+	)
+	defer rt.Close()
 
-			rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
-			// put a docs in both collections
-			for i := 1; i <= 10; i++ {
-				resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace1}}/1000%d", i), `{"type":"test_doc"}`)
-				rest.RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	// put a docs in both collections
+	for i := 1; i <= 10; i++ {
+		resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace1}}/1000%d", i), `{"type":"test_doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
 
-				resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace2}}/1000%d", i), `{"type":"test_doc"}`)
-				rest.RequireStatus(t, resp, http.StatusCreated)
-			}
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace2}}/1000%d", i), `{"type":"test_doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
 
-			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
+	rt.TakeDbOffline()
 
-			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
-			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
-			dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
-			require.NoError(t, err)
-			// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
-			body := fmt.Sprintf(`{
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("A")}`), http.StatusOK)
+	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
+	body := fmt.Sprintf(`{
 			"scopes" :{
 				"%s": ["%s"]
 			}
 		}`, dataStore1.ScopeName(), dataStore1.CollectionName())
-			resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
-			rest.RequireStatus(t, resp, http.StatusOK)
-			resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
+	assert.Equal(t, 10, int(resyncManagerStatus.DocsChanged))
 
-			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
-			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace2}}/_config/sync", `function(doc){channel("B")}`), http.StatusOK)
 
-			// Run resync for all collections
-			resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, resp, http.StatusOK)
-			resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+	// Run resync for all collections
+	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-			assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
-		})
-	}
+	assert.Equal(t, 20, int(resyncManagerStatus.DocsChanged))
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
-
-			syncFn := `
+	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
-			testBucket := base.GetTestBucket(t)
+	testBucket := base.GetTestBucket(t)
 
-			rt := rest.NewRestTester(t,
-				&rest.RestTesterConfig{
-					SyncFn:           syncFn,
-					CustomTestBucket: testBucket,
-				},
-			)
-			defer rt.Close()
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
 
-			numOfDocs := 1000
-			for i := range numOfDocs {
-				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
-			}
-
-			assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-			rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
-
-			response := rt.SendAdminRequest("GET", "/db/_resync", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			rest.RequireStatus(t, response, http.StatusBadRequest)
-
-			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			// If processor is running, another start request should throw error
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
-
-			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-
-			assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			rest.RequireStatus(t, response, http.StatusBadRequest)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
-			rest.RequireStatus(t, response, http.StatusBadRequest)
-
-			// Test empty action, should default to start
-			response = rt.SendAdminRequest("POST", "/db/_resync", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
-		})
+	numOfDocs := 1000
+	for i := range numOfDocs {
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
+
+	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+	rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
+
+	response := rt.SendAdminRequest("GET", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	rt.TakeDbOffline()
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// If processor is running, another start request should throw error
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	// Test empty action, should default to start
+	response = rt.SendAdminRequest("POST", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
 // TestCorruptDbConfigHandling:
@@ -1449,53 +1419,47 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	for _, testCase := range db.ResyncTestModes() {
-		t.Run(testCase.Name, func(t *testing.T) {
-
-			syncFn := `
+	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
-			testBucket := base.GetTestBucket(t)
+	testBucket := base.GetTestBucket(t)
 
-			rt := rest.NewRestTester(t,
-				&rest.RestTesterConfig{
-					SyncFn:           syncFn,
-					CustomTestBucket: testBucket,
-				},
-			)
-			defer rt.Close()
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
 
-			numOfDocs := 1000
-			// gsi is slower than views, so update the number of documents for views so stopping the resync will not complete
-			if base.TestsDisableGSI() {
-				numOfDocs = 5000
-			}
-			for i := range numOfDocs {
-				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
-			}
-
-			rt.WaitForPendingChanges()
-
-			require.Equal(t, int64(numOfDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
-
-			rt.TakeDbOffline()
-			rt.SetDistributedResync(testCase.Distributed)
-
-			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			rest.RequireStatus(t, response, http.StatusOK)
-
-			rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
-
-			// make sure resync stopped before it completed
-			require.Less(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), numOfDocs*2)
-		})
+	numOfDocs := 1000
+	// gsi is slower than views, so update the number of documents for views so stopping the resync will not complete
+	if base.TestsDisableGSI() {
+		numOfDocs = 5000
 	}
+	for i := range numOfDocs {
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	}
+
+	rt.WaitForPendingChanges()
+
+	require.Equal(t, int64(numOfDocs), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	rt.TakeDbOffline()
+
+	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+
+	// make sure resync stopped before it completed
+	require.Less(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), numOfDocs*2)
 }
 
 // Single threaded bring DB online
@@ -1912,7 +1876,7 @@ func TestPurgeWithOldAttachment(t *testing.T) {
 	assert.NotNil(t, rawXattrs)
 	globalSync = db.GlobalSyncData{}
 	require.NoError(t, json.Unmarshal(rawXattrs[base.GlobalXattrName], &globalSync))
-	assert.NotContains(t, globalSync.Attachments, "att1")
+	assert.NotContains(t, maps.Keys(globalSync.Attachments), "att1")
 	assert.Equal(t, len(att2), int(globalSync.Attachments["att2"].(map[string]any)["length"].(float64)))
 }
 
@@ -2289,7 +2253,7 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
-	require.NotEqual(t, 0, respBody.HeapProfileCollectionThreshold)
+	assert.Nil(t, respBody.HeapProfileCollectionThreshold)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2817,7 +2781,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), runtimeServerConfigResponse.Bootstrap.Username)
 	assert.Equal(t, base.RedactedStr, runtimeServerConfigResponse.Bootstrap.Password)
@@ -2848,7 +2812,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that db revs limit is there now and error logging config
-	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	assert.Equal(t, base.Ptr(uint32(100)), runtimeServerConfigResponse.Databases["db"].RevsLimit)
 
 	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
@@ -2878,8 +2842,8 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
 	require.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
-	require.Contains(t, runtimeServerConfigResponse.Databases["db"].Replications, "repl")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases["db"].Replications), "repl")
 	replCfg := runtimeServerConfigResponse.Databases["db"].Replications["repl"]
 	assert.Equal(t, "repl", replCfg.ID)
 	assert.Equal(t, "http://remote:4985/db", replCfg.Remote)
@@ -3109,7 +3073,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
 	runtimeServerConfigDatabase := runtimeServerConfigResponse.Databases["db"]
 	assert.Equal(t, channels.DocChannelsSyncFunction, *runtimeServerConfigDatabase.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
@@ -3131,7 +3095,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(resp.Body), &runtimeServerConfigResponse)
 	assert.NoError(t, err)
 
-	require.Contains(t, runtimeServerConfigResponse.Databases, "db2")
+	require.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db2")
 	runtimeServerConfigDatabase = runtimeServerConfigResponse.Databases["db2"]
 	assert.True(t, runtimeServerConfigDatabase.Unsupported.DisableCleanSkippedQuery)
 }
@@ -3590,7 +3554,7 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
 	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
-	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
+	assert.Equal[error](t, base.ErrNotFound, fetchDb1DestErr)
 	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
 	assert.NoError(t, fetchDb2DestErr)
 }
@@ -4222,4 +4186,77 @@ func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, 
 		}
 	}
 	require.Equal(t, expectedCount, actualCount)
+}
+
+func TestRetrieveMetadataMigrationStatusInClusterInfo(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	metadID := rt.GetDatabase().Options.MetadataID
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var clusterInfoResponse rest.ClusterInfo
+	err := json.Unmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	assert.Nil(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus)
+
+	// update doc to trigger migration status update
+	dbCfg := rt.NewDbConfig()
+	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
+
+	// flush to ensure config is applied before starting migration
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	// start migration
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	require.NotNil(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus)
+	assert.Equal(t, base.MigrationStateComplete, clusterInfoResponse.Buckets[rt.Bucket().GetName()].MigrationStatus.Databases[metadID].State)
+}
+
+// TestRetrieveMetadataStoreModeInStatus tests the three-state metadata_store_mode signal on /_status:
+//   - default DB: not a dual store, field omitted (empty string post-unmarshal)
+//   - after opt-in, pre-migration: dual store with fallback reads active
+//   - after migration completes: dual store with fallback reads inactive
+func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var statusResponse rest.Status
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	require.Contains(t, maps.Keys(statusResponse.Databases), "db")
+	assert.Empty(t, statusResponse.Databases["db"].MetadataStoreMode, "default DB should not report a dual-store mode")
+
+	// Opt in to the dual metadata store but do not yet start the migration.
+	dbCfg := rt.NewDbConfig()
+	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	assert.Equal(t, base.MetadataStoreModeFallbackActive, statusResponse.Databases["db"].MetadataStoreMode)
+
+	// Run the migration to completion — mode should flip to fallback_inactive.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
+	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
 }

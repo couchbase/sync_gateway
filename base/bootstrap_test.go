@@ -19,9 +19,9 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMergeStructPointer(t *testing.T) {
@@ -400,6 +400,164 @@ func newCouchbaseBootstrapDualFixture(t *testing.T, useXattrs bool) bootstrapDua
 			_, _ = fallbackCol.Remove(docID, nil)
 		},
 	}
+}
+
+// bootstrapTwoBucketFixture pairs one dual-collection BootstrapConnection with two buckets, plus
+// helpers to seed a legacy (fallback-only) bootstrap doc into either. Used to prove that completing
+// bootstrap migration on one bucket does not disable the _default._default read-fallback for the
+// other.
+type bootstrapTwoBucketFixture struct {
+	Cluster BootstrapConnection
+	BucketA string
+	BucketB string
+	// SeedLegacy writes a config-shaped doc into the named bucket's fallback (_default._default).
+	SeedLegacy func(t *testing.T, bucketName, docID string, value bootstrapTestCfg)
+	// CleanupDoc removes docID from the named bucket's fallback. Idempotent.
+	CleanupDoc func(t *testing.T, bucketName, docID string)
+}
+
+// newBootstrapTwoBucketDualFixture builds a two-bucket dual-collection fixture for the active
+// backing store. useXattrs selects the bootstrap-config persistence mode on Couchbase Server (see
+// newBootstrapDualTestFixture); it is ignored on Rosmar.
+func newBootstrapTwoBucketDualFixture(t *testing.T, useXattrs bool) bootstrapTwoBucketFixture {
+	t.Helper()
+	if UnitTestUrlIsWalrus() {
+		return newRosmarBootstrapTwoBucketDualFixture(t)
+	}
+	return newCouchbaseBootstrapTwoBucketDualFixture(t, useXattrs)
+}
+
+func newRosmarBootstrapTwoBucketDualFixture(t *testing.T) bootstrapTwoBucketFixture {
+	t.Helper()
+	ctx := TestCtx(t)
+	tbA := GetTestBucket(t)
+	t.Cleanup(func() { tbA.Close(ctx) })
+	tbB := GetTestBucket(t)
+	t.Cleanup(func() { tbB.Close(ctx) })
+
+	cluster, err := NewRosmarCluster(UnitTestUrl(), true)
+	require.NoError(t, err)
+	t.Cleanup(cluster.Close)
+
+	defaultDS := make(map[string]DataStore, 2)
+	for _, tb := range []*TestBucket{tbA, tbB} {
+		ds, err := tb.Bucket.NamedDataStore(ctx, DefaultScopeAndCollectionName())
+		require.NoError(t, err)
+		defaultDS[tb.GetName()] = ds
+	}
+
+	return bootstrapTwoBucketFixture{
+		Cluster: cluster,
+		BucketA: tbA.GetName(),
+		BucketB: tbB.GetName(),
+		SeedLegacy: func(t *testing.T, bucketName, docID string, value bootstrapTestCfg) {
+			t.Helper()
+			_, err := defaultDS[bucketName].WriteCas(TestCtx(t), docID, 0, 0, value, 0)
+			require.NoError(t, err)
+		},
+		CleanupDoc: func(t *testing.T, bucketName, docID string) {
+			t.Helper()
+			_, _ = defaultDS[bucketName].Remove(TestCtx(t), docID, 0)
+		},
+	}
+}
+
+func newCouchbaseBootstrapTwoBucketDualFixture(t *testing.T, useXattrs bool) bootstrapTwoBucketFixture {
+	t.Helper()
+	ctx := TestCtx(t)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int32(GTestBucketPool.numBuckets), GTestBucketPool.stats.TotalBucketInitCount.Load())
+	}, 2*time.Minute, 5*time.Millisecond)
+
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, useXattrs, true, CachedClusterConnections)
+	require.NoError(t, err)
+	t.Cleanup(cluster.Close)
+
+	// Claim two clean buckets from the test pool rather than enumerating arbitrary cluster buckets
+	// via GetConfigBuckets. A pooled bucket is flushed between tests, so it carries no leftover
+	// _sync:registry or migration-status docs. An arbitrary cluster bucket might have been left
+	// bootstrap-migration-complete by a prior tenant; getBucket below (via
+	// ensureBucketBootstrapTargetCached) would then latch it as migration-complete, disabling the
+	// _default fallback before this test seeds anything and breaking its first sanity assertion.
+	tbA := GetTestBucket(t)
+	t.Cleanup(func() { tbA.Close(ctx) })
+	tbB := GetTestBucket(t)
+	t.Cleanup(func() { tbB.Close(ctx) })
+
+	gocbBuckets := make(map[string]*gocb.Bucket, 2)
+	for _, tb := range []*TestBucket{tbA, tbB} {
+		name := tb.GetName()
+		b, teardown, err := cluster.getBucket(ctx, name)
+		require.NoError(t, err)
+		t.Cleanup(teardown)
+		gocbBuckets[name] = b
+	}
+
+	return bootstrapTwoBucketFixture{
+		Cluster: cluster,
+		BucketA: tbA.GetName(),
+		BucketB: tbB.GetName(),
+		SeedLegacy: func(t *testing.T, bucketName, docID string, value bootstrapTestCfg) {
+			t.Helper()
+			seedLegacyBootstrapDoc(t, gocbBuckets[bucketName], docID, value, useXattrs)
+		},
+		CleanupDoc: func(t *testing.T, bucketName, docID string) {
+			t.Helper()
+			_, _ = gocbBuckets[bucketName].DefaultCollection().Remove(docID, nil)
+		},
+	}
+}
+
+// TestBootstrapMigrationCompleteIsPerBucket is a regression test for the connection-wide
+// SetMigrationComplete: completing bootstrap migration on one bucket must not disable the
+// _default._default read-fallback for a different bucket that has not migrated.
+func TestBootstrapMigrationCompleteIsPerBucket(t *testing.T) {
+	RequireNumTestBuckets(t, 2)
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		f := newBootstrapTwoBucketDualFixture(t, useXattrs)
+		ctx := TestCtx(t)
+		docID := SyncDocPrefix + "per-bucket-migration-complete"
+
+		// Both buckets start un-migrated: their config doc lives only in the _default fallback.
+		t.Cleanup(func() {
+			f.CleanupDoc(t, f.BucketA, docID)
+			f.CleanupDoc(t, f.BucketB, docID)
+		})
+		f.SeedLegacy(t, f.BucketA, docID, bootstrapTestCfg{Foo: "bucketA"})
+		f.SeedLegacy(t, f.BucketB, docID, bootstrapTestCfg{Foo: "bucketB"})
+
+		// Sanity: both buckets resolve their doc via the fallback before any completion.
+		var loaded bootstrapTestCfg
+		_, err := f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
+		require.NoError(t, err)
+		require.Equal(t, "bucketA", loaded.Foo)
+		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		require.NoError(t, err)
+		require.Equal(t, "bucketB", loaded.Foo)
+
+		// Complete bootstrap migration on bucket A only.
+		f.Cluster.SetMigrationComplete(f.BucketA)
+
+		// Bucket A's fallback is now disabled: its fallback-only doc is no longer visible. This
+		// confirms the completion flag actually took effect for A.
+		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
+		require.Error(t, err)
+		require.True(t, IsDocNotFoundError(err), "bucket A fallback must be disabled after its migration completes, got: %v", err)
+
+		// THE REGRESSION CHECK: bucket B has NOT migrated, so its fallback must still be active and
+		// its doc still readable. With the old connection-wide flag this read returned not-found.
+		loaded = bootstrapTestCfg{}
+		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		require.NoError(t, err, "completing bucket A's migration must not disable bucket B's fallback")
+		require.Equal(t, "bucketB", loaded.Foo)
+
+		// Completing bucket B disables its fallback too — confirming the flag is genuinely per-bucket
+		// in both directions, not a one-off.
+		f.Cluster.SetMigrationComplete(f.BucketB)
+		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		require.Error(t, err)
+		require.True(t, IsDocNotFoundError(err), "bucket B fallback must be disabled after its own migration completes, got: %v", err)
+	})
 }
 
 // forEachBootstrapXattrMode runs body once with useXattrs=false and once with useXattrs=true,

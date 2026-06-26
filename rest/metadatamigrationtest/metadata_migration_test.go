@@ -11,16 +11,22 @@ licenses/APL2.txt.
 package metadatamigrationtest
 
 import (
+	"context"
+	"fmt"
+	"maps"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/google/uuid"
 )
 
 // TestMetadataMigrationNotStartedWithoutOptIn creates a database without setting
@@ -68,7 +74,11 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          base.Ptr("metadata_migration_cluster"),
+		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
+		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
+		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
+		// create ("Duplicate database name").
+		GroupID: base.Ptr(uuid.NewString()),
 	}
 
 	rtA := rest.NewRestTester(t, rtConfig)
@@ -532,6 +542,329 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.
 			"out-of-scope keys are skipped. Final payload: %s", finalBody)
 }
 
+// TestMetadataMigrationConcurrentDefaultAndNamedDB migrates two databases that share one bucket -
+// a legacy default-metadataID DB on _default._default (unprefixed keys, e.g. `_sync:user:alice`)
+// and a namespaced DB on a named collection (m_<id>:-prefixed keys, e.g. `_sync:user:m_<id>:bob`) -
+// at the same time, each triggered through its own POST /{db}/_metadata_migration?action=start in
+// its own goroutine.
+//
+// Both migrations scan and drain the shared _default._default fallback concurrently.
+func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollection = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	// dbdefault: → metadataID="_default"
+	const dbDefaultName = "dbdefault"
+	dbDefaultCfg := rt.NewDbConfig()
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbDefaultName+"/_user/alice",
+		`{"name":"alice","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbDefaultName+"/_role/admins",
+		`{"name":"admins","admin_channels":["public"]}`), http.StatusCreated)
+
+	// dbnamed: → namespaced metadataID
+	const dbNamedName = "dbnamed"
+	dbNamedCfg := rt.NewDbConfig()
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{namedCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbNamedName, dbNamedCfg), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbNamedName+"/_user/bob",
+		`{"name":"bob","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/"+dbNamedName+"/_role/readers",
+		`{"name":"readers","admin_channels":["public"]}`), http.StatusCreated)
+
+	// Confirm the topology matches the premise: distinct metadataIDs, the default one for dbdefault.
+	dbDefaultCtx, err := rt.ServerContext().GetDatabase(ctx, dbDefaultName)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultMetadataID, dbDefaultCtx.Options.MetadataID, "dbdefault must use the legacy default metadataID")
+	dbNamedCtx, err := rt.ServerContext().GetDatabase(ctx, dbNamedName)
+	require.NoError(t, err)
+	require.NotEqual(t, base.DefaultMetadataID, dbNamedCtx.Options.MetadataID, "dbnamed must have a non-default metadataID")
+	require.NotEmpty(t, dbNamedCtx.Options.MetadataID)
+
+	defaultDocKeys := []string{
+		base.DefaultMetadataKeys.UserKey("alice"),
+		base.DefaultMetadataKeys.RoleKey("admins"),
+	}
+	namedDocKeys := []string{
+		dbNamedCtx.MetadataKeys.UserKey("bob"),
+		dbNamedCtx.MetadataKeys.RoleKey("readers"),
+	}
+	allDocKeys := append(append([]string{}, defaultDocKeys...), namedDocKeys...)
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+	for _, k := range allDocKeys {
+		exists, existsErr := fallback.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		require.Truef(t, exists, "%q must exist in _default._default before migration", k)
+	}
+	base.RequireDocsVisibleToRangeScan(t, fallback, allDocKeys)
+
+	// Flip both DBs' opt-in
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	// Flush this node's applied config versions so the manual starts pass the config-fully-applied gate.
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+	// Kick both migrations off at the same time, each via its own admin endpoint POST in its own
+	// goroutine
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+	go func() {
+		defer wg.Done()
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+	wg.Wait()
+
+	// Both per-DB managers must reach completed
+	defaultResp := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbDefaultName)
+	namedResp := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbNamedName)
+
+	assert.Zero(t, defaultResp.DocsFailed, "dbdefault migration must have no per-doc failures")
+	assert.Zero(t, namedResp.DocsFailed, "dbnamed migration must have no per-doc failures")
+	// Each DB migrates only its own principals (user + role) + other metadata documents; the other's are out-of-scope.
+	assert.GreaterOrEqual(t, defaultResp.DocsProcessed, int64(len(defaultDocKeys)), "dbdefault should migrate its own principals")
+	assert.GreaterOrEqual(t, namedResp.DocsProcessed, int64(len(namedDocKeys)), "dbnamed should migrate its own principals")
+
+	// Every principal moved to _system._mobile and left _default._default, regardless of owner.
+	systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+	require.NoError(t, err)
+	for _, k := range allDocKeys {
+		onPrimary, existsErr := systemDS.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		assert.Truef(t, onPrimary, "%q must be migrated to _system._mobile", k)
+		onFallback, existsErr := fallback.Exists(ctx, k)
+		require.NoError(t, existsErr)
+		assert.Falsef(t, onFallback, "%q must be removed from _default._default after migration", k)
+	}
+
+	// Both DBs' principals remain functional through their own admin APIs
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", ""), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_user/bob", ""), http.StatusOK)
+
+	// check the bucket level doc for migration, assert that both db's are in completed state and bootstrap migration is done.
+	conn := rt.ServerContext().BootstrapContext.Connection
+	bucketName := rt.Bucket().GetName()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, _, statusErr := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		require.NoError(c, statusErr)
+		require.NotNil(c, status)
+		for _, id := range []string{base.DefaultMetadataID, dbNamedCtx.Options.MetadataID} {
+			entry, ok := status.Databases[id]
+			require.Truef(c, ok, "status doc must have a per-DB entry for %q", id)
+			assert.Equalf(c, base.MigrationStateComplete, entry.State, "per-DB migration entry for %q should be complete", id)
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once both DBs finish")
+	}, 30*time.Second, 200*time.Millisecond)
+}
+
+// TestMetadataMigrationMovesOwnedSyncFunctionDocs verifies that a per-DB migration moves only
+// this database's sync-function ("syncdata") doc and leaves a sibling DB's untouched. Unlike the
+// rest of SG's metadata these docs are keyed by groupID + scope.collection rather than metadataID
+// (see base.CollectionSyncFunctionKeyWithGroupID), so the dispatcher classifies them via the
+// per-DB owned-collection set rather than the metadataID-prefix isOurs check.
+//
+// Two databases share one scope, each owning a different collection. db0's migration must move
+// db0's syncdata doc to _system._mobile and leave db1's on _default._default. Migrating db1 then
+// moves the second doc, leaving both on primary.
+func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 2)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	const syncFn = `function(doc){channel(doc.channels);}`
+
+	// dbConfigForCollection builds a single-collection DB config in legacy mode (opt-in=false)
+	// with an explicit sync function, so the syncdata doc is written to _default._default at
+	// creation — the pre-migration shape we want to exercise.
+	dbConfigForCollection := func(coll sgbucket.DataStoreName) rest.DbConfig {
+		cfg := rt.NewDbConfig()
+		cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+		cfg.Scopes = rest.ScopesConfig{
+			coll.ScopeName(): rest.ScopeConfig{
+				Collections: rest.CollectionsConfig{
+					coll.CollectionName(): {SyncFn: base.Ptr(syncFn)},
+				},
+			},
+		}
+		return cfg
+	}
+
+	rest.RequireStatus(t, rt.CreateDatabase("db0", dbConfigForCollection(dataStore1)), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfigForCollection(dataStore2)), http.StatusCreated)
+
+	db0Ctx, err := rt.ServerContext().GetDatabase(ctx, "db0")
+	require.NoError(t, err)
+	db1Ctx, err := rt.ServerContext().GetDatabase(ctx, "db1")
+	require.NoError(t, err)
+
+	// syncdata docs are keyed by groupID + scope.collection, not metadataID.
+	syncFnKey0 := base.CollectionSyncFunctionKeyWithGroupID(db0Ctx.Options.GroupID, dataStore1.ScopeName(), dataStore1.CollectionName())
+	syncFnKey1 := base.CollectionSyncFunctionKeyWithGroupID(db1Ctx.Options.GroupID, dataStore2.ScopeName(), dataStore2.CollectionName())
+	require.NotEqual(t, syncFnKey0, syncFnKey1, "the two collections must produce distinct syncdata keys")
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+
+	// Both syncdata docs land in _default._default in legacy mode — the precondition for the
+	// migration to have anything to move.
+	for _, k := range []string{syncFnKey0, syncFnKey1} {
+		exists, err := fallback.Exists(ctx, k)
+		require.NoError(t, err)
+		require.True(t, exists, "syncdata doc %q must exist in _default._default before migration", k)
+	}
+
+	// migrateDB flips a DB's opt-in, drives the migration to completion via the admin API.
+	migrateDB := func(dbName string, dbCtx *db.DatabaseContext, cfg rest.DbConfig, ownedKey string) *base.MetadataStore {
+
+		cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+		rest.RequireStatus(t, rt.UpsertDbConfig(dbName, cfg), http.StatusCreated)
+
+		// Make sure the owned syncdata doc is visible to the range scan before we start, so the
+		// first pass can't miss it and complete with nothing migrated.
+		base.RequireDocsVisibleToRangeScan(t, fallback, []string{ownedKey})
+
+		rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
+		resp := rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_metadata_migration?action=start", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbName)
+
+		reloaded, err := rt.ServerContext().GetDatabase(ctx, dbName)
+		require.NoError(t, err)
+		ms, ok := reloaded.MetadataStore.(*base.MetadataStore)
+		require.True(t, ok, "%s MetadataStore must be the dual-collection wrapper after opt-in", dbName)
+		return ms
+	}
+
+	// Migrate db0. Its syncdata doc moves to primary; db1's must stay on fallback.
+	ms0 := migrateDB("db0", db0Ctx, dbConfigForCollection(dataStore1), syncFnKey0)
+
+	primaryHas0, err := ms0.Primary().Exists(ctx, syncFnKey0)
+	require.NoError(t, err)
+	assert.True(t, primaryHas0, "db0's syncdata doc must be migrated to _system._mobile")
+	fallbackHas0, err := fallback.Exists(ctx, syncFnKey0)
+	require.NoError(t, err)
+	assert.False(t, fallbackHas0, "db0's syncdata doc must be removed from _default._default after its migration")
+
+	primaryHas1, err := ms0.Primary().Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.False(t, primaryHas1, "db1's syncdata doc must NOT be migrated by db0's run")
+	fallbackHas1, err := fallback.Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.True(t, fallbackHas1, "db1's syncdata doc must remain on _default._default after db0's migration")
+
+	// Migrate db1. Its syncdata doc now moves too, leaving both on primary.
+	ms1 := migrateDB("db1", db1Ctx, dbConfigForCollection(dataStore2), syncFnKey1)
+
+	primaryHas1, err = ms1.Primary().Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.True(t, primaryHas1, "db1's syncdata doc must be migrated to _system._mobile after its own migration")
+	fallbackHas1, err = fallback.Exists(ctx, syncFnKey1)
+	require.NoError(t, err)
+	assert.False(t, fallbackHas1, "db1's syncdata doc must be removed from _default._default after its migration")
+}
+
+// TestMoveSyncDataDocumentForDefaultDB verifies that the sync function document for the default database is moved
+// from the fallback collection to the primary collection when opting in to the system metadata collection.
+func TestMoveSyncDataDocumentForDefaultDB(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				base.DefaultCollection: {SyncFn: base.Ptr(`function(doc){channel(doc.channels);}`)},
+			},
+		},
+	}
+	resp := rt.CreateDatabase("db", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+
+	syncFnKey := base.CollectionSyncFunctionKeyWithGroupID(rt.ServerContext().Config.Bootstrap.ConfigGroupID, base.DefaultScope, base.DefaultCollection)
+	// assert we find sync data doc on fallback before migration
+	exists, err := fallback.Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	require.True(t, exists, "syncdata doc must exist in _default._default before migration")
+
+	// Flip the opt-in and migrate.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+
+	// assert the sync data doc is migrated to primary and removed from fallback
+	dbCtx := rt.GetDatabase()
+	ms, ok := dbCtx.MetadataStore.(*base.MetadataStore)
+	require.True(t, ok, "MetadataStore must be the dual-collection wrapper after opt-in")
+	primaryHasSyncData, err := ms.Primary().Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	assert.True(t, primaryHasSyncData, "syncdata doc must be migrated to _system._mobile")
+	fallbackHasSyncData, err := fallback.Exists(ctx, syncFnKey)
+	require.NoError(t, err)
+	assert.False(t, fallbackHasSyncData, "syncdata doc must be removed from _default._default after migration")
+}
+
 // TestMetadataMigrationOptInRejectedWithViews verifies the DbConfig.validateVersion guard:
 // system-scoped metadata relies on N1QL principal queries, so explicitly opting in while
 // use_views is enabled is rejected at config-validation time rather than failing later at query
@@ -609,59 +942,214 @@ func TestMetadataMigrationListsPrincipalsAfterCompletion(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "observer", "roles must be listable after migration completes")
 }
 
+// TestBootstrapTargetOmittedWhenNoCachedValue verifies that bootstrap_target is omitted from the
+// /_cluster_info response when no database has been created on the bucket. Without a database, no
+// _sync:registry exists, so probeRegistryLocation finds nothing authoritative and the per-bucket
+// target cache stays empty — matching the window between node startup and the first DB creation.
+func TestBootstrapTargetOmittedWhenNoCachedValue(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	var clusterInfoResponse rest.ClusterInfo
+	resp := rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+	require.NoError(t, err)
+	target := clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget
+	assert.Equal(t, "", target)
+	assert.Empty(t, clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+}
+
 // TestMetadataMigrationEndToEndBucketComplete is a full end-to-end check of the bucket-level
 // completion handoff: migrate a single database's metadata (a user doc), then assert that once
 // it is the last database in the bucket to finish, PostMetadataMigrationCompleteFunc migrates
 // the bucket bootstrap docs (registry/dbconfig/cfg) and the bucket-level bootstrap state in
 // _sync:metadata_migration_status flips to complete.
 func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
-	ctx := base.TestCtx(t)
-	rt := rest.NewRestTesterPersistentConfigNoDB(t)
-	defer rt.Close()
+	for _, useXattrConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UseXattrConfig=%t", useXattrConfig), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+				UseXattrConfig:   useXattrConfig,
+			})
+			defer rt.Close()
 
-	// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
-	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
-	resp := rt.CreateDatabase("db", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
+			dbConfig := rt.NewDbConfig()
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			resp := rt.CreateDatabase("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			var clusterInfoResponse rest.ClusterInfo
+			resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			err := base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "_default._default", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
 
-	dbCtx := rt.GetDatabase()
-	metadataID := dbCtx.Options.MetadataID
-	require.NotEmpty(t, metadataID)
-	bucketName := rt.Bucket().GetName()
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// Opt in, flush this node's applied config version so the manual start passes the
-	// config-fully-applied gate, then drive the migration to completion.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
-	resp = rt.UpsertDbConfig("db", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+			dbCtx := rt.GetDatabase()
+			metadataID := dbCtx.Options.MetadataID
+			require.NotEmpty(t, metadataID)
+			bucketName := rt.Bucket().GetName()
 
-	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
-	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
-		body := st.Body.String()
-		assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
-		assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
-	}, 30*time.Second, 200*time.Millisecond)
+			// Opt in, flush this node's applied config version so the manual start passes the
+			// config-fully-applied gate, then drive the migration to completion.
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			resp = rt.UpsertDbConfig("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// End-to-end assertion on the durable status doc: the per-DB entry is complete AND, because
-	// this is the only (hence last) database in the bucket, the bucket bootstrap migration has
-	// also completed.
-	conn := rt.ServerContext().BootstrapContext.Connection
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
-		require.NoError(c, err)
-		require.NotNil(c, status)
-		entry, ok := status.Databases[metadataID]
-		require.True(c, ok, "status doc must have a per-DB entry for %q", metadataID)
-		assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
-		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
-	}, 30*time.Second, 200*time.Millisecond)
+			rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+			// grab registry from default collection for later comparison
+			defaultDS := rt.Bucket().DefaultDataStore(ctx)
+			body, xattrs, _, err := defaultDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
+
+			resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				st := rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_metadata_migration", "")
+				body := st.Body.String()
+				assert.NotContains(c, body, `"status":"error"`, "migration must not error — payload: %s", body)
+				assert.Contains(c, body, `"status":"completed"`, "migration should reach completed — payload: %s", body)
+			}, 30*time.Second, 200*time.Millisecond)
+
+			// End-to-end assertion on the durable status doc: the per-DB entry is complete AND, because
+			// this is the only (hence last) database in the bucket, the bucket bootstrap migration has
+			// also completed.
+			conn := rt.ServerContext().BootstrapContext.Connection
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				require.NoError(c, err)
+				require.NotNil(c, status)
+				entry, ok := status.Databases[metadataID]
+				require.True(c, ok, "status doc must have a per-DB entry for %q", metadataID)
+				assert.Equal(c, base.MigrationStateComplete, entry.State, "per-DB migration entry should be complete")
+				assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete once the last DB finishes")
+			}, 30*time.Second, 200*time.Millisecond)
+
+			clusterInfoResponse = rest.ClusterInfo{}
+			resp = rt.SendAdminRequest(http.MethodGet, "/_cluster_info", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			err = base.JSONUnmarshal(resp.BodyBytes(), &clusterInfoResponse)
+			require.NoError(t, err)
+			assert.Equal(t, "_system._mobile", clusterInfoResponse.Buckets[rt.Bucket().GetName()].BootstrapTarget)
+
+			// assert registry is moved and correctly stored in the new location with the same body and xattrs
+			systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+			require.NoError(t, err)
+			migratedBody, migratedXattrs, _, err := systemDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			assert.JSONEq(t, string(body), string(migratedBody), "registry body must be unchanged by the migration")
+			// The bootstrap config only lives in the _sync xattr under CouchbaseCluster +
+			// XattrBootstrapPersistence (UseXattrConfig). RosmarCluster has no configPersistence and
+			// always stores bootstrap config in the body, so the xattr is empty there regardless of
+			// UseXattrConfig — only assert on it when xattr persistence is genuinely in use.
+			if useXattrConfig && !base.UnitTestUrlIsWalrus() {
+				assert.JSONEq(t, string(xattrs[base.SyncXattrName]), string(migratedXattrs[base.SyncXattrName]), "registry xattrs must be unchanged by the migration")
+			}
+			// assert that registry is removed from the old location
+			_, _, _, err = defaultDS.GetWithXattrs(ctx, base.SGRegistryKey, []string{base.SyncXattrName})
+			require.Error(t, err)
+			assert.True(t, base.IsDocNotFoundError(err), "registry must be removed from the old location after migration")
+		})
+	}
+}
+
+// TestMetadataMigrationEndToEndBucketBootstrapDocsContent asserts on the full set of bucket-global bootstrap
+// docs MigrateBootstrapDocs moves. For every such doc it captures the raw body
+// and _sync xattr in _default._default before migration, then after migration asserts the doc in
+// _system._mobile is identical and that the fallback copy is fully removed.
+func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
+	for _, useXattrConfig := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UseXattrConfig=%t", useXattrConfig), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig: true,
+				UseXattrConfig:   useXattrConfig,
+			})
+			defer rt.Close()
+
+			// Legacy mode so the bootstrap docs land in _default._default and the migration runs.
+			dbConfig := rt.NewDbConfig()
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			bucketName := rt.Bucket().GetName()
+			metadataID := rt.GetDatabase().Options.MetadataID
+			require.NotEmpty(t, metadataID)
+
+			// Opt in and converge before snapshotting so the captured dbconfig reflects the opted-in config.
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+			rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+
+			// Snapshot every bootstrap doc the migration will move, exactly as production enumerates them.
+			// Capture raw body + _sync xattr from the fallback so the post-migration comparison is
+			// independent of which persistence mode stores the config in the body vs the xattr.
+			type docSnapshot struct {
+				body      []byte
+				syncXattr []byte
+			}
+			defaultDS := rt.Bucket().DefaultDataStore(ctx)
+			keys := rt.ServerContext().BootstrapDocKeysToMigrate(t, ctx, bucketName)
+			require.NotEmpty(t, keys)
+			sourceDocs := make(map[string]docSnapshot)
+			for _, key := range keys {
+				body, xattrs, _, err := defaultDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				if base.IsDocNotFoundError(err) {
+					// Optional doc absent in this scenario (e.g. cbgt cfg keys without sharded import);
+					// MigrateBootstrapDocs skips not-found docs too, so there is nothing to assert.
+					continue
+				}
+				require.NoError(t, err, "reading source bootstrap doc %q", key)
+				sourceDocs[key] = docSnapshot{body: body, syncXattr: xattrs[base.SyncXattrName]}
+			}
+			// Registry plus the db's config doc must always be present and migrated.
+			require.Contains(t, maps.Keys(sourceDocs), base.SGRegistryKey)
+			require.GreaterOrEqual(t, len(sourceDocs), 2, "expected at least the registry and one dbconfig doc to migrate")
+
+			// Drive the migration to completion.
+			resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			conn := rt.ServerContext().BootstrapContext.Connection
+			// wait for db migration and bootstrap migration to complete
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				require.NoError(c, err)
+				require.NotNil(c, status)
+				assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should complete")
+			}, 30*time.Second, 200*time.Millisecond)
+
+			// Every captured bootstrap doc must now live in _system._mobile identical to its
+			// fallback source, and be fully removed from _default._default.
+			systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+			require.NoError(t, err)
+			for key, source := range sourceDocs {
+				migratedBody, migratedXattrs, _, err := systemDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				require.NoError(t, err, "bootstrap doc %q must exist in _system._mobile after migration", key)
+				assert.JSONEqf(t, string(source.body), string(migratedBody), "body of %q must be unchanged by the migration", key)
+				// The bootstrap config only lives in the _sync xattr under CouchbaseCluster +
+				// XattrBootstrapPersistence (UseXattrConfig). RosmarCluster has no configPersistence and
+				// always stores bootstrap config in the body, so the xattr is empty there regardless of
+				// UseXattrConfig — only assert on it when xattr persistence is genuinely in use.
+				if useXattrConfig && !base.UnitTestUrlIsWalrus() {
+					assert.JSONEqf(t, string(source.syncXattr), string(migratedXattrs[base.SyncXattrName]), "_sync xattr of %q must be unchanged by the migration", key)
+				}
+
+				_, _, _, err = defaultDS.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
+				require.Error(t, err, "bootstrap doc %q must be removed from _default._default after migration", key)
+				assert.True(t, base.IsDocNotFoundError(err), "bootstrap doc %q removal from fallback must be a not-found, got: %v", key, err)
+			}
+		})
+	}
 }
 
 // TestMetadataMigrationRESTStartRejectedWithoutOptIn verifies a manual start via the admin API is
@@ -690,7 +1178,11 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          base.Ptr("metadata_migration_cluster"),
+		// rtA and rtB share a group to simulate one two-node cluster, but it must be unique per
+		// run: a fixed group lets a stale "db" registry entry (from a recycled-but-still-flushing
+		// pool bucket, or a prior test's lingering config-poll/heartbeat) collide with this test's
+		// create ("Duplicate database name").
+		GroupID: base.Ptr(uuid.NewString()),
 	}
 	rtA := rest.NewRestTester(t, rtConfig)
 	defer rtA.Close()
@@ -739,4 +1231,309 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	// Manual REST start now succeeds.
 	resp = rtA.SendAdminRequest(http.MethodPost, "/db/_metadata_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+}
+
+// siblingMigrationKeys are the on-disk metadata keys produced by one database's principals,
+// used to assert post-migration placement (which collection each key ends up in).
+type siblingMigrationKeys struct {
+	user      string
+	userEmail string
+	role      string
+	session   string
+	dcpCk     string // versioned import checkpoint: DCPVersionedCheckpointPrefix(group, version)
+	dcpCkBg   string // non-versioned checkpoint as background processes write: DCPCheckpointPrefix(group)
+}
+
+func (k siblingMigrationKeys) all() []string {
+	return []string{k.user, k.userEmail, k.role, k.session, k.dcpCk, k.dcpCkBg}
+}
+
+// seedSiblingDBMetadata creates a user (with an email), a role and a session for dbName, then
+// seeds a DCP checkpoint doc on the fallback. It returns the resulting on-disk metadata keys,
+// built from the database's OWN MetadataKeys so they are correct for both the default
+// (unprefixed) and namespaced (`<id>:`) families. Together these cover all five inverted
+// families the sibling-exclusion fix scopes (user / useremail / role / session / dcp_ck).
+//
+// The DCP checkpoint is seeded directly rather than driven by a live import feed: real feed
+// checkpoint persistence is threshold/close-gated (see rest/importtest) and not deterministic
+// while the DB stays up for migration.
+func seedSiblingDBMetadata(t *testing.T, rt *rest.RestTester, fallback sgbucket.DataStore, dbName, user, role, email string) siblingMigrationKeys {
+	t.Helper()
+	ctx := rt.Context()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+user,
+		fmt.Sprintf(`{"name":%q,"password":"letmein","email":%q,"admin_channels":["public"]}`, user, email))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_role/"+role,
+		fmt.Sprintf(`{"name":%q,"admin_channels":["public"]}`, role))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_session",
+		fmt.Sprintf(`{"name":%q,"ttl":86400}`, user))
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var sess struct {
+		SessionID string `json:"session_id"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &sess))
+	require.NotEmpty(t, sess.SessionID, "admin session create must return a session_id")
+
+	dbCtx, err := rt.ServerContext().GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	keys := dbCtx.MetadataKeys
+
+	// Versioned import checkpoint (`_sync:dcp_ck:<group>:<version>:<vbno>`) — the import feed's shape.
+	checkpointKey := fmt.Sprintf("%s%d", keys.DCPVersionedCheckpointPrefix(dbCtx.Options.GroupID, dbCtx.Options.ImportVersion), 42)
+	_, err = fallback.AddRaw(ctx, checkpointKey, 0, []byte(`{"vbno":42}`))
+	require.NoError(t, err, "seed versioned dcp_ck %s", checkpointKey)
+
+	// Non-versioned checkpoint as background DCP processes (attachment compaction/migration,
+	// resync) write them: DCPCheckpointPrefix(group) with a process suffix, no version segment.
+	bgCheckpointKey := keys.DCPCheckpointPrefix(dbCtx.Options.GroupID) + ":sg:att_compaction:testcompact:mark:42"
+	_, err = fallback.AddRaw(ctx, bgCheckpointKey, 0, []byte(`{"vbno":42}`))
+	require.NoError(t, err, "seed background dcp_ck %s", bgCheckpointKey)
+
+	return siblingMigrationKeys{
+		user:      keys.UserKey(user),
+		userEmail: keys.UserEmailKey(email),
+		role:      keys.RoleKey(role),
+		session:   keys.SessionKey(sess.SessionID),
+		dcpCk:     checkpointKey,
+		dcpCkBg:   bgCheckpointKey,
+	}
+}
+
+func requireAllExist(t *testing.T, ctx context.Context, store sgbucket.DataStore, keys []string) {
+	t.Helper()
+	for _, key := range keys {
+		exists, err := store.Exists(ctx, key)
+		require.NoError(t, err, "checking %q in %s", key, store.GetName())
+		assert.True(t, exists, "expected key %q to exist in %s", key, store.GetName())
+	}
+}
+
+func requireNoneExist(t *testing.T, ctx context.Context, store sgbucket.DataStore, keys []string) {
+	t.Helper()
+	for _, key := range keys {
+		exists, err := store.Exists(ctx, key)
+		require.NoError(t, err, "checking %q in %s", key, store.GetName())
+		assert.False(t, exists, "key %q must NOT exist in %s", key, store.GetName())
+	}
+}
+
+// TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion is the end-to-end guard for the
+// sibling-misclassification when a default metadataID DB and a namespaced sibling share one bucket,
+// and the DEFAULT DB migrates FIRST. With the registry-driven sibling list it must
+// migrate only its own docs and leave the sibling's on _default._default — verified online
+// through the admin API and the raw collections. Then the named DB migrates second and claims
+// its own, with the default DB's docs left untouched.
+func TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollection = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	defaultDS := rt.Bucket().DefaultDataStore(ctx)
+	systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+	require.NoError(t, err)
+
+	// dbdefault: only _default._default → metadataID "_default", unprefixed keys.
+	const dbDefaultName = "dbdefault"
+	dbDefaultCfg := rt.NewDbConfig()
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+
+	// dbnamed: only _default.sg_test_0 → namespaced metadataID. Legacy mode so its metadata
+	// colocates in _default._default alongside dbdefault's, reproducing the pre-migration state.
+	const dbNamedName = "dbnamed"
+	dbNamedCfg := rt.NewDbConfig()
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{namedCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	defaultKeys := seedSiblingDBMetadata(t, rt, defaultDS, dbDefaultName, "alice", "defaultadmins", "alice@example.com")
+	namedKeys := seedSiblingDBMetadata(t, rt, defaultDS, dbNamedName, "bob", "namedadmins", "bob@example.com")
+
+	// Sanity-check the topology the scenario depends on.
+	dbDefaultCtx, err := rt.ServerContext().GetDatabase(ctx, dbDefaultName)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultMetadataID, dbDefaultCtx.Options.MetadataID, "dbdefault must use the legacy default metadataID")
+	dbNamedCtx, err := rt.ServerContext().GetDatabase(ctx, dbNamedName)
+	require.NoError(t, err)
+	require.Equal(t, dbNamedName, dbNamedCtx.Options.MetadataID, "dbnamed must have a namespaced metadataID")
+
+	// Precondition: every key for both DBs starts on the shared fallback, none on _system._mobile.
+	requireAllExist(t, ctx, defaultDS, append(defaultKeys.all(), namedKeys.all()...))
+	requireNoneExist(t, ctx, systemDS, append(defaultKeys.all(), namedKeys.all()...))
+
+	// === migrate dbdefault FIRST ===
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	status := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbDefaultName)
+	assert.Zero(t, status.DocsFailed, "dbdefault migration must not fail any docs")
+	assert.GreaterOrEqual(t, status.DocsOutOfScope, int64(len(namedKeys.all())),
+		"dbnamed's colocated docs must be classified out-of-scope (not migrated, not unknown-prefix)")
+
+	// dbdefault's own docs migrated to _system._mobile, gone from the fallback, readable online.
+	requireAllExist(t, ctx, systemDS, defaultKeys.all())
+	requireNoneExist(t, ctx, defaultDS, defaultKeys.all())
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`, "dbdefault's user must remain readable after its own migration")
+
+	// dbnamed's docs are untouched on the fallback, never reached _system._mobile,
+	// and remain readable through dbnamed's own admin API.
+	requireAllExist(t, ctx, defaultDS, namedKeys.all())
+	requireNoneExist(t, ctx, systemDS, namedKeys.all())
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_user/bob", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"bob"`, "dbnamed's user must be untouched by dbdefault's migration")
+
+	// === migrate dbnamed SECOND ===
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	status = rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbNamedName)
+	assert.Zero(t, status.DocsFailed, "dbnamed migration must not fail any docs")
+
+	// dbnamed's docs now migrated; dbdefault's docs remain on _system._mobile, untouched.
+	requireAllExist(t, ctx, systemDS, namedKeys.all())
+	requireNoneExist(t, ctx, defaultDS, namedKeys.all())
+	requireAllExist(t, ctx, systemDS, defaultKeys.all())
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_user/bob", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"bob"`)
+}
+
+// TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion is the inverse migration order of
+// TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion: the NAMESPACED DB migrates FIRST
+// and the default metadataID DB second. It proves order-independence and, critically, that the
+// second migration does not disturb the first DB's already-migrated metadata:
+//   - when dbnamed migrates first, it claims only its own docs and leaves dbdefault's on the
+//     fallback (the namespaced direction never consulted the sibling list, but its docs must
+//     still be not migrated);
+//   - when dbdefault migrates second, its own (now-only) fallback docs move to _system._mobile,
+//     and dbnamed's docs already sitting in _system._mobile are left untouched.
+func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const namedCollection = "sg_test_0"
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	defer func() {
+		assert.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: namedCollection}))
+	}()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	defaultDS := rt.Bucket().DefaultDataStore(ctx)
+	systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+	require.NoError(t, err)
+
+	const dbDefaultName = "dbdefault"
+	dbDefaultCfg := rt.NewDbConfig()
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+
+	const dbNamedName = "dbnamed"
+	dbNamedCfg := rt.NewDbConfig()
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.Scopes = rest.ScopesConfig{
+		base.DefaultScope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{namedCollection: {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase(dbNamedName, dbNamedCfg), http.StatusCreated)
+
+	defaultKeys := seedSiblingDBMetadata(t, rt, defaultDS, dbDefaultName, "alice", "defaultadmins", "alice@example.com")
+	namedKeys := seedSiblingDBMetadata(t, rt, defaultDS, dbNamedName, "bob", "namedadmins", "bob@example.com")
+
+	dbDefaultCtx, err := rt.ServerContext().GetDatabase(ctx, dbDefaultName)
+	require.NoError(t, err)
+	require.Equal(t, base.DefaultMetadataID, dbDefaultCtx.Options.MetadataID, "dbdefault must use the legacy default metadataID")
+	dbNamedCtx, err := rt.ServerContext().GetDatabase(ctx, dbNamedName)
+	require.NoError(t, err)
+	require.Equal(t, dbNamedName, dbNamedCtx.Options.MetadataID, "dbnamed must have a namespaced metadataID")
+
+	requireAllExist(t, ctx, defaultDS, append(defaultKeys.all(), namedKeys.all()...))
+	requireNoneExist(t, ctx, systemDS, append(defaultKeys.all(), namedKeys.all()...))
+
+	// === migrate dbnamed FIRST ===
+	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	status := rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbNamedName)
+	assert.Zero(t, status.DocsFailed, "dbnamed migration must not fail any docs")
+	assert.GreaterOrEqual(t, status.DocsOutOfScope, int64(len(defaultKeys.all())),
+		"dbdefault's colocated docs must be classified out-of-scope during dbnamed's migration")
+
+	// dbnamed's own docs migrated; dbdefault's untouched on the fallback and readable.
+	requireAllExist(t, ctx, systemDS, namedKeys.all())
+	requireNoneExist(t, ctx, defaultDS, namedKeys.all())
+	requireAllExist(t, ctx, defaultDS, defaultKeys.all())
+	requireNoneExist(t, ctx, systemDS, defaultKeys.all())
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`, "dbdefault's user must be untouched by dbnamed's migration")
+
+	// === migrate dbdefault SECOND ===
+	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	status = rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, dbDefaultName)
+	assert.Zero(t, status.DocsFailed, "dbdefault migration must not fail any docs")
+
+	// dbdefault's docs now migrated; dbnamed's already-migrated docs remain in _system._mobile.
+	requireAllExist(t, ctx, systemDS, defaultKeys.all())
+	requireNoneExist(t, ctx, defaultDS, defaultKeys.all())
+	requireAllExist(t, ctx, systemDS, namedKeys.all())
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbDefaultName+"/_user/alice", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"alice"`)
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+dbNamedName+"/_user/bob", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"name":"bob"`, "dbnamed must remain readable after dbdefault's later migration")
 }

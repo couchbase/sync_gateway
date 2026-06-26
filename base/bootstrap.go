@@ -10,14 +10,12 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"dario.cat/mergo"
@@ -50,9 +48,10 @@ type BootstrapConnection interface {
 	// GetRawDocument retrieves the document with the specified key from the bucket's default collection as raw bytes.
 	// Returns exists=false if key is not found, returns error for any other error.
 	GetRawDocument(ctx context.Context, bucket, docID string) (value []byte, exists bool, err error)
-	// SetMigrationComplete signals that bootstrap-metadata migration to _system._mobile has finished;
-	// subsequent reads stop falling back to _default._default. No-op when useSystemMetadataCollection is false.
-	SetMigrationComplete()
+	// SetMigrationComplete signals that bootstrap-metadata migration to _system._mobile has finished
+	// for the given bucket; subsequent bootstrap reads for that bucket stop falling back to
+	// _default._default. Per-bucket so completing one bucket never disables another's fallback.
+	SetMigrationComplete(bucketName string)
 	// GetMetadataMigrationStatus reads the bucket-level metadata-migration status doc directly from
 	// _system._mobile (never via the dual-collection wrapper). Returns ErrNotFound when the doc has
 	// not yet been stamped on this bucket.
@@ -86,6 +85,9 @@ type BootstrapConnection interface {
 	// information about whether a new DB on this bucket has opted in (e.g., PUT /<db>/ with
 	// use_system_metadata_collection: true) so the very first bootstrap doc lands correctly.
 	SetBucketBootstrapTargetHint(ctx context.Context, bucket string, optInHint bool) error
+	// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+	// The snapshot is not guaranteed to be consistent across concurrent updates.
+	CachedBootstrapTargets() map[string]string
 	// Close releases any long-lived connections
 	Close()
 }
@@ -114,12 +116,18 @@ type CouchbaseCluster struct {
 	cachedConnectionLock        sync.Mutex              // mutex for access to cachedBucketConnections
 	configPersistence           ConfigPersistence       // ConfigPersistence mode
 	useSystemMetadataCollection bool                    // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
-	migrationComplete           atomic.Bool             // When set, fallback reads are skipped even if useSystemMetadataCollection is true
 	// bucketBootstrapTargets caches the resolved bootstrap-doc location for each bucket.
-	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint). Values
-	// are bucketBootstrapTarget; absence of an entry means "fall back to the connection-wide flag."
-	bucketBootstrapTargets sync.Map
-	useGOCBFastFailRetry   bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
+	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint).
+	// Absence of an entry means "fall back to the connection-wide flag."
+	bucketBootstrapTargets SyncMap[string, bucketBootstrapTarget]
+	// bucketsBootstrapMigrationComplete records, per bucket, that the bootstrap metadata migration
+	// has finished (status doc bootstrap.state=complete). When set for a bucket, its bootstrap reads
+	// skip the _default._default fallback. This is per-bucket, and the source of opt-in doesn't matter — it is
+	// driven by the persisted status doc, not the bootstrap-level use_system_metadata_collection flag — so a
+	// database that opted in only at the per-DB level still disables its fallback after migration,
+	// and completing one bucket's migration never disables another bucket's fallback.
+	bucketsBootstrapMigrationComplete SyncMap[string, bool]
+	useGOCBFastFailRetry              bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // bucketBootstrapTarget records where bootstrap docs (registry, dbconfig, cbgt cfg) live for a
@@ -130,6 +138,16 @@ const (
 	bucketTargetDefault      bucketBootstrapTarget = iota // _default._default — legacy registry or no opt-in
 	bucketTargetSystemMobile                              // _system._mobile primary; _default._default fallback until migration complete
 )
+
+func (t bucketBootstrapTarget) String() string {
+	switch t {
+	case bucketTargetSystemMobile:
+		return "_system._mobile"
+	case bucketTargetDefault:
+		return "_default._default"
+	} // exhaustive:enforce
+	return ""
+}
 
 type BucketConnectionMode int
 
@@ -372,7 +390,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 	cached, hasCachedTarget := cc.bucketBootstrapTargets.Load(b.Name())
 	useSystemMobile := cc.useSystemMetadataCollection
 	if hasCachedTarget {
-		useSystemMobile = cached.(bucketBootstrapTarget) == bucketTargetSystemMobile
+		useSystemMobile = cached == bucketTargetSystemMobile
 	}
 	if !useSystemMobile {
 		// When this bucket has any opt-in indication — either cached as bucketTargetDefault
@@ -387,7 +405,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 		return b.DefaultCollection(), nil
 	}
 	primary = b.Scope(SystemScope).Collection(SystemCollectionMobile)
-	if cc.migrationComplete.Load() {
+	if cc.bucketBootstrapMigrationComplete(b.Name()) {
 		return primary, nil
 	}
 	return primary, b.DefaultCollection()
@@ -399,7 +417,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 // the bucket-level migration). A no-op when the cache already says _system._mobile, since the
 // systemMobile→default fallback direction is the legitimate in-progress-migration legacy path.
 func (cc *CouchbaseCluster) noteBucketFallbackHit(bucketName string) {
-	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached.(bucketBootstrapTarget) == bucketTargetSystemMobile {
+	if cached, ok := cc.bucketBootstrapTargets.Load(bucketName); ok && cached == bucketTargetSystemMobile {
 		return
 	}
 	cc.bucketBootstrapTargets.Store(bucketName, bucketTargetSystemMobile)
@@ -436,6 +454,20 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 	return nil
 }
 
+// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
+// The snapshot is not guaranteed to be consistent across concurrent updates.
+func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
+	targets := make(map[string]string)
+	for key, value := range cc.bucketBootstrapTargets.Range {
+		if s := value.String(); s != "" {
+			targets[key] = s
+		} else {
+			targets[key] = "unknown"
+		}
+	}
+	return targets
+}
+
 // probeRegistryLocation checks both collections for an existing _sync:registry doc. Returns
 // (target, found): when found, target identifies the collection; when not found, target is
 // undefined and the caller picks based on its own policy (cluster flag or per-DB hint).
@@ -445,6 +477,14 @@ func (cc *CouchbaseCluster) probeRegistryLocation(b *gocb.Bucket) (target bucket
 	existsInSystem, sysErr := cc.configPersistence.keyExists(systemCol, SGRegistryKey)
 	if sysErr == nil && existsInSystem {
 		return bucketTargetSystemMobile, true, nil
+	}
+	// A bucket marked migration-complete has no legacy registry in _default._default to find — and
+	// _default may have been dropped (system-collection-only deployment / post-migration cleanup).
+	// Skip the _default probe so we never issue a KV op against a missing collection, which would
+	// retry KV_COLLECTION_OUTDATED to the op timeout. ensureBucketBootstrapTargetCached sets this
+	// flag (via the _default-existence check) before any caller reaches this point.
+	if cc.bucketBootstrapMigrationComplete(b.Name()) {
+		return 0, false, nil
 	}
 	defaultCol := b.DefaultCollection()
 	existsInDefault, defErr := cc.configPersistence.keyExists(defaultCol, SGRegistryKey)
@@ -463,14 +503,25 @@ func (cc *CouchbaseCluster) shouldFallback(err error, fallback *gocb.Collection)
 	return fallback != nil && IsDocNotFoundError(err)
 }
 
-// SetMigrationComplete marks bootstrap-metadata migration as finished; subsequent reads stop
-// falling back to _default._default. Safe to call concurrently with in-flight operations.
-func (cc *CouchbaseCluster) SetMigrationComplete() {
-	cc.migrationComplete.Store(true)
+// SetMigrationComplete marks bootstrap-metadata migration as finished for the given bucket;
+// subsequent bootstrap reads for that bucket stop falling back to _default._default. Per-bucket so
+// completing one bucket never disables another's fallback. Safe to call concurrently with in-flight
+// operations.
+func (cc *CouchbaseCluster) SetMigrationComplete(bucketName string) {
+	cc.bucketsBootstrapMigrationComplete.Store(bucketName, true)
+}
+
+// bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
+// complete for the given bucket. Absence of an entry means not-complete, so reads keep the
+// _default._default fallback.
+func (cc *CouchbaseCluster) bucketBootstrapMigrationComplete(bucketName string) bool {
+	complete, _ := cc.bucketsBootstrapMigrationComplete.Load(bucketName)
+	return complete
 }
 
 // RefreshBucketBootstrapTarget reads the bucket's metadata-migration status doc; if bootstrap.state
-// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit. ErrNotFound
+// is complete it updates the per-bucket cache to _system._mobile via noteBucketFallbackHit and marks
+// the bucket migration-complete so reads stop falling back to _default._default. ErrNotFound
 // (no migration ever started here) and any other transient error are returned to the caller for
 // telemetry but never escalate — this is best-effort cache convergence, not a correctness path.
 func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error {
@@ -483,6 +534,7 @@ func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bu
 	}
 	if status.Bootstrap.State == MigrationStateComplete {
 		cc.noteBucketFallbackHit(bucket)
+		cc.SetMigrationComplete(bucket)
 	}
 	return nil
 }
@@ -915,30 +967,24 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 
 	primary := cc.systemMobileCollection(b)
 	fallback := b.DefaultCollection()
-	raw := &gocb.GetOptions{Transcoder: NewSGRawTranscoder()}
 
 	for _, docID := range docIDs {
-		fallbackRes, err := fallback.Get(docID, raw)
+		var value map[string]interface{}
+		cas, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
 		if err != nil {
 			if IsDocNotFoundError(err) {
 				continue
 			}
 			return fmt.Errorf("read fallback %q during bootstrap migration: %w", docID, err)
 		}
-		var body []byte
-		if err := fallbackRes.Content(&body); err != nil {
-			return fmt.Errorf("decode fallback %q: %w", docID, err)
-		}
-		fallbackCas := fallbackRes.Cas()
+		fallbackCas := gocb.Cas(cas)
 
-		// Use the JSON transcoder for both sides so the destination preserves JSONType flags
-		// even when the source datatype is masked behind the raw read.
-		_, insertErr := primary.Insert(docID, json.RawMessage(body), &gocb.InsertOptions{Transcoder: gocb.NewRawJSONTranscoder()})
+		_, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
 		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 
-		if _, err := fallback.Remove(docID, &gocb.RemoveOptions{Cas: fallbackCas}); err != nil {
+		if _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))
 				continue
@@ -1011,8 +1057,24 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 // When no registry exists yet the decision is left uncached so a subsequent per-DB opt-in (via
 // SetBucketBootstrapTargetHint) can still claim system._mobile; metadataCollections will fall
 // back to the connection-wide flag in the meantime. Best-effort: probe errors are swallowed.
+//
+// Before probing, it checks whether _default._default exists (via the collection manifest, not a
+// KV op). If _default is absent — a system-collection-only deployment provisioned without it, or a
+// post-migration cleanup — there is no fallback collection and no legacy registry could live there,
+// so we resolve the bucket to _system._mobile and mark it migration-complete. That disables the
+// _default fallback for this bucket from its first bootstrap read, so reads never route to the
+// missing collection (which would retry KV_COLLECTION_OUTDATED to the op timeout). Marking complete
+// also makes probeRegistryLocation skip its own _default keyExists for callers that invoke it
+// directly (SetBucketBootstrapTargetHint).
 func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 	if _, cached := cc.bucketBootstrapTargets.Load(b.Name()); cached {
+		return
+	}
+	// Manifest check (not a KV op) so an absent _default is reported promptly instead of hanging.
+	// On any error, fall through to the normal probe — no worse than prior behaviour.
+	if exists, existsErr := defaultCollectionExists(b); existsErr == nil && !exists {
+		cc.bucketBootstrapTargets.LoadOrStore(b.Name(), bucketTargetSystemMobile)
+		cc.SetMigrationComplete(b.Name())
 		return
 	}
 	target, found, err := cc.probeRegistryLocation(b)
@@ -1020,6 +1082,28 @@ func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 		return
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(b.Name(), target)
+}
+
+// defaultCollectionExists reports whether _default._default is present in the bucket's collection
+// manifest. It queries the collections manager (GetAllScopes) rather than issuing a KV op, so a
+// dropped _default is reported promptly from the authoritative manifest instead of triggering the
+// KV client's KV_COLLECTION_OUTDATED retry loop (which blocks for the full op timeout).
+func defaultCollectionExists(b *gocb.Bucket) (bool, error) {
+	scopes, err := b.Collections().GetAllScopes(nil)
+	if err != nil {
+		return false, err
+	}
+	for _, scope := range scopes {
+		if scope.Name != DefaultScope {
+			continue
+		}
+		for _, collection := range scope.Collections {
+			if collection.Name == DefaultCollection {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (cc *CouchbaseCluster) GetClusterConnectionForBucket(ctx context.Context, bucketName string) (connection *gocb.Cluster, teardownFn func(), err error) {

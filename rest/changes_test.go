@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,8 +22,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
@@ -178,8 +179,8 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
-		require.Contains(t, body, db.BodyId)
-		require.Contains(t, body, db.BodyRev)
+		require.Contains(t, maps.Keys(body), db.BodyId)
+		require.Contains(t, maps.Keys(body), db.BodyRev)
 
 		event := r.URL.Query().Get("event")
 		switch event {
@@ -411,13 +412,13 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 
 	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
-	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalSync)
 	require.NoError(t, err)
 
 	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, entryCV.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
+	assert.Equal(t, fetchedDoc.HLV.Version, entryCV.Value)
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
@@ -440,13 +441,13 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 
-	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalCAS)
+	fetchedDoc, _, err := collection.GetDocWithXattrs(ctx, DocID, db.DocUnmarshalSync)
 	require.NoError(t, err)
 
 	entryCV := db.GetChangeEntryCV(t, &changes.Results[0])
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.Equal(t, bucketUUID, entryCV.SourceID)
-	assert.Equal(t, fetchedDoc.Cas, entryCV.Value)
+	assert.Equal(t, fetchedDoc.HLV.Version, entryCV.Value)
 }
 
 // TestChangesVersionType tests the /_changes REST endpoint with different version_type parameters for each possible underlying feed type and HTTP method.

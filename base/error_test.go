@@ -21,7 +21,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestError(t *testing.T) {

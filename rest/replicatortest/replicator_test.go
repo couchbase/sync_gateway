@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -1372,7 +1372,7 @@ func TestValidateReplication(t *testing.T) {
 					Status:  http.StatusBadRequest,
 					Message: tc.expectedErrorMsg,
 				}
-				assert.Equal(t, expectedError, err)
+				assert.Equal[error](t, expectedError, err)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -1947,7 +1947,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		// and wait for a few to be done before we proceed with updating database config underneath replication
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			changes := rt2.GetChanges("/{{.keyspace}}/_changes", "")
-			assert.GreaterOrEqual(c, 5, changes.Results)
+			assert.GreaterOrEqual(c, len(changes.Results), 5)
 		}, time.Second*5, time.Millisecond*100)
 
 		// just change the sync function to cause the database to reload
@@ -2787,7 +2787,8 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 					require.True(t, ok)
 					assert.Equal(t, rt2DocConflictVersion.CV.Value, val2)
 					assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
-					assert.Equal(t, doc.Cas, doc.HLV.Version)
+					assert.NotZero(t, doc.HLV.Version)
+					assert.NotEqual(t, doc.HLV.Version, doc.HLV.MergeVersions[rt1.GetDatabase().EncodedSourceID]) // we should have new CV generated from last conflicting version for this source
 				}
 
 				assert.Nil(t, doc.Body(ctx)[db.BodyAttachments], "_attachments property should not be in resolved doc body")
@@ -3276,7 +3277,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt1", body["source"])
-		assert.Equal(t, json.Number("1"), body["doc_num"])
+		assert.Equal[any](t, json.Number("1"), body["doc_num"])
 
 		assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
@@ -3292,7 +3293,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		body, err = doc2.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt1", body["source"])
-		assert.Equal(t, json.Number("2"), body["doc_num"])
+		assert.Equal[any](t, json.Number("2"), body["doc_num"])
 
 		// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
 		// the attachment only once. However, targeting a Lithium node sends the attachment twice like
@@ -3588,6 +3589,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		changesResults = edge2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
 
 		edge2PullCheckpointer := edge2Replicator.Pull.GetSingleCollection(t).Checkpointer
+		base.RequireWaitForStat(t, func() int64 { return edge2PullCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return edge2PullCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
 		edge2PullCheckpointer.CheckpointNow()
 
 		// make sure that edge 2 didn't use a checkpoint
@@ -4005,17 +4008,18 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				var expValue uint64
 				if sgrRunner.IsV4Protocol() {
 					if test.localWinsHLV {
-						expValue = rt1CVVersion.CV.Value
-					} else {
-						expValue = doc.Cas
-					}
-					if test.newCVGenerated || test.localWinsHLV {
 						test.expectedLocalVersion.CV = db.Version{
 							SourceID: rt1.GetDatabase().EncodedSourceID,
-							Value:    expValue,
+							Value:    rt1CVVersion.CV.Value,
+						}
+					} else if test.newCVGenerated {
+						require.NotZero(t, doc.HLV.Version)
+						require.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+						test.expectedLocalVersion.CV = db.Version{
+							SourceID: rt1.GetDatabase().EncodedSourceID,
+							Value:    doc.HLV.Version,
 						}
 					} else {
 						test.expectedLocalVersion.CV = rt2Version.CV
@@ -4233,16 +4237,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, err)
 				switch test.winner {
 				case merge:
-					test.expectedVersion.CV = db.Version{
-						SourceID: rt1.GetDatabase().EncodedSourceID,
-						Value:    doc.Cas,
-					}
+					require.NotZero(t, doc.HLV.Version)
+					require.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
+					test.expectedVersion.CV = db.Version{SourceID: doc.HLV.SourceID, Value: doc.HLV.Version}
 				case local:
 					test.expectedVersion.CV = rt1Version.CV
 				case remote:
 					test.expectedVersion.CV = rt2Version.CV
 				}
-				sgrRunner.WaitForVersion(docID, rt1, test.expectedVersion)
 				requireBodyEqual(t, test.expectedBody, doc)
 				t.Logf("Doc %s is %+v", docID, doc)
 				t.Logf("Doc %s attachments are %+v", docID, doc.Attachments())
@@ -5774,11 +5776,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 				doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 				require.NoError(t, err)
-				test.expectedLocalVersion.CV = db.Version{
-					SourceID: rt1.GetDatabase().EncodedSourceID,
-					Value:    doc.Cas,
-				}
-				sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
+				assert.NotZero(t, doc.HLV.Version)
+				assert.Equal(t, rt1.GetDatabase().EncodedSourceID, doc.HLV.SourceID)
 				t.Logf("doc.Body(): %v", doc.Body(ctx))
 				assert.Equal(t, test.expectedLocalBody, doc.Body(ctx))
 				t.Logf("Doc %s is %+v", docID, doc)
@@ -6647,7 +6646,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 						require.NoError(t, err)
 						expVersion.CV = db.Version{
 							SourceID: activeRT.GetDatabase().EncodedSourceID,
-							Value:    doc.Cas,
+							Value:    doc.HLV.Version,
 						}
 					}
 				}
@@ -7022,7 +7021,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 		// Assert document was replicated successfully
 		doc := passiveRT.GetDocBody(docID)
 		assert.EqualValues(t, true, doc["_foo"])  // Confirm user defined value got created
-		assert.EqualValues(t, nil, doc["_exp"])   // Confirm expiry was consumed
+		assert.Nil(t, doc["_exp"])                // Confirm expiry was consumed
 		assert.EqualValues(t, false, doc["true"]) // Sanity check normal keys
 		// Confirm attachment was created successfully
 		resp := passiveRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/bar", "")

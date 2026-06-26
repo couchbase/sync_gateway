@@ -254,8 +254,16 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	}
 
 	go func() {
-		defer base.FatalPanicHandler(ctx)
-		defer close(feed)
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(ctx, "Unexpected panic building revoked feed: %v\n%s", panicked, debug.Stack())
+				select {
+				case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
+				case <-options.ChangesCtx.Done():
+				}
+			}
+			close(feed)
+		}()
 		var itemsSent int
 		var lastSeq uint64
 
@@ -456,8 +464,16 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 	paginationOptions.Since.LowSeq = 0
 
 	go func() {
-		defer base.FatalPanicHandler(ctx)
-		defer close(feed)
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(ctx, "Unexpected panic building changes feed: %v\n%s", panicked, debug.Stack())
+				select {
+				case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
+				case <-options.ChangesCtx.Done():
+				}
+			}
+			close(feed)
+		}()
 		var itemsSent int
 		var lastSeq uint64
 		// Pagination based on ChannelQueryLimit.  This loop may terminated in three ways (see return statements):

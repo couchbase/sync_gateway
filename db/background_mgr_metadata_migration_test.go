@@ -12,13 +12,15 @@ package db
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestShouldRunMetadataMigration is a truth table covering the guard that decides whether
@@ -173,6 +175,11 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 		require.NoError(t, err, "seed fallback %s", k)
 	}
 
+	// A first-pass range scan that misses the just-seeded docs would migrate nothing and
+	// complete with DocsProcessed=0, failing the assertions below. Wait for the seeds to be
+	// visible to scan before starting.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+
 	dbCtx := &DatabaseContext{
 		Name:                           "test",
 		terminator:                     make(chan bool),
@@ -231,6 +238,13 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 	_, err = ms.Fallback().AddRaw(ctx, stuckKey, 0, []byte(`{"body":"stuck"}`))
 	require.NoError(t, err, "seed in-scope unknown-prefix fallback doc")
 
+	// KV range scan reads from a per-vBucket snapshot view, so a scan issued immediately
+	// after the write can miss the seeded doc until the vBucket's scan view catches up. If this
+	// occurs and the migration's first pass doesn't see the doc, it reports remaining=0 and completes
+	// immediately instead of hitting the bounded-pass error path, flaking this test. Wait for the
+	// seed to be visible to scan before starting.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{stuckKey})
+
 	dbCtx := &DatabaseContext{
 		Name:                           "test",
 		terminator:                     make(chan bool),
@@ -249,6 +263,78 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 
 	_, _, err = ms.Fallback().GetRaw(ctx, stuckKey)
 	assert.NoError(t, err, "stuck unknown-prefix doc should still be on the fallback")
+}
+
+// TestMetadataMigrationManagerDCPCheckpointGroupIDCollisionCompletesEndToEnd is the
+// end-to-end counterpart to the low-level TestMigrateMetadataDcpCheckpointGroupIDCollisionKnownLimitation:
+//
+// Scenario: a default-metadataID DB (_default._default configured) whose own DCP checkpoint
+// embeds its config group ID "default" as the first body segment (`_sync:dcp_ck:default:<ver>`).
+// A pathological sibling DB whose metadataID is literally "default" is registered via
+// SiblingMetadataIDFunc, so the classifier subtracts that sibling and misclassifies the default
+// DB's own checkpoint as the sibling's.
+func TestMetadataMigrationManagerDCPCheckpointGroupIDCollisionCompletesEndToEnd(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	primary, err := bucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	fallback := bucket.DefaultDataStore(ctx)
+	if _, ok := base.AsRangeScanStore(fallback); !ok {
+		t.Skipf("metadata migration requires KV range scan support on the fallback datastore")
+	}
+	ms := base.NewMetadataStore(primary, fallback)
+
+	metaKeys := base.NewMetadataKeys(base.DefaultMetadataID)
+	// The default DB's own DCP checkpoint embeds its config group ID as the first body
+	// segment: _sync:dcp_ck:default:1. "default" is the literal value of the rest package's
+	// PersistentConfigDefaultGroupID (not importable here without a cycle).
+	const defaultGroupID = "default"
+	ownCheckpoint := metaKeys.DCPCheckpointPrefix(defaultGroupID) + "1"
+	_, err = ms.Fallback().AddRaw(ctx, ownCheckpoint, 0, []byte(`{"seq":42}`))
+	require.NoError(t, err, "seed fallback %s", ownCheckpoint)
+
+	// KV range scans read from a per-vBucket snapshot view, so a scan issued immediately after
+	// the write can miss the just-seeded doc until the vBucket's scan view catches up. Wait for
+	// the seed to be visible to scan before starting, otherwise a first-pass miss would make the
+	// run complete trivially for the wrong reason.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{ownCheckpoint})
+
+	dbCtx := &DatabaseContext{
+		Name:                           "test",
+		terminator:                     make(chan bool),
+		MetadataStore:                  ms,
+		MetadataKeys:                   metaKeys,
+		Options:                        DatabaseContextOptions{MetadataID: base.DefaultMetadataID},
+		MetadataMigrationStatusUpdater: inMemoryMigrationStatusUpdater(),
+		// Pathological sibling whose metadataID == this default DB's DCP group ID ("default")
+		// triggers the documented collision in handleMigrationKey's isOursInverted exclusion.
+		SiblingMetadataIDFunc: func(context.Context) ([]string, error) {
+			return []string{defaultGroupID}, nil
+		},
+	}
+	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
+
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	// The collision yields an out-of-scope (not unknown-prefix) classification, so the run
+	// still reaches Completed rather than the bounded-pass Errored give-up branch.
+	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
+
+	rawStatus, err := dbCtx.MetadataMigrationManager.GetStatus(ctx)
+	require.NoError(t, err)
+	var resp MigrationManagerResponse
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
+	assert.Zero(t, resp.DocsProcessed, "known limitation: own checkpoint is NOT migrated under the group-id/sibling-id collision")
+	assert.Zero(t, resp.DocsFailed, "no per-doc errors: the collision is a classification outcome, not a move failure")
+	assert.Equal(t, int64(1), resp.DocsOutOfScope, "own checkpoint is (mis)classified out-of-scope, not unknown-prefix")
+
+	assert.True(t, ms.MigrationComplete(), "out-of-scope docs do not block completion - the run still flips MigrationComplete")
+
+	_, _, getErr := ms.Fallback().GetRaw(ctx, ownCheckpoint)
+	assert.NoError(t, getErr, "own checkpoint is stranded on the fallback under the known limitation")
+	_, _, getErr = ms.Primary().GetRaw(ctx, ownCheckpoint)
+	assert.True(t, base.IsDocNotFoundError(getErr), "own checkpoint did not reach primary")
 }
 
 // TestTryStartMetadataMigrationConfigNotApplied verifies that while the cluster has not yet

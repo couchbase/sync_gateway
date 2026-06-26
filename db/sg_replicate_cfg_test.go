@@ -12,12 +12,13 @@ package db
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Test node operations on SGReplicateManager
@@ -170,7 +171,7 @@ func TestReplicateManagerRegisterNodeRefreshesVersion(t *testing.T) {
 
 	nodes, err := manager.getNodes()
 	require.NoError(t, err)
-	require.Contains(t, nodes, nodeUUID)
+	require.Contains(t, maps.Keys(nodes), nodeUUID)
 	require.Nil(t, nodes[nodeUUID].Version, "seeded entry should have no Version")
 
 	// First refresh: Version was nil → must be set to ProductVersion.

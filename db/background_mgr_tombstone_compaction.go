@@ -24,21 +24,21 @@ type TombstoneCompactionManager struct {
 	PurgedDocCount int64
 }
 
-var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &TombstoneCompactionManager{}
 
-func NewTombstoneCompactionManager() *BackgroundManager {
-	return &BackgroundManager{
+func NewTombstoneCompactionManager() *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:       "tombstone_compaction",
 		Process:    &TombstoneCompactionManager{},
 		terminator: base.NewSafeTerminator(),
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	database := options["database"].(*Database)
 	database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
 
-	return nil
+	return backgroundManagerInitReset, nil
 }
 
 func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {

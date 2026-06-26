@@ -86,6 +86,7 @@ const (
 	AuditFieldDocIDs      = "doc_ids"
 	AuditFieldFeedType    = "feed_type"
 	AuditFieldIncludeDocs = "include_docs"
+	AuditFieldSequence    = "seq"
 
 	// Cluster compat version freeze events 53352, 53353
 	AuditFieldClusterCompatVersion = "cluster_compat_version"

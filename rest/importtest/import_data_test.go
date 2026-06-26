@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // docPerVbucket1024 is a list of words, one per vBucket where  used for testing purposes.

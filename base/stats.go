@@ -637,6 +637,8 @@ type DatabaseStats struct {
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
 	HighSeqFeed *SgwUint64Stat `json:"high_seq_feed"`
+	// The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server.
+	HLVVersionCASRetryCount *SgwIntStat `json:"hlv_version_cas_retry_count"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -928,6 +930,13 @@ type MigrationStats struct {
 	SeqPoisonPillApplied *SgwIntStat `json:"seq_poison_pill_applied"`
 	// Cumulative count of MigrateMetadata pass invocations.
 	Passes *SgwIntStat `json:"passes"`
+	// AbandonedRuns counts metadata migration runs that the orchestrator gave up on after the
+	// bounded pass loop exhausted itself without a clean pass (zero unknown-prefix remaining
+	// AND zero per-doc errors on the same pass). Runs that exit early via a hard error from
+	// MigrateMetadata, or are stopped cooperatively via the terminator, are not counted here —
+	// this stat is specifically the "we hit the retry ceiling" failure mode, useful for
+	// distinguishing transient/abortive errors from buckets that need operator intervention.
+	AbandonedRuns *SgwIntStat `json:"abandoned_runs"`
 }
 
 type SgwStatWrapper interface {
@@ -1858,6 +1867,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.HLVVersionCASRetryCount, err = NewIntStat(SubsystemDatabaseKey, "hlv_version_cas_retry_count", StatUnitNoUnits, HLVVersionCASRetryCountDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -2037,6 +2050,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytes)
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
+	prometheus.Unregister(d.DatabaseStats.HLVVersionCASRetryCount)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
 	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)
@@ -2577,6 +2591,10 @@ func (d *DbStats) InitMigrationStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.AbandonedRuns, err = NewIntStat(SubsystemMetadataMigration, "abandoned_runs", StatUnitNoUnits, MetadataMigrationAbandonedRunsDesc, StatAddedVersion4dot1dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	d.MigrationStats = resUtil
 	return nil
 }
@@ -2589,6 +2607,7 @@ func (d *DbStats) unregisterMigrationStats() {
 	prometheus.Unregister(d.MigrationStats.Errors)
 	prometheus.Unregister(d.MigrationStats.SeqPoisonPillApplied)
 	prometheus.Unregister(d.MigrationStats.Passes)
+	prometheus.Unregister(d.MigrationStats.AbandonedRuns)
 }
 
 func (d *DbStats) MetadataMigration() *MigrationStats {

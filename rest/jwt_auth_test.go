@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -27,9 +28,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/go-jose/go-jose/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestLocalJWTAuthenticationE2E(t *testing.T) {
@@ -476,7 +477,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 
 	user.SetCollectionJWTChannels(s, c, channels.AtSequence(channels.BaseSetOf(t, "jwt_only_channel"), 1), 1)
 
-	assert.Contains(t, user.RoleNames(), "jwt_only_role")
+	assert.Contains(t, maps.Keys(user.RoleNames()), "jwt_only_role")
 	assert.Contains(t, user.CollectionJWTChannels(s, c).AllKeys(), "jwt_only_channel")
 	assert.Equal(t, testIssuer, user.JWTIssuer())
 	// FIXME: Temporary skip prior to CBG-2214 - Windows time resolution is not good enough to do this greater (but not equals) assertion

@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -20,8 +21,8 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestAttachmentMark(t *testing.T) {
@@ -64,12 +65,12 @@ func TestAttachmentMark(t *testing.T) {
 	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMark_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMark_mark"), dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName})
 		assert.NoError(t, err)
-		require.Contains(t, xattrs, base.AttachmentCompactionXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.AttachmentCompactionXattrName)
 		var attachmentData Body
 		require.NoError(t, base.JSONUnmarshal(xattrs[base.AttachmentCompactionXattrName], &attachmentData))
 		compactIDSection, ok := attachmentData[CompactionIDKey]
@@ -129,7 +130,7 @@ func TestAttachmentSweep(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentSweep_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentSweep_sweep"), dcpClient.GetMetadataKeyPrefix())
 }
 
 func TestAttachmentCleanup(t *testing.T) {
@@ -205,7 +206,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentCleanup_cleanup"), checkpointPrefix)
 
 	for _, docID := range singleMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
@@ -217,11 +218,11 @@ func TestAttachmentCleanup(t *testing.T) {
 		xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
 		xattrs, _, err := dataStore.GetXattrs(ctx, docID, []string{xattrName})
 		require.NoError(t, err)
-		require.Contains(t, xattrs, xattrName)
+		require.Contains(t, maps.Keys(xattrs), xattrName)
 		var xattr map[string]any
 		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
-		assert.NotContains(t, xattr, t.Name())
-		assert.Contains(t, xattr, "rand")
+		assert.NotContains(t, maps.Keys(xattr), t.Name())
+		assert.Contains(t, maps.Keys(xattr), "rand")
 	}
 
 	for _, docID := range oldMultiMarkedAttIDs {
@@ -238,9 +239,9 @@ func TestAttachmentCleanup(t *testing.T) {
 		var xattr map[string]any
 		require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
 
-		assert.NotContains(t, xattr, t.Name())
-		assert.NotContains(t, xattr, "old")
-		assert.Contains(t, xattr, "recent")
+		assert.NotContains(t, maps.Keys(xattr), t.Name())
+		assert.NotContains(t, maps.Keys(xattr), "old")
+		assert.Contains(t, maps.Keys(xattr), "recent")
 	}
 
 }
@@ -308,20 +309,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]any{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
 	require.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDb.AttachmentCompactionManager.GetStatus(ctx)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 100, 1000)
-	require.NoError(t, err)
+	RequireBackgroundManagerState(t, testDb.AttachmentCompactionManager, BackgroundProcessStateCompleted)
 
 	// assert that the marked attachments have been "cleaned up"
 	for _, docID := range singleMarkedAttIDs {
@@ -366,13 +354,13 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark"), dcpClient.GetMetadataKeyPrefix())
 	vbUUIDS := base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	attachmentsPurged, dcpClient, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep"), dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -384,16 +372,16 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 			xattrName := base.AttachmentCompactionXattrName + "." + CompactionIDKey
 			xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{xattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, xattrName)
+			require.Contains(t, maps.Keys(xattrs), xattrName)
 			var xattr map[string]any
 			require.NoError(t, base.JSONUnmarshal(xattrs[xattrName], &xattr))
-			assert.Contains(t, xattr, t.Name())
+			assert.Contains(t, maps.Keys(xattr), t.Name())
 		}
 	}
 
 	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup", base.ProductAPIVersion), checkpointPrefix)
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup"), checkpointPrefix)
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -407,61 +395,28 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 }
 
 func TestAttachmentCompactionRunTwice(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	b := base.GetTestBucket(t)
 	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
-	db1DataStore := testDB1.Bucket.DefaultDataStore(ctx1)
 
 	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
 
-	lds, ok := base.AsLeakyDataStore(db1DataStore)
-	require.True(t, ok)
-
-	triggerCallback := false
-	triggerStopCallback := false
-	lds.SetGetRawCallback(func(s string) error {
-		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "Process already running")
-			triggerCallback = false
-		}
-		if triggerStopCallback {
-			triggerStopCallback = false
-			err = testDB2.AttachmentCompactionManager.Stop(ctx2)
-			assert.NoError(t, err)
-		}
-		return nil
-	})
-
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	triggerStopCallback = true
+	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+		<-terminator.Done()
+	})
+	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb1)
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
-
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
+	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
+
+	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	var testStatus AttachmentManagerResponse
 	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
@@ -473,20 +428,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
+	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateCompleted)
 
 	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
@@ -495,43 +437,28 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	triggerStopCallback = true
+	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+		<-terminator.Done()
+	})
+	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb2)
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
+	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
+	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
+	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
-	triggerCallback = true
+	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
+		err := testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "Process already running")
+	})
+	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb3)
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
+	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateCompleted)
 
 	var testDB1Status AttachmentManagerResponse
 	var testDB2Status AttachmentManagerResponse
@@ -553,61 +480,28 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 }
 
 func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	b := base.GetTestBucket(t)
 	defer b.Close(base.TestCtx(t))
 
 	testDB1, ctx1 := setupTestDBForBucketDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
-	db1DataStore := testDB1.Bucket.DefaultDataStore(ctx1)
 
 	testDB2, ctx2 := setupTestDBForBucketDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
 
-	lds, ok := base.AsLeakyDataStore(db1DataStore)
-	require.True(t, ok)
-
-	triggerCallback := false
-	triggerStopCallback := false
-	lds.SetGetRawCallback(func(s string) error {
-		if triggerCallback {
-			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "Process already running")
-			triggerCallback = false
-		}
-		if triggerStopCallback {
-			triggerStopCallback = false
-			err = testDB2.AttachmentCompactionManager.Stop(ctx2)
-			assert.NoError(t, err)
-		}
-		return nil
-	})
-
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	triggerStopCallback = true
+	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+		<-terminator.Done()
+	})
+	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb1)
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
 	assert.NoError(t, err)
-
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateStopped {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
+	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
+
+	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	var testStatus AttachmentManagerResponse
 	testRawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
@@ -619,20 +513,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
 	assert.NoError(t, err)
 
-	err = WaitForConditionWithOptions(t, func() bool {
-		var status AttachmentManagerResponse
-		rawStatus, err := testDB2.AttachmentCompactionManager.GetStatus(ctx2)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		require.NoError(t, err)
-
-		if status.State == BackgroundProcessStateCompleted {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	assert.NoError(t, err)
+	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateCompleted)
 
 	testRawStatus, err = testDB2.AttachmentCompactionManager.GetStatus(ctx2)
 	assert.NoError(t, err)
@@ -641,8 +522,13 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	triggerStopCallback = true
+	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+		<-terminator.Done()
+	})
+	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb2)
 	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	assert.NoError(t, err)
+	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
 
 	// Kick off another run with an attempted start, verify we don't get 'process already running' error
@@ -676,22 +562,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
 	assert.NoError(t, err)
 
-	var status AttachmentManagerResponse
-	err = WaitForConditionWithOptions(t, func() bool {
-		rawStatus, err := testDB1.AttachmentCompactionManager.GetStatus(ctx1)
-		assert.NoError(t, err)
-		err = base.JSONUnmarshal(rawStatus, &status)
-		assert.NoError(t, err)
-
-		if status.State == BackgroundProcessStateError {
-			return true
-		}
-
-		return false
-	}, 200, 1000)
-	require.NoError(t, err)
-
-	assert.Equal(t, status.State, BackgroundProcessStateError)
+	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
@@ -708,7 +579,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark"), dcpClient.GetMetadataKeyPrefix())
 	vbUUIDs := base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
@@ -718,7 +589,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg-%v:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", base.ProductAPIVersion), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep"), dcpClient.GetMetadataKeyPrefix())
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {

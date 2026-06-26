@@ -16,7 +16,7 @@ import (
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 const indexDefs = `{

@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // testBackingStore always returns an empty doc at rev:"1-abc" in channel "*" except for docs not in 'notFoundDocIDs'
@@ -55,7 +55,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		SourceID: "test",
 		Version:  123,
 	}
-	_, _, err = doc.updateChannels(ctx, base.SetOf("*"))
+	_, err = doc.updateChannels(ctx, base.SetOf("*"))
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +695,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
 	docRevision, ok := collection.revisionCache.Peek(ctx, rev1key, rev1id)
 	assert.True(t, ok)
-	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	assert.NotContains(t, string(docRevision.BodyBytes), BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
@@ -746,7 +746,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
 	docRevision, err := collection.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheLoadBackupRev)
 	assert.NoError(t, err, "Unexpected error calling collection.revisionCache.Get")
-	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	assert.NotContains(t, string(docRevision.BodyBytes), BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
@@ -2077,7 +2077,7 @@ func TestGetActive(t *testing.T) {
 
 	expectedCV := Version{
 		SourceID: db.EncodedSourceID,
-		Value:    doc.Cas,
+		Value:    doc.HLV.Version,
 	}
 
 	// remove the entry form the rev cache to force the cache to not have the active version in it

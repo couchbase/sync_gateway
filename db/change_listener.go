@@ -87,15 +87,19 @@ func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent, docType D
 }
 
 // cachingFeedCollections returns the set of (scope, collection) pairs that the caching DCP
-// feed must subscribe to. When metadataStore is a *base.MetadataStore (active during the
-// metadata migration window), both its primary (_system._mobile) and fallback
-// (_default._default) datastores are included so that _sync:* mutations are observed
-// regardless of which collection currently holds the doc.
+// feed must subscribe to. When metadataStore is a *base.MetadataStore whose migration is still
+// in flight, both its primary (_system._mobile) and fallback (_default._default) datastores are
+// included so that _sync:* mutations are observed regardless of which collection currently holds
+// the doc. Once migration is complete, metadata lives solely on primary, so the fallback is
+// omitted — it would otherwise be redundant, and a customer who has dropped _default._default
+// post-migration would fail the DCP feed Start with "collection _default not found".
 func cachingFeedCollections(metadataStore base.DataStore, scopes map[string]Scope) base.CollectionNameSet {
 	collectionNames := base.NewCollectionNameSet()
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
 		collectionNames.Add(ms.Primary())
-		collectionNames.Add(ms.Fallback())
+		if !ms.MigrationComplete() {
+			collectionNames.Add(ms.Fallback())
+		}
 	} else {
 		collectionNames.Add(metadataStore)
 	}

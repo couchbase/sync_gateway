@@ -34,9 +34,9 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -222,6 +222,21 @@ func TestTLSSkipVerify() bool {
 	val, err := strconv.ParseBool(tlsSkipVerify)
 	if err != nil {
 		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvTLSSkipVerify, tlsSkipVerify, err))
+	}
+
+	return val
+}
+
+// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestUseSystemMetadataCollection
+func TestUseSystemMetadataCollection() bool {
+	useSystemMetadataCollection, isSet := os.LookupEnv(TestEnvUseSystemMetadataCollection)
+	if !isSet {
+		return DefaultTestUseSystemMetadataCollection
+	}
+
+	val, err := strconv.ParseBool(useSystemMetadataCollection)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvUseSystemMetadataCollection, useSystemMetadataCollection, err))
 	}
 
 	return val
@@ -969,6 +984,18 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 	return nonDefaultDataStoreNames
 }
 
+// DropAllBucketIndexes removes all indexes from all N1QL stores in the bucket.
+func DropAllBucketIndexes(t testing.TB, tb *TestBucket) {
+	ctx := TestCtx(t)
+	n1qlStores, err := GetAllN1QLStores(ctx, tb)
+	require.NoError(t, err)
+
+	for _, ns := range n1qlStores {
+		dropErr := DropAllIndexes(ctx, ns)
+		require.NoError(t, dropErr)
+	}
+}
+
 // TestClusterSpec returns the cluster spec for the test bucket pool.
 func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
 	return GTestBucketPool.clusterSpec
@@ -1071,6 +1098,46 @@ func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time
 func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 	t.Helper()
 	RequireChanClosedWithTimeout(t, ch, TestChanTimeout)
+}
+
+// RequireDocsVisibleToRangeScan blocks until every docID is returned by a KV range scan of
+// the given datastore, failing the test if they are not all visible within 30 seconds.
+//
+// KV range scan reads from a per-vBucket snapshot view rather than from in-memory mutations,
+// so a scan issued immediately after a write can miss the just-written doc until the
+// vBucket's scan view catches up. Tests that seed docs and then exercise range-scan-backed
+// code must call this between the seed and the scan, otherwise the
+// scan can observe zero docs and the test flakes.
+//
+// The datastore must support range scan; the test fails if it does not. On Rosmar (in-memory)
+// docs are visible immediately, so this returns on the first poll.
+func RequireDocsVisibleToRangeScan(t testing.TB, dataStore sgbucket.DataStore, docIDs []string) {
+	t.Helper()
+	ctx := TestCtx(t)
+	rss, ok := AsRangeScanStore(dataStore)
+	require.True(t, ok, "datastore does not support range scan")
+
+	want := make(map[string]struct{}, len(docIDs))
+	for _, id := range docIDs {
+		want[id] = struct{}{}
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		remaining := maps.Clone(want)
+		// One scan per doc keyed on its full ID as the prefix - cheaper than scanning a
+		// shared prefix and filtering, and robust to the docIDs not sharing a common prefix.
+		for id := range remaining {
+			iter, scanErr := rss.Scan(ctx, sgbucket.NewRangeScanForPrefix(id), sgbucket.ScanOptions{IDsOnly: true})
+			if !assert.NoError(c, scanErr) {
+				return
+			}
+			for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
+				delete(remaining, item.ID)
+			}
+			assert.NoError(c, iter.Close(ctx))
+		}
+		assert.Empty(c, remaining, "docs not yet visible to range scan")
+	}, 30*time.Second, 100*time.Millisecond)
 }
 
 // WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.

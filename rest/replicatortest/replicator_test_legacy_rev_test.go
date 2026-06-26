@@ -17,8 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
@@ -1015,8 +1015,6 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-
-	t.Skip("pending fix from CBG-5106")
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta sync only supported in EE")

@@ -11,15 +11,17 @@ package adminapitest
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestResyncRollback ensures that we allow rollback of
@@ -68,13 +70,6 @@ func TestResyncRollback(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("Test writes xattrs directly to modify sync metadata")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		AutoImport: base.Ptr(false),
@@ -227,8 +222,18 @@ func TestResyncRegenerateSequencesPrincipals(t *testing.T) {
 }
 
 func TestResyncInvalidatePrincipals(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
+	var tests = []struct {
+		name                             string
+		useSystemScopeMetadataCollection bool
+	}{
+		{
+			name:                             "useSystemScopeMetadataCollection=false",
+			useSystemScopeMetadataCollection: false,
+		},
+		{
+			name:                             "useSystemScopeMetadataCollection=true",
+			useSystemScopeMetadataCollection: true,
+		},
 	}
 
 	initialSyncFn := `
@@ -245,77 +250,85 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 		role(doc.userName, "role:roleDEF");
 	}`
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		PersistentConfig: true,
-		SyncFn:           initialSyncFn,
-	})
-	defer rt.Close()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// this condition is not allowed via regular db config-level validation
+			// but RestTester code doesn't perform full dbconfig validation to block this
+			if test.useSystemScopeMetadataCollection && base.TestsDisableGSI() {
+				t.Skip("use_views not supported with system scoped metadata collection")
+			}
 
-	dbConfig := rt.NewDbConfig()
-	ds := rt.TestBucket.GetSingleDataStore()
-	scopeName := ds.ScopeName()
-	collectionName := ds.CollectionName()
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				PersistentConfig:                 true,
+				SyncFn:                           initialSyncFn,
+				UseSystemScopeMetadataCollection: base.Ptr(test.useSystemScopeMetadataCollection),
+			})
+			defer rt.Close()
 
-	rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+			dbConfig := rt.NewDbConfig()
+			ds := rt.TestBucket.GetSingleDataStore()
+			scopeName := ds.ScopeName()
+			collectionName := ds.CollectionName()
 
-	// Set up user and role
-	username := "alice"
-	rolename := "foo"
-	grantingDocID := "grantDoc"
-	grantingDocBody := `{
+			rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
+
+			// Set up user and role
+			username := "alice"
+			rolename := "foo"
+			grantingDocID := "grantDoc"
+			grantingDocBody := `{
 		"userName":"alice",
 		"roleName":"foo"
 	}`
-	rt.CreateUser(username, nil)
+			rt.CreateUser(username, nil)
 
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, rest.GetRolePayload(t, rolename, rt.GetSingleDataStore(), nil))
-	rest.RequireStatus(t, response, http.StatusCreated)
+			response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_role/"+rolename, rest.GetRolePayload(t, rolename, rt.GetSingleDataStore(), nil))
+			rest.RequireStatus(t, response, http.StatusCreated)
 
-	// Write doc to perform dynamic grants
-	response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+grantingDocID, grantingDocBody)
-	rest.RequireStatus(t, response, http.StatusCreated)
+			// Write doc to perform dynamic grants
+			response = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+grantingDocID, grantingDocBody)
+			rest.RequireStatus(t, response, http.StatusCreated)
 
-	ctx := rt.Context()
-	user, err := rt.GetDatabase().Authenticator(ctx).GetUser(username)
-	require.NoError(t, err)
-	channels := user.CollectionChannels(scopeName, collectionName)
-	_, ok := channels["channelABC"]
-	require.True(t, ok, "user should have channel channelABC")
-	roles := user.RoleNames()
-	_, ok = roles["roleABC"]
-	require.True(t, ok, "user should have role roleABC")
+			ctx := rt.Context()
+			user, err := rt.GetDatabase().Authenticator(ctx).GetUser(username)
+			require.NoError(t, err)
+			channels := user.CollectionChannels(scopeName, collectionName)
+			_, ok := channels["channelABC"]
+			require.True(t, ok, "user should have channel channelABC")
+			roles := user.RoleNames()
+			_, ok = roles["roleABC"]
+			require.True(t, ok, "user should have role roleABC")
 
-	rt.TakeDbOffline()
+			rt.TakeDbOffline()
 
-	// Update the sync function
-	rt.SyncFn = updatedSyncFn
-	updatedDbConfig := rt.NewDbConfig()
-	rt.UpsertDbConfig("db1", updatedDbConfig)
-	rt.TakeDbOffline()
+			// Update the sync function
+			rt.SyncFn = updatedSyncFn
+			updatedDbConfig := rt.NewDbConfig()
+			rt.UpsertDbConfig("db1", updatedDbConfig)
+			rt.TakeDbOffline()
 
-	// Run resync
-	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+			// Run resync
+			rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", ""), http.StatusOK)
+			_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
-	// validate user channels and roles have been updated
-	user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
-	require.NoError(t, err)
-	channels = user.CollectionChannels(scopeName, collectionName)
-	_, ok = channels["channelABC"]
-	require.False(t, ok, "user should not have channel channelABC")
-	_, ok = channels["channelDEF"]
-	require.True(t, ok, "user should have channel channelDEF")
-	roles = user.RoleNames()
-	_, ok = roles["roleABC"]
-	require.False(t, ok, "user should not have role roleABC")
-	_, ok = roles["roleDEF"]
-	require.True(t, ok, "user should have role roleDEF")
+			// validate user channels and roles have been updated
+			user, err = rt.GetDatabase().Authenticator(ctx).GetUser(username)
+			require.NoError(t, err)
+			channels = user.CollectionChannels(scopeName, collectionName)
+			_, ok = channels["channelABC"]
+			require.False(t, ok, "user should not have channel channelABC")
+			_, ok = channels["channelDEF"]
+			require.True(t, ok, "user should have channel channelDEF")
+			roles = user.RoleNames()
+			_, ok = roles["roleABC"]
+			require.False(t, ok, "user should not have role roleABC")
+			_, ok = roles["roleDEF"]
+			require.True(t, ok, "user should have role roleDEF")
+		})
+	}
 }
 
 func TestResyncDoesNotWriteDocBody(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server")
-	}
 	base.SkipImportTestsIfNotEnabled(t) // test requires import
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -465,21 +478,136 @@ func TestResyncRequireResyncDefaultMetadataID(t *testing.T) {
 	rt.WaitForDatabaseState(db2Name, db.RunStateString[db.DBOnline])
 }
 
-func TestResyncPartitionsMaximumValidation(t *testing.T) {
+func TestResyncPartitionsValidation(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 	})
 	defer rt.Close()
 
-	dbConfig := rt.NewDbConfig()
-	numVBuckets, err := rt.TestBucket.GetMaxVbno(base.TestCtx(t))
+	numVBuckets, err := rt.TestBucket.GetMaxVbno(rt.Context())
 	require.NoError(t, err)
-	invalidPartitions := numVBuckets + 1
-	dbConfig.Unsupported = &db.UnsupportedOptions{
-		ResyncPartitions: &invalidPartitions,
+
+	t.Run("invalid partitions exceeding vbucket count are rejected", func(t *testing.T) {
+		// Partition count validation only applies when using sharded DCP (EE + CBS).
+		if !base.IsEnterpriseEdition() || base.UnitTestUrlIsWalrus() {
+			t.Skip("Partition count validation only applies to EE with CBS")
+		}
+		dbConfig := rt.NewDbConfig()
+		invalidPartitions := numVBuckets + 1
+		dbConfig.Unsupported = &db.UnsupportedOptions{
+			ResyncPartitions: &invalidPartitions,
+		}
+		resp := rt.CreateDatabase("db1", dbConfig)
+		rest.RequireStatus(t, resp, http.StatusInternalServerError)
+		assert.Contains(t, resp.BodyString(), db.DatabaseErrorMap[db.DatabaseInvalidResyncPartitions])
+	})
+
+	t.Run("valid custom partitions are used by ResyncManagerDCP", func(t *testing.T) {
+		dbConfig := rt.NewDbConfig()
+		customPartitions := uint16(16)
+		dbConfig.Unsupported = &db.UnsupportedOptions{
+			ResyncPartitions: &customPartitions,
+		}
+		resp := rt.CreateDatabase("db2", dbConfig)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+
+		dbCtx, err := rt.ServerContext().GetDatabase(rt.Context(), "db2")
+		require.NoError(t, err)
+
+		assert.Equal(t, customPartitions, dbCtx.GetResyncPartitionCount())
+	})
+}
+
+// TestDistributedResync is a long-running dev-time test used to validate cbgt rebalance behavior during resync.
+// It creates two rest testers with the same bucket and config group, and triggers a resync on one node while the database is offline.
+// The test then validates that the resync completes successfully on both nodes, and logs the number of documents processed/changed on each node to verify that work is being distributed.
+// Usage notes: even with 100K docs, the test may intermittently complete resync on just rt1.  Putting a breakpoint in ResyncManagerDCP.Run and pausing for a few seconds
+// is typically sufficient to ensure rebalance happens without further increasing the number of docs.
+
+// Note: when the second rt comes online, all DCP traffic will be directed to the second rt, because of the following cbgt interaction:
+//    1. When a new node/rt is added, a new index definition and new set of feeds are created, and the previous ones closed
+//    2. The mapping from a feed to a dest (destKey) is stored in the index params, so only a single destKey can be active at a time for a cbgt index
+//    3. SGW's lookup for dest from destKey isn't db-scoped, so rt2's dest will be used for all the new feeds.
+// This still allows testing of overall feed close and status handling, but doesn't do a good job of testing concurrent updates to resync status from two nodes.
+
+func TestDistributedResync(t *testing.T) {
+
+	t.Skip("Long-running dev-time test used to test multi-node cbgt rebalance during resync")
+
+	// Create first rest tester with persistent config
+	rt1 := rest.NewRestTesterPersistentConfig(t)
+	defer rt1.Close()
+
+	// Create second RT targeting the same bucket, with matching groupID and config polling enabled
+	rt2Config := &rest.RestTesterConfig{
+		GroupID: &rt1.ServerContext().Config.Bootstrap.ConfigGroupID,
+		MutateStartupConfig: func(config *rest.StartupConfig) {
+			// enable config polling
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+		},
+		CustomTestBucket: rt1.TestBucket.NoCloseClone(),
+		PersistentConfig: true,
+	}
+	rt2 := rest.NewRestTester(t, rt2Config)
+	defer rt2.Close()
+
+	// wait for db to be online on rt1
+	rt1.WaitForDBState(db.RunStateString[db.DBOnline])
+
+	// Wait for database polling on rt2 to detect the database created by rt1
+	//  (can't use rt2.WaitForDBState as it includes a require for database existence)
+	err := rt2.WaitForCondition(func() bool {
+		return len(rt2.ServerContext().AllDatabases()) > 0
+	})
+	require.NoError(t, err)
+
+	rt2.WaitForDBState(db.RunStateString[db.DBOnline])
+
+	// create documents in DB to ensure resync takes long enough for cbgt rebalance to occur
+	numDocs := 100000
+	for i := range numDocs {
+		rt1.CreateTestDoc(fmt.Sprintf("doc%v", i))
 	}
 
-	resp := rt.CreateDatabase("db1", dbConfig)
-	rest.RequireStatus(t, resp, http.StatusInternalServerError)
-	assert.Contains(t, resp.Body.String(), "resync_partitions must be between 1 and")
+	rt1.TakeDbOffline()
+
+	// wait until the db status is offline for both rts
+	rt1.WaitForDBState(db.RunStateString[db.DBOffline])
+	rt2.WaitForDBState(db.RunStateString[db.DBOffline])
+
+	// update sync function to have resync process the doc
+	syncFn := `
+function sync(doc, oldDoc){
+	channel("resync_channel");
+}`
+	resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", syncFn)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Start resync on rt1
+	response := rt1.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// Wait for completed on both nodes
+	rt1ResyncStatus := rt1.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	rt2ResyncStatus := rt2.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+
+	log.Printf("rt1 sync function count: %v", rt1.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	log.Printf("rt2 sync function count: %v", rt2.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	log.Printf("rt1 resync status (changed/processed): %v/%v", rt1ResyncStatus.DocsChanged, rt1ResyncStatus.DocsProcessed)
+	assert.Equal(t, int64(numDocs), rt1ResyncStatus.DocsChanged)
+	assert.LessOrEqual(t, int64(numDocs), rt1ResyncStatus.DocsProcessed)
+
+	log.Printf("rt2 resync status (changed/processed): %v/%v", rt2ResyncStatus.DocsChanged, rt2ResyncStatus.DocsProcessed)
+	assert.Equal(t, int64(numDocs), rt2ResyncStatus.DocsChanged)
+	assert.LessOrEqual(t, int64(numDocs), rt2ResyncStatus.DocsProcessed)
+
+	log.Printf("rt1 stats - resync num changed: %v", rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
+	log.Printf("rt2 stats - resync num changed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
+	assert.Equal(t, int64(numDocs), rt1.GetDatabase().DbStats.Database().ResyncNumChanged.Value()+rt2.GetDatabase().DbStats.Database().ResyncNumChanged.Value())
+
+	log.Printf("rt1 stats - resync num processed: %v", rt1.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
+	log.Printf("rt2 stats - resync num processed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
+
 }

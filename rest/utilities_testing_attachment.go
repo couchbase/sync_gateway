@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"slices"
 	"testing"
@@ -18,8 +19,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
@@ -69,7 +70,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		require.NoError(t, err)
-		require.Contains(t, xattrs, base.SyncXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 		xattr := xattrs[base.SyncXattrName]
 		xattr, err = base.InjectJSONPropertiesFromBytes(xattr, base.KVPairBytes{
 			Key: "attachments",

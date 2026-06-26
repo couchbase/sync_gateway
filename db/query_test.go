@@ -19,8 +19,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Validate stats for view query
@@ -539,6 +539,10 @@ func TestCountAllDocs(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
+	count, err := collection.CountAllDocs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), count)
+
 	// Add some docs
 	numDocs := 5
 	var docToDelete *Document
@@ -550,7 +554,7 @@ func TestCountAllDocs(t *testing.T) {
 		}
 	}
 
-	count, err := collection.CountAllDocs(ctx)
+	count, err = collection.CountAllDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs), count)
 

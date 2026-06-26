@@ -10,6 +10,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,8 +23,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 type ChannelRevocationTester struct {
@@ -1371,7 +1372,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
 	role, err := authenticator.GetRole("foo")
 	assert.NoError(t, err)
-	require.Contains(t, role.CollectionChannelHistory(s, c), "a")
+	require.Contains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "a")
 	require.Len(t, role.CollectionChannelHistory(s, c)["a"].Entries, 10)
 	assert.Equal(t, role.CollectionChannelHistory(s, c)["a"].Entries[0], auth.GrantHistorySequencePair{StartSeq: 4, EndSeq: 26})
 
@@ -1409,8 +1410,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 
-	assert.NotContains(t, role.CollectionChannelHistory(s, c), "a")
-	assert.Contains(t, role.CollectionChannelHistory(s, c), "b")
+	assert.NotContains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "a")
+	assert.Contains(t, maps.Keys(role.CollectionChannelHistory(s, c)), "b")
 }
 
 func TestChannelRevocationWithContiguousSequences(t *testing.T) {
@@ -2721,4 +2722,114 @@ func TestRevocationDeletedRole(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevokedFeedPanicLosesRevocations(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	const triggerDocID = "doc-ch105"
+	var (
+		armed      atomic.Bool
+		panicFired atomic.Int32
+	)
+
+	leakyConfig := base.LeakyBucketConfig{
+		GetWithXattrCallback: func(key string) error {
+			if !armed.Load() {
+				return nil
+			}
+			if key != triggerDocID {
+				return nil
+			}
+			// Fire exactly once so the recover catches a single panic and we don't
+			// loop on retries triggered by the changes feed.
+			if panicFired.Add(1) != 1 {
+				return nil
+			}
+			panic("injected revoked-feed panic for " + key)
+		},
+	}
+
+	revocationTester, rt := InitScenario(t, &RestTesterConfig{
+		LeakyBucketConfig: &leakyConfig,
+	})
+	defer rt.Close()
+
+	// foo grants both ch1 and ch2, so removing foo later revokes every doc.
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.addRoleChannel("foo", "ch2")
+
+	const numDocs = 10
+	for i := 0; i < numDocs; i++ {
+		_ = rt.PutDoc(fmt.Sprintf("doc-ch1%02d", i), `{"channels": ["ch1"]}`)
+	}
+
+	for i := 0; i < numDocs; i++ {
+		_ = rt.PutDoc(fmt.Sprintf("doc-ch2%02d", i), `{"channels": ["ch2"]}`)
+	}
+
+	// User catches up: user doc + all 2*numDocs docs visible as normal changes.
+	initial := revocationTester.getChanges("0", 2*numDocs+1)
+	sinceVal := initial.Last_Seq.String()
+
+	// Revoke the role -> ch1 and ch2 access is lost -> revocations for all
+	// 2*numDocs docs are pending.
+	revocationTester.removeRole("user", "foo")
+	rt.WaitForPendingChanges()
+
+	// Arm the panic AFTER the test setup so that the bucket reads done during
+	// PutDoc/_changes during setup don't trip the trigger.
+	armed.Store(true)
+	defer armed.Store(false)
+
+	panickedChanges := rt.GetChanges(
+		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", sinceVal),
+		"user",
+	)
+
+	require.Equal(t, int32(1), panicFired.Load(),
+		"the leaky bucket callback must have actually panicked during the changes request")
+
+	// The panic fires partway through the ch1 revocations, so the panicked
+	// response is necessarily incomplete: it cannot contain all 2*numDocs
+	// revocations.
+	revokedSeen := map[string]bool{}
+	for _, e := range panickedChanges.Results {
+		if e.Revoked {
+			revokedSeen[e.ID] = true
+		}
+	}
+	require.Less(t, len(revokedSeen), 2*numDocs,
+		"test invariant: panic should have suppressed at least one revocation")
+
+	// Follow-up request from the advanced last_seq must recover every revocation
+	// the panic suppressed. Before the fix, last_seq moved past the suppressed
+	// revocations and they were lost forever.
+	followup := rt.GetChanges(
+		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true",
+			panickedChanges.Last_Seq.String()),
+		"user",
+	)
+	for _, e := range followup.Results {
+		if e.Revoked {
+			revokedSeen[e.ID] = true
+		}
+	}
+
+	// Every doc (ch1 and ch2) must eventually be seen as revoked across the
+	// panicked response plus the follow-up.
+	var missing []string
+	for i := 0; i < numDocs; i++ {
+		for _, prefix := range []string{"doc-ch1", "doc-ch2"} {
+			id := fmt.Sprintf("%s%02d", prefix, i)
+			if !revokedSeen[id] {
+				missing = append(missing, id)
+			}
+		}
+	}
+	assert.Empty(t, missing,
+		"revocations were permanently lost after panic recovery: %v", missing)
+	assert.Len(t, revokedSeen, 2*numDocs,
+		"expected every doc to be revoked exactly once across the panicked response and follow-up")
 }

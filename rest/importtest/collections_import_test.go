@@ -11,6 +11,7 @@ package importtest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"testing"
@@ -18,8 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestMultiCollectionImportFilter(t *testing.T) {
@@ -527,11 +528,11 @@ func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName stri
 	xattrs, _, err := dataStore.GetXattrs(rt.Context(), docName, []string{base.SyncXattrName})
 	if hasSyncData {
 		require.NoError(rt.TB(), err)
-		require.Contains(rt.TB(), xattrs, base.SyncXattrName)
+		require.Contains(rt.TB(), maps.Keys(xattrs), base.SyncXattrName)
 		require.NotEqual(rt.TB(), "", string(xattrs[base.SyncXattrName]), "Expected data for %s %s", dataStore.GetName(), docName)
 	} else {
 		require.Error(rt.TB(), err)
 		require.True(rt.TB(), base.IsXattrNotFoundError(err), "Expected xattr missing error but got %+v", err)
-		require.NotContains(rt.TB(), xattrs, base.SyncXattrName)
+		require.NotContains(rt.TB(), maps.Keys(xattrs), base.SyncXattrName)
 	}
 }

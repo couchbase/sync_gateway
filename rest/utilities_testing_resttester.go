@@ -11,6 +11,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,8 +23,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Run is equivalent to testing.T.Run() but updates the RestTester's TB to the new testing.T
@@ -235,7 +236,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if version.CV.IsEmpty() {
 			return
 		}
-		if !assert.Contains(c, body, db.BodyCV) {
+		if !assert.Contains(c, maps.Keys(body), db.BodyCV) {
 			return
 		}
 		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
@@ -448,6 +449,33 @@ func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, d
 	return resyncStatus
 }
 
+func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcessState) db.MigrationManagerResponse {
+	return rt.waitForMetadataMigrationStatus(status, "{{.db}}")
+}
+
+func (rt *RestTester) WaitForMetadataMigrationStatusForDB(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
+	return rt.waitForMetadataMigrationStatus(status, dbName)
+}
+
+func (rt *RestTester) waitForMetadataMigrationStatus(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
+	timeout := 10 * time.Second
+	pollInterval := 10 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
+
+	var migrationStatus db.MigrationManagerResponse
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		response := rt.SendAdminRequest("GET", "/"+dbName+"/_metadata_migration", "")
+		RequireStatus(rt.TB(), response, http.StatusOK)
+		require.NoError(rt.TB(), json.Unmarshal(response.BodyBytes(), &migrationStatus))
+
+		assert.Equal(c, status, migrationStatus.State)
+	}, timeout, pollInterval)
+	return migrationStatus
+}
+
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
 func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBucketName *string) (*DatabaseConfig, error) {
 	updatedDbConfig := DatabaseConfig{}
@@ -518,7 +546,7 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 	require.NotEmpty(rt.TB(), attachmentBody)
 	var rawBody db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal([]byte(body), &rawBody))
-	require.NotContains(rt.TB(), rawBody, db.BodyAttachments)
+	require.NotContains(rt.TB(), maps.Keys(rawBody), db.BodyAttachments)
 	rawBody[db.BodyAttachments] = map[string]any{
 		attachmentName: map[string]any{"data": attachmentBody},
 	}
@@ -538,18 +566,6 @@ func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		assert.False(c, rt.ServerContext().DatabaseInitManager.HasActiveInitialization(dbName))
 	}, 30*time.Second, 100*time.Millisecond, "Database initialization did not complete within expected time")
-}
-
-// SetDistributedResync forces the ResyncManager into a single node or distributed resync mode. This should only be called before
-// resync is run for the first time and needs to be called each time a DatabaseContext is reinitialized.
-func (rt *RestTester) SetDistributedResync(useDistributed bool) {
-	rs, ok := rt.GetDatabase().ResyncManager.Process.(*db.ResyncManagerDCP)
-	require.True(rt.TB(), ok)
-	if useDistributed {
-		rs.Distributed = true
-	} else {
-		require.False(rt.TB(), rs.Distributed, "Expected this database ResyncManager to be in non distributed mode")
-	}
 }
 
 type RawDocResponse struct {

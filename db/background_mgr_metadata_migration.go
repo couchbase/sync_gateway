@@ -34,15 +34,15 @@ type MetadataMigrationManager struct {
 
 const MetadataMigrationManagerName = "metadata_migration"
 
-var _ BackgroundManagerProcessI = &MetadataMigrationManager{}
+var _ BackgroundManagerProcessI[map[string]any] = &MetadataMigrationManager{}
 
 // errMetadataMigrationTerminated is the cancellation cause propagated to the run context when
 // the BackgroundManager terminator fires, so ops blocked on ctx (seq-counter retry loop, range
 // scan iteration) can distinguish an operator stop from a parent-context cancellation.
 var errMetadataMigrationTerminated = errors.New("metadata migration terminated by stop request")
 
-func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager {
-	return &BackgroundManager{
+func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager[map[string]any] {
+	return &BackgroundManager[map[string]any]{
 		name:    MetadataMigrationManagerName,
 		Process: &MetadataMigrationManager{dbContext: dbContext},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -68,7 +68,7 @@ type MigrationManagerStatusDoc struct {
 	MigrationManagerResponse `json:"status"`
 }
 
-func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) error {
+func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -92,7 +92,7 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		// If the previous run completed, there was an error during unmarshalling the status, or
 		// the caller requested a reset, start again with a fresh migration ID and zeroed counters.
 		if status.State == BackgroundProcessStateCompleted || err != nil || reset {
-			return newRunInit()
+			return backgroundManagerInitReset, newRunInit()
 		}
 		m.docsProcessed.Store(status.DocsProcessed)
 		m.docsFailed.Store(status.DocsFailed)
@@ -100,9 +100,9 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		m.passes.Store(status.Passes)
 		m.MigrationID = status.MigrationID
 		base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resuming migration run with migration ID: %s, docs processed: %d, docs failed: %d, passes: %d", m.MigrationID, status.DocsProcessed, status.DocsFailed, status.Passes)
-		return nil
+		return backgroundManagerInitResume, nil
 	}
-	return newRunInit()
+	return backgroundManagerInitReset, newRunInit()
 }
 
 func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
@@ -190,6 +190,10 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 		//
 		// Each pass scans the fallback DataStore, and remaining are in-scope docs we didn't move on this pass
 		const maxPasses = 16
+		// Sync-function ("syncdata") docs are keyed by groupID + scope.collection rather than
+		// metadataID, so precompute this DB's owned set from its configured collections for the
+		// key handler to match against.
+		dbSyncFunctionKeys := syncFunctionKeysForDB(m.dbContext.Options.GroupID, m.dbContext.CollectionNames)
 		for pass := 0; ; pass++ {
 			if terminator.IsClosed() {
 				// Mid-run stop: leave the per-DB entry in in_progress so the next manager
@@ -198,8 +202,22 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 				return nil
 			}
 
+			// Re-read the sibling metadataID list each pass rather than once before the loop:
+			// a sibling DB registered after the migration started must be recognised on the next
+			// pass so the (legacy default) migrating DB never migrates a newly-arrived sibling's
+			// inverted keys. The registry read is cheap next to the range scan, and there are at
+			// most maxPasses of them.
+			var siblingMetadataIDs []string
+			if m.dbContext.SiblingMetadataIDFunc != nil {
+				var sibErr error
+				siblingMetadataIDs, sibErr = m.dbContext.SiblingMetadataIDFunc(runCtx)
+				if sibErr != nil {
+					return fmt.Errorf("[%s] failed to get sibling MetadataIDs: %w", metadataMigrationLoggingID, sibErr)
+				}
+			}
+
 			stats := &MigrationStats{}
-			remaining, err := MigrateMetadata(runCtx, ms, metadataID, stats)
+			remaining, err := MigrateMetadata(runCtx, ms, metadataID, siblingMetadataIDs, dbSyncFunctionKeys, stats)
 			m.passes.Add(1)
 			m.docsProcessed.Add(stats.DocsMigrated.Load())
 			m.docsFailed.Add(stats.Errors.Load())
@@ -242,6 +260,9 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 
 			if pass+1 >= maxPasses {
 				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d unknown-prefix doc(s) and %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, remaining, passErrors)
+				if promStats != nil {
+					promStats.AbandonedRuns.Add(1)
+				}
 				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s), %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, remaining, passErrors)
 			}
 		}

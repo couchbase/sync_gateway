@@ -18,8 +18,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 const testUseLegacySyncDocsIndex = false
@@ -45,10 +45,10 @@ func TestDatabaseInitManager(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Drop indexes
-	dropAllNonPrimaryIndexes(t, tb.GetSingleDataStore())
+	base.DropAllBucketIndexes(t, tb)
 
 	// Async index creation
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	select {
@@ -76,7 +76,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -112,14 +112,14 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, blocks after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, singleCollectionInitChannel, "first collection init")
 
 	// Make a duplicate call to initialize database, should reuse the existing agent
-	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Unblock collection callback to process all remaining collections
@@ -136,7 +136,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	waitForWorkerDone(t, initMgr, "dbName")
 
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
-	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 	WaitForChannel(t, rerunDoneChan, "repeated init done chan")
 	totalCount = atomic.LoadInt64(&collectionCount)
@@ -163,7 +163,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -201,7 +201,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
@@ -210,7 +210,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
 	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
-	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -250,7 +250,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -292,14 +292,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -336,14 +336,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	defer tb1.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb1)
+	base.DropAllBucketIndexes(t, tb1)
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb2)
+	base.DropAllBucketIndexes(t, tb2)
 
 	// Set up collection names and ScopesConfig for testing - use same collections for both buckets
 	scopesConfig := GetCollectionsConfig(t, tb1, 3)
@@ -387,14 +387,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -433,7 +433,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	defer tb.Close(ctx)
 
 	// Drop all test indexes so we can test InitializeDatabase
-	DropAllTestIndexes(t, tb)
+	base.DropAllBucketIndexes(t, tb)
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := GetCollectionsConfig(t, tb, 3)
@@ -465,14 +465,14 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 		if databaseCompleteCount.Add(1) == 1 {
 			defer wg.Done()
 			log.Printf("invoking InitializeDatabase again during teardown")
-			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 			require.NoError(t, err)
 			WaitForChannel(t, doneChan2, "done chan 2")
 		}
 	}
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
 	WaitForChannel(t, doneChan1, "done chan 1")
@@ -512,9 +512,10 @@ func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string
 
 func TestBuildCollectionIndexData(t *testing.T) {
 	tests := []struct {
-		name   string
-		config *DatabaseConfig
-		want   CollectionInitData
+		name                    string
+		config                  *DatabaseConfig
+		defaultCollectionExists bool
+		want                    CollectionInitData
 	}{
 		{
 			name: "implicit default collection",
@@ -523,6 +524,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 					Scopes: nil,
 				},
 			},
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -535,6 +537,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
 				},
 			},
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -547,6 +550,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
 				},
 			},
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
 				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
@@ -560,17 +564,33 @@ func TestBuildCollectionIndexData(t *testing.T) {
 					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
 				},
 			},
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
+		{
+			// _default dropped after migration (e.g. system metadata collection in use): metadata
+			// indexes must not be targeted at the now-missing _default._default collection.
+			name: "named collection with _default dropped",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+				},
+			},
+			defaultCollectionExists: false,
+			want: CollectionInitData{
+				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := buildCollectionIndexData(test.config)
-			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v)", test.config)
+			actual := buildCollectionIndexData(test.config, test.defaultCollectionExists)
+			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v, %v)", test.config, test.defaultCollectionExists)
 		})
 	}
 }

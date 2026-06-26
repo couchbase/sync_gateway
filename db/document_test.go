@@ -20,8 +20,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TODO: Could consider checking this in as a file and include it into the compiled test binary using something like https://github.com/jteeuwen/go-bindata
@@ -638,16 +638,16 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	assert.Len(t, atts, 2)
 	hello := atts["hello.txt"].(map[string]any)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, float64(11), hello["length"])
-	assert.Equal(t, float64(1), hello["revpos"])
-	assert.Equal(t, float64(2), hello["ver"])
+	assert.Equal[any](t, float64(11), hello["length"])
+	assert.Equal[any](t, float64(1), hello["revpos"])
+	assert.Equal[any](t, float64(2), hello["ver"])
 	assert.True(t, hello["stub"].(bool))
 
 	bye := atts["bye.txt"].(map[string]any)
 	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, float64(19), bye["length"])
-	assert.Equal(t, float64(1), bye["revpos"])
-	assert.Equal(t, float64(2), bye["ver"])
+	assert.Equal[any](t, float64(19), bye["length"])
+	assert.Equal[any](t, float64(1), bye["revpos"])
+	assert.Equal[any](t, float64(2), bye["ver"])
 	assert.True(t, bye["stub"].(bool))
 
 	// unmarshal attachments on global data
@@ -661,16 +661,16 @@ func TestAttachmentReadStoredInXattr(t *testing.T) {
 	assert.Len(t, atts, 2)
 	hello = atts["hello.txt"].(map[string]any)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, float64(11), hello["length"])
-	assert.Equal(t, float64(1), hello["revpos"])
-	assert.Equal(t, float64(2), hello["ver"])
+	assert.Equal[any](t, float64(11), hello["length"])
+	assert.Equal[any](t, float64(1), hello["revpos"])
+	assert.Equal[any](t, float64(2), hello["ver"])
 	assert.True(t, hello["stub"].(bool))
 
 	bye = atts["bye.txt"].(map[string]any)
 	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, float64(19), bye["length"])
-	assert.Equal(t, float64(1), bye["revpos"])
-	assert.Equal(t, float64(2), bye["ver"])
+	assert.Equal[any](t, float64(19), bye["length"])
+	assert.Equal[any](t, float64(1), bye["revpos"])
+	assert.Equal[any](t, float64(2), bye["ver"])
 	assert.True(t, bye["stub"].(bool))
 }
 

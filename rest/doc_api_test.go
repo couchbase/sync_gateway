@@ -23,8 +23,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Tests ConvertJSONNumber handling for the sync function, and preservation of large numbers in the
@@ -129,7 +129,7 @@ func TestDocumentNumbers(t *testing.T) {
 			var rawResponse RawDocResponse
 			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			assert.Equal(ts, 1, len(rawResponse.Xattrs.Sync.Channels))
-			assert.Containsf(ts, rawResponse.Xattrs.Sync.Channels, test.expectedFormatChannel, "Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name)
+			assert.Containsf(ts, maps.Keys(rawResponse.Xattrs.Sync.Channels), test.expectedFormatChannel, "Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name)
 		})
 	}
 

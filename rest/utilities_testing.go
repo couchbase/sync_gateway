@@ -39,9 +39,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -51,33 +51,34 @@ import (
 
 // RestTesterConfig represents configuration for sync gateway
 type RestTesterConfig struct {
-	GuestEnabled                    bool                        // If this is true, Admin Party is in full effect
-	SyncFn                          string                      // put the sync() function source in here (optional)
-	ImportFilter                    string                      // put the import filter function source in here (optional)
-	DatabaseConfig                  *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	MutateStartupConfig             func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
-	InitSyncSeq                     uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	AllowConflicts                  bool                        // Enable conflicts mode.  By default, conflicts will not allowed
-	EnableUserQueries               bool                        // Enable the feature-flag for user N1QL/etc queries
-	CustomTestBucket                *base.TestBucket            // If set, use this bucket instead of requesting a new one.
-	LeakyBucketConfig               *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
-	adminInterface                  string                      // adminInterface overrides the default admin interface.
-	SgReplicateEnabled              bool                        // SgReplicateManager disabled by default for RestTester
-	AutoImport                      *bool
-	HideProductInfo                 bool
-	AdminInterfaceAuthentication    bool
-	metricsInterfaceAuthentication  bool
-	enableAdminAuthPermissionsCheck bool
-	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
-	PersistentConfig                bool
-	GroupID                         *string
-	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
-	collectionConfig                collectionConfiguration
-	numCollections                  int
-	nodeClusterCompatVersion        *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
-	allowDbConfigEnvVars            *bool
-	maxConcurrentRevs               *int
-	UseXattrConfig                  bool
+	GuestEnabled                     bool                        // If this is true, Admin Party is in full effect
+	SyncFn                           string                      // put the sync() function source in here (optional)
+	ImportFilter                     string                      // put the import filter function source in here (optional)
+	DatabaseConfig                   *DatabaseConfig             // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	MutateStartupConfig              func(config *StartupConfig) // Function to mutate the startup configuration before the server context gets created. This overrides options the RT sets.
+	InitSyncSeq                      uint64                      // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	AllowConflicts                   bool                        // Enable conflicts mode.  By default, conflicts will not allowed
+	EnableUserQueries                bool                        // Enable the feature-flag for user N1QL/etc queries
+	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
+	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	adminInterface                   string                      // adminInterface overrides the default admin interface.
+	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
+	AutoImport                       *bool
+	HideProductInfo                  bool
+	AdminInterfaceAuthentication     bool
+	metricsInterfaceAuthentication   bool
+	enableAdminAuthPermissionsCheck  bool
+	useTLSServer                     bool // If true, TLS will be required for communications with CBS. Default: false
+	PersistentConfig                 bool
+	GroupID                          *string
+	serverless                       bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
+	collectionConfig                 collectionConfiguration
+	numCollections                   int
+	nodeClusterCompatVersion         *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
+	allowDbConfigEnvVars             *bool
+	maxConcurrentRevs                *int
+	UseXattrConfig                   bool
+	UseSystemScopeMetadataCollection *bool
 }
 
 type collectionConfiguration uint8
@@ -114,7 +115,7 @@ func (a *activeBlipTesterClients) add(name string) {
 func (a *activeBlipTesterClients) remove(tb testing.TB, name string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	require.Contains(tb, a.m, name, "Can not remove blip tester client '%s' that was never added", name)
+	require.Contains(tb, maps.Keys(a.m), name, "Can not remove blip tester client '%s' that was never added", name)
 	a.m[name]--
 	if a.m[name] == 0 {
 		delete(a.m, name)
@@ -272,6 +273,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 				Password: base.TestClusterPassword(),
 			},
 		}
+	}
+
+	if rt.RestTesterConfig.UseSystemScopeMetadataCollection != nil {
+		sc.Bootstrap.UseSystemMetadataCollection = rt.RestTesterConfig.UseSystemScopeMetadataCollection
+	} else {
+		sc.Bootstrap.UseSystemMetadataCollection = base.Ptr(base.TestUseSystemMetadataCollection())
 	}
 
 	if rt.RestTesterConfig.GroupID != nil {
@@ -1094,6 +1101,33 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+// WaitForBucketMetadataMigrationComplete polls the bucket-wide metadata migration status doc until
+// its bootstrap migration reports complete. Bootstrap only transitions to complete once every per-DB
+// entry is complete, so this is the signal that metadata migration has finished for the ENTIRE bucket
+// (including bucket-global docs such as _sync:registry, _sync:dbconfig:* and cbgt cfg) rather than for
+// a single database.
+func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) {
+	timeout := 10 * time.Second
+	pollInterval := 100 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
+
+	ctx := base.TestCtx(rt.TB())
+	conn := rt.ServerContext().BootstrapContext.Connection
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.NotNil(c, status) {
+			return
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete")
+	}, timeout, pollInterval)
+}
+
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
@@ -1613,7 +1647,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	resp := scm.Response()
 	body, err := resp.Body()
 	require.NoError(bt.TB(), err)
-	require.NotContains(bt.TB(), resp.Properties, "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
+	require.NotContains(bt.TB(), maps.Keys(resp.Properties), "Error-Code", "Error in response to setCheckpoint request. Properties:%v Body:%s", resp.Properties, body)
 	return &db.SetCheckpointResponse{Message: resp}
 }
 
@@ -1635,7 +1669,7 @@ func (bt *BlipTester) newRevMessage(docID, docRev string, body []byte, propertie
 
 // SendRevWithHistory sends an unsolicited rev message and waits for the response. The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
 func (bt *BlipTester) SendRevWithHistory(docID, docRev string, revHistory []string, body []byte, properties blip.Properties) (res *blip.Message) {
-	require.NotContains(bt.TB(), properties, "history", "If specifying history, use BlipTester.SendRev")
+	require.NotContains(bt.TB(), maps.Keys(properties), "history", "If specifying history, use BlipTester.SendRev")
 	if len(revHistory) > 0 {
 		properties[db.RevMessageHistory] = strings.Join(revHistory, ",")
 	}
@@ -2121,7 +2155,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	bt.Send(subChangesRequest)
 	subChangesResponse := subChangesRequest.Response()
 	require.Equal(bt.TB(), subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
-	require.NotContains(bt.TB(), subChangesResponse.Properties, db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
+	require.NotContains(bt.TB(), maps.Keys(subChangesResponse.Properties), db.BlipErrorCode, "Error in response to subChanges request. Properties:%v", subChangesResponse.Properties)
 }
 
 // Helper for comparing BLIP changes received with expected BLIP changes
@@ -2610,36 +2644,6 @@ func stringPtrOrNil(s string) *string {
 	return base.Ptr(s)
 }
 
-func DropAllTestIndexes(t *testing.T, tb *base.TestBucket) {
-	dropAllNonPrimaryIndexes(t, tb.GetMetadataStore())
-
-	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := range dsNames {
-		ds, err := tb.GetNamedDataStore(i)
-		require.NoError(t, err)
-		dropAllNonPrimaryIndexes(t, ds)
-	}
-}
-
-func DropAllTestIndexesIncludingPrimary(t *testing.T, tb *base.TestBucket) {
-
-	ctx := base.TestCtx(t)
-	n1qlStore, ok := base.AsN1QLStore(tb.GetMetadataStore())
-	require.True(t, ok)
-	dropErr := base.DropAllIndexes(ctx, n1qlStore)
-	require.NoError(t, dropErr)
-
-	dsNames := tb.GetNonDefaultDatastoreNames()
-	for i := range dsNames {
-		ds, err := tb.GetNamedDataStore(i)
-		require.NoError(t, err)
-		n1qlStore, ok := base.AsN1QLStore(ds)
-		require.True(t, ok)
-		dropErr := base.DropAllIndexes(ctx, n1qlStore)
-		require.NoError(t, dropErr)
-	}
-}
-
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
@@ -2670,6 +2674,14 @@ func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Con
 	sc.ClusterCompat.Refresh(ctx)
 }
 
+// BootstrapDocKeysToMigrate returns the bucket-global bootstrap doc keys that MigrateBootstrapDocs
+// moves from _default._default to _system._mobile for the given bucket.
+func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Context, bucketName string) []string {
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	return bootstrapDocKeysToMigrate(ctx, registry)
+}
+
 // AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
 func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 	sc.invalidDatabaseConfigTracking.m.RLock()
@@ -2679,18 +2691,6 @@ func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 		dbs = append(dbs, db)
 	}
 	return dbs
-}
-
-// Calls DropAllIndexes to remove all indexes, then restores the primary index for TestBucketPool readier requirements
-func dropAllNonPrimaryIndexes(t *testing.T, dataStore base.DataStore) {
-
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	require.True(t, ok)
-	ctx := base.TestCtx(t)
-	dropErr := base.DropAllIndexes(ctx, n1qlStore)
-	require.NoError(t, dropErr)
-	err := n1qlStore.CreatePrimaryIndex(ctx, base.PrimaryIndexName, nil)
-	require.NoError(t, err, "Unable to recreate primary index")
 }
 
 // RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
