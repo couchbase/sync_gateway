@@ -31,7 +31,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 			name: "non-xattr -> xattr",
 			indexInitOptions: testIndexCreationOptions{
 				numPartitions:                db.DefaultNumIndexPartitions,
-				useXattrs:                    false,
 				useLegacySyncDocsIndex:       true,
 				forceSingleDefaultCollection: true,
 			},
@@ -52,7 +51,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 			name: "xattr -> non-xattr",
 			indexInitOptions: testIndexCreationOptions{
 				numPartitions:                db.DefaultNumIndexPartitions,
-				useXattrs:                    true,
 				useLegacySyncDocsIndex:       true,
 				forceSingleDefaultCollection: true,
 			},
@@ -110,7 +108,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 		t.Run(fmt.Sprintf("xattrs=%t", useXattrs), func(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				numPartitions:                db.DefaultNumIndexPartitions,
-				useXattrs:                    useXattrs,
 				useLegacySyncDocsIndex:       false,
 				forceSingleDefaultCollection: true,
 			})
@@ -150,7 +147,6 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	numCollections := 2
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
-		useXattrs:              true,  // force use of xattrs to make test space smaller
 		useLegacySyncDocsIndex: false, // upgrade is likely to be using legacy sync docs index
 		numCollections:         numCollections,
 	})
@@ -170,7 +166,6 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	// create non xattr indexes on the default collection
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
-		useXattrs:              false, // force use of xattrs to make test space smaller
 		useLegacySyncDocsIndex: false, // upgrade is likely to be using legacy sync docs index
 		numCollections:         numCollections,
 	})
@@ -215,7 +210,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 					defer bucket.Close(ctx)
 					setupIndexes(t, bucket, testIndexCreationOptions{
 						numPartitions:                db.DefaultNumIndexPartitions,
-						useXattrs:                    useXattrs,
 						useLegacySyncDocsIndex:       false,
 						forceSingleDefaultCollection: true,
 					})
@@ -299,7 +293,6 @@ func TestRemoveUnusedIndexOnError(t *testing.T) {
 		t.Run(fmt.Sprintf("xattrs=%t", useXattrs), func(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				numPartitions:                db.DefaultNumIndexPartitions,
-				useXattrs:                    useXattrs,
 				useLegacySyncDocsIndex:       false,
 				forceSingleDefaultCollection: true,
 			})

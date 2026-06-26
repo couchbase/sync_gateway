@@ -40,10 +40,7 @@ const (
 
 // Index and query definitions use syncToken ($sync) to represent the location of sync gateway's metadata.
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
-// When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
-var syncNoXattr = base.SyncPropertyName
-var syncNoXattrQuery = fmt.Sprintf("%s.%s", base.KeyspaceQueryAlias, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
 var syncXattrQuery = fmt.Sprintf("meta(%s).xattrs.%s", base.KeyspaceQueryAlias, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
@@ -64,8 +61,7 @@ const (
 type SGIndexFlags uint8
 
 const (
-	IdxFlagXattrOnly         = SGIndexFlags(1 << iota) // Index should only be created when running w/ xattrs=true
-	IdxFlagIndexTombstones                             // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
+	IdxFlagIndexTombstones   = SGIndexFlags(1 << iota) // Index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
 	IdxFlagMetadataOnly                                // Index should only be created when running against metadata store
 	IdxFlagPrincipalDocsOnly                           // Index necessary for principal docs
 )
@@ -145,7 +141,7 @@ var (
 		IndexSyncDocs:   IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
 		IndexUser:       IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
 		IndexRole:       IdxFlagMetadataOnly | IdxFlagPrincipalDocsOnly,
-		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
+		IndexTombstones: IdxFlagIndexTombstones,
 	}
 
 	// mode for when to create index
@@ -234,15 +230,12 @@ type SGIndex struct {
 	partitionable    bool              // Whether the index is partitionable
 }
 
-func (i *SGIndex) fullIndexName(useXattrs bool, numPartitions uint32) string {
-	return i.indexNameForVersion(i.Version, useXattrs, numPartitions)
+func (i *SGIndex) fullIndexName(numPartitions uint32) string {
+	return i.indexNameForVersion(i.Version, numPartitions)
 }
 
-func (i *SGIndex) indexNameForVersion(version int, useXattrs bool, numPartitions uint32) string {
-	xattrsToken := ""
-	if useXattrs {
-		xattrsToken = "x"
-	}
+func (i *SGIndex) indexNameForVersion(version int, numPartitions uint32) string {
+	xattrsToken := "x"
 	indexName := fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
 	if i.partitionable && numPartitions > 1 {
 		indexName = fmt.Sprintf(partitionableIndexNameFormat, indexName, numPartitions)
@@ -252,8 +245,8 @@ func (i *SGIndex) indexNameForVersion(version int, useXattrs bool, numPartitions
 
 // Tombstone indexing is required for indexes that need to index the _sync xattrs even when the document
 // body has been deleted (i.e. SG tombstones)
-func (i *SGIndex) shouldIndexTombstones(useXattrs bool) bool {
-	return (i.flags&IdxFlagIndexTombstones != 0 && useXattrs)
+func (i *SGIndex) shouldIndexTombstones() bool {
+	return (i.flags&IdxFlagIndexTombstones != 0)
 }
 
 // isMetadataOnly refers to an index that is only applicable to create for a location that does metadata storage
@@ -264,10 +257,6 @@ func (i *SGIndex) isMetadataOnly() bool {
 // isPrincipalOnly refers to an index that is only applicable for querying principal docs.
 func (i *SGIndex) isPrincipalOnly() bool {
 	return i.flags&IdxFlagPrincipalDocsOnly != 0
-}
-
-func (i *SGIndex) isXattrOnly() bool {
-	return i.flags&IdxFlagXattrOnly != 0
 }
 
 // shouldCreate returns if given index should be created.
@@ -281,9 +270,6 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 			return false
 		}
 
-	}
-	if i.isXattrOnly() && !options.UseXattrs {
-		return false
 	}
 
 	if i.isMetadataOnly() && options.MetadataIndexes == IndexesWithoutMetadata {
@@ -306,17 +292,17 @@ func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, opt
 	if options.NumPartitions < 1 {
 		return fmt.Errorf("Invalid number of partitions specified for index %s: %d, needs to be greater than 0", i.simpleName, options.NumPartitions)
 	}
-	indexName := i.fullIndexName(options.UseXattrs, options.NumPartitions)
+	indexName := i.fullIndexName(options.NumPartitions)
 
 	// Create index
 	base.InfofCtx(ctx, base.KeyQuery, "Creating index %s if it doesn't already exist...", indexName)
-	indexExpression := replaceSyncTokensIndex(i.expression, options.UseXattrs)
-	filterExpression := replaceSyncTokensIndex(i.filterExpression, options.UseXattrs)
+	indexExpression := replaceSyncTokensIndex(i.expression)
+	filterExpression := replaceSyncTokensIndex(i.filterExpression)
 
 	n1qlOptions := &base.N1qlIndexOptions{
 		DeferBuild:      true,
 		NumReplica:      options.NumReplicas,
-		IndexTombstones: i.shouldIndexTombstones(options.UseXattrs),
+		IndexTombstones: i.shouldIndexTombstones(),
 	}
 	if i.partitionable && options.NumPartitions > 1 {
 		n1qlOptions.NumPartitions = &options.NumPartitions
@@ -371,7 +357,6 @@ type InitializeIndexOptions struct {
 	WaitForIndexesOnlineOption base.WaitForIndexesOnlineOption // how long to wait for indexes to become online
 	NumReplicas                uint                            // number of indexer nodes for this index
 	MetadataIndexes            CollectionIndexesType           // indicate which indexes to create
-	UseXattrs                  bool                            // if true, create indexes on xattrs, otherwise, use inline sync data
 	NumPartitions              uint32                          // number of partitions to use for the index
 	LegacySyncDocsIndex        bool                            // if true, create legacy sync docs index (for backwards compatibility)
 }
@@ -403,7 +388,7 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 			base.DebugfCtx(ctx, base.KeyAll, "Skipping index: %s ...", sgIndex.simpleName)
 			continue
 		}
-		fullIndexName := sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions)
+		fullIndexName := sgIndex.fullIndexName(options.NumPartitions)
 		requiredIndexes = append(requiredIndexes, sgIndexToBuild{fullIndexName: fullIndexName, sgIndex: sgIndex})
 	}
 
@@ -480,31 +465,21 @@ func isIndexerError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "[5000]")
 }
 
-// Replace sync tokens ($sync and $relativesync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
-func replaceSyncTokensIndex(statement string, useXattrs bool) string {
-	if useXattrs {
-		str := strings.ReplaceAll(statement, syncRelativeToken, syncXattr)
-		return strings.ReplaceAll(str, syncToken, syncXattr)
-	} else {
-		str := strings.ReplaceAll(statement, syncRelativeToken, syncNoXattr)
-		return strings.ReplaceAll(str, syncToken, syncNoXattr)
-	}
+// Replace sync tokens ($sync and $relativesync) in the provided createIndex statement with the appropriate token.
+func replaceSyncTokensIndex(statement string) string {
+	str := strings.ReplaceAll(statement, syncRelativeToken, syncXattr)
+	return strings.ReplaceAll(str, syncToken, syncXattr)
 }
 
-// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
-func replaceSyncTokensQuery(statement string, useXattrs bool) string {
-	if useXattrs {
-		str := strings.ReplaceAll(statement, syncRelativeToken, syncXattrQuery)
-		return strings.ReplaceAll(str, syncToken, syncXattrQuery)
-	} else {
-		str := strings.ReplaceAll(statement, syncRelativeToken, syncNoXattrQuery)
-		return strings.ReplaceAll(str, syncToken, syncNoXattrQuery)
-	}
+// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token.
+func replaceSyncTokensQuery(statement string) string {
+	str := strings.ReplaceAll(statement, syncRelativeToken, syncXattrQuery)
+	return strings.ReplaceAll(str, syncToken, syncXattrQuery)
 }
 
-// Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
-func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool, numPartitions uint32) string {
-	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs, numPartitions), -1)
+// Replace index tokens ($idx) in the provided createIndex statement with the appropriate token.
+func replaceIndexTokensQuery(statement string, idx SGIndex, numPartitions uint32) string {
+	return strings.Replace(statement, indexToken, idx.fullIndexName(numPartitions), -1)
 }
 
 // GetIndexName returns names of the indexes that would be created for specific options.
@@ -512,19 +487,16 @@ func GetIndexNames(options InitializeIndexOptions, indexDefs map[SGIndexType]SGI
 	indexNames := make([]string, 0)
 
 	for _, sgIndex := range indexDefs {
-		if sgIndex.isXattrOnly() && !options.UseXattrs {
-			continue
-		}
 		if sgIndex.shouldCreate(options) {
-			indexNames = append(indexNames, sgIndex.fullIndexName(options.UseXattrs, options.NumPartitions))
+			indexNames = append(indexNames, sgIndex.fullIndexName(options.NumPartitions))
 		}
 	}
 	return indexNames
 }
 
 // ShouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
-func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore, useXattrs bool) bool {
-	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection, useXattrs)
+func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore) bool {
+	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
 		return false
@@ -543,13 +515,13 @@ func shouldUseLegacySyncDocsIndex(onlineIndexes []SGIndexType) bool {
 }
 
 // GetOnlinePrincipalIndexes returns the principal indexes that exist and are online for a given collection. This code runs without N1QL retries and will return an error quickly in the case of a retryable N1QL failure. Does not return an error if no indexes are found.
-func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore, useXattrs bool) ([]SGIndexType, error) {
+func GetOnlinePrincipalIndexes(ctx context.Context, collection base.N1QLStore) ([]SGIndexType, error) {
 	possibleIndexes := make(map[string]SGIndexType)
 	for sgIndexType, sgIndex := range sgIndexes {
 		if !sgIndex.isPrincipalOnly() {
 			continue
 		}
-		possibleIndexes[sgIndex.fullIndexName(useXattrs, DefaultNumIndexPartitions)] = sgIndexType
+		possibleIndexes[sgIndex.fullIndexName(DefaultNumIndexPartitions)] = sgIndexType
 	}
 	meta, err := base.GetIndexesMeta(ctx, collection, slices.Collect(maps.Keys(possibleIndexes)))
 	if err != nil {

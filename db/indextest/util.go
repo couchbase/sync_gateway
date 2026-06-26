@@ -31,7 +31,6 @@ func getDatabaseContextOptions(useLegacySyncDocsIndex bool) db.DatabaseContextOp
 type testIndexCreationOptions struct {
 	numPartitions                uint32
 	useLegacySyncDocsIndex       bool
-	useXattrs                    bool
 	forceSingleDefaultCollection bool
 	numCollections               int // if specified forces the number of collections to be created
 }
@@ -46,7 +45,6 @@ func setupIndexes(t *testing.T, bucket base.Bucket, createOpts testIndexCreation
 	options := db.InitializeIndexOptions{
 		NumReplicas:         0,
 		LegacySyncDocsIndex: createOpts.useLegacySyncDocsIndex,
-		UseXattrs:           createOpts.useXattrs,
 		NumPartitions:       createOpts.numPartitions,
 	}
 	if hasOnlyDefaultDataStore {
@@ -113,7 +111,7 @@ func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
 	} else {
 		dbOptions.Scopes = db.GetScopesOptions(t, bucket, numCollections)
 	}
-	dbOptions.EnableXattr = opts.useXattrs
+	dbOptions.EnableXattr = base.TestUseXattrs()
 
 	database, ctx := db.CreateTestDatabase(t, bucket, dbOptions)
 

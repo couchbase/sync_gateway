@@ -973,13 +973,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !ok {
 			return nil, fmt.Errorf("metadata store of type %T does not support N1QL", primaryIndexStore)
 		}
-		contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, metadataStore, config.UseXattrs())
+		contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, metadataStore)
 		if !contextOptions.UseLegacySyncDocsIndex && fallbackIndexStore != nil {
 			// Primary returned "use new-style", but that may just mean primary is empty.
 			// Consult the fallback so an existing database whose _default._default still only
 			// carries the legacy syncDocs index doesn't get implicitly upgraded mid-migration.
 			if fallbackN1QL, ok := base.AsN1QLStore(fallbackIndexStore); ok {
-				contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, fallbackN1QL, config.UseXattrs())
+				contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, fallbackN1QL)
 			}
 		}
 		if sc.DatabaseInitManager == nil {
