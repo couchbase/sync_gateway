@@ -24,6 +24,7 @@ import (
 // reached by polling the REST API until that state
 // is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForAttachmentCompactionStatus(expectedState db.BackgroundProcessState) db.AttachmentManagerResponse {
+	rt.TB().Helper()
 	return waitForBackgroundManagerState[db.AttachmentManagerResponse](rt, "/{{.db}}/_compact?type=attachment", expectedState)
 }
 
@@ -80,6 +81,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 // WaitForAttachmentMigrationStatus waits for the expectedState to be reached for the attachment migration background
 // job by polling the REST API until that state is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForAttachmentMigrationStatus(state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
+	rt.TB().Helper()
 	response := waitForBackgroundManagerState[db.AttachmentMigrationManagerResponse](rt, "/{{.db}}/_attachment_migration", state)
 	// Wait for heartbeat doc removal if the state change will result in its removal. Allows calling start
 	// immediately after db.BackgroundProcessStateStopped without error.

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbaselabs/rosmar"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
+	"github.com/couchbaselabs/rosmar"
 )
 
 const (

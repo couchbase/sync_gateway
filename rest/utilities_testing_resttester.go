@@ -440,6 +440,7 @@ type backgroundManagerResponse interface {
 // longer for CBS or CI environments. The CBS/CI timeout is larger than db.RequireBackgroundManagerState
 // (which uses direct in-process access) to cover HTTP round-trip overhead.
 func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, url string, state db.BackgroundProcessState) T {
+	rt.TB().Helper()
 	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(rt.TB())
 	pollInterval := 10 * time.Millisecond
 	if !sgtest.UnitTestUrlIsWalrus() || sgtest.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
@@ -455,11 +456,12 @@ func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, 
 		require.Equal(c, http.StatusOK, resp.Code)
 		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response))
 		assert.Equal(c, state, response.GetState())
-	}, timeout, pollInterval)
+	}, timeout, pollInterval, "waiting for %s to reach state %q", url, state)
 	return response
 }
 
 func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+	rt.TB().Helper()
 	resyncStatus := waitForBackgroundManagerState[db.ResyncManagerResponseDCP](rt, "/"+dbName+"/_resync", status)
 	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
 		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
@@ -470,18 +472,21 @@ func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, d
 // WaitForTombstoneCompactionStatus waits for the expectedState of the tombstone compaction background job to be reached by polling
 // the REST API until that state is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForTombstoneCompactionStatus(state db.BackgroundProcessState) db.TombstoneManagerResponse {
+	rt.TB().Helper()
 	return waitForBackgroundManagerState[db.TombstoneManagerResponse](rt, "/{{.db}}/_compact", state)
 }
 
 // WaitForMetadataMigrationStatus waits for the expectedState of the metadata migration background job to be reached by polling
 // the REST API until that state is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcessState) db.MigrationManagerResponse {
+	rt.TB().Helper()
 	return rt.WaitForMetadataMigrationStatusForDB(status, "{{.db}}")
 }
 
 // WaitForMetadataMigrationStatusForDB waits for the expectedState of the metadata migration background job to be reached by polling
 // the REST API until that state is reached on the named db. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForMetadataMigrationStatusForDB(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
+	rt.TB().Helper()
 	return waitForBackgroundManagerState[db.MigrationManagerResponse](rt, "/"+dbName+"/_metadata_migration", status)
 }
 
