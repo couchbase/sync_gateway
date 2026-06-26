@@ -1318,7 +1318,8 @@ Database:
       description: The key path (private key) for X.509 bucket auth
       type: string
     kv_tls_port:
-      description: The Memcached TLS port.
+      description: The Memcached TLS port. This value is ignored, a port has to be specified in the connection string.
+      deprecated: true
       type: integer
       default: 11207
     local_doc_expiry_secs:

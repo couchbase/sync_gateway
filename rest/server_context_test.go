@@ -221,7 +221,6 @@ func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
 		CertPath:   tb.BucketSpec.Certpath,
 		KeyPath:    tb.BucketSpec.Keypath,
 		CACertPath: tb.BucketSpec.CACertPath,
-		KvTLSPort:  tb.BucketSpec.KvTLSPort,
 	}
 }
 

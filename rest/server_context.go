@@ -686,11 +686,6 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	spec.UseXattrs = config.UseXattrs()
-	if !spec.UseXattrs {
-		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
-	}
-
 	if config.BucketOpTimeoutMs != nil {
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
 		spec.BucketOpTimeout = &operationTimeout
