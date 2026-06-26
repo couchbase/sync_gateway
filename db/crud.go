@@ -3274,7 +3274,7 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	// This is a post-commit corrective write; don't let request cancellation prevent the re-stamp.
 	ctx = context.WithoutCancel(ctx)
 
-	gap := base.CASToPhysicalNanos(doc.HLV.Version) - base.CASToPhysicalNanos(casOut)
+	gap := sgbucket.CASToPhysicalNanos(doc.HLV.Version) - sgbucket.CASToPhysicalNanos(casOut)
 	if gap > uint64(maxVersionCASCorrectionWait.Nanoseconds()) {
 		base.WarnfCtx(ctx, "Generated version %d for doc %q is ahead of its CAS %d by %s (> %s); leaving uncorrected - this indicates clock skew between Sync Gateway and the server and may cause the document to be skipped by XDCR until a later mutation",
 			doc.HLV.Version, base.UD(doc.ID), casOut, time.Duration(gap), maxVersionCASCorrectionWait)

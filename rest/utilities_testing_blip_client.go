@@ -27,11 +27,11 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/couchbaselabs/rosmar"
 	"github.com/google/uuid"
 )
 
@@ -104,7 +104,7 @@ type BlipTesterClient struct {
 	collectionClients        []*BlipTesterCollectionClient
 	nonCollectionAwareClient *BlipTesterCollectionClient
 
-	hlc *rosmar.HybridLogicalClock
+	hlc *sgbucket.HybridLogicalClock
 }
 
 // getProposeChangesForSeq returns a proposeChangeBatch entry for a document, if there is a document existing at this sequence.
@@ -397,7 +397,7 @@ type BlipTesterCollectionClient struct {
 	attachmentsLock sync.RWMutex      // lock for _attachments map
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
-	hlc *rosmar.HybridLogicalClock
+	hlc *sgbucket.HybridLogicalClock
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -1034,7 +1034,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRTAndContext(c
 		BlipTesterClientOpts:  *opts,
 		rt:                    rt,
 		id:                    id.ID(),
-		hlc:                   rosmar.NewHybridLogicalClock(0),
+		hlc:                   sgbucket.NewHybridLogicalClock(),
 		supportedSubprotocols: btcRunner.supportedSubprotocols,
 	}
 	btcRunner.clients[client.id] = client
@@ -1656,7 +1656,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 			require.NotNil(btcc.TB(), opts.specificNewVersion, "specificNewVersion must be set when using blipRevTreeEncodedCVRevType")
 			newVersion = opts.specificNewVersion.CV
 		} else {
-			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
+			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: btcc.hlc.Now(0)}
 		}
 		require.NoError(btcc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
