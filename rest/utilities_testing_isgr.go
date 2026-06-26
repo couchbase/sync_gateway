@@ -203,13 +203,12 @@ func (runner *SGRTestRunner) SetupSGRPeersWithOptions(t *testing.T, opts TestISG
 func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	ctx := base.TestCtx(t)
 	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
-	t.Cleanup(func() { passiveTestBucket.Close(ctx) })
-
 	var passiveRTConfig *RestTesterConfig
 	if opts.PassiveRestTesterConfig != nil {
 		passiveRTConfig = opts.PassiveRestTesterConfig
 	} else {
+		passiveTestBucket := base.GetTestBucket(t)
+		t.Cleanup(func() { passiveTestBucket.Close(ctx) })
 		passiveRTConfig = &RestTesterConfig{
 			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -249,9 +248,8 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Name: "activedb",
 			}},
-			CustomTestBucket:   activeTestBucket.NoCloseClone(),
-			SgReplicateEnabled: true,
-			SyncFn:             channels.DocChannelsSyncFunction,
+			CustomTestBucket: activeTestBucket.NoCloseClone(),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		}
 	}
 	activeRT := NewRestTester(t, activeRTConfig)

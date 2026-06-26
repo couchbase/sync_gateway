@@ -62,7 +62,6 @@ type RestTesterConfig struct {
 	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                   string                      // adminInterface overrides the default admin interface.
-	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
 	AutoImport                       *bool
 	HideProductInfo                  bool
 	AdminInterfaceAuthentication     bool
@@ -353,38 +352,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// tests must create their own databases in persistent mode
 	if !rt.PersistentConfig {
-		useXattrs := base.TestUseXattrs()
-
 		if rt.DatabaseConfig == nil {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
-		if rt.DatabaseConfig.UseViews == nil {
-			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
-		}
-		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || base.UnitTestUrlIsWalrus()) {
-			// If scopes is already set, assume the caller has a plan
-			if rt.DatabaseConfig.Scopes == nil {
-				// Configure non default collections by default
-				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), testBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
-			}
-		} else {
-			// override SyncFn and ImportFilter if set
-			if rt.SyncFn != "" {
-				rt.DatabaseConfig.Sync = &rt.SyncFn
-			}
-			if rt.ImportFilter != "" {
-				rt.DatabaseConfig.ImportFilter = &rt.ImportFilter
-			}
-		}
+		rt.DatabaseConfig.DbConfig = rt.populateDbConfig(rt.DatabaseConfig.DbConfig)
 
-		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		if rt.DatabaseConfig.Index == nil {
-			rt.DatabaseConfig.Index = &IndexConfig{}
-		}
-		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
-
-		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
 		rt.DatabaseConfig.Password = password
 		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
@@ -393,35 +366,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Name == "" {
 			rt.DatabaseConfig.Name = "db"
 		}
-		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.AllowConflicts {
-			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
-		}
-		if rt.DatabaseConfig.StoreLegacyRevTreeData == nil {
-			rt.DatabaseConfig.StoreLegacyRevTreeData = base.Ptr(db.DefaultStoreLegacyRevTreeData)
-		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
-
-		if base.TestDisableRevCache() {
-			if rt.DatabaseConfig.CacheConfig == nil {
-				rt.DatabaseConfig.CacheConfig = &CacheConfig{}
-			}
-			if rt.DatabaseConfig.CacheConfig.RevCacheConfig == nil {
-				rt.DatabaseConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{}
-			}
-			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr[uint32](0)
-		}
-
-		// Check for override of AutoImport in the rt config
-		if rt.AutoImport != nil {
-			rt.DatabaseConfig.AutoImport = *rt.AutoImport
-		}
-		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
-		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
-			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
-		}
 		if rt.InitSyncSeq > 0 {
 			metadataKeys := base.DefaultMetadataKeys
 			syncSeqKey := metadataKeys.SyncSeqKey()
@@ -2570,40 +2515,8 @@ func (rt *RestTester) PostChangesAdmin(uri, body string) ChangesResults {
 
 // NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.
 func (rt *RestTester) NewDbConfig() DbConfig {
-	// make sure bucket has been initialized
-	config := DbConfig{
-		BucketConfig: BucketConfig{
-			Bucket: base.Ptr(rt.Bucket().GetName()),
-		},
-		EnableXattrs: base.Ptr(base.TestUseXattrs()),
-	}
-	if base.TestsDisableGSI() {
-		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
-		if !base.UnitTestUrlIsWalrus() {
-			config.UseViews = base.Ptr(true)
-		}
-	} else {
-		config.Index = &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
-		}
-	}
-
-	if base.TestDisableRevCache() {
-		config.CacheConfig = &CacheConfig{
-			RevCacheConfig: &RevCacheConfig{
-				MaxItemCount: base.Ptr[uint32](0),
-			},
-		}
-	}
-
-	// Setup scopes.
-	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
-		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
-	} else {
-		config.Sync = stringPtrOrNil(rt.SyncFn)
-		config.ImportFilter = stringPtrOrNil(rt.ImportFilter)
-	}
-
+	rt.Bucket() // ensure bucket is initialized before populateDbConfig accesses rt.TestBucket
+	config := rt.populateDbConfig(DbConfig{})
 	if rt.GuestEnabled {
 		config.Guest = &auth.PrincipalConfig{
 			Name:     stringPtrOrNil(base.GuestUsername),
@@ -2611,7 +2524,59 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		}
 		setChannelsAllCollections(config, config.Guest, "*")
 	}
+	return config
+}
 
+// populateDbConfig fills in test-environment defaults on a DbConfig. Fields already set on the input are preserved
+// where the comments say "if nil". It always overwrites Bucket, EnableXattrs, and SGReplicateEnabled.
+func (rt *RestTester) populateDbConfig(config DbConfig) DbConfig {
+	config.Bucket = base.Ptr(rt.TestBucket.BucketSpec.BucketName)
+	config.EnableXattrs = base.Ptr(base.TestUseXattrs())
+	if config.UseViews == nil && !base.UnitTestUrlIsWalrus() {
+		config.UseViews = base.Ptr(base.TestsDisableGSI())
+	}
+	if config.Index == nil && config.useGSI() {
+		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+		config.Index = &IndexConfig{
+			NumReplicas: base.Ptr(uint(0)),
+		}
+	}
+	if base.TestDisableRevCache() {
+		if config.CacheConfig == nil {
+			config.CacheConfig = &CacheConfig{}
+		}
+		if config.CacheConfig.RevCacheConfig == nil {
+			config.CacheConfig.RevCacheConfig = &RevCacheConfig{}
+		}
+		config.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr[uint32](0)
+	}
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
+		// If scopes is already set, assume the caller has a plan
+		if config.Scopes == nil {
+			config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
+		}
+	} else {
+		if rt.SyncFn != "" {
+			config.Sync = &rt.SyncFn
+		}
+		if rt.ImportFilter != "" {
+			config.ImportFilter = &rt.ImportFilter
+		}
+	}
+	if rt.AllowConflicts {
+		config.AllowConflicts = base.Ptr(true)
+	}
+	if config.StoreLegacyRevTreeData == nil {
+		config.StoreLegacyRevTreeData = base.Ptr(db.DefaultStoreLegacyRevTreeData)
+	}
+	if rt.AutoImport != nil {
+		config.AutoImport = *rt.AutoImport
+	}
+	autoImport, _ := config.AutoImportEnabled(base.TestCtx(rt.TB()))
+	if config.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
+		// Speed up test setup - most tests don't need more than one partition given we only have one node
+		config.ImportPartitions = base.Ptr(uint16(1))
+	}
 	return config
 }
 

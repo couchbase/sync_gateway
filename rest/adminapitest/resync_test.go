@@ -333,12 +333,12 @@ func TestResyncDoesNotWriteDocBody(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
+		AutoImport:       base.Ptr(false),
 	})
 	defer rt.Close()
 	docID := t.Name()
 
 	cfg := rt.NewDbConfig()
-	cfg.AutoImport = base.Ptr(false)
 	rest.RequireStatus(t, rt.CreateDatabase("db", cfg), http.StatusCreated)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()

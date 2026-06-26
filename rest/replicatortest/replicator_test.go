@@ -244,7 +244,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 func TestReplicationStatusStopAdhoc(t *testing.T) {
 
-	rt := rest.NewRestTester(t, nil)
+	rt := newRestTesterWithoutSGReplicate(t)
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -756,7 +756,17 @@ func TestReplicationStatusActions(t *testing.T) {
 func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, _ := sgrRunner.SetupSGRPeers(t)
+		// Use a passive peer with SGReplicateEnabled=false so no node is registered in the cluster
+		// to accept the replication, causing it to remain unassigned.
+		activeRT, remoteRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			PassiveRestTesterConfig: &rest.RestTesterConfig{
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					Name:               "passivedb",
+					SGReplicateEnabled: base.Ptr(false),
+				}},
+				SyncFn: channels.DocChannelsSyncFunction,
+			},
+		})
 
 		// Build connection string for active RT
 		srv := httptest.NewServer(activeRT.TestPublicHandler())
@@ -1395,7 +1405,11 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			SGReplicateEnabled: base.Ptr(false),
+		}},
+	})
 	defer rt.Close()
 
 	// Create a replication
@@ -1483,7 +1497,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	const username = "alice"
@@ -1846,9 +1860,11 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		assert.Equal(c, http.StatusOK, resp.Code)
 	}, 5*time.Second, 100*time.Millisecond)
 
-	// Force DB reload by modifying config
-	resp := rt.SendAdminRequest(http.MethodPost, "/"+db1+"/_config", `{"import_docs": false}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
+	// Force DB reload by modifying config. Disable import and clear import_partitions (import_partitions
+	// is only valid when import is enabled, so they must be updated together).
+	db1Config.AutoImport = false
+	db1Config.ImportPartitions = nil
+	rest.RequireStatus(t, rt.ReplaceDbConfig(db1, db1Config), http.StatusCreated)
 
 	// If CE, recreate the replication
 	if !base.IsEnterpriseEdition() {
@@ -7385,7 +7401,7 @@ func TestGroupIDReplications(t *testing.T) {
 
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	replConf := `
@@ -8062,8 +8078,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 
 	// Active peer
 	activeRTConfig := &rest.RestTesterConfig{
-		SyncFn:             rtConfig.SyncFn,
-		SgReplicateEnabled: true,
+		SyncFn: rtConfig.SyncFn,
 	}
 	activeRT := rest.NewRestTester(t, activeRTConfig)
 	defer activeRT.Close()
@@ -8194,8 +8209,7 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 	// StartReplications, while still exercising the initialisation path that
 	// validates run_as.
 	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		SyncFn:             syncFn,
-		SgReplicateEnabled: true,
+		SyncFn: syncFn,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Replications: map[string]*db.ReplicationConfig{
 				replName: {
@@ -8228,4 +8242,13 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 
 	resp := passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
 	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed with invalid run_as user")
+}
+
+func newRestTesterWithoutSGReplicate(t testing.TB) *rest.RestTester {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.SGReplicateEnabled = base.Ptr(false)
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	return rt
 }

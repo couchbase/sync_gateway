@@ -484,7 +484,7 @@ func TestReplicatorMissingCollections(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			const username = "alice"
-			passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+			passiveRT := rest.NewRestTester(t, nil)
 			defer passiveRT.Close()
 			passiveRT.CreateUser(username, []string{"sg_test_0.sg_test_0", "sg_test_0.sg_test_1"})
 
@@ -496,7 +496,7 @@ func TestReplicatorMissingCollections(t *testing.T) {
 			passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
 			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-			activeRT := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{SgReplicateEnabled: true}, numCollections)
+			activeRT := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 			defer activeRT.Close()
 
 			const numDocs = 1

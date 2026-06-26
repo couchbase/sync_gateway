@@ -3460,11 +3460,11 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			PersistentConfig: true,
+			AutoImport:       base.Ptr(false),
 		})
 		defer rt.Close()
 
 		dbConfig := rt.NewDbConfig()
-		dbConfig.AutoImport = base.Ptr(false)
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 		docID := "doc1"
 		rt.CreateTestDoc(docID)
@@ -3766,13 +3766,13 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 			&RestTesterConfig{
 				PersistentConfig: true,
 				SyncFn:           channels.DocChannelsSyncFunction,
+				AutoImport:       base.Ptr(false),
 			},
 		)
 		defer rt.Close()
 
 		dbConfig := rt.NewDbConfig()
 		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
-		dbConfig.AutoImport = false
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 		const user = "user"

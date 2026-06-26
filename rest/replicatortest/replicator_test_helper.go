@@ -36,9 +36,8 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
 	activeRT = rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			CustomTestBucket:   testBucket.NoCloseClone(),
-			SgReplicateEnabled: true,
-			SyncFn:             channels.DocChannelsSyncFunction,
+			CustomTestBucket: testBucket.NoCloseClone(),
+			SyncFn:           channels.DocChannelsSyncFunction,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
 					Name: dbName,

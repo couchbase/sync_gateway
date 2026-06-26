@@ -2939,6 +2939,7 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			rt := NewRestTester(t, &RestTesterConfig{
 				PersistentConfig: true,
+				AutoImport:       base.Ptr(false),
 			})
 			defer rt.Close()
 
@@ -2970,6 +2971,7 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
+		AutoImport:       base.Ptr(false),
 	})
 	defer rt.Close()
 	const (

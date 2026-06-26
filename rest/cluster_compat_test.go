@@ -592,8 +592,12 @@ func TestClusterCompatAppliedDBVersionTracked(t *testing.T) {
 // database config via POST /{db}/_config (handlePutDbConfig) records the new config version
 // in clusterCompatManager, and that it differs from the original create version.
 func TestClusterCompatAppliedDBVersionUpdatedByHandlePutDbConfig(t *testing.T) {
-	rt := NewRestTesterPersistentConfig(t)
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		AutoImport:       base.Ptr(false),
+	})
 	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 
 	sc := rt.ServerContext()
 	ccm := sc.ClusterCompat
@@ -954,6 +958,7 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		GroupID:          &groupID,
+		AutoImport:       base.Ptr(false),
 	}
 
 	rtA := NewRestTester(t, rtConfig)
@@ -974,7 +979,8 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 	versionV := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, versionV)
 
-	dbConfig.AutoImport = base.Ptr(false)
+	// modify the config with an innucous change
+	dbConfig.OldRevExpirySeconds = base.Ptr(uint32(3600))
 	resp = rtA.UpsertDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)

@@ -149,6 +149,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
+		// Import is disabled to prevent docs from being imported by SG during the test, which would add overhead to the migration job.
+		AutoImport: base.Ptr(false),
 	}
 
 	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
@@ -188,11 +190,8 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	collection2 := dataStoreNames[1].CollectionName()
 	delete(scopesConfigC1Only[scope].Collections, collection2)
 
-	// Create a db1 with one collection initially
+	// Create a db1 with one collection initially.
 	dbConfig := rt.NewDbConfig()
-	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
-	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
-	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigC1Only
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -211,7 +210,6 @@ func TestMigrationNewCollectionToDbNoRestart(t *testing.T) {
 	// existent of sync info meta version on collection 1
 	scopesConfigBothCollection := rest.GetCollectionsConfig(t, tb, 2)
 	dbConfig = rt.NewDbConfig()
-	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp = rt.UpsertDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -239,9 +237,12 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 	tb := base.GetTestBucket(t)
+	// Import is disabled to prevent docs from being imported by SG during the test, which would add overhead
+	// to the migration job (more doc writes going to bucket).
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
+		AutoImport:       base.Ptr(false),
 	}
 
 	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
@@ -276,9 +277,6 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 
 	scopesConfigBothCollection := rest.GetCollectionsConfig(t, tb, 2)
 	dbConfig := rt.NewDbConfig()
-	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
-	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
-	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfigBothCollection
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -318,6 +316,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
+		AutoImport:       base.Ptr(false),
 	}
 
 	rt := rest.NewRestTester(t, rtConfig)
@@ -348,9 +347,6 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 
 	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
 	dbConfig := rt.NewDbConfig()
-	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
-	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
-	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfig
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
