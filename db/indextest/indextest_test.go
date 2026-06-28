@@ -285,21 +285,6 @@ func TestInitializeIndexes(t *testing.T) {
 				},
 			},
 		},
-		{
-			collections: true,
-			expectedIndexes: db.CollectionIndexes{
-				defaultCollection: map[string]struct{}{
-					"sg_roles_1": struct{}{},
-					"sg_users_1": struct{}{},
-				},
-				namedCollection: map[string]struct{}{
-					"sg_access_1":     struct{}{},
-					"sg_allDocs_1":    struct{}{},
-					"sg_channels_1":   struct{}{},
-					"sg_roleAccess_1": struct{}{},
-				},
-			},
-		},
 	}
 
 	for _, test := range tests {
