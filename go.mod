@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	dario.cat/mergo v1.0.0
 	github.com/KimMachineGun/automemlimit v0.7.5
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/couchbase/cbgt v1.4.15-0.20260520122852-6e34ff79a0e6
@@ -35,6 +36,7 @@ require (
 	github.com/samuel/go-metrics v0.0.0-20150819231912-7ccf3e0e1fb1
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.53.0
 	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
 	golang.org/x/net v0.56.0
@@ -88,7 +90,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.14.0 // indirect

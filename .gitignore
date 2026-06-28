@@ -15,6 +15,11 @@ coverage*.out
 coverage*.xml
 verbose*.out*
 verbose*.xml
+integration.xml
+integration_*.xml
+rosmar-ee.xml
+rosmar-ce.xml
+cbcollect.zip
 sync_gateway
 *.pb.gz
 __pycache__
@@ -32,3 +37,5 @@ planPIndexes/
 
 couchbase-lite-tests
 integration-test/e2e/.gitconfig.e2e
+
+/integration-tester

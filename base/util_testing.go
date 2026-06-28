@@ -493,7 +493,7 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 			totalInuseMB := heapInuseMB + stackInuseMB
 			// log.Printf("TEST: Memory usage recorded heap: %.2f MB stack: %.2f MB", heapInuseMB, stackInuseMB)
 			if totalInuseMB > inuseHighWaterMarkMB {
-				log.Printf("TEST: Memory high water mark increased to %.2f MB (heap: %.2f MB stack: %.2f MB)", totalInuseMB, heapInuseMB, stackInuseMB)
+				//log.Printf("TEST: Memory high water mark increased to %.2f MB (heap: %.2f MB stack: %.2f MB)", totalInuseMB, heapInuseMB, stackInuseMB)
 				inuseHighWaterMarkMB = totalInuseMB
 			}
 		}
