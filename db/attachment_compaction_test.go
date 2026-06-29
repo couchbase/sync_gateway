@@ -302,7 +302,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 
 	metadataKeys := base.NewMetadataKeys(testDb.Options.MetadataID)
 	testDb.AttachmentCompactionManager = NewAttachmentCompactionManager(dataStore, metadataKeys)
-	manager := AttachmentCompactionManager{CompactID: t.Name(), Phase: string(CleanupPhase), VBUUIDs: vbUUID}
+	manager := AttachmentCompactionManager{_compactID: t.Name(), _phase: string(CleanupPhase), _vbuuids: vbUUID}
 	testDb.AttachmentCompactionManager.Process = &manager
 
 	terminator := base.NewSafeTerminator()
