@@ -271,6 +271,14 @@ def test_task_logging(verbosity, task_platform, tmp_path):
             "/abs/path/expvars.json",
             False,
         ),
+        (
+            "sg_stack_trace.log",
+            False,
+        ),
+        (
+            "/abs/path/sg_stack_trace-2024-01-01.log.gz",
+            False,
+        ),
     ],
 )
 @pytest.mark.parametrize("use_pathlib", [True, False])

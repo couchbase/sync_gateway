@@ -819,7 +819,7 @@ def redactable_file(filename: Union[pathlib.Path, str]) -> bool:
     Return True if the file should be redacted, otherwise False.
     """
     filename = pathlib.Path(filename)
-    if filename.name.startswith(("pprof", "expvars.json")):
+    if filename.name.startswith(("pprof", "expvars.json", "sg_stack_trace")):
         return False
     return filename.stem != "sync_gateway"
 
