@@ -129,13 +129,18 @@ class Task(object):
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
-        """Run the task"""
+        """Run the task.
+
+        Returns (exit_code, error_message). exit_code is 0 on success.
+        error_message is empty on success; on failure it describes the problem
+        and is also written to fp so it appears in the collected log.
+        """
         import subprocess
 
         use_shell = not isinstance(self.command, list)
         if "literal" in self.__dict__:
             fp.write(self.literal.encode("utf-8"))
-            return 0
+            return 0, ""
 
         env = None
         if "addenv" in self.__dict__:
@@ -159,7 +164,7 @@ class Task(object):
             # automatically handle things like "failed to fork due
             # to some system limit".
             fp.write(f"Failed to execute {self.command}: {e}".encode("utf-8"))
-            return 127
+            return 127, ""
         p.stdin.close()
 
         timer = None
@@ -196,7 +201,7 @@ class Task(object):
                         )
                     )
 
-        return p.wait()
+        return p.wait(), ""
 
     def will_run(self):
         """Determine if this task will run on this platform."""
@@ -225,19 +230,28 @@ class PythonTask(object):
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
-        """Run the task"""
+        """Run the task.
+
+        Returns (exit_code, error_message). exit_code is 0 on success.
+        error_message is empty on success; on failure it describes the problem
+        and is also printed to stdout.
+        """
         print("log_file: {0}. ".format(self.log_file))
         try:
             result = self.callable()
-            try:
-                fp.write(result.encode())
-            except (UnicodeEncodeError, AttributeError):
+            if not result:
+                msg = f"task {self.description} had no output"
+                print(msg)
+                return 1, msg
+            if isinstance(result, bytes):
                 fp.write(result)
-            return 0
+            else:
+                fp.write(result.encode())
+            return 0, ""
         except Exception as e:
             if self.log_exception:
                 print("Exception executing python task: {0}".format(e))
-            return 1
+            return 1, ""
 
     def will_run(self):
         """Determine if this task will run on this platform."""
@@ -313,11 +327,14 @@ class TaskRunner(object):
         message = f"{separator}\n{title}\n{subtitle}\n{separator}\n"
         fp.write(message.encode())
 
-    def log_result(self, result):
-        if result == 0:
+    def log_result(self, result: tuple[int, str]):
+        exit_code, message = result
+        if exit_code == 0:
             log("OK")
+        elif message:
+            log(f"Exit code {exit_code}: {message}")
         else:
-            log("Exit code %d" % result)
+            log(f"Exit code {exit_code}")
 
     def run(self, task):
         """Run a task with a file descriptor corresponding to its log file"""
@@ -393,6 +410,8 @@ class TaskRunner(object):
         zf = ZipFile(filename, mode="w", compression=ZIP_DEFLATED)
         try:
             for name in files:
+                if os.path.getsize(name) == 0:
+                    continue
                 zf.write(name, f"{prefix}/{os.path.basename(name)}")
         finally:
             zf.close()
