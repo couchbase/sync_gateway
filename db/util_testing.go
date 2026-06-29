@@ -928,9 +928,8 @@ func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *Backg
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
-// GetState returns the current process state. Defined in test-utility code so it is available for
-// the backgroundManagerResponse interface constraint in rest/utilities_testing_resttester.go without
-// adding the method to the production BackgroundManagerStatus type.
+// GetState returns the current process state. This method lets response types embedding
+// BackgroundManagerStatus satisfy the backgroundManagerResponse constraint used by REST test helpers.
 func (s BackgroundManagerStatus) GetState() BackgroundProcessState {
 	return s.State
 }

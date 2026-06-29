@@ -437,8 +437,7 @@ type backgroundManagerResponse interface {
 // waitForBackgroundManagerState polls url via GET until the background manager response reaches the expected state.
 // T must be a struct that embeds db.BackgroundManagerStatus, which carries the JSON "status" field.
 // Timeouts are adaptive via sgtest.GetBackgroundManagerStatusTransitionTimeout: shorter for Walrus/unit tests,
-// longer for CBS or CI environments. The CBS/CI timeout is larger than db.RequireBackgroundManagerState
-// (which uses direct in-process access) to cover HTTP round-trip overhead.
+// longer for CBS, CI, or race-detector builds.
 func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, url string, state db.BackgroundProcessState) T {
 	rt.TB().Helper()
 	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(rt.TB())

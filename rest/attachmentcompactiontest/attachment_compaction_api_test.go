@@ -165,7 +165,7 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	// Attempt to start again from rt2 --> Should resume based on aborted state (same compactionID)
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
+	status = rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.Equal(t, compactID, status.CompactID)
 
 	// Wait for compaction to complete

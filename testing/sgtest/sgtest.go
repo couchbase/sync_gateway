@@ -52,9 +52,7 @@ func UnitTestUrlIsWalrus() bool {
 }
 
 // GetBackgroundManagerStatusTransitionTimeout returns the appropriate wait timeout for background
-// manager state transitions. CBS and CI environments get a longer budget to account for slower
-// execution; the REST-layer timeout is intentionally larger than the direct-access variant
-// (db.RequireBackgroundManagerState uses 30 s for CBS) to cover HTTP round-trip overhead.
+// manager state transitions. CBS, CI, and race-detector builds get a longer budget to account for slower execution.
 func GetBackgroundManagerStatusTransitionTimeout(t testing.TB) time.Duration {
 	if !UnitTestUrlIsWalrus() || IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
 		return 60 * time.Second
