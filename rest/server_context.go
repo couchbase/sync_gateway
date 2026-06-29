@@ -802,7 +802,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Database-level metadata (sequence allocator, syncInfo, _sync:user:*, _sync:role:*, etc.)
 	// is targeted at:
 	//   - _default._default when use_system_metadata_collection is disabled at both the cluster
-	//     and per-DB level (legacy behaviour; simplest RBAC, _default cannot be dropped by customers)
+	//     and per-DB level (legacy behaviour; simplest RBAC, _default cannot be dropped by customers for this case)
 	//   - _system._mobile (with read-fallback to _default._default) when enabled at either level,
 	//     via base.MetadataStore. For a brand-new database with no legacy metadata in
 	//     _default._default the wrapper is immediately marked MigrationComplete so reads go
@@ -812,7 +812,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// and whether index initialization should build metadata indexes on _default. Defaults to true so
 	// legacy (non-opted-in) DBs — where _default is the metadata store and always exists — and the
 	// "couldn't determine existence" case both preserve existing behavior.
-	defaultCollectionPresent, defaultErr := defaultCollectionExists(ctx, bucket)
+	defaultCollectionPresent := true
+	var defaultErr error
+	if present, err := defaultCollectionExists(ctx, bucket); err != nil {
+		defaultErr = err
+	} else {
+		defaultCollectionPresent = present
+	}
 	if resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		primaryMetadataStore, err := bucket.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
 		if err != nil {
@@ -854,7 +860,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !defaultCollectionPresent {
 			// If the _default._default collection has been dropped by a customer, we can't use it for metadata.
 			// This is a misconfiguration, fail the database load.
-			return nil, fmt.Errorf("use_system_metadata_collection disabled but _default._default does not exist on bucket %s — cannot use legacy collection for metadata for db %s", base.MD(spec.BucketName), base.UD(dbName))
+			return nil, fmt.Errorf("use_system_metadata_collection disabled but _default._default does not exist on bucket %s — cannot use legacy collection for metadata for db %s", base.MD(spec.BucketName), base.MD(dbName))
 		}
 		contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
 	}
