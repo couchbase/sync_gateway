@@ -812,7 +812,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// and whether index initialization should build metadata indexes on _default. Defaults to true so
 	// legacy (non-opted-in) DBs — where _default is the metadata store and always exists — and the
 	// "couldn't determine existence" case both preserve existing behavior.
-	defaultCollectionPresent := true
+	defaultCollectionPresent, defaultErr := defaultCollectionExists(ctx, bucket)
 	if resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		primaryMetadataStore, err := bucket.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
 		if err != nil {
@@ -827,12 +827,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// in which case we can mark the per-DB MetadataStore wrapper as MigrationComplete and skip
 		// dual-read mode. If it exists, probe for legacy _sync:seq to determine whether we need to keep
 		// dual-read mode active.
-		defaultExists, defaultErr := defaultCollectionExists(ctx, bucket)
 		switch {
 		case defaultErr != nil:
 			base.WarnfCtx(ctx, "db:%s unable to determine whether _default._default exists while resolving metadata fallback: %v — keeping dual-read mode", base.MD(dbName), defaultErr)
-		case !defaultExists:
-			defaultCollectionPresent = false
+		case !defaultCollectionPresent:
 			metaStore.SetMigrationComplete()
 			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — marking per-DB MetadataStore wrapper migration-complete (no legacy fallback collection to read from)", base.MD(dbName))
 		case !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID):
@@ -853,6 +851,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		contextOptions.MetadataStore = metaStore
 	} else {
+		if !defaultCollectionPresent {
+			// If the _default._default collection has been dropped by a customer, we can't use it for metadata.
+			// This is a misconfiguration, so log an error and fail the database load.
+			return nil, fmt.Errorf("use_system_metadata_collection disabled but _default._default does not exist on bucket %s — cannot use legacy collection for metadata for db %s", base.MD(spec.BucketName), base.UD(dbName))
+		}
 		contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
 	}
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
