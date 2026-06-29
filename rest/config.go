@@ -103,7 +103,7 @@ type BucketConfig struct {
 	CertPath              string  `json:"certpath,omitempty"`                 // Cert path (public key) for X.509 bucket auth
 	KeyPath               string  `json:"keypath,omitempty"`                  // Key path (private key) for X.509 bucket auth
 	CACertPath            string  `json:"cacertpath,omitempty"`               // Root CA cert path for X.509 bucket auth
-	KvTLSPort             int     `json:"kv_tls_port,omitempty"`              // Memcached TLS port, if not default (11207)
+	KvTLSPort             int     `json:"kv_tls_port,omitempty"`              // Deprecated: this has no effect and is present for compatibility with older database configs.
 	MaxConcurrentQueryOps *int    `json:"max_concurrent_query_ops,omitempty"` // Max concurrent  query ops
 }
 
