@@ -14,6 +14,7 @@ import (
 	"expvar"
 	"fmt"
 	"slices"
+	"sync"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -23,17 +24,19 @@ var _ Bucket = &LeakyBucket{}
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
 	bucket      Bucket
-	config      *LeakyBucketConfig
+	_config     *LeakyBucketConfig
+	configLock  sync.RWMutex
 	collections map[string]*LeakyDataStore
 }
 
 var _ sgbucket.BucketStore = &LeakyBucket{}
 var _ sgbucket.DynamicDataStoreBucket = &LeakyBucket{}
 
+// NewLeakyBucket creates a wrapper around a Bucket to support forced errors. The configuration will be shared by all DataStores that belong to this bucket.
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	return &LeakyBucket{
 		bucket:      bucket,
-		config:      &config,
+		_config:     &config,
 		collections: make(map[string]*LeakyDataStore),
 	}
 }
@@ -47,14 +50,9 @@ func (b *LeakyBucket) UUID(ctx context.Context) (string, error) {
 }
 
 func (b *LeakyBucket) Close(ctx context.Context) {
-	if !b.config.IgnoreClose {
+	if !b.getIgnoreClose() {
 		b.bucket.Close(ctx)
 	}
-}
-
-// For walrus handling, ignore close needs to be set after the bucket is initialized
-func (b *LeakyBucket) SetIgnoreClose(value bool) {
-	b.config.IgnoreClose = value
 }
 
 func (b *LeakyBucket) CloseAndDelete(ctx context.Context) error {
@@ -73,7 +71,7 @@ func (b *LeakyBucket) GetMaxVbno(ctx context.Context) (uint16, error) {
 }
 
 func (b *LeakyBucket) DefaultDataStore(ctx context.Context) sgbucket.DataStore {
-	return NewLeakyDataStore(b, b.bucket.DefaultDataStore(ctx), b.config)
+	return NewLeakyDataStore(b, b.bucket.DefaultDataStore(ctx))
 }
 
 func (b *LeakyBucket) ListDataStores(ctx context.Context) ([]sgbucket.DataStoreName, error) {
@@ -85,7 +83,7 @@ func (b *LeakyBucket) NamedDataStore(ctx context.Context, name sgbucket.DataStor
 	if err != nil {
 		return nil, err
 	}
-	return NewLeakyDataStore(b, dataStore, b.config), nil
+	return NewLeakyDataStore(b, dataStore), nil
 }
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
@@ -172,9 +170,10 @@ type LeakyBucketConfig struct {
 }
 
 func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	if len(b.config.DCPFeedMissingDocs) > 0 {
+	missingDocs := b.getDCPFeedMissingDocs()
+	if len(missingDocs) > 0 {
 		wrappedCallback := func(event sgbucket.FeedEvent) bool {
-			if slices.Contains(b.config.DCPFeedMissingDocs, string(event.Key)) {
+			if slices.Contains(missingDocs, string(event.Key)) {
 				return false
 			}
 			return callback(event)
@@ -182,4 +181,225 @@ func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArgume
 		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
 	}
 	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
+}
+
+func (b *LeakyBucket) getIgnoreClose() bool {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.IgnoreClose
+}
+
+func (b *LeakyBucket) getDCPFeedMissingDocs() []string {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.DCPFeedMissingDocs
+}
+
+func (b *LeakyBucket) getRawCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.GetRawCallback
+}
+
+func (b *LeakyBucket) setRawCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.GetRawCallback = fn
+}
+
+func (b *LeakyBucket) getWithXattrCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.GetWithXattrCallback
+}
+
+func (b *LeakyBucket) setWithXattrCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.GetWithXattrCallback = fn
+}
+
+func (b *LeakyBucket) getTouchCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.TouchCallback
+}
+
+func (b *LeakyBucket) getAddCallback() func(string) (bool, error) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.AddCallback
+}
+
+func (b *LeakyBucket) getForceErrorSetRawKeys() []string {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.ForceErrorSetRawKeys
+}
+
+func (b *LeakyBucket) getWriteCasCallback() func(string) (uint64, error) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.WriteCasCallback
+}
+
+func (b *LeakyBucket) setWriteCasCallback(fn func(string) (uint64, error)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.WriteCasCallback = fn
+}
+
+func (b *LeakyBucket) getUpdateCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.UpdateCallback
+}
+
+func (b *LeakyBucket) setUpdateCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.UpdateCallback = fn
+}
+
+func (b *LeakyBucket) getPostUpdateCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.PostUpdateCallback
+}
+
+func (b *LeakyBucket) setPostUpdateCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.PostUpdateCallback = fn
+}
+
+func (b *LeakyBucket) getForceTimeoutErrorOnUpdateKeys() []string {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.ForceTimeoutErrorOnUpdateKeys
+}
+
+func (b *LeakyBucket) getIncrTemporaryFailCount() uint16 {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.IncrTemporaryFailCount
+}
+
+func (b *LeakyBucket) getIncrCallback() func() {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.IncrCallback
+}
+
+// decrementDDocGetErrorCount atomically decrements DDocGetErrorCount if positive.
+// Returns the post-decrement remaining count and whether the error should be returned.
+func (b *LeakyBucket) decrementDDocGetErrorCount() (remaining int, shouldFail bool) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	if b._config.DDocGetErrorCount > 0 {
+		b._config.DDocGetErrorCount--
+		return b._config.DDocGetErrorCount, true
+	}
+	return 0, false
+}
+
+func (b *LeakyBucket) setDDocGetErrorCount(i int) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.DDocGetErrorCount = i
+}
+
+// decrementDDocDeleteErrorCount atomically decrements DDocDeleteErrorCount if positive.
+// Returns the post-decrement remaining count and whether the error should be returned.
+func (b *LeakyBucket) decrementDDocDeleteErrorCount() (remaining int, shouldFail bool) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	if b._config.DDocDeleteErrorCount > 0 {
+		b._config.DDocDeleteErrorCount--
+		return b._config.DDocDeleteErrorCount, true
+	}
+	return 0, false
+}
+
+func (b *LeakyBucket) setDDocDeleteErrorCount(i int) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.DDocDeleteErrorCount = i
+}
+
+func (b *LeakyBucket) getQueryCallback() func(string, string, map[string]any) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.QueryCallback
+}
+
+func (b *LeakyBucket) setQueryCallback(fn func(string, string, map[string]any) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.QueryCallback = fn
+}
+
+func (b *LeakyBucket) getPostQueryCallback() func(string, string, map[string]any) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.PostQueryCallback
+}
+
+func (b *LeakyBucket) setPostQueryCallback(fn func(string, string, map[string]any)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.PostQueryCallback = fn
+}
+
+// getAndClearFirstTimeViewCustomPartialError atomically reads and clears the flag.
+func (b *LeakyBucket) getAndClearFirstTimeViewCustomPartialError() bool {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	v := b._config.FirstTimeViewCustomPartialError
+	if v {
+		b._config.FirstTimeViewCustomPartialError = false
+	}
+	return v
+}
+
+func (b *LeakyBucket) setFirstTimeViewCustomPartialError(v bool) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.FirstTimeViewCustomPartialError = v
+}
+
+func (b *LeakyBucket) getWriteWithXattrCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.WriteWithXattrCallback
+}
+
+func (b *LeakyBucket) getSetXattrCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.SetXattrCallback
+}
+
+func (b *LeakyBucket) getN1QLQueryCallback() func(context.Context, string, map[string]any, ConsistencyMode, bool) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.N1QLQueryCallback
+}
+
+func (b *LeakyBucket) getPostN1QLQueryCallback() func() {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.PostN1QLQueryCallback
+}
+
+func (b *LeakyBucket) setPostN1QLQueryCallback(fn func()) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.PostN1QLQueryCallback = fn
+}
+
+func (b *LeakyBucket) getCreateIndexIfNotExistsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.CreateIndexIfNotExistsCallback
 }
