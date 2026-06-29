@@ -135,6 +135,7 @@ func (rt *RestTester) GetDocument(docID string) *db.Document {
 
 // WaitForLegacyRev waits for a legacy revision ID (1-abc) to exist. If the document is not found, the test will fail.
 func (rt *RestTester) WaitForLegacyRev(docID, legacyRevID string, expectedBody []byte) *db.Document {
+	rt.TB().Helper()
 	rt.WaitForVersionRevIDOnly(docID, db.DocVersion{RevTreeID: legacyRevID})
 	doc := rt.GetDocument(docID)
 	encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(legacyRevID)
@@ -220,6 +221,7 @@ func (rt *RestTester) GetAllDBsVerbose() []DbSummary {
 
 // WaitForVersion retries a GET for a given document version until it returns 200 or 201 for a given document and revision. If version is not found, the test will fail.
 func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
+	rt.TB().Helper()
 	if version.RevTreeID == "" {
 		require.NotEqual(rt.TB(), "", version.CV.String(), "Expected CV if RevTreeID is empty for version %#v in WaitForVersion", version)
 	}
@@ -231,7 +233,7 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		var body db.Body
 		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 		if version.RevTreeID != "" {
-			assert.Equal(c, version.RevTreeID, body.ExtractRev())
+			assert.Equal(c, version.RevTreeID, body.ExtractRev(), "docID: %s", docID)
 		}
 		if version.CV.IsEmpty() {
 			return
@@ -239,17 +241,19 @@ func (rt *RestTester) WaitForVersion(docID string, version DocVersion) {
 		if !assert.Contains(c, maps.Keys(body), db.BodyCV) {
 			return
 		}
-		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string))
+		assert.Equal(c, version.CV.String(), body[db.BodyCV].(string), "docID: %s", docID)
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
 func (rt *RestTester) WaitForVersionRevIDOnly(docID string, version DocVersion) {
+	rt.TB().Helper()
 	version.CV = db.Version{} // empty cv so WaitForVersion only asserts on revID
 	rt.WaitForVersion(docID, version)
 }
 
 // WaitForCV waits for the document's current version to match the expectedVersion. Fails the test harness. WaitForVersion should be used in the general case to test revtree and and cv behavior.
 func (rt *RestTester) WaitForVersionHLVOnly(docID string, version DocVersion) {
+	rt.TB().Helper()
 	version.RevTreeID = ""
 	rt.WaitForVersion(docID, version)
 }

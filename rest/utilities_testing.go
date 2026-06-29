@@ -2346,12 +2346,14 @@ func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
 func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
+	t.Helper()
 	require.Equal(t, expected.CV, actual.CV, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 	require.Equal(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 }
 
 // RequireHistoryContains fails test if rev tree does not contain all expected revIDs
 func RequireHistoryContains(t *testing.T, docHistory db.RevTree, expHistoryIDs []string) {
+	t.Helper()
 	require.Lenf(t, docHistory, len(expHistoryIDs), "Expected history to contain %d revIDs, but it had %d.  History: %v", len(expHistoryIDs), len(docHistory), docHistory)
 	for _, revID := range expHistoryIDs {
 		_, ok := docHistory[revID]
@@ -2361,6 +2363,7 @@ func RequireHistoryContains(t *testing.T, docHistory db.RevTree, expHistoryIDs [
 
 // RequireDocRevTreeEqual fails test if rev tree id's are not equal
 func RequireDocRevTreeEqual(t *testing.T, expected, actual DocVersion) {
+	t.Helper()
 	require.Equal(t, expected.RevTreeID, actual.RevTreeID)
 }
 
