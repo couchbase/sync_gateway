@@ -853,7 +853,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	} else {
 		if !defaultCollectionPresent {
 			// If the _default._default collection has been dropped by a customer, we can't use it for metadata.
-			// This is a misconfiguration, so log an error and fail the database load.
+			// This is a misconfiguration, fail the database load.
 			return nil, fmt.Errorf("use_system_metadata_collection disabled but _default._default does not exist on bucket %s — cannot use legacy collection for metadata for db %s", base.MD(spec.BucketName), base.UD(dbName))
 		}
 		contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
