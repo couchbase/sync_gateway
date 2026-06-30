@@ -73,63 +73,37 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	if c.UseXattrs() {
-		doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
+	doc, rawBucketDoc, err = c.GetDocWithXattrs(ctx, key, unmarshalLevel)
+	if err != nil {
+		return nil, nil, err
+	}
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
+	}
+
+	// If existing doc wasn't an SG Write, import the doc.
+	if !isSgWrite {
+		// reload to get revseqno for on-demand import
+		doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), unmarshalLevel)
 		if err != nil {
 			return nil, nil, err
 		}
-		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
-		if crc32Match {
-			c.dbStats().Database().Crc32MatchCount.Add(1)
-		}
-
-		// If existing doc wasn't an SG Write, import the doc.
+		isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if !isSgWrite {
-			// reload to get revseqno for on-demand import
-			doc, rawBucketDoc, err = c.getDocWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), unmarshalLevel)
-			if err != nil {
-				return nil, nil, err
+			var importErr error
+			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
+			if importErr != nil {
+				return nil, nil, importErr
 			}
-			isSgWrite, _, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
-			if !isSgWrite {
-				var importErr error
-				doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawBucketDoc.Body, rawBucketDoc.Xattrs, rawBucketDoc.Cas)
-				if importErr != nil {
-					return nil, nil, importErr
-				}
-				// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
-				if doc == nil {
-					return nil, nil, base.ErrNotFound
-				}
+			// nil, nil returned when ErrImportCancelled is swallowed by importDoc switch
+			if doc == nil {
+				return nil, nil, base.ErrNotFound
 			}
 		}
-		if !doc.HasValidSyncData() {
-			return nil, nil, base.HTTPErrorf(404, "Not imported")
-		}
-	} else {
-		rawDoc, cas, getErr := c.dataStore.GetRaw(ctx, key)
-		if getErr != nil {
-			return nil, nil, getErr
-		}
-
-		doc, err = unmarshalDocument(key, rawDoc)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if !doc.HasValidSyncData() {
-			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := c.checkForUpgrade(ctx, docid, unmarshalLevel)
-			if upgradeDoc == nil {
-				return nil, nil, base.HTTPErrorf(404, "Not imported")
-			}
-			doc = upgradeDoc
-		}
-
-		rawBucketDoc = &sgbucket.BucketDocument{
-			Body: rawDoc,
-			Cas:  cas,
-		}
+	}
+	if !doc.HasValidSyncData() {
+		return nil, nil, base.HTTPErrorf(404, "Not imported")
 	}
 
 	return doc, rawBucketDoc, nil
@@ -2987,7 +2961,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			updatedDoc.Xattrs = map[string][]byte{base.SyncXattrName: rawSyncXattr, base.VvXattrName: rawVvXattr}
-			if rawMouXattr != nil && db.useMou() {
+			if rawMouXattr != nil {
 				updatedDoc.Xattrs[base.MouXattrName] = rawMouXattr
 			}
 			if rawGlobalSync != nil {
@@ -3764,20 +3738,6 @@ func (c *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.
 	}
 
 	return roleChannelSet, nil
-}
-
-// Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (c *DatabaseCollection) checkForUpgrade(ctx context.Context, key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
-	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if c.UseXattrs() || !c.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
-		return nil, nil
-	}
-
-	doc, rawDocument, err := c.GetDocWithXattrs(ctx, key, unmarshalLevel)
-	if err != nil || doc == nil || !doc.HasValidSyncData() {
-		return nil, nil
-	}
-	return doc, rawDocument
 }
 
 // legacyRevToHybridLogicalVector will take a legacy revID and convert it to a HybridLogicalVector, used for when a
