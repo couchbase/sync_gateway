@@ -7,4 +7,4 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-go run ./testing/integration-tester
+go run ./testing/integration-tester -v
