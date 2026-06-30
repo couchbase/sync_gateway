@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,6 +30,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func (db *DatabaseContext) CacheCompactActive() bool {
@@ -352,7 +352,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		if base.TestsDisableGSI() {
 			// create views if walrus (GSI=true), all collections
 			// Couchbase Server doesn't support views on a non-default collection and neither does Sync Gateway for CBS
-			if !base.UnitTestUrlIsWalrus() && !base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
+			if !sgtest.UnitTestUrlIsWalrus() && !base.IsDefaultCollection(dataStore.ScopeName(), dataStore.CollectionName()) {
 				continue
 			}
 			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
@@ -928,14 +928,15 @@ func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *Backg
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
+// GetState returns the current process state. This method lets response types embedding
+// BackgroundManagerStatus satisfy the backgroundManagerResponse constraint used by REST test helpers.
+func (s BackgroundManagerStatus) GetState() BackgroundProcessState {
+	return s.State
+}
+
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
 func RequireBackgroundManagerState[O any](t testing.TB, mgr *BackgroundManager[O], expState BackgroundProcessState) BackgroundManagerStatus {
-	waitTime := 10 * time.Second
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
-		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
-		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
-		waitTime = 30 * time.Second
-	}
+	waitTime := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
 	ctx := base.TestCtx(t)
 	var status *BackgroundManagerStatus
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1169,5 +1170,5 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 
 // usingShardedResync returns true if cbgt based resync will be used for test
 func usingShardedResync(testing.TB) bool {
-	return base.IsEnterpriseEdition() && !base.UnitTestUrlIsWalrus()
+	return base.IsEnterpriseEdition() && !sgtest.UnitTestUrlIsWalrus()
 }

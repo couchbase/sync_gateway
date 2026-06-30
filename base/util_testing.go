@@ -36,6 +36,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -319,10 +320,16 @@ func TestDisableRevCache() bool {
 	return false
 }
 
-// Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
+// TestUseCouchbaseServer reports whether tests are configured to run against a real Couchbase Server cluster.
+// Deprecated: use sgtest.TestUseCouchbaseServer() in new code.
 func TestUseCouchbaseServer() bool {
-	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
-	return strings.EqualFold(backingStore, TestEnvBackingStoreCouchbase)
+	return sgtest.TestUseCouchbaseServer()
+}
+
+// UnitTestUrlIsWalrus reports whether tests are running against an in-memory Walrus/Rosmar store.
+// Deprecated: use sgtest.UnitTestUrlIsWalrus() in new code.
+func UnitTestUrlIsWalrus() bool {
+	return sgtest.UnitTestUrlIsWalrus()
 }
 
 func TestUseWalrus() bool {
