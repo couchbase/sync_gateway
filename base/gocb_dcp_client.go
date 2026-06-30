@@ -137,20 +137,20 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		return nil, fmt.Errorf("error generating DCP stream name: %w", err)
 	}
 	client := &GoCBDCPClient{
-		ctx:                 ctx,
-		dcpStreamName:       dcpStreamName,
-		workers:             make([]*DCPWorker, numWorkers),
-		numVbuckets:         numVbuckets,
-		callback:            callback,
-		spec:                bucket.GetSpec(),
-		terminator:          make(chan bool),
-		doneChannel:         make(chan error, 1),
-		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    options.CheckpointPrefix,
-		dbStats:             options.DbStats,
-		agentPriority:       options.AgentPriority,
-		collectionIDs:       options.CollectionIDs,
-		feedContent:         options.FeedContent,
+		ctx:              ctx,
+		dcpStreamName:    dcpStreamName,
+		workers:          make([]*DCPWorker, numWorkers),
+		numVbuckets:      numVbuckets,
+		callback:         callback,
+		spec:             bucket.GetSpec(),
+		terminator:       make(chan bool),
+		doneChannel:      make(chan error, 1),
+		failOnRollback:   options.FailOnRollback,
+		checkpointPrefix: options.CheckpointPrefix,
+		dbStats:          options.DbStats,
+		agentPriority:    options.AgentPriority,
+		collectionIDs:    options.CollectionIDs,
+		feedContent:      options.FeedContent,
 	}
 
 	// Initialize active vbuckets
