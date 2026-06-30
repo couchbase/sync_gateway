@@ -215,18 +215,12 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				err := dataStore.Set(ctx, key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
-			collection, ok := dataStore.(*Collection)
-			require.True(t, ok)
-			var collectionIDs []uint32
-			if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-				collectionIDs = append(collectionIDs, collection.GetCollectionID())
-			}
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := GoCBDCPClientOptions{
 				OneShot:          true,
 				FailOnRollback:   true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 				MetadataStore:    bucket.GetMetadataStore(),
 			}
@@ -264,7 +258,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   true,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 				MetadataStore:    bucket.GetMetadataStore(),
 			}
@@ -283,7 +277,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   false,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 				MetadataStore:    bucket.GetMetadataStore(),
 			}
@@ -340,18 +334,10 @@ func TestContinuousDCPRollback(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	collection, err := AsCollection(dataStore)
-	require.NoError(t, err)
-
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
 	dcpClientOpts := GoCBDCPClientOptions{
 		FailOnRollback:    false,
 		OneShot:           false,
-		CollectionIDs:     collectionIDs,
+		CollectionIDs:     getCollectionIDs(t, bucket),
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		MetadataStoreType: DCPMetadataStoreInMemory,
 	}
@@ -388,7 +374,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 		InitialMetadata:   dcpClient.GetMetadata(),
 		FailOnRollback:    false,
 		OneShot:           false,
-		CollectionIDs:     collectionIDs,
+		CollectionIDs:     getCollectionIDs(t, bucket),
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		MetadataStoreType: DCPMetadataStoreInMemory,
 	}
@@ -621,12 +607,7 @@ func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
 	collection, err := AsCollection(bucket.GetSingleDataStore())
 	require.NoError(t, err)
 
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-	return collectionIDs
-
+	return []uint32{collection.GetCollectionID()}
 }
 
 func TestDCPFeedEventTypes(t *testing.T) {

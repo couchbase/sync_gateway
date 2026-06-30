@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/connstr"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -674,57 +673,6 @@ func TestUseTLSServer(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Test that we correctly error out when trying to use collections against a CBS that doesn't support them. NB: this
-// test only runs against Couchbase Server <7.0.
-func TestServerContextSetupCollectionsSupport(t *testing.T) {
-	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires Couchbase Server")
-	}
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-	if tb.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		t.Skip("Only runs on datastores without collections support")
-	}
-
-	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
-		},
-		API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface},
-	}
-	serverContext := NewServerContext(ctx, serverConfig, false)
-	defer serverContext.Close(ctx)
-
-	dbConfig := DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   base.Ptr(base.UnitTestUrl()),
-			Bucket:   base.Ptr(tb.GetName()),
-			Username: base.TestClusterUsername(),
-			Password: base.TestClusterPassword(),
-		},
-		Name:             tb.GetName(),
-		NumIndexReplicas: base.Ptr(uint(0)),
-		EnableXattrs:     base.Ptr(base.TestUseXattrs()),
-		Scopes: ScopesConfig{
-			"foo": ScopeConfig{
-				Collections: CollectionsConfig{
-					"bar": &CollectionConfig{},
-				},
-			},
-		},
-	}
-	_, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig},
-		getOrAddDatabaseConfigOptions{
-			failFast:    false,
-			useExisting: false,
-		})
-
-	require.ErrorIs(t, err, errCollectionsUnsupported)
 }
 
 func TestLogFlush(t *testing.T) {

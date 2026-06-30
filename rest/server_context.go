@@ -55,8 +55,6 @@ const (
 	CBXDCRCompatibleMinorVersion = 6
 )
 
-var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
-
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
 var allServers = []serverType{publicServer, adminServer, metricsServer, diagnosticServer}
@@ -862,10 +860,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	collectionsRequiringAttachmentMigration := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
-		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-			return nil, errCollectionsUnsupported
-		}
-
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}

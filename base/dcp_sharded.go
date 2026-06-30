@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
-	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 const (
@@ -405,12 +404,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	if err == nil && connStrKvBufferSize != nil && *connStrKvBufferSize > idealKvConnectionBufferSize {
 		WarnfCtx(ctx, "DCP sharded import connection string includes %s=%d, which is more than the implicit %s=%d. This will result in increased memory usage.", kvBufferSizeKey, *connStrKvBufferSize, kvBufferSizeKey, idealKvConnectionBufferSize)
 	}
-	// Disable collections if unsupported
-	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		options["disableCollectionsSupport"] = "true"
-		options["disableStreamIDs"] = "true"
-	}
-
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
 		SGCbgtMetadataVersion, // cbgt metadata version, matching 3.0 clients
