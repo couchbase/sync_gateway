@@ -1607,10 +1607,6 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 // this node's status doc reads complete but its local "migration complete" cache (IsMigrationComplete) is updated too.
 // RecheckPendingBucketMetadataMigrations should converge that cache so the node stops falling back
 // to _default._default and stops re-doing the recheck work for that bucket every poll.
-//
-// bug: maybeCompleteBucketMetadataMigration returns early when it sees status.Bootstrap.State == complete,
-// *before* it reaches SetMigrationComplete. So the recheck sees the completed doc but never flips the local cache,
-// and IsMigrationComplete stays false indefinitely.
 func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -1674,4 +1670,80 @@ func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
 	rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
 
 	require.True(t, conn.IsMigrationComplete(tb.GetName()), "finding 2: recheck observing a peer-completed status doc should converge the local migration-complete cache")
+}
+
+// TestDeleteAllDbsCompletesPendingBootstrapMigration is similar to TestDeleteNonMigratedDbUnblocksBootstrapMigration
+// except that it deletes *every* db (both the migrated db1 and the un-migrated db2) and asserts the same thing
+func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.Scopes = rest.ScopesConfig{
+		dataStore1.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
+
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.Scopes = rest.ScopesConfig{
+		dataStore2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db2", db2Cfg), http.StatusCreated)
+
+	// Opt in for db1 and start its migration. This stamps the bucket-level status doc with
+	// Bootstrap.State == pending. The bucket cannot complete yet because db2 has not opted in.
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, "db1")
+
+	conn := rt.ServerContext().BootstrapContext.Connection
+
+	// Sanity check: with db2 still present and un-migrated, the bucket bootstrap migration is pending.
+	status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	require.Equal(t, base.MigrationStatePending, status.Bootstrap.State, "precondition: bucket migration should be pending while db2 is un-migrated")
+
+	// Delete every database in the bucket — both the migrated db1 and the un-migrated db2 — so the
+	// registry has no live entries left.
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db2/", ""), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db1/", ""), http.StatusOK)
+
+	// Re-run the recheck on every tick (mirroring the config-polling cadence) and expect the bucket
+	// migration to converge to complete now that nothing blocks it. It never does — this assertion
+	// fails on the current code because maybeComplete bails at its len(expected) == 0 guard.
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.NotNil(c, status) {
+			return
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "deleting all dbs should let the pending bucket migration complete")
+	}, 5*time.Second, 100*time.Millisecond)
 }

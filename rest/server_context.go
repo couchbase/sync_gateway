@@ -2409,11 +2409,7 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return
 	}
-	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets(ctx)
-	if err != nil {
-		base.WarnfCtx(ctx, "Couldn't list buckets to re-check bucket metadata migration: %v", err)
-		return
-	}
+	buckets := sc.ClusterCompat.trackedBucketList()
 	for _, bucket := range buckets {
 		if sc.BootstrapContext.Connection.IsMigrationComplete(bucket) {
 			// migration done for this bucket, fast path skip to next bucket
@@ -2529,10 +2525,6 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
 	}
 	expected := registryMetadataIDs(registry)
-	if len(expected) == 0 {
-		// No DBs in registry → nothing to migrate
-		return nil
-	}
 
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
