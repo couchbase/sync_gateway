@@ -114,7 +114,7 @@ nodes:
       - n1ql
       - index
 docker:
-  kv-memory: 3072
-  index-memory: 3072
+  kv-memory: 1200
+  index-memory: 1200
 `, count, serverVersion)
 }
