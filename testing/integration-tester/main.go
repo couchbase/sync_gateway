@@ -36,7 +36,7 @@ import (
 
 const (
 	defaultPackageTimeout      = "45m"
-	defaultMaxParallelPackages = 10
+	defaultMaxParallelPackages = 5
 	sgModule                   = "github.com/couchbase/sync_gateway"
 	allPackages                = "..."
 
