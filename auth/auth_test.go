@@ -2843,12 +2843,7 @@ func TestInvalidateRoles(t *testing.T) {
 	_, err = leakyDataStore.Get(ctx, auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 
-	var expectedValue uint64
-	if leakyBucket.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations) {
-		expectedValue = 10
-	} else {
-		expectedValue = 5
-	}
+	expectedValue := uint64(10)
 
 	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
 
@@ -2905,24 +2900,9 @@ func TestInvalidateChannels(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Invalidate channels at invalSeq but cause cas retry by setting to 5
-			enableRetry := false
-			// If subdoc operations are supported, perform an initial invalidation at seq 5
-			if leakyBucket.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations) {
-				err := auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5)
-				assert.NoError(t, err)
+			err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5)
+			assert.NoError(t, err)
 
-			} else {
-				// If subdoc ops aren't supported, use leakyBucket to invalidate
-				leakyDataStore.SetUpdateCallback(func(key string) {
-					if enableRetry {
-						enableRetry = false
-						err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5)
-						assert.NoError(t, err)
-					}
-				})
-			}
-
-			enableRetry = true
 			err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 10)
 			assert.NoError(t, err)
 

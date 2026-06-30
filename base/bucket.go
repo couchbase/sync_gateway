@@ -457,10 +457,10 @@ func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
 	return viewStore, ok
 }
 
-// AsSubdocStore returns a SubdocStore if the underlying dataStore implements and supports subdoc operations.
+// AsSubdocStore returns a SubdocStore if the underlying dataStore implements subdoc operations.
 func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 	subdocStore, ok := ds.(sgbucket.SubdocStore)
-	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
+	return subdocStore, ok
 }
 
 // AsRangeScanStore returns a RangeScanStore if the dataStore implements and supports range scan operations.
