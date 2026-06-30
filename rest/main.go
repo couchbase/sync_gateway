@@ -428,7 +428,7 @@ func setBootstrapConnectionOptsFromStartupConfig(opts *bootstrapConnectionOpts, 
 
 // setBootstrapConnectionOptsFromDbConfig sets the bootstrapConnectionOpts struct with values from the db config.
 func setBootstrapConnectionOptsFromDbConfig(opts *bootstrapConnectionOpts, dbConfig DbConfig) {
-	if dbConfig.Server != nil {
+	if dbConfig.Server != nil && *dbConfig.Server != "" {
 		opts.server = *dbConfig.Server
 	}
 	opts.username = dbConfig.Username
