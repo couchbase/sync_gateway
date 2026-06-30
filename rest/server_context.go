@@ -2415,7 +2415,7 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 		return
 	}
 	for _, bucket := range buckets {
-		if done := sc.BootstrapContext.Connection.IsMigrationComplete(bucket); done {
+		if sc.BootstrapContext.Connection.IsMigrationComplete(bucket) {
 			// migration done for this bucket, fast path skip to next bucket
 			continue
 		}
@@ -2539,6 +2539,7 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
 	}
 	if status.Bootstrap.State == base.MigrationStateComplete {
+		sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
 		return nil
 	}
 	if !status.AllDatabasesComplete(expected) {

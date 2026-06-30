@@ -1602,3 +1602,76 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should be complete")
 	}, 10*time.Second, 100*time.Millisecond)
 }
+
+// TestRecheckConvergesLocalCacheOnPeerCompletedMigration ensures when a node completes the bucket bootstrap migration,
+// this node's status doc reads complete but its local "migration complete" cache (IsMigrationComplete) is updated too.
+// RecheckPendingBucketMetadataMigrations should converge that cache so the node stops falling back
+// to _default._default and stops re-doing the recheck work for that bucket every poll.
+//
+// bug: maybeCompleteBucketMetadataMigration returns early when it sees status.Bootstrap.State == complete,
+// *before* it reaches SetMigrationComplete. So the recheck sees the completed doc but never flips the local cache,
+// and IsMigrationComplete stays false indefinitely.
+func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.Scopes = rest.ScopesConfig{
+		dataStore1.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
+
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.Scopes = rest.ScopesConfig{
+		dataStore2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db2", db2Cfg), http.StatusCreated)
+
+	// Opt in for db1 and run its migration. db2 stays un-migrated, so this node never completes the
+	// bucket migration on its own — its local IsMigrationComplete cache stays false. (db2 also
+	// guarantees the recheck can't complete the bucket itself, isolating the test to the cache
+	// convergence path.)
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, "db1")
+
+	conn := rt.ServerContext().BootstrapContext.Connection
+
+	// Simulate a peer node winning the completion: stamp the bucket status doc to complete directly.
+	// UpdateMetadataMigrationStatus only writes the doc — it does not touch this node's local cache,
+	// so IsMigrationComplete is still false afterwards, exactly as it would be on a peer that didn't
+	// run the completion itself.
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, tb.GetName(), func(s *base.MetadataMigrationStatus) error {
+		s.Bootstrap.State = base.MigrationStateComplete
+		return nil
+	})
+	require.NoError(t, err)
+	require.False(t, conn.IsMigrationComplete(tb.GetName()), "precondition: local node should not have marked migration complete yet")
+
+	// The recheck observes the completed status doc; it should converge the local cache.
+	rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
+
+	require.True(t, conn.IsMigrationComplete(tb.GetName()), "finding 2: recheck observing a peer-completed status doc should converge the local migration-complete cache")
+}
