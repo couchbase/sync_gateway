@@ -1317,10 +1317,6 @@ Database:
     keypath:
       description: The key path (private key) for X.509 bucket auth
       type: string
-    kv_tls_port:
-      description: The Memcached TLS port.
-      type: integer
-      default: 11207
     local_doc_expiry_secs:
       description: The number of seconds before a `_local` document should expire.
       type: integer
@@ -1808,6 +1804,11 @@ Database:
       enum:
         - DCP
       deprecated: true
+    kv_tls_port:
+      description: The Memcached TLS port. This value is ignored, a port has to be specified in the connection string.
+      deprecated: true
+      type: integer
+      default: 11207
     num_index_replicas:
       description: |-
         **Deprecated, please use the database setting `index.num_replicas` instead**

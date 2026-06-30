@@ -103,7 +103,7 @@ type BucketConfig struct {
 	CertPath              string  `json:"certpath,omitempty"`                 // Cert path (public key) for X.509 bucket auth
 	KeyPath               string  `json:"keypath,omitempty"`                  // Key path (private key) for X.509 bucket auth
 	CACertPath            string  `json:"cacertpath,omitempty"`               // Root CA cert path for X.509 bucket auth
-	KvTLSPort             int     `json:"kv_tls_port,omitempty"`              // Memcached TLS port, if not default (11207)
+	KvTLSPort             int     `json:"kv_tls_port,omitempty"`              // Deprecated: this has no effect and is present for compatibility with older database configs.
 	MaxConcurrentQueryOps *int    `json:"max_concurrent_query_ops,omitempty"` // Max concurrent  query ops
 }
 
@@ -112,7 +112,6 @@ func (dc *DbConfig) MakeBucketSpec(server string) base.BucketSpec {
 	bc := &dc.BucketConfig
 
 	bucketName := ""
-	tlsPort := 11207
 
 	// treat all walrus: as in memory storage, any persistent storage would have to be converted to rosmar
 	if strings.HasPrefix(server, "walrus:") {
@@ -123,17 +122,12 @@ func (dc *DbConfig) MakeBucketSpec(server string) base.BucketSpec {
 		bucketName = *bc.Bucket
 	}
 
-	if bc.KvTLSPort != 0 {
-		tlsPort = bc.KvTLSPort
-	}
-
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
 		Keypath:               bc.KeyPath,
 		Certpath:              bc.CertPath,
 		CACertPath:            bc.CACertPath,
-		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
 	}
