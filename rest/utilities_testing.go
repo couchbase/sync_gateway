@@ -137,7 +137,7 @@ type RestTester struct {
 	metricsHandlerOnce      sync.Once
 	DiagnosticHandler       http.Handler
 	diagnosticHandlerOnce   sync.Once
-	closed                  bool
+	closed                  atomic.Bool
 }
 
 func (rt *RestTester) TB() testing.TB {
@@ -205,9 +205,8 @@ func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfi
 func (rt *RestTester) Bucket() base.Bucket {
 	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
-	} else if rt.closed {
-		panic("RestTester was closed!")
 	}
+	require.False(rt.TB(), rt.closed.Load(), "RestTester was closed!")
 
 	if rt.TestBucket != nil {
 		return rt.TestBucket.Bucket
@@ -675,7 +674,7 @@ func (rt *RestTester) Close() {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 	ctx := rt.Context() // capture ctx before closing rt
-	rt.closed = true
+	require.True(rt.TB(), rt.closed.CompareAndSwap(false, true), "RestTester already closed")
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close(ctx)
 	}
