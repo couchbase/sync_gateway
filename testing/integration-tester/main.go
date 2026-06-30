@@ -359,7 +359,7 @@ func run() int {
 	extraEnv["SG_TEST_BACKING_STORE"] = "Couchbase"
 	extraEnv["SG_TEST_TLS_SKIP_VERIFY"] = fmt.Sprintf("%v", cfg.TLSSkipVerify)
 
-	testFailed, logFiles := runIntegrationTestsParallel(cfg.SGEdition, goTestFlags, sgPkgs, cfg.CouchbaseServerVersion, cfg.CouchbaseServerProtocol, cfg.MultiNode, cfg.MaxParallelPackages, intLogFileName, cfg.SGCBCollectAlways)
+	testFailed, logFiles := runIntegrationTestsParallel(cfg.SGEdition, goTestFlags, sgPkgs, cfg.CouchbaseServerVersion, cfg.CouchbaseServerProtocol, cfg.MultiNode, cfg.MaxParallelPackages, intLogFileName, cfg.SGCBCollectAlways, cfg.FailFast)
 
 	nonFatal.report()
 
@@ -480,7 +480,7 @@ type result struct {
 // Per-package log and XML files are named after the package. XML files are merged into
 // integration.xml. The first package failure cancels all remaining runs.
 // Returns (anyFailed, logFilePaths).
-func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, serverVersion string, protocol Protocol, multiNode bool, maxParallel int, logFileName string, cbcollectAlways bool) (bool, []string) {
+func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, serverVersion string, protocol Protocol, multiNode bool, maxParallel int, logFileName string, cbcollectAlways bool, failFast bool) (bool, []string) {
 	results := make([]result, len(pkgs))
 
 	// Initialize cbdinocluster once; each package invocation allocates its own cluster.
@@ -527,7 +527,7 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			logger.Infof("[%s] starting integration tests", p.shortName())
 			results[i] = runPackageIntegrationTests(ctx, edition, flags, p, logFileName, connStr, dockerName)
 			logger.Infof("[%s] done in %s (failed=%v)", p.shortName(), results[i].duration.Round(time.Second), results[i].failed)
-			if results[i].failed {
+			if results[i].failed && failFast {
 				cancel(fmt.Errorf("package %s failed", p))
 			}
 
