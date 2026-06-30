@@ -300,10 +300,10 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	vbUUID := base.GetVBUUIDs(dcpClient.GetMetadata())
 	vbUUID[0] = uint64(garbageVBUUID)
 
-	metadataKeys := base.NewMetadataKeys(testDb.Options.MetadataID)
-	testDb.AttachmentCompactionManager = NewAttachmentCompactionManager(dataStore, metadataKeys)
-	manager := AttachmentCompactionManager{_compactID: t.Name(), _phase: string(CleanupPhase), _vbuuids: vbUUID}
-	testDb.AttachmentCompactionManager.Process = &manager
+	testDb.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).initializeFromPreviousStatus(AttachmentManagerStatusDoc{
+		AttachmentManagerResponse: AttachmentManagerResponse{CompactID: t.Name(), Phase: string(CleanupPhase)},
+		AttachmentManagerMeta:     AttachmentManagerMeta{VBUUIDs: vbUUID},
+	})
 
 	terminator := base.NewSafeTerminator()
 	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]any{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)

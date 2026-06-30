@@ -77,9 +77,9 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
 		}
 
-		a._dryRun = dryRun
-		a._compactID = uniqueUUID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a._compactID)
+		compactID := uniqueUUID.String()
+		a.initializeNewRun(compactID, dryRun)
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", compactID)
 		return nil
 	}
 
@@ -99,8 +99,8 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			return backgroundManagerInitReset, newRunInit()
 		} else {
-			a.initializeFromPreviousStatus(statusDoc)
-			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a._compactID, a._phase)
+			compactID, phase := a.initializeFromPreviousStatus(statusDoc)
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", compactID, phase)
 		}
 
 		return backgroundManagerInitResume, nil
@@ -258,9 +258,19 @@ func (a *AttachmentCompactionManager) setVBUUIDs(vbuuids []uint64) {
 	a._vbuuids = vbuuids
 }
 
+// initializeNewRun sets the compactID and dryRun fields for a new compaction run.
+func (a *AttachmentCompactionManager) initializeNewRun(compactID string, dryRun bool) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a._compactID = compactID
+	a._dryRun = dryRun
+}
+
 // initializeFromPreviousStatus restores in-memory state from a previously persisted status document
 // so that a resumed run starts with the correct accumulated counts and identifiers.
-func (a *AttachmentCompactionManager) initializeFromPreviousStatus(statusDoc AttachmentManagerStatusDoc) {
+// Returns the compactID and phase.
+func (a *AttachmentCompactionManager) initializeFromPreviousStatus(statusDoc AttachmentManagerStatusDoc) (compactID, phase string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -270,6 +280,7 @@ func (a *AttachmentCompactionManager) initializeFromPreviousStatus(statusDoc Att
 	a.MarkedAttachments.Set(statusDoc.MarkedAttachments)
 	a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
 	a._vbuuids = statusDoc.VBUUIDs
+	return a._compactID, a._phase
 }
 
 // getCompactID returns the unique identifier for the current compaction run.
