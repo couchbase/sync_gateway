@@ -304,6 +304,11 @@ func run() int {
 	mustRun("go", "install", "gotest.tools/gotestsum@latest")
 
 	extraEnv["PATH"] += ":" + filepath.Join(homeDir, "go", "bin")
+	// Sync the current process PATH so exec.Command can find binaries (e.g. gotestsum, go)
+	// installed above. extraEnv only affects child process environments, not exec.LookPath.
+	if err := os.Setenv("PATH", extraEnv["PATH"]); err != nil {
+		logger.Fatalf("update PATH: %v", err)
+	}
 
 	if cfg.SGTestX509 && cfg.CouchbaseServerProtocol != ProtocolCouchbases {
 		logger.Fatal("Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests")
