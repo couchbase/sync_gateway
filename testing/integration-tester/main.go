@@ -211,9 +211,44 @@ func main() {
 	os.Exit(run())
 }
 
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Usage: integration-tester [flags]
+
+Flags:
+`)
+	flag.PrintDefaults()
+	fmt.Fprintf(os.Stderr, `
+Environment variables:
+
+  Required:
+    COUCHBASE_SERVER_PROTOCOL  Couchbase Server connection protocol (couchbase|couchbases)
+    COUCHBASE_SERVER_VERSION   Couchbase Server version to provision (e.g. enterprise-7.6.6)
+    GSI                        Use GSI (global secondary index) for queries (true|false)
+    SG_EDITION                 Sync Gateway edition to test (EE|CE)
+    TARGET_PACKAGE             Comma-separated package(s) to test (e.g. rest,db or ...)
+    TARGET_TEST                Test name filter passed to -run, or ALL to run everything
+    TLS_SKIP_VERIFY            Skip TLS certificate verification (true|false)
+
+  Optional:
+    DISABLE_REV_CACHE          Disable the revision cache during tests (default: false)
+    DETECT_RACES               Enable the Go race detector (default: false)
+    FAIL_FAST                  Stop on the first test failure (default: false)
+    MAX_PARALLEL_PACKAGES      Maximum packages tested simultaneously against CBS (default: %d)
+    MULTI_NODE                 Provision a 3-node Couchbase cluster instead of 1 (default: false)
+    PACKAGE_TIMEOUT            Per-package test timeout passed to -test.timeout (default: %s)
+    RUN_COUNT                  Number of times to repeat each test run (default: 1)
+    RUN_WALRUS                 Also run rosmar (in-memory) tests before CBS tests (default: false)
+    SG_CBCOLLECT_ALWAYS        Always collect cbcollect_info after each package run (default: false)
+    SG_TEST_BUCKET_POOL_DEBUG  Enable bucket pool debug logging in tests (default: false)
+    SG_TEST_X509               Use X.509 certificate auth (requires couchbases://) (default: false)
+    TEST_DEBUG                 Set test log level to debug and enable bucket pool debug (default: false)
+`, defaultMaxParallelPackages, defaultPackageTimeout)
+}
+
 func run() int {
 	masterMode := flag.Bool("m", false, "Run in automated master integration mode")
 	verbose := flag.Bool("v", false, "Enable verbose/debug logging")
+	flag.Usage = printUsage
 	flag.Parse()
 
 	initLogger(*verbose)
@@ -577,7 +612,7 @@ func runPackageIntegrationTests(ctx context.Context, edition Edition, flags []st
 		if ctx.Err() != nil {
 			return result{path: p, logFile: logFile, xmlFile: xmlFile, duration: duration}
 		}
-		logger.Errorf("Go test failed for %s! Parsing logs to find cause...", p)
+		logger.Errorf("Go test failed for %s: %v", p, err)
 		return result{path: p, logFile: logFile, xmlFile: xmlFile, failedTests: failedTests, duration: duration, failed: true}
 	}
 	return result{path: p, logFile: logFile, xmlFile: xmlFile, duration: duration}
