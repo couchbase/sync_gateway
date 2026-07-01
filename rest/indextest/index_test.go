@@ -373,6 +373,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
@@ -503,6 +504,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 
 	dbConfig := makeDbConfig(t, tb, syncFunc, importFilter)
 	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 	dbConfigPayload, err := json.Marshal(dbConfig)
 	require.NoError(t, err)
 	dbName := "db"
