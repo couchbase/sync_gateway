@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -20,7 +21,7 @@ import (
 
 type LeakyDataStore struct {
 	dataStore DataStore
-	incrCount uint16
+	incrCount atomic.Uint32
 	bucket    *LeakyBucket
 }
 
@@ -191,11 +192,11 @@ func (lds *LeakyDataStore) Incr(ctx context.Context, k string, amt, def uint64, 
 	incrCb := lds.bucket.getIncrCallback()
 
 	if incrFailCount > 0 {
-		if lds.incrCount < incrFailCount {
-			lds.incrCount++
-			return 0, errors.New(fmt.Sprintf("Incr forced abort (%d/%d), try again maybe?", lds.incrCount, incrFailCount))
+		count := lds.incrCount.Add(1)
+		if count <= uint32(incrFailCount) {
+			return 0, fmt.Errorf("Incr forced abort (%d/%d), try again maybe?", count, incrFailCount)
 		}
-		lds.incrCount = 0
+		lds.incrCount.Store(0)
 	}
 	val, err := lds.dataStore.Incr(ctx, k, amt, def, exp)
 
