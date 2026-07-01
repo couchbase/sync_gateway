@@ -426,7 +426,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 	rt.WaitForChanges(docCount*2, "/{{.keyspace}}/_changes", "", true)
 	// there should be 10 documents datastore1_{10..19}
-	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(docCount))
 
 	// Get the import version from the persisted config to ensure it didn't change
 	updatedImportVersion := GetImportVersion(t, rt, dbName)
