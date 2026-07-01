@@ -240,7 +240,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
 
-	xattrs := base.TestUseXattrs()
+	xattrs := true
 	useViews := base.TestsDisableGSI()
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
@@ -313,7 +313,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
-	xattrs := base.TestUseXattrs()
+	xattrs := true
 	useViews := base.TestsDisableGSI()
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 	dbConfig = DbConfig{
@@ -710,7 +710,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 		},
 		Name:             tb.GetName(),
 		NumIndexReplicas: base.Ptr(uint(0)),
-		EnableXattrs:     base.Ptr(base.TestUseXattrs()),
+		EnableXattrs:     base.Ptr(true),
 		Scopes: ScopesConfig{
 			"foo": ScopeConfig{
 				Collections: CollectionsConfig{
@@ -896,7 +896,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
-					EnableXattrs: base.Ptr(base.TestUseXattrs()),
+					EnableXattrs: base.Ptr(true),
 					UseViews:     base.Ptr(base.TestsDisableGSI()),
 				}
 				if scopes {
@@ -927,9 +927,6 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 // TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
 func TestOfflineDatabaseStartup(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{

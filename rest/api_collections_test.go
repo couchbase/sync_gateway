@@ -216,9 +216,6 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 func TestSingleCollectionDCP(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -303,7 +300,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Scopes:       scopesConfig,
-			EnableXattrs: base.Ptr(base.TestUseXattrs()),
+			EnableXattrs: base.Ptr(true),
 		},
 		},
 	}
@@ -369,8 +366,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	scopesConfig2Collections[scope].Collections[collection2] = &CollectionConfig{SyncFn: &c1SyncFunction}
 
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes":%s}`,
+		tb.GetName(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a doc in new collection and make sure it cant be accessed
@@ -403,8 +400,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes":%s}`,
+		tb.GetName(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Ensure users can't access docs in a removed collection
@@ -566,7 +563,7 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
+	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
 	RequireStatus(t, resp, http.StatusForbidden)
 }
 
@@ -592,7 +589,7 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db1/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"_default": {}, "%s": {}}}}}`, tb.GetName(), customCollectionName))
+	resp := rt.SendAdminRequest("PUT", "/db1/", fmt.Sprintf(`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes": {"_default": {"collections": {"_default": {}, "%s": {}}}}}`, tb.GetName(), customCollectionName))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("PUT", "/db1/doc1", `{"test": true}`)
@@ -642,10 +639,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	// Create a DB configured with one scope
 	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":                      tb.GetName(),
-		"num_index_replicas":          0,
-		"enable_shared_bucket_access": base.TestUseXattrs(),
-		"use_views":                   base.TestsDisableGSI(),
+		"bucket":    tb.GetName(),
+		"index":     map[string]any{"num_replicas": 0},
+		"use_views": base.TestsDisableGSI(),
 		"scopes": ScopesConfig{
 			"fooScope": {
 				Collections: CollectionsConfig{
@@ -658,10 +654,9 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 
 	// Try updating its scopes
 	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":                      tb.GetName(),
-		"num_index_replicas":          0,
-		"enable_shared_bucket_access": base.TestUseXattrs(),
-		"use_views":                   base.TestsDisableGSI(),
+		"bucket":    tb.GetName(),
+		"index":     map[string]any{"num_replicas": 0},
+		"use_views": base.TestsDisableGSI(),
 		"scopes": ScopesConfig{
 			"quxScope": {
 				Collections: CollectionsConfig{
@@ -793,8 +788,8 @@ func TestCollectionStats(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes:       scopesConfig,
-				AutoImport:   base.TestUseXattrs(),
-				EnableXattrs: base.Ptr(base.TestUseXattrs()),
+				AutoImport:   true,
+				EnableXattrs: base.Ptr(true),
 			},
 		},
 	}
@@ -832,11 +827,7 @@ func TestCollectionStats(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc1", doc1Contents)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Equal(t, int64(1), collection1Stats.NumDocWrites.Value())
-	if base.TestUseXattrs() {
-		assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocWritesBytes.Value()) // xattr writes size should exactly match doc contents
-	} else {
-		assert.Greater(t, collection1Stats.DocWritesBytes.Value(), int64(len(doc1Contents))) // non-xattr writes have sync data size included
-	}
+	assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocWritesBytes.Value()) // xattr writes size should exactly match doc contents
 	assert.Equal(t, int64(1), collection1Stats.SyncFunctionCount.Value())
 	assert.GreaterOrEqual(t, collection1Stats.SyncFunctionTime.Value(), int64(0))
 	assert.Equal(t, int64(0), collection1Stats.NumDocReads.Value())
@@ -881,15 +872,13 @@ func TestCollectionStats(t *testing.T) {
 	assert.Equal(t, int64(1), collection2Stats.NumDocWrites.Value())
 
 	// write a doc to the bucket and have it imported and check stat
-	if base.TestUseXattrs() {
-		dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
-		require.NoError(t, err)
-		ok, err := dbc.GetCollectionDatastore().AddRaw(ctx, "importeddoc", 0, []byte(`{"imported":true}`))
-		require.NoError(t, err)
-		assert.True(t, ok)
-		base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
-		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
-	}
+	dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
+	require.NoError(t, err)
+	ok, err := dbc.GetCollectionDatastore().AddRaw(ctx, "importeddoc", 0, []byte(`{"imported":true}`))
+	require.NoError(t, err)
+	assert.True(t, ok)
+	base.RequireWaitForStat(t, collection2Stats.ImportCount.Value, 1)
+	assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
 }
 
 // TestRuntimeConfigUpdateAfterConfigUpdateConflict:

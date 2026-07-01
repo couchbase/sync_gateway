@@ -19,9 +19,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if !base.TestUseXattrs() { // import tests only run if xattrs are enabled
-		base.SkipTestMain(m, "import tests only run if xattrs are enabled")
-	}
 
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048, NumCollectionsPerBucket: 3}

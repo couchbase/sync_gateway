@@ -182,7 +182,7 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/newdb/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			tb.GetName(), true, base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -292,7 +292,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 		"config_upgrade_group_id": "%s",
 		"databases": {
 			"db": {
-				"enable_shared_bucket_access": true,
 				"import_docs": true,
 				"server": "%s",
 				"username": "%s",
@@ -1356,7 +1355,7 @@ func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig Scopes
 }
 
 func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) DbConfig {
-	enableXattrs := base.TestUseXattrs()
+	enableXattrs := true
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: &bucketName,

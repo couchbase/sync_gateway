@@ -43,8 +43,8 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 
 	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	resp.RequireStatus(http.StatusCreated)
@@ -134,8 +134,8 @@ func TestBootstrapDuplicateCollections(t *testing.T) {
 	defer tb.Close(ctx)
 	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	resp.RequireStatus(http.StatusCreated)
@@ -143,8 +143,8 @@ func TestBootstrapDuplicateCollections(t *testing.T) {
 	// Create db2 using the same collection (on the same bucket) and expect it to fail
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	resp.RequireStatus(http.StatusConflict)
@@ -163,8 +163,8 @@ func TestBootstrapDuplicateDatabase(t *testing.T) {
 	defer tb.Close(ctx)
 
 	dbConfig := fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+		tb.GetName(), base.TestsDisableGSI(),
 	)
 
 	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", dbConfig)

@@ -22,9 +22,7 @@ import (
 func TestCheckForUpgradeOnRead(t *testing.T) {
 
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
+	t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -99,9 +97,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 func TestCheckForUpgradeOnWrite(t *testing.T) {
 
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
+	t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -182,9 +178,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 func TestCheckForUpgradeFeed(t *testing.T) {
 
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
-	if base.TestUseXattrs() {
-		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
+	t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 	if !base.TestsDisableGSI() {
 		// This test is trying to test a non xattr node while a non xattr -> xattr upgrade is occurring.
 		// Intentionally do not query both xattr and non-xattr when doing channel backfill because of the overhead. The assumption is that during upgrade the older (non-xattrs) nodes would have any new xattr entries resident in their cache.

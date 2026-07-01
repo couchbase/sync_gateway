@@ -100,7 +100,7 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 func TestBackupOldRevision(t *testing.T) {
 
 	deltasEnabled := base.IsEnterpriseEdition()
-	xattrsEnabled := base.TestUseXattrs()
+	xattrsEnabled := true
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,

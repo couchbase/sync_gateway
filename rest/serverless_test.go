@@ -54,7 +54,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
-		"num_index_replicas": 0
+		"index": {"num_replicas": 0}
 	}`, tb1.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -129,7 +129,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,
-				"num_index_replicas": 0
+				"index": {"num_replicas": 0}
 			}`, tb1.GetName(), base.TestsDisableGSI()))
 			test.dbCreationRespAsserts(resp)
 		})
@@ -155,7 +155,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 				"bucket": "%s",
 				"use_views": %t,
-				"num_index_replicas": 0
+				"index": {"num_replicas": 0}
 	}`, tb1.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -213,7 +213,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 			require.True(t, sc.Config.IsServerless())
 			sc.connectToBucketFn = nil
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "index": {"num_replicas": 0}}`,
 				tb.GetName(), base.TestsDisableGSI()))
 			RequireStatus(t, resp, http.StatusCreated)
 
@@ -260,11 +260,11 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 			sc.connectToBucketFn = nil
 
 			if test.name == "unsupported options specified" {
-				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "unsupported": {"dcp_read_buffer": %d, "kv_buffer": %d}}`,
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "index": {"num_replicas": 0}, "unsupported": {"dcp_read_buffer": %d, "kv_buffer": %d}}`,
 					tb.GetName(), base.TestsDisableGSI(), test.dcpBuffer, test.kvBuffer))
 				RequireStatus(t, resp, http.StatusCreated)
 			} else {
-				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "index": {"num_replicas": 0}}`,
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
 			}
@@ -292,7 +292,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
-		"num_index_replicas": 0
+		"index": {"num_replicas": 0}
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -369,8 +369,8 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), true, base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -412,8 +412,8 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), true, base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -492,8 +492,8 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "suspendable": true}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "enable_shared_bucket_access": %t, "use_views": %t, "suspendable": true}`,
+			tb.GetName(), true, base.TestsDisableGSI(),
 		),
 	)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -580,7 +580,7 @@ func TestSuspendingFlags(t *testing.T) {
 				"bucket": "%s",
 				"use_views": %t,
 				%s
-				"num_index_replicas": 0
+				"index": {"num_replicas": 0}
 			}`, tb.GetName(), base.TestsDisableGSI(), suspendableDbOption))
 			RequireStatus(t, resp, http.StatusCreated)
 
@@ -616,7 +616,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
-		"num_index_replicas": 0
+		"index": {"num_replicas": 0}
 	}`, tb.GetName(), base.TestsDisableGSI()))
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -652,7 +652,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db/", fmt.Sprintf(`{
 		"bucket": "%s",
 		"use_views": %t,
-		"num_index_replicas": 0
+		"index": {"num_replicas": 0}
 	}`, tb.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -722,12 +722,12 @@ func TestImportPartitionsServerless(t *testing.T) {
 
 			var dbconf *DbConfig
 			if test.name == "serverless partitions with import_partition specified" {
-				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "index": {"num_replicas": 0}, "import_partitions": 8}`,
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
 				dbconf = sc.GetDbConfig("db")
 			} else {
-				dbconf = DefaultDbConfig(sc.Config, base.TestUseXattrs())
+				dbconf = DefaultDbConfig(sc.Config, true)
 			}
 
 			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)

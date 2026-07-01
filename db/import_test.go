@@ -31,10 +31,6 @@ import (
 func TestFeedImport(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport, base.KeyVV)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -381,10 +377,6 @@ func TestOnDemandImport(t *testing.T) {
 // Tests when preserve expiry is not used (CBS < 7.0.0)
 func TestMigrateMetadata(t *testing.T) {
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
 	db, ctx := setupTestDB(t)
@@ -436,10 +428,6 @@ func TestMigrateMetadata(t *testing.T) {
 // Tests metadata migration where a document with inline sync data has been replicated by XDCR, so also has an
 // existing HLV.  Migration should preserve the existing HLV while moving doc._sync to sync xattr
 func TestMigrateMetadataWithHLV(t *testing.T) {
-
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
@@ -505,9 +493,6 @@ func TestMigrateMetadataWithHLV(t *testing.T) {
 // - Same as scenario 1, except that in step 1 it writes a doc with sync metadata, so that it excercises the migration code
 // - Temporarily set expectedGeneration:2, see https://github.com/couchbase/sync_gateway/issues/3804
 func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
@@ -591,9 +576,6 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 func TestImportWithCasFailureUpdate(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test only works with a Couchbase server and XATTRS")
-	}
 
 	var db *Database
 	var existingBucketDoc *sgbucket.BucketDocument
@@ -777,9 +759,6 @@ func rawDocWithSyncMeta() []byte {
 // Invokes db.importDoc() with a null document body
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled and in integration mode")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
@@ -889,9 +868,6 @@ func TestEvaluateFunction(t *testing.T) {
 }
 
 func TestImportStampClusterUUID(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test requires Couchbase Server") // no cluster UUIDs in Walrus
 	}
@@ -1247,10 +1223,6 @@ func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 
 func TestMetadataOnlyUpdate(t *testing.T) {
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -1310,9 +1282,6 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 }
 
 func TestImportResurrectionMou(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it relies on import")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
@@ -1371,9 +1340,6 @@ func TestImportResurrectionMou(t *testing.T) {
 // update, even though it originated with an SDK delete, because the existing non-winning revision body will be
 // promoted to winning.
 func TestImportConflictWithTombstone(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it relies on import")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
@@ -1450,10 +1416,6 @@ func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key str
 func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -1496,9 +1458,6 @@ func TestImportCancelOnDocWithCorruptSequenceOverImportFeed(t *testing.T) {
 }
 
 func TestImportCancelOnDocWithCorruptSequenceOndemand(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport, base.KeyCRUD)
 	tb := base.GetTestBucket(t)

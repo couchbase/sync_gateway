@@ -3903,7 +3903,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       `{"source": "remote"}`,
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
+			skipBodyAssertion:       true,
 			tombstoneCase:           true,
 		},
 		{
@@ -3916,7 +3916,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       `{"source": "local"}`,
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
+			skipBodyAssertion:       true,
 			tombstoneCase:           true,
 		},
 	}
@@ -5872,18 +5872,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		ctx := base.TestCtx(t)
 		var rawBody db.Body
 		_, err := dataStore.Get(ctx, docID, &rawBody)
-		if base.TestUseXattrs() {
-			require.True(t, base.IsDocNotFoundError(err))
-			require.Len(t, rawBody, 0)
-		} else {
-			require.NoError(t, err)
-			require.Len(t, rawBody, 1)
-			rawSyncData, ok := rawBody[base.SyncPropertyName].(map[string]any)
-			require.True(t, ok)
-			val, ok := rawSyncData["flags"].(float64)
-			require.True(t, ok)
-			require.NotEqual(t, 0, int(val)&channels.Deleted)
-		}
+		require.True(t, base.IsDocNotFoundError(err))
+		require.Len(t, rawBody, 0)
 	}
 
 	sgrRunner := rest.NewSGRTestRunner(t)
@@ -5892,9 +5882,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		for _, test := range tombstoneTests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := base.TestCtx(t)
-				if test.sdkResurrect && !base.TestUseXattrs() {
-					t.Skip("SDK resurrect test cases require xattrs to be enabled")
-				}
 				localActiveRT, remotePassiveRT, _ := sgrRunner.SetupSGRPeers(t)
 
 				replConf := `
@@ -6033,9 +6020,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name             string   // A unique name to identify the unit test.
@@ -6159,9 +6143,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -7272,9 +7253,6 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs")
-	}
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Requires EE to use GroupID")
 	}
@@ -7309,7 +7287,7 @@ func TestGroupIDReplications(t *testing.T) {
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.Ptr(activeBucket.GetName()),
 			},
-			EnableXattrs: base.Ptr(base.TestUseXattrs()),
+			EnableXattrs: base.Ptr(true),
 		}
 		if !base.UnitTestUrlIsWalrus() {
 			dbConfig.UseViews = base.Ptr(base.TestsDisableGSI())

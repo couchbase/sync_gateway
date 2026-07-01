@@ -2100,9 +2100,6 @@ func TestImportTouch(t *testing.T) {
 }
 func TestImportingPurgedDocument(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2140,9 +2137,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 
 func TestImportOnWriteMigration(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
