@@ -272,6 +272,10 @@ func (c *RosmarCluster) SetMigrationComplete(bucketName string) {
 	c.bucketsBootstrapMigrationComplete.Store(bucketName, true)
 }
 
+func (c *RosmarCluster) IsMigrationComplete(bucketName string) bool {
+	return c.bucketBootstrapMigrationComplete(bucketName)
+}
+
 // bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
 // complete for the given bucket. Absence of an entry means not-complete, so reads keep the
 // _default._default fallback.

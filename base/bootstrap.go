@@ -52,6 +52,8 @@ type BootstrapConnection interface {
 	// for the given bucket; subsequent bootstrap reads for that bucket stop falling back to
 	// _default._default. Per-bucket so completing one bucket never disables another's fallback.
 	SetMigrationComplete(bucketName string)
+	// IsMigrationComplete reports whether this process has marked bootstrap-metadata migration complete for the given bucket (local cache).
+	IsMigrationComplete(bucketName string) bool
 	// GetMetadataMigrationStatus reads the bucket-level metadata-migration status doc directly from
 	// _system._mobile (never via the dual-collection wrapper). Returns ErrNotFound when the doc has
 	// not yet been stamped on this bucket.
@@ -509,6 +511,10 @@ func (cc *CouchbaseCluster) shouldFallback(err error, fallback *gocb.Collection)
 // operations.
 func (cc *CouchbaseCluster) SetMigrationComplete(bucketName string) {
 	cc.bucketsBootstrapMigrationComplete.Store(bucketName, true)
+}
+
+func (cc *CouchbaseCluster) IsMigrationComplete(bucketName string) bool {
+	return cc.bucketBootstrapMigrationComplete(bucketName)
 }
 
 // bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
