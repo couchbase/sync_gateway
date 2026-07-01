@@ -2838,7 +2838,7 @@ func TestInvalidateRoles(t *testing.T) {
 	err = auth.InvalidateRoles("user", 10)
 	assert.NoError(t, err)
 
-	// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
+	// Ensure the inval seq was set to 10 (raw get to avoid rebuild)
 	var userOut userImpl
 	_, err = leakyDataStore.Get(ctx, auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
