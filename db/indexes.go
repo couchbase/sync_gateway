@@ -471,13 +471,13 @@ func replaceSyncTokensIndex(statement string) string {
 	return strings.ReplaceAll(str, syncToken, syncXattr)
 }
 
-// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token.
+// Replace sync tokens ($sync and $relativesync) in the provided query statement with the appropriate token.
 func replaceSyncTokensQuery(statement string) string {
 	str := strings.ReplaceAll(statement, syncRelativeToken, syncXattrQuery)
 	return strings.ReplaceAll(str, syncToken, syncXattrQuery)
 }
 
-// Replace index tokens ($idx) in the provided createIndex statement with the appropriate token.
+// Replace index token ($idx) in the provided query statement with the appropriate index name.
 func replaceIndexTokensQuery(statement string, idx SGIndex, numPartitions uint32) string {
 	return strings.Replace(statement, indexToken, idx.fullIndexName(numPartitions), -1)
 }
