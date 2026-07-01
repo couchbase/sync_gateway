@@ -33,6 +33,8 @@ func collectScanIDs(t testing.TB, ctx context.Context, rss sgbucket.RangeScanSto
 	for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
 		ids = append(ids, item.ID)
 	}
+	// A clean drain must leave no error, inspectable without closing the iterator.
+	assert.NoError(t, iter.Err())
 	sort.Strings(ids)
 	return ids
 }
@@ -82,6 +84,7 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 			assert.NotNil(t, item.Body, "Expected body for key %s", item.ID)
 			assert.NotZero(t, item.Cas, "Expected non-zero CAS for key %s", item.ID)
 		}
+		assert.NoError(t, iter.Err())
 		sort.Strings(ids)
 		require.Equal(t, allDocIDs, ids)
 	})
@@ -105,6 +108,7 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 			ids = append(ids, item.ID)
 			assert.Nil(t, item.Body, "Expected nil body for IDsOnly scan, key %s", item.ID)
 		}
+		assert.NoError(t, iter.Err())
 		sort.Strings(ids)
 		require.Equal(t, allDocIDs, ids)
 	})

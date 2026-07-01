@@ -84,6 +84,13 @@ func (it *gocbScanResultIterator) Next(_ context.Context) *sgbucket.ScanResultIt
 	return result
 }
 
+func (it *gocbScanResultIterator) Err() error {
+	if it.err != nil {
+		return it.err
+	}
+	return it.result.Err()
+}
+
 func (it *gocbScanResultIterator) Close(_ context.Context) error {
 	closeErr := it.result.Close()
 	if it.err == nil {
