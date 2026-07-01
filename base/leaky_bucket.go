@@ -192,7 +192,7 @@ func (b *LeakyBucket) getIgnoreClose() bool {
 func (b *LeakyBucket) getDCPFeedMissingDocs() []string {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
-	return b._config.DCPFeedMissingDocs
+	return slices.Clone(b._config.DCPFeedMissingDocs)
 }
 
 func (b *LeakyBucket) getRawCallback() func(string) error {
@@ -234,7 +234,7 @@ func (b *LeakyBucket) getAddCallback() func(string) (bool, error) {
 func (b *LeakyBucket) getForceErrorSetRawKeys() []string {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
-	return b._config.ForceErrorSetRawKeys
+	return slices.Clone(b._config.ForceErrorSetRawKeys)
 }
 
 func (b *LeakyBucket) getWriteCasCallback() func(string) (uint64, error) {
@@ -276,7 +276,7 @@ func (b *LeakyBucket) setPostUpdateCallback(fn func(string)) {
 func (b *LeakyBucket) getForceTimeoutErrorOnUpdateKeys() []string {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
-	return b._config.ForceTimeoutErrorOnUpdateKeys
+	return slices.Clone(b._config.ForceTimeoutErrorOnUpdateKeys)
 }
 
 func (b *LeakyBucket) getIncrTemporaryFailCount() uint16 {
