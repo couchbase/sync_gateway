@@ -235,7 +235,7 @@ func TestLoggingKeys(t *testing.T) {
 	require.JSONEq(t, `{}`, response.BodyString())
 }
 
-func TestServerlessChangesEndpointLimit(t *testing.T) {
+func TestChangesEndpointDuringConcurrentReplicationLimit(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyChanges)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{

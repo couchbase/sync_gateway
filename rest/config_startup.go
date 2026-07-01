@@ -66,11 +66,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			MaxConcurrentRevs:           base.Ptr(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
-			StatsLogFrequency: base.NewConfigDuration(time.Minute),
-			Serverless: ServerlessConfig{
-				Enabled:                base.Ptr(false),
-				MinConfigFetchInterval: base.NewConfigDuration(DefaultMinConfigFetchInterval),
-			},
+			StatsLogFrequency:    base.NewConfigDuration(time.Minute),
 			AllowDbConfigEnvVars: base.Ptr(true),
 			DiagnosticInterface:  DefaultDiagnosticInterface, // Disabled by default
 		},
@@ -164,7 +160,6 @@ type ReplicatorConfig struct {
 type UnsupportedConfig struct {
 	StatsLogFrequency       *base.ConfigDuration     `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
 	UseStdlibJSON           *bool                    `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	Serverless              ServerlessConfig         `json:"serverless"`
 	HTTP2                   *HTTP2Config             `json:"http2,omitempty"`
 	UserQueries             *bool                    `json:"user_queries,omitempty"            help:"Feature flag for user N1QL/JS queries"`
 	UseXattrConfig          *bool                    `json:"use_xattr_config,omitempty"        help:"Store database configurations in system xattrs"`
@@ -179,11 +174,6 @@ type UnsupportedConfig struct {
 type AuditInfoProviderConfig struct {
 	GlobalInfoEnvVarName  *string `json:"global_info_env_var_name,omitempty" help:"Environment variable name to get global audit event info from"`
 	RequestInfoHeaderName *string `json:"request_info_header_name,omitempty" help:"HTTP header name to get request audit event info from"`
-}
-
-type ServerlessConfig struct {
-	Enabled                *bool                `json:"enabled,omitempty" help:"Enable Sync Gateway serverless mode."`
-	MinConfigFetchInterval *base.ConfigDuration `json:"min_config_fetch_interval,omitempty" help:"How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about."`
 }
 
 type HTTP2Config struct {
@@ -222,10 +212,6 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 	}
 
 	return &config, nil
-}
-
-func (sc *StartupConfig) IsServerless() bool {
-	return base.ValDefault(sc.Unsupported.Serverless.Enabled, false)
 }
 
 func LoadStartupConfigFromPath(ctx context.Context, path string) (*StartupConfig, error) {
