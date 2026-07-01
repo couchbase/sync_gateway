@@ -48,7 +48,6 @@ type GoCBDCPClient struct {
 	workers                    []*DCPWorker                   // Workers for concurrent processing of incoming mutations and callback.  vbuckets are partitioned across workers
 	workersWg                  sync.WaitGroup                 // Active workers WG - used for signaling when the DCPClient workers have all stopped so the doneChannel can be closed
 	spec                       BucketSpec                     // Bucket spec for the target data store
-	supportsCollections        bool                           // Whether the target data store supports collections
 	numVbuckets                uint16                         // number of vbuckets on target data store
 	terminator                 chan bool                      // Used to close worker goroutines spawned by the DCPClient
 	doneChannel                chan error                     // Returns nil on successful completion of one-shot feed or external close of feed, error otherwise
@@ -138,21 +137,20 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		return nil, fmt.Errorf("error generating DCP stream name: %w", err)
 	}
 	client := &GoCBDCPClient{
-		ctx:                 ctx,
-		dcpStreamName:       dcpStreamName,
-		workers:             make([]*DCPWorker, numWorkers),
-		numVbuckets:         numVbuckets,
-		callback:            callback,
-		spec:                bucket.GetSpec(),
-		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
-		terminator:          make(chan bool),
-		doneChannel:         make(chan error, 1),
-		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    options.CheckpointPrefix,
-		dbStats:             options.DbStats,
-		agentPriority:       options.AgentPriority,
-		collectionIDs:       options.CollectionIDs,
-		feedContent:         options.FeedContent,
+		ctx:              ctx,
+		dcpStreamName:    dcpStreamName,
+		workers:          make([]*DCPWorker, numWorkers),
+		numVbuckets:      numVbuckets,
+		callback:         callback,
+		spec:             bucket.GetSpec(),
+		terminator:       make(chan bool),
+		doneChannel:      make(chan error, 1),
+		failOnRollback:   options.FailOnRollback,
+		checkpointPrefix: options.CheckpointPrefix,
+		dbStats:          options.DbStats,
+		agentPriority:    options.AgentPriority,
+		collectionIDs:    options.CollectionIDs,
+		feedContent:      options.FeedContent,
 	}
 
 	// Initialize active vbuckets
@@ -192,9 +190,8 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 
 // getCollectionHighSeqNo returns the highSeqNo for a given KV collection ID.
 func (dc *GoCBDCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, error) {
-	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{}
-	if dc.supportsCollections {
-		vbucketSeqnoOptions.FilterOptions = &gocbcore.GetVbucketSeqnoFilterOptions{CollectionID: collectionID}
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
+		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{CollectionID: collectionID},
 	}
 	configSnapshot, err := dc.agent.ConfigSnapshot()
 	if err != nil {
@@ -389,9 +386,7 @@ func (dc *GoCBDCPClient) getAgentConfig(spec BucketSpec) (*gocbcore.DCPAgentConf
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"
-	if dc.supportsCollections {
-		agentConfig.IoConfig.UseCollections = true
-	}
+	agentConfig.IoConfig.UseCollections = true
 	return &agentConfig, nil
 }
 
@@ -537,10 +532,8 @@ func (dc *GoCBDCPClient) openStreamRequest(vbID uint16) error {
 
 	vbMeta := dc.metadata.GetMeta(vbID)
 
-	options := gocbcore.OpenStreamOptions{}
-	// Always use a collection-aware feed if supported
-	if dc.supportsCollections {
-		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
+	options := gocbcore.OpenStreamOptions{
+		FilterOptions: &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs},
 	}
 
 	// This has to be buffered so that Cancel() below doesn't lead to blocking in the callback.

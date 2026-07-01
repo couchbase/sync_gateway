@@ -43,9 +43,6 @@ func IsMobileSystemCollection(dsn sgbucket.DataStoreName) bool {
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		return fmt.Sprintf("`%s`", c.BucketName())
-	}
 	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
@@ -70,17 +67,12 @@ func (c *Collection) BucketName() string {
 }
 
 func (c *Collection) indexManager() *indexManager {
-	m := &indexManager{
+	return &indexManager{
 		bucketName:     c.BucketName(),
 		collectionName: c.CollectionName(),
 		scopeName:      c.ScopeName(),
+		collection:     c.Collection.QueryIndexes(),
 	}
-	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		m.cluster = c.Bucket.cluster.QueryIndexes()
-	} else {
-		m.collection = c.Collection.QueryIndexes()
-	}
-	return m
 }
 
 // IndexMetaKeyspaceID returns the value of keyspace_id for the system:indexes table for the collection.
@@ -181,13 +173,7 @@ func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions 
 		n1qlOptions = &gocb.QueryOptions{}
 	}
 
-	var queryResults *gocb.QueryResult
-	var err error
-	if b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		queryResults, err = b.bucket.Scope(scopeName).Query(statement, n1qlOptions)
-	} else {
-		queryResults, err = b.cluster.Query(statement, n1qlOptions)
-	}
+	queryResults, err := b.bucket.Scope(scopeName).Query(statement, n1qlOptions)
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
 	if err != nil {
 		b.releaseQueryOp()
