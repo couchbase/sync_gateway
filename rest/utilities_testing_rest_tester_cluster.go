@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 // RestTesterCluster can be used to simulate a multi-node Sync Gateway cluster.
@@ -74,7 +75,6 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 type RestTesterClusterConfig struct {
 	NumNodes            uint8                // Number of RestTester objects to create
 	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
-	testBucket          *base.TestBucket     // If set, use this bucket, otherwise create and manage a backing bucket.
 }
 
 func defaultRestTesterClusterConfig() *RestTesterClusterConfig {
@@ -88,13 +88,11 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 		config = defaultRestTesterClusterConfig()
 	}
 
+	require.NotZero(t, config.NumNodes)
+
 	groupID := uuid.NewString()
 
-	// Make all RestTesters share the same unclosable TestBucket
-	tb := config.testBucket
-	if tb == nil {
-		tb = base.GetTestBucket(t)
-	}
+	tb := base.GetTestBucket(t)
 
 	// Start up all rest testers in parallel
 	wg := sync.WaitGroup{}
