@@ -314,10 +314,9 @@ func TestMigrationNoReRunStartStopDb(t *testing.T) {
 func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 1)
-	tb := base.GetTestBucket(t)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: tb,
-		PersistentConfig: true,
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+		PersistentConfig:  true,
 	}
 
 	rt := rest.NewRestTester(t, rtConfig)
@@ -325,41 +324,48 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	ctx := rt.Context()
 	_ = rt.Bucket()
 
-	const (
-		dbName = "db1"
-	)
+	const dbName = "db1"
 
-	ds0, err := tb.GetNamedDataStore(0)
+	ds0, err := rt.TestBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
-	opts := &sgbucket.MutateInOptions{}
 
-	// add some docs (with xattr so they won't be ignored in the background job) to both collections
-	// we want to add large number of docs to stop the migration job from finishing before we can try start the job
-	// again (whilst already running)
-	bodyBytes := []byte(`{"some": "body"}`)
-	for i := range 2000 {
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		xattrsInput := map[string][]byte{
-			"_xattr": []byte(`{"some":"xattr"}`),
+	// Write one legacy attachment doc so migration has a real doc to process (calls UpdateXattrs).
+	docKey := t.Name() + "_0"
+	_, writeErr := ds0.WriteWithXattrs(ctx, docKey, 0, 0, []byte(`{"some":"body"}`), map[string][]byte{
+		base.SyncXattrName: []byte(`{"attachments":{"att.txt":{"content_type":"text/plain","digest":"sha1-AABBCCDD","length":3,"revpos":1,"stub":true}}}`),
+	}, nil, &sgbucket.MutateInOptions{})
+	require.NoError(t, writeErr)
+
+	// Block migration at UpdateXattrs for our doc so stop arrives while migration is genuinely in-flight.
+	leakyDS, ok := base.AsLeakyDataStore(ds0)
+	require.True(t, ok, "datastore must be a LeakyDataStore")
+	blocked := make(chan struct{})
+	blockCh := make(chan struct{})
+	leakyDS.SetUpdateXattrsCallback(func(key string) {
+		if key != docKey {
+			return
 		}
-		_, writeErr := ds0.WriteWithXattrs(ctx, key, 0, 0, bodyBytes, xattrsInput, nil, opts)
-		require.NoError(t, writeErr)
-	}
+		close(blocked)
+		<-blockCh
+	})
 
-	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
 	dbConfig := rt.NewDbConfig()
-	// ensure import is off to stop the docs we add from being imported by sync gateway, this could cause extra overhead
-	// on the migration job (more doc writes going to bucket). We want to avoid for purpose of this test
 	dbConfig.AutoImport = false
 	dbConfig.Scopes = scopesConfig
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-	// wait for migration job to start
-	waitForAttachmentMigrationState(rt, db.BackgroundProcessStateRunning)
+
+	// Wait until migration is blocked mid-UpdateXattrs, guaranteeing Running state.
+	<-blocked
 
 	err = rt.GetDatabase().AttachmentMigrationManager.Start(ctx, nil)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "Process already running")
+
+	// Clear the callback so subsequent docs pass through, then release the blocked call.
+	leakyDS.SetUpdateXattrsCallback(nil)
+	close(blockCh)
 }
 
 // getAttachmentMigrationManagerStatusMigrationManagerStatus returns the status of the AttachmentMigrationManager for a single database RestTester.

@@ -149,6 +149,12 @@ type LeakyBucketConfig struct {
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 
+	// UpdateXattrsCallback is called before UpdateXattrs. Useful for injecting delays or errors per-key.
+	UpdateXattrsCallback func(key string)
+
+	// WriteUpdateWithXattrsCallback is called before WriteUpdateWithXattrs. Useful for injecting delays per-key.
+	WriteUpdateWithXattrsCallback func(key string)
+
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
 
@@ -372,6 +378,30 @@ func (b *LeakyBucket) getWriteWithXattrCallback() func(string) {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
 	return b._config.WriteWithXattrCallback
+}
+
+func (b *LeakyBucket) getUpdateXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.UpdateXattrsCallback
+}
+
+func (b *LeakyBucket) setUpdateXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.UpdateXattrsCallback = fn
+}
+
+func (b *LeakyBucket) getWriteUpdateWithXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.WriteUpdateWithXattrsCallback
+}
+
+func (b *LeakyBucket) setWriteUpdateWithXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.WriteUpdateWithXattrsCallback = fn
 }
 
 func (b *LeakyBucket) getSetXattrCallback() func(string) error {

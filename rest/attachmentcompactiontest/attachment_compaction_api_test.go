@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/gocbcore/v10"
@@ -29,7 +30,9 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	}
 
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
-	rt := rest.NewRestTesterDefaultCollection(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
 
 	// cleanup attachments left behind
@@ -38,7 +41,8 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		rest.RequireStatus(t, resp, http.StatusOK)
 		_ = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
 	}()
-	// Perform GET before compact has been ran, ensure it starts in valid 'stopped' state
+
+	// Perform GET before compact has been run — verify initial state.
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -50,21 +54,11 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	require.Equal(t, int64(0), response.PurgedAttachments)
 	require.Empty(t, response.LastErrorMessage)
 
-	// Kick off compact
-	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	// Attempt to kick off again and validate it correctly errors
-	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
-	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
-
-	rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
-
 	dataStore := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	// Create some legacy attachments to be marked but not compacted
-	for i := range 20 {
+	for i := range 3 {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]any{"value": strconv.Itoa(i)}
@@ -79,15 +73,24 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	for i := range 5 {
+	for i := range 2 {
 		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
 		makeUnmarkedDoc(docID)
 	}
 
+	// Pause at the first attachment mark so the concurrent-start 503 check arrives while running.
+	pauser := newCompactionPauser(rt)
+
 	// Start attachment compaction run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
+	// Attempt to kick off again and validate it correctly errors
+	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	pauser.Release()
 	rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
 
 	// Validate results of GET
@@ -97,19 +100,20 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
 	require.NoError(t, err)
 	require.Equal(t, db.BackgroundProcessStateCompleted, response.State)
-	require.Equal(t, int64(20), response.MarkedAttachments)
-	require.Equal(t, int64(5), response.PurgedAttachments)
+	require.Equal(t, int64(3), response.MarkedAttachments)
+	require.Equal(t, int64(2), response.PurgedAttachments)
 	require.Empty(t, response.LastErrorMessage)
 
-	// Start another run
+	// Start another run and stop it mid-flight.
+	pauser = newCompactionPauser(rt)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
-	// Attempt to terminate that run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.Release()
 
-	// Wait for run to complete
 	_ = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
 }
 
@@ -144,16 +148,24 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, rt2AttachmentStatus.State, db.BackgroundProcessStateCompleted)
 
+	// Add a legacy attachment so the mark phase has something to block on.
+	collection, ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, t.Name(), []byte("{}"), "att", []byte("att body"))
+
+	// Pause at the mark phase so stop arrives while genuinely in-flight.
+	pauser := newCompactionPauser(rt1)
+
 	// Start compaction again
 	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status := rt1.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
-	compactID := status.CompactID
+	pauser.WaitUntilBlocked()
+	compactID := rt1.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning).CompactID
 
 	// Abort process early from rt1
 	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
+	pauser.Release()
+	rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
 
 	// Ensure aborted status is present on rt2
 	resp = rt2.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
@@ -165,7 +177,7 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	// Attempt to start again from rt2 --> Should resume based on aborted state (same compactionID)
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
+	status := rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.Equal(t, compactID, status.CompactID)
 
 	// Wait for compaction to complete
@@ -237,19 +249,28 @@ func TestAttachmentCompactionReset(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
+
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, t.Name(), []byte("{}"), "att", []byte("att body"))
+
+	// Pause compaction at the mark of the first attachment so stop arrives while genuinely in-flight.
+	pauser := newCompactionPauser(rt)
 
 	// Start compaction
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
-	compactID := status.CompactID
+	pauser.WaitUntilBlocked()
+	compactID := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning).CompactID
 
 	// Stop compaction before complete -- enters aborted state
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
+	pauser.Release()
+	rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
 
 	// Ensure status is aborted
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
@@ -262,7 +283,7 @@ func TestAttachmentCompactionReset(t *testing.T) {
 	// Start compaction again but with reset=true --> meaning it shouldn't try to resume
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&reset=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
+	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, compactID, status.CompactID)
 
 	// Wait for completion and verify the completed run also carries a different compactID
@@ -359,24 +380,23 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-	for i := range 1000 {
-		docID := fmt.Sprintf("testDoc-%d", i)
-		attID := fmt.Sprintf("testAtt-%d", i)
-		attBody := map[string]any{"value": strconv.Itoa(i)}
-		attJSONBody, err := base.JSONMarshal(attBody)
-		require.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
-	}
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, t.Name(), []byte("{}"), "att", []byte("att body"))
+
+	pauser := newCompactionPauser(rt)
 
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.Release()
 
 	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateStopped)
 	assert.Equal(t, int64(0), status.PurgedAttachments)
@@ -441,4 +461,44 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	require.Equal(t, int64(0), response.MarkedAttachments)
 	require.Equal(t, int64(1000), response.PurgedAttachments)
 
+}
+
+// compactionPauser blocks the attachment compaction mark phase at the first attachment it encounters,
+// letting tests assert compaction is genuinely in-flight before issuing stop or reset commands.
+type compactionPauser struct {
+	t       testing.TB
+	blocked chan struct{}
+	blockCh chan struct{}
+	ds      *base.LeakyDataStore
+}
+
+func newCompactionPauser(rt *rest.RestTester) *compactionPauser {
+	leakyDS, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
+	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
+	p := &compactionPauser{
+		t:       rt.TB(),
+		blocked: make(chan struct{}),
+		blockCh: make(chan struct{}),
+		ds:      leakyDS,
+	}
+	leakyDS.SetXattrCallback(func(key string) error {
+		if !strings.HasPrefix(key, base.AttPrefix) {
+			return nil
+		}
+		close(p.blocked)
+		<-p.blockCh
+		return nil
+	})
+	return p
+}
+
+// WaitUntilBlocked blocks until compaction is paused at an attachment doc, proving it is in-flight.
+func (p *compactionPauser) WaitUntilBlocked() {
+	base.RequireChanClosed(p.t, p.blocked)
+}
+
+// Release clears the callback so subsequent docs pass through, then unblocks the paused doc.
+func (p *compactionPauser) Release() {
+	p.ds.SetXattrCallback(nil)
+	close(p.blockCh)
 }

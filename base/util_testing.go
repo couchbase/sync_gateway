@@ -913,6 +913,26 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (vbNo uint
 	return sgbucket.VBHash(key, maxVbNo), nil
 }
 
+// VBucket0DocIDs returns 5 doc IDs that all hash to vBucket 0 for every supported vBucket count
+// (64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
+// sequentially by a single DCP worker on CBS, which is required when a test pauses one doc and
+// needs the remaining docs to stay unprocessed until the pause is released.
+//
+// Keys were pre-computed using sgbucket.VBHash. On CBS, each key is verified at runtime.
+func VBucket0DocIDs(t testing.TB, bucket Bucket) []string {
+	keys := []string{"abbacomes", "baba", "ob", "rz", "aex"}
+	ctx := TestCtx(t)
+	for _, key := range keys {
+		vbNo, err := GetVbucketForKey(ctx, bucket, key)
+		if err != nil {
+			// Not a CBS bucket (e.g. Rosmar); static list was verified at generation time.
+			break
+		}
+		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
+	}
+	return keys
+}
+
 // MoveDocument moves the document from src to dst
 // Note: does not handle xattr contents
 func MoveDocument(t testing.TB, docID string, dst, src DataStore) {
