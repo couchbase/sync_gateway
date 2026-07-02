@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -1520,4 +1521,152 @@ func TestLargeAttachments(t *testing.T) {
 	})
 	require.ErrorAs(t, err, &httpErr, "Created doc with huge attachment")
 	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
+}
+
+// attachmentMigrationCASRetrySetup creates a doc with an attachment, then moves the attachment
+// back to AttachmentsPre4dot0 to simulate a document that has not yet been through the background
+// migration. Returns the doc and the initial Put rev so callers can use both.
+func attachmentMigrationCASRetrySetup(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+	t.Helper()
+	_, _, err := collection.Put(ctx, docID, Body{
+		"test": "doc",
+		BodyAttachments: AttachmentsMeta{
+			"camera.txt": map[string]any{"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="},
+		},
+	})
+	require.NoError(t, err)
+
+	ds := collection.GetCollectionDatastore()
+	xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	var bucketSyncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
+	var globalXattr GlobalSyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+
+	bucketSyncData.AttachmentsPre4dot0 = globalXattr.Attachments
+	syncBytes := base.MustJSONMarshal(t, bucketSyncData)
+	_, err = ds.WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"test":"doc"}`),
+		map[string][]byte{base.SyncXattrName: syncBytes}, []string{base.GlobalXattrName}, nil)
+	require.NoError(t, err)
+}
+
+// attachmentMigrationCASRetryCallback returns an UpdateCallback that calls MigrateAttachmentMetadata
+// exactly once for the given docID, changing the document CAS and forcing WriteUpdateWithXattrs to retry.
+func attachmentMigrationCASRetryCallback(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) func(string) {
+	t.Helper()
+	var once sync.Once
+	return func(key string) {
+		if key != docID {
+			return
+		}
+		once.Do(func() {
+			ds := collection.GetCollectionDatastore()
+			xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			var syncData SyncData
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+			require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, cas, &syncData))
+		})
+	}
+}
+
+const attachmentMigrationCASRetryDigest = "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI="
+const attachmentMigrationCASRetryData = "Q2Fub24gRU9TIDVEIE1hcmsgSVY="
+
+var attachmentMigrationCASRetryExpected = AttachmentMap{
+	"camera.txt": {
+		Digest:  attachmentMigrationCASRetryDigest,
+		Length:  20,
+		Revpos:  2,
+		Version: 2,
+		Stub:    true,
+	},
+}
+
+// TestAttachmentMigrationCASRetryOnUpdate verifies that PutExistingCurrentVersion and
+// PutExistingRevWithConflictResolution both preserve revpos=2 when a CAS retry is forced
+// by concurrent attachment migration. The maps.Clone reset in each function is the guard:
+// without it, the retry sees a stub mutated by the first invocation and applies a parent
+// lookup that returns the migrated revpos=1.
+func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
+	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	ds := collection.GetCollectionDatastore()
+
+	leakyDS, ok := base.AsLeakyDataStore(ds)
+	require.True(t, ok)
+
+	// putCurrentVersion calls PutExistingCurrentVersion (HLV/versionVector BLIP path).
+	putCurrentVersion := func(t *testing.T, docID string) {
+		existingDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalSync)
+		require.NoError(t, err)
+		incomingHLV := &HybridLogicalVector{
+			SourceID:         "cbl1",
+			Version:          existingDoc.HLV.Version + 1,
+			PreviousVersions: HLVVersions{existingDoc.HLV.SourceID: existingDoc.HLV.Version},
+		}
+		// newDoc carries the attachment as inline data, simulating what ForEachStubAttachment
+		// places in newDoc.Attachments() after downloading the data from the CBL client.
+		newDoc := &Document{ID: docID}
+		newDoc.SetAttachments(AttachmentsMeta{
+			"camera.txt": map[string]any{"data": attachmentMigrationCASRetryData},
+		})
+		newDoc.UpdateBody(Body{"some": "update"})
+		_, _, _, err = collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+			NewDoc:    newDoc,
+			NewDocHLV: incomingHLV,
+		})
+		require.NoError(t, err)
+	}
+
+	// putExistingRev calls PutExistingRevWithConflictResolution (rev-tree BLIP path).
+	putExistingRev := func(t *testing.T, docID string) {
+		existingDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalSync)
+		require.NoError(t, err)
+		existingRevID := existingDoc.GetRevTreeID()
+		incomingRevID := "2-attachmentmigrationcasretrytest"
+		newDoc := &Document{ID: docID, RevID: incomingRevID}
+		newDoc.SetAttachments(AttachmentsMeta{
+			"camera.txt": map[string]any{"data": attachmentMigrationCASRetryData},
+		})
+		newDoc.UpdateBody(Body{"some": "update"})
+		_, _, err = collection.PutExistingRevWithConflictResolution(ctx, PutDocOptions{
+			NewDoc:         newDoc,
+			RevTreeHistory: []string{incomingRevID, existingRevID},
+			DocUpdateEvent: ExistingVersionWithUpdateToHLV,
+		})
+		require.NoError(t, err)
+	}
+
+	testCases := []struct {
+		name       string
+		casFailure bool
+		update     func(t *testing.T, docID string)
+	}{
+		{name: "PutExistingCurrentVersion no CAS failure", casFailure: false, update: putCurrentVersion},
+		{name: "PutExistingCurrentVersion CAS failure", casFailure: true, update: putCurrentVersion},
+		{name: "PutExistingRevWithConflictResolution no CAS failure", casFailure: false, update: putExistingRev},
+		{name: "PutExistingRevWithConflictResolution CAS failure", casFailure: true, update: putExistingRev},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			docID := "doc_" + strings.ReplaceAll(tc.name, " ", "_")
+
+			attachmentMigrationCASRetrySetup(t, ctx, collection, docID)
+
+			if tc.casFailure {
+				leakyDS.SetUpdateCallback(attachmentMigrationCASRetryCallback(t, ctx, collection, docID))
+			}
+
+			tc.update(t, docID)
+
+			leakyDS.SetUpdateCallback(nil)
+
+			require.Empty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+			require.Equal(t, attachmentMigrationCASRetryExpected, GetRawGlobalSyncAttachments(t, ds, docID))
+		})
+	}
 }

@@ -1356,7 +1356,12 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	// Pull out attachments
-	newDoc.SetAttachments(GetBodyAttachments(body))
+	// originalBodyAtts is captured here so that each invocation of the WriteUpdateWithXattrs callback
+	// starts with the unmodified client-provided attachment map. storeAttachments mutates
+	// newDoc.Attachments() in place (replacing data with stubs); without reset, a CAS retry would
+	// see the stub from the prior invocation and apply an incorrect parent-revpos lookup.
+	originalBodyAtts := GetBodyAttachments(body)
+	newDoc.SetAttachments(originalBodyAtts)
 	delete(body, BodyAttachments)
 
 	delete(body, BodyRevisions)
@@ -1373,6 +1378,11 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		var isSgWrite bool
 		var crc32Match bool
 
+		// (Be careful: this block can be invoked multiple times if there are races!)
+		// Reset to the original client-provided attachment map so that storeAttachments always
+		// processes the original data rather than stubs left from a prior invocation.
+		newDoc.SetAttachments(maps.Clone(originalBodyAtts))
+
 		// Is this doc an sgWrite?
 		if doc != nil {
 			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
@@ -1381,7 +1391,6 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 			}
 		}
 
-		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
@@ -1509,8 +1518,10 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 
 	docUpdateEvent := ExistingVersion
 	updateRevCache := true
+	originalNewDocAtts := maps.Clone(opts.NewDoc.Attachments())
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, opts.NewDoc.ID, true, &opts.NewDoc.DocExpiry, nil, docUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
+		opts.NewDoc.SetAttachments(maps.Clone(originalNewDocAtts))
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -1770,8 +1781,10 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 	docHistory := opts.RevTreeHistory
 	allowImport := db.UseXattrs()
 	updateRevCache := true
+	originalNewDocAtts := maps.Clone(newDoc.Attachments())
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, opts.DocUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
+		newDoc.SetAttachments(maps.Clone(originalNewDocAtts))
 
 		var isSgWrite bool
 		var crc32Match bool
