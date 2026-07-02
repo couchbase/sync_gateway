@@ -3252,6 +3252,12 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 // Sync Gateway and the server, which we log rather than stall a write on.
 const maxVersionCASCorrectionWait = time.Second
 
+// versionCASCorrectionSlack pads the catch-up sleep in correctVersionAheadOfCAS so the re-stamped CAS
+// lands strictly past the generated version rather than exactly on a physical-tick boundary. It absorbs
+// small drift between the monotonic clock (time.Sleep) and the wall clock (CAS generation) that would
+// otherwise leave the CAS one tick short. Kept small so it adds negligible latency to a corrected write.
+const versionCASCorrectionSlack = time.Millisecond
+
 // correctVersionAheadOfCAS handles the rare case where the HLC-generated current version is greater than
 // the CAS the server assigned to the write (the Sync Gateway clock ran ahead of the server's). goxdcr
 // rejects a document whose cv.ver exceeds its CAS, so leaving it would cause this mutation to be
@@ -3281,8 +3287,23 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 		return doc
 	}
 
-	// sleep until the server's CAS would have caught up to the generated version, then re-stamp the CAS on the document so cv.ver <= cas holds for XDCR replication
-	time.Sleep(time.Duration(gap))
+	// Sleep until the CAS-assigning clock has advanced far enough that a fresh CAS would reach the
+	// generated version, then re-stamp so cv.ver <= cas holds for XDCR.
+	//
+	// The catch depends on three clocks, not two. The version is stamped from Sync Gateway's HLC;
+	// the CAS is stamped from the HLC of whatever assigns it - a Couchbase Server node or, under Rosmar unit
+	// tests. Either way the sleep is the third clock: time.Sleep does not
+	// advance a wall clock at all, it waits on the monotonic clock, which is a separate source
+	// (for windows builds). So SGW version and rosmar CAS are reading from different source to time.Since for windows instances.
+	//
+	// That tiny shortfall is amplified because version and CAS are compared after being floored to
+	// physical ticks (the low HLCLogicalBits are cleared). The success margin is already sub-tick, so a
+	// CAS clock that lands even 1ns before the target tick boundary produces a re-stamped CAS a whole
+	// tick (~65us) below the version. This is most visible under Rosmar, where the version and CAS share
+	// the same in-process clock and so land right on the boundary. Padding the sleep past the boundary
+	// makes us overshoot it regardless of the drift; the resulting CAS is at most versionCASCorrectionSlack
+	// larger than strictly required, which is harmless.
+	time.Sleep(time.Duration(gap) + versionCASCorrectionSlack)
 
 	cas2, err := db.restampVersionCAS(ctx, key, doc, casOut)
 	if err != nil {
@@ -3300,10 +3321,9 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	doc.SyncData.Cas = base.CasToString(cas2)
 	db.dbStats().Database().HLVVersionCASRetryCount.Add(1)
 
-	// Verify the re-stamp actually resolved the invariant. It may not when the version was ahead only within
-	// the logical-counter bits (the physical gap, and so the sleep, was ~0 and the server advanced its CAS by
-	// only a logical tick). We deliberately do not retry; a later mutation will resolve it, but surface a
-	// warning so the (likely clock-skew/divergence) condition is visible.
+	// With the sleep padded past the tick boundary, a CAS still below the version indicates real clock
+	// skew/divergence rather than a rounding miss. We deliberately do not retry; a later mutation will
+	// resolve it, but surface a warning so the condition is visible.
 	if doc.HLV.Version > cas2 {
 		base.WarnfCtx(ctx, "Re-stamped CAS %d for doc %q is still below the generated version %d; not retrying - the document may be skipped by XDCR until a later mutation", cas2, base.UD(doc.ID), doc.HLV.Version)
 		return doc
