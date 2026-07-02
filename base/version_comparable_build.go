@@ -185,6 +185,25 @@ func (pv ComparableBuildVersion) String() string {
 	return pv.str
 }
 
+// ReleaseVersionString returns the major.minor.patch[.other] release version, omitting epoch,
+// build number, and edition. The optional 4th (other) component is included only when non-zero.
+// e.g. "4.1.0", "4.0.6", or "4.1.0.1"
+func (pv *ComparableBuildVersion) ReleaseVersionString() string {
+	if pv == nil {
+		return "0.0.0"
+	}
+	releaseStr := strconv.FormatUint(uint64(pv.major), 10) +
+		string(comparableBuildVersionSep) +
+		strconv.FormatUint(uint64(pv.minor), 10) +
+		string(comparableBuildVersionSep) +
+		strconv.FormatUint(uint64(pv.patch), 10)
+	if pv.other > 0 {
+		releaseStr += string(comparableBuildVersionSep) +
+			strconv.FormatUint(uint64(pv.other), 10)
+	}
+	return releaseStr
+}
+
 // MarshalJSON implements json.Marshaler for ComparableBuildVersion. The JSON representation is the version string.
 func (pv *ComparableBuildVersion) MarshalJSON() ([]byte, error) {
 	return JSONMarshal(pv.String())

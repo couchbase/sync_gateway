@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestIsPerDBMigrationInProgress verifies the guard that prevents a joining node from marking
@@ -1283,4 +1284,98 @@ func TestCollectStackTraceFile(t *testing.T) {
 	files := getFilenames(t, tempPath)
 	require.Len(t, files, 10)
 	require.ElementsMatch(t, files, expectedFiles)
+}
+
+/// need ot get these test behind server versiosn that support light house (may get 401 on endpioints that don;t exist on server versions)
+
+func TestSendingMetricsToNsServerCollector(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	bucket := rt.Bucket()
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+
+	serverIsCE := base.TestsUseServerCE()
+
+	SGWorBFArole := MobileSyncGatewayRole.RoleName
+	if serverIsCE {
+		SGWorBFArole = BucketFullAccessRole.RoleName
+	}
+
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	base.MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole, rt.Bucket().GetName())})
+	defer base.DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
+
+	uri := fmt.Sprintf("/internal/settings/lighthouse")
+	respBytes, _, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	require.NoError(t, err)
+	var settings base.FleetManagerCollectorSettings
+	require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+	assert.True(t, settings.Enabled) // enabled by default
+	assert.NotEmpty(t, settings.IntervalSeconds)
+
+	// Exercise the production send path rather than re-implementing the POST here.
+	metrics := base.CollectSGWFleetManagerMetrics("someNodeID", "myHost")
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+}
+
+func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	bucket := rt.Bucket()
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+
+	uri := fmt.Sprintf("/internal/settings/lighthouse")
+	disableBody := []byte(`{"enabled": false}`)
+	respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader(disableBody))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode, "unexpected response: %s code: %d", string(respBytes), statusCode)
+	var settings base.FleetManagerCollectorSettings
+	require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+	assert.False(t, settings.Enabled)
+
+	metrics := base.CollectSGWFleetManagerMetrics("someNodeID", "myHost")
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+
+	// now flip collector back to enabled for next test
+	enableBody := []byte(`{"enabled": true}`)
+	respBytes, statusCode, err = gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader(enableBody))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode)
+
+	// verify enabled is true now
+	settings = base.FleetManagerCollectorSettings{}
+	require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+	assert.True(t, settings.Enabled)
+}
+
+func TestAllFleetManagerMetricsPopulated(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	metrics := base.CollectSGWFleetManagerMetrics("someNodeID", "myHost")
+	assert.NotEmpty(t, metrics.InstanceID)
+	assert.NotZero(t, metrics.CpuCores)
+	assert.NotEmpty(t, metrics.RamBytesTotal)
+	assert.NotEmpty(t, metrics.RamBytesUsed)
+	assert.NotEmpty(t, metrics.OSVersion)
+	assert.NotEmpty(t, metrics.Hostname)
+	assert.GreaterOrEqual(t, metrics.UptimeSeconds, 0)
+	assert.NotEmpty(t, metrics.ProductInfo.Edition)
+	assert.NotEmpty(t, metrics.ProductInfo.Version)
+	assert.NotEmpty(t, metrics.ProductInfo.Name)
 }

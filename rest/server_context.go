@@ -19,6 +19,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -165,6 +166,72 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string
 	sc.cpuPprofFile = nil
 	sc.cpuPprofFileMutex.Unlock()
 	return filename
+}
+
+const fleetManagerMetricsInterval = 1 * time.Hour // todo: CBG-5525 make this configurable
+
+func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		base.WarnfCtx(ctx, "Could not read hostname for node UID fingerprint: %v", err)
+	}
+
+	report := func() {
+		metrics := base.CollectSGWFleetManagerMetrics(sc.NodeUID, hostname)
+		if err := sc.sendFleetManagerMetrics(ctx, metrics); err != nil {
+			base.WarnfCtx(ctx, "Could not report fleet manager metrics: %v", err)
+		}
+	}
+
+	ticker := time.NewTicker(fleetManagerMetricsInterval)
+	go func() {
+		defer ticker.Stop()
+		// Report once on startup rather than waiting a full interval for the first tick.
+		report()
+		for {
+			select {
+			case <-ticker.C:
+				report()
+			case <-ctx.Done():
+				base.InfofCtx(ctx, base.KeyAll, "Stopping fleet manager metrics reporting: %v", context.Cause(ctx))
+				return
+			}
+		}
+	}()
+	base.InfofCtx(ctx, base.KeyAll, "Starting fleet manager metrics reporting")
+}
+
+// sendFleetManagerMetrics POSTs the collected metrics to the ns_server fleet manager collector
+// ingest endpoint on the Couchbase Server management API. A 404 means the connected server predates
+// the collector endpoint (or it has been removed); this is treated as a benign skip so reporting
+// starts automatically once the server is upgraded, rather than a hard error.
+func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics base.SyncGatewayFleetManagerMetrics) error {
+	endpoints, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	if err != nil {
+		return fmt.Errorf("could not obtain management endpoints: %w", err)
+	}
+
+	metricsJSON, err := base.JSONMarshal(metrics)
+	if err != nil {
+		return fmt.Errorf("could not marshal fleet manager metrics: %w", err)
+	}
+
+	uri := fmt.Sprintf("/_lighthouseCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, url.QueryEscape(metrics.InstanceID))
+	statusCode, respBytes, err := doHTTPAuthRequest(ctx, httpClient, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
+	if err != nil {
+		return err
+	}
+	switch statusCode {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusNotFound:
+		// Server doesn't expose the collector endpoint (too old, or collector removed). Skip quietly
+		// and retry on the next interval.
+		base.DebugfCtx(ctx, base.KeyAll, "Fleet manager collector endpoint unavailable (status %d); will retry next interval", statusCode)
+		return nil
+	default:
+		return fmt.Errorf("unexpected status %d from fleet manager collector: %s", statusCode, respBytes)
+	}
 }
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
@@ -2074,7 +2141,7 @@ func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *ht
 func CheckPermissions(ctx context.Context, httpClient *http.Client, managementEndpoints []string, bucketName, username, password string, accessPermissions []Permission, responsePermissions []Permission) (statusCode int, permissionResults map[string]bool, err error) {
 	combinedPermissions := append(accessPermissions, responsePermissions...)
 	body := []byte(strings.Join(FormatPermissionNames(combinedPermissions, bucketName), ","))
-	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "POST", "/pools/default/checkPermissions", "", managementEndpoints, body)
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -2128,7 +2195,7 @@ type WhoAmIResponse struct {
 }
 
 func cbRBACWhoAmI(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) (response *WhoAmIResponse, statusCode int, err error) {
-	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", "", managementEndpoints, nil)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -2169,12 +2236,12 @@ func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoint
 	return http.StatusForbidden, nil
 }
 
-func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path, contentType string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value any) {
 		endpointIdx := retryCount % len(endpoints)
-		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "", username, password, bytes.NewBuffer(requestBody))
+		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, contentType, username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
@@ -2774,7 +2841,7 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", eps, nil)
+	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", "", eps, nil)
 	if err != nil {
 		return "", err
 	}
