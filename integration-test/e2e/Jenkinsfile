@@ -118,7 +118,12 @@ pipeline {
         stage('Run E2E Tests') {
             steps {
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
-                    sh '/bin/bash ./integration-test/e2e/run_e2e_tests.sh'
+                    sh '''
+                        set -eu
+                        mkdir -p integration-test/e2e
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                        /bin/bash integration-test/e2e/run_e2e_tests.sh
+                    '''
                 }
             }
         }

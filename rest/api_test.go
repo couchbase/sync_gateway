@@ -3157,22 +3157,8 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
-		RequireStatus(t, resp, http.StatusOK)
-
-		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
-		assert.NoError(t, err)
-
-		return tombstoneCompactionStatus.State == db.BackgroundProcessStateCompleted
-	})
-	assert.NoError(t, err)
+	tombstoneCompactionStatus = rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value() > firstStartTimeStat)
-
-	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
-	RequireStatus(t, resp, http.StatusOK)
-	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
-	assert.NoError(t, err)
 
 	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
@@ -3737,85 +3723,38 @@ func TestUnsupportedServerConfigOptions(t *testing.T) {
 		expectedConnStr string
 		kvBuffer        int
 		dcpBuffer       int
-		serverless      bool
 		params          string
 	}{
 		{
-			name:            "serverless-no_query_param-no_unsupported_options",
-			serverless:      true,
-			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-		},
-		{
-			name:            "non_serverless-no_query_param_and_no_unsupported_options",
-			serverless:      false,
+			name:            "no_query_param_and_no_unsupported_options",
 			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
-			name:            "serverless-no_query_param-unsupported_options",
-			serverless:      true,
-			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			kvBuffer:        2000,
-			dcpBuffer:       3000,
-		},
-		{
-			name:            "non_serverless-no_query_param-unsupported_options",
-			serverless:      false,
+			name:            "no_query_param-unsupported_options",
 			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvBuffer:        2000,
 			dcpBuffer:       3000,
 		},
 		{
-			name:            "serverless-dcp_buffer_query_param-kv_buffer_unsupported_option",
-			serverless:      true,
-			params:          "?dcp_buffer_size=20",
-			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			kvBuffer:        2000,
-		},
-		{
-			name:            "non_serverless-dcp_buffer_query_param-kv_buffer_unsupported_option",
-			serverless:      false,
+			name:            "dcp_buffer_query_param-kv_buffer_unsupported_option",
 			params:          "?dcp_buffer_size=20",
 			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvBuffer:        2000,
 		},
 		{
-			name:            "serverless-dcp_buffer_query_param-dcp_buffer_unsupported_option",
-			serverless:      true,
-			params:          "?dcp_buffer_size=20",
-			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			dcpBuffer:       3000,
-		},
-		{
-			name:            "non_serverless-dcp_buffer_query_param-dcp_buffer_unsupported_option",
-			serverless:      false,
+			name:            "dcp_buffer_query_param-dcp_buffer_unsupported_option",
 			params:          "?dcp_buffer_size=20",
 			expectedConnStr: "?dcp_buffer_size=20&idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			dcpBuffer:       3000,
 		},
 		{
-			name:            "serverless-kv_buffer_query_param-kv_buffer_unsupported_option",
-			serverless:      true,
-			params:          "?kv_buffer_size=20",
-			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			kvBuffer:        2000,
-		},
-		{
-			name:            "non_serverless-kv_buffer_query_param-kv_buffer_unsupported_option",
-			serverless:      false,
+			name:            "kv_buffer_query_param-kv_buffer_unsupported_option",
 			params:          "?kv_buffer_size=20",
 			expectedConnStr: "?idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvBuffer:        2000,
 		},
 		{
-			name:            "serverless-kv_buffer_query_param-dcp_buffer_unsupported_option",
-			serverless:      true,
-			params:          "?kv_buffer_size=20",
-			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			dcpBuffer:       3000,
-		},
-		{
-			name:            "non_serverless-kv_buffer_query_param-dcp_buffer_unsupported_option",
-			serverless:      false,
+			name:            "kv_buffer_query_param-dcp_buffer_unsupported_option",
 			params:          "?kv_buffer_size=20",
 			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=20&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			dcpBuffer:       3000,
@@ -3828,11 +3767,6 @@ func TestUnsupportedServerConfigOptions(t *testing.T) {
 			sc := &StartupConfig{
 				Bootstrap: BootstrapConfig{
 					Server: serverBase + test.params,
-				},
-				Unsupported: UnsupportedConfig{
-					Serverless: ServerlessConfig{
-						Enabled: base.Ptr(test.serverless),
-					},
 				},
 			}
 			dbConfig := &DatabaseConfig{

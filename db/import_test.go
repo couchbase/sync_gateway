@@ -71,20 +71,15 @@ func TestFeedImport(t *testing.T) {
 
 	// verify mou and rev seqno
 	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName, base.VirtualXattrRevSeqNo, base.VvXattrName})
-	if db.UseMou() {
-		var mou *MetadataOnlyUpdate
-		require.NoError(t, err)
-		mouXattr, mouOk := xattrs[base.MouXattrName]
-		require.True(t, mouOk)
-		require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-		require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
-		require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-		// curr revSeqNo should be 2, so prev revSeqNo is 1
-		require.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo)
-	} else {
-		// Expect not found fetching mou xattr
-		require.Error(t, err)
-	}
+	var mou *MetadataOnlyUpdate
+	require.NoError(t, err)
+	mouXattr, mouOk := xattrs[base.MouXattrName]
+	require.True(t, mouOk)
+	require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+	require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+	require.Equal(t, base.CasToString(importCas), mou.HexCAS)
+	// curr revSeqNo should be 2, so prev revSeqNo is 1
+	require.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo)
 	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	var hlv HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
@@ -164,14 +159,10 @@ func TestOnDemandImport(t *testing.T) {
 		doc, err := collection.GetDocument(ctx, getKey, DocUnmarshalAll)
 		require.NoError(t, err)
 
-		if db.UseMou() {
-			require.NotNil(t, doc.MetadataOnlyUpdate)
-			require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
-			require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
-			require.Equal(t, startingRevSeqNo, doc.MetadataOnlyUpdate.PreviousRevSeqNo)
-		} else {
-			require.Nil(t, doc.MetadataOnlyUpdate)
-		}
+		require.NotNil(t, doc.MetadataOnlyUpdate)
+		require.Equal(t, base.CasToString(writeCas), doc.MetadataOnlyUpdate.PreviousHexCAS)
+		require.Equal(t, base.CasToString(doc.Cas), doc.MetadataOnlyUpdate.HexCAS)
+		require.Equal(t, startingRevSeqNo, doc.MetadataOnlyUpdate.PreviousRevSeqNo)
 		require.Equal(t, db.EncodedSourceID, doc.HLV.SourceID)
 	})
 
@@ -230,19 +221,14 @@ func TestOnDemandImport(t *testing.T) {
 				// fetch the mou xattr directly doc to confirm import (to avoid triggering on-demand get import)
 				// verify mou
 				xattrs, importCas, err := collection.dataStore.GetXattrs(ctx, writeKey, []string{base.MouXattrName, base.VvXattrName})
-				if db.UseMou() {
-					require.NoError(t, err)
-					mouXattr, mouOk := xattrs[base.MouXattrName]
-					var mou *MetadataOnlyUpdate
-					require.True(t, mouOk)
-					require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
-					require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
-					require.Equal(t, base.CasToString(importCas), mou.HexCAS)
-					require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo)
-				} else {
-					// expect not found fetching mou xattr
-					require.Error(t, err)
-				}
+				require.NoError(t, err)
+				mouXattr, mouOk := xattrs[base.MouXattrName]
+				var mou *MetadataOnlyUpdate
+				require.True(t, mouOk)
+				require.NoError(t, base.JSONUnmarshal(mouXattr, &mou))
+				require.Equal(t, base.CasToString(writeCas), mou.PreviousHexCAS)
+				require.Equal(t, base.CasToString(importCas), mou.HexCAS)
+				require.Equal(t, startingRevSeqNo, mou.PreviousRevSeqNo)
 				var hlv HybridLogicalVector
 				require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
@@ -254,9 +240,6 @@ func TestOnDemandImport(t *testing.T) {
 	// Verify that the reload performed before an on-demand import (crud.go GetDocumentWithRaw)
 	// fetches the _mou xattr, so rawBucketDoc returned to the caller contains it.
 	t.Run("on-demand get includes mou xattr in reload", func(t *testing.T) {
-		if !db.UseMou() {
-			t.Skip("Test requires MOU support")
-		}
 		docKey := baseKey + "_mouReload"
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -293,9 +276,6 @@ func TestOnDemandImport(t *testing.T) {
 	// Verify that GetDocSyncData fetches _revseqno so the on-demand import it triggers
 	// records the correct PreviousRevSeqNo in _mou (not 0).
 	t.Run("on-demand GetDocSyncData sets correct mou pRev", func(t *testing.T) {
-		if !db.UseMou() {
-			t.Skip("Test requires MOU support")
-		}
 		docKey := baseKey + "_syncDataMou"
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1227,10 +1207,6 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
-	}
-
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	bodyBytes := []byte(`{"foo":"bar"}`)
@@ -1306,11 +1282,7 @@ func TestImportResurrectionMou(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 1)
 	syncData, mou, _ = getSyncAndMou(t, collection, docID)
-	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		require.NotNil(t, mou)
-	} else {
-		require.Nil(t, mou)
-	}
+	require.NotNil(t, mou)
 	require.NotNil(t, syncData)
 
 	// Delete via SDK, the mou will be updated by the import process
@@ -1319,11 +1291,7 @@ func TestImportResurrectionMou(t *testing.T) {
 		return db.DbStats.SharedBucketImport().ImportCount.Value()
 	}, 2)
 	syncData, mou, _ = getSyncAndMou(t, collection, docID)
-	if db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		require.NotNil(t, mou)
-	} else {
-		require.Nil(t, mou)
-	}
+	require.NotNil(t, mou)
 	require.NotNil(t, syncData)
 
 	// replace initial doc, expect mou to be removed

@@ -767,10 +767,16 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				require.NoError(t, ar.Start(ctx1))
 
 				if tc.activeWins {
-					base.RequireWaitForStat(t, func() int64 {
-						return replicationStats.ConflictResolvedLocalCount.Value()
-					}, 1)
-					verPostConflictRes, _ := rt1.GetDoc(docID)
+					// ConflictResolvedLocalCount is incremented inside the updateAndReturnDoc callback,
+					// before the CAS write commits. A plain GetDoc after RequireWaitForStat can still
+					// see the pre-resolution rev. Poll both the stat and the version change together so
+					// verPostConflictRes is always the committed post-resolution rev when we use it below.
+					var verPostConflictRes rest.DocVersion
+					require.EventuallyWithT(t, func(c *assert.CollectT) {
+						assert.Equal(c, int64(1), replicationStats.ConflictResolvedLocalCount.Value())
+						verPostConflictRes, _ = rt1.GetDoc(docID)
+						assert.NotEqual(c, legacyRevRT1, verPostConflictRes.RevTreeID)
+					}, 10*time.Second, 50*time.Millisecond)
 					rt2.WaitForLegacyRev(docID, verPostConflictRes.RevTreeID, []byte(`{"channels":["alice"],"source":"rt1"}`))
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2, verPostConflictRes.RevTreeID})

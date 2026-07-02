@@ -55,10 +55,6 @@ const (
 	CBXDCRCompatibleMinorVersion = 6
 )
 
-var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
-
-var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
-
 var allServers = []serverType{publicServer, adminServer, metricsServer, diagnosticServer}
 
 // serverInfo represents an instance of an HTTP server from sync gateway
@@ -100,7 +96,6 @@ type ServerContext struct {
 	NoX509HTTPClient              *http.Client         // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
 	hasStarted                    chan struct{}        // A channel that is closed via PostStartup once the ServerContext has fully started
 	LogContextID                  string               // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate        time.Time            // The last time fetchConfigsWithTTL() updated dbConfigs
 	allowScopesInPersistentConfig bool                 // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
 	DatabaseInitManager           *DatabaseInitManager // Manages database initialization (index creation and readiness) independent of database stop/start/reload, when using persistent config
 	ActiveReplicationsCounter
@@ -378,26 +373,13 @@ func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, er
 	return nil, base.ErrNotFound
 }
 
-// GetInactiveDatabase attempts to load the database and return it's DatabaseContext. It will first attempt to unsuspend the
-// database, and if that fails, try to load the database from the buckets.
+// GetInactiveDatabase attempts to load the database and return it's DatabaseContext, by fetching it from the buckets.
 // This should be used if GetActiveDatabase fails. Turns the database context, a variable to say if the config exists, and an error.
 func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (*db.DatabaseContext, bool, error) {
-	dbc, err := sc.unsuspendDatabase(ctx, name)
-	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
-		return nil, false, err
-	} else if err == nil {
-		return dbc, true, nil
-	}
-
 	var dbConfigFound bool
 	// database not loaded, fallback to fetching it from cluster
 	if sc.BootstrapContext.Connection != nil {
-		if sc.Config.IsServerless() {
-			dbConfigFound, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
-
-		} else {
-			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtxForDatabase(ctx), name, false)
-		}
+		dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtxForDatabase(ctx), name, false)
 		if dbConfigFound {
 			sc._databasesLock.RLock()
 			defer sc._databasesLock.RUnlock()
@@ -647,12 +629,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 	}
 
 	if !base.ServerIsWalrus(server) {
-		var params *base.GoCBConnStringParams
-		if serverConfig.IsServerless() {
-			params = base.DefaultServerlessGoCBConnStringParams()
-		} else {
-			params = base.DefaultGoCBConnStringParams()
-		}
+		params := base.DefaultGoCBConnStringParams()
 		if config.Unsupported != nil {
 			if config.Unsupported.DCPReadBuffer != 0 {
 				params.DcpBufferSize = config.Unsupported.DCPReadBuffer
@@ -684,11 +661,6 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 
 	if config.ViewQueryTimeoutSecs != nil {
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
-	}
-
-	spec.UseXattrs = config.UseXattrs()
-	if !spec.UseXattrs {
-		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
 	}
 
 	if config.BucketOpTimeoutMs != nil {
@@ -867,10 +839,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	collectionsRequiringAttachmentMigration := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
-		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-			return nil, errCollectionsUnsupported
-		}
-
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
@@ -1337,14 +1305,14 @@ func getJavascriptTimeout(config *DbConfig) time.Duration {
 }
 
 // newBaseImportOptions returns a prepopulated ImportOptions struct with values that are database wide.
-func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
+func newBaseImportOptions(config *DbConfig) *db.ImportOptions {
 	// Identify import options
 	importOptions := &db.ImportOptions{
 		BackupOldRev: base.ValDefault(config.ImportBackupOldRev, false),
 	}
 
 	if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.GetDefaultImportPartitions(serverless)
+		importOptions.ImportPartitions = base.DefaultImportPartitions
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
@@ -1358,7 +1326,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	javascriptTimeout := getJavascriptTimeout(config)
 
 	// Identify import options
-	importOptions := newBaseImportOptions(config, sc.Config.IsServerless())
+	importOptions := newBaseImportOptions(config)
 
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
@@ -1857,86 +1825,6 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	return true
 }
 
-func (sc *ServerContext) _isDatabaseSuspended(dbName string) bool {
-	if config, loaded := sc._dbConfigs[dbName]; loaded && config.isSuspended {
-		return true
-	}
-	return false
-}
-
-func (sc *ServerContext) _suspendDatabase(ctx context.Context, dbName string) error {
-	dbCtx := sc._databases[dbName]
-	if dbCtx == nil {
-		return base.ErrNotFound
-	}
-
-	config := sc._dbConfigs[dbName]
-	if config != nil && !base.ValDefault(config.Suspendable, sc.Config.IsServerless()) {
-		return ErrSuspendingDisallowed
-	}
-
-	bucket := dbCtx.Bucket.GetName()
-	base.InfofCtx(ctx, base.KeyAll, "Suspending db %q (bucket %q)", base.MD(dbName), base.MD(bucket))
-
-	if !sc._unloadDatabase(ctx, dbName) {
-		return base.ErrNotFound
-	}
-
-	config.isSuspended = true
-	return nil
-}
-
-func (sc *ServerContext) unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
-
-	return sc._unsuspendDatabase(ctx, dbName)
-}
-
-func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) (*db.DatabaseContext, error) {
-	dbCtx := sc._databases[dbName]
-	if dbCtx != nil {
-		return dbCtx, nil
-	}
-
-	// Check if database is in dbConfigs so no need to search through buckets
-	if dbConfig, ok := sc._dbConfigs[dbName]; ok {
-		if !dbConfig.isSuspended {
-			base.WarnfCtx(ctx, "attempting to unsuspend database %q that is not suspended", base.MD(dbName))
-		}
-		if !base.ValDefault(dbConfig.Suspendable, sc.Config.IsServerless()) {
-			base.InfofCtx(ctx, base.KeyAll, "attempting to unsuspend db %q while not configured to be suspendable", base.MD(dbName))
-		}
-
-		bucket := dbName
-		if dbConfig.Bucket != nil {
-			bucket = *dbConfig.Bucket
-		}
-
-		cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
-		if err == base.ErrNotFound {
-			// Database no longer exists, so clean up dbConfigs
-			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
-			delete(sc._dbConfigs, dbName)
-			return nil, err
-		} else if err != nil {
-			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
-		}
-		dbConfig.cfgCas = cas
-		failFast := false
-		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, getOrAddDatabaseConfigOptions{
-			useExisting: false,
-			failFast:    failFast,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return dbCtx, nil
-	}
-
-	return nil, base.ErrNotFound
-}
-
 // ////// STATS LOGGING
 
 type statsWrapper struct {
@@ -2396,6 +2284,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					}
 					sc.ClusterCompat.Refresh(ctx)
 					sc.refreshBucketBootstrapTargets(ctx)
+					sc.RecheckPendingBucketMetadataMigrations(ctx)
 				}
 			}
 		}()
@@ -2405,6 +2294,24 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	base.InfofCtx(ctx, base.KeyAll, "Finished initializing bootstrap connection")
 
 	return nil
+}
+
+// RecheckPendingBucketMetadataMigrations iterates through all config buckets and re-evaluates
+// whether bucket-level metadata migration can now be completed.
+func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
+	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
+		return
+	}
+	buckets := sc.ClusterCompat.trackedBucketList()
+	for _, bucket := range buckets {
+		if sc.BootstrapContext.Connection.IsMigrationComplete(bucket) {
+			// migration done for this bucket, fast path skip to next bucket
+			continue
+		}
+		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
+		}
+	}
 }
 
 // resolveUseSystemMetadataCollection returns the effective use_system_metadata_collection
@@ -2511,16 +2418,13 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
 	}
 	expected := registryMetadataIDs(registry)
-	if len(expected) == 0 {
-		// No DBs in registry → nothing to migrate
-		return nil
-	}
 
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
 	}
 	if status.Bootstrap.State == base.MigrationStateComplete {
+		sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
 		return nil
 	}
 	if !status.AllDatabasesComplete(expected) {

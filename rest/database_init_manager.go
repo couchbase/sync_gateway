@@ -66,7 +66,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 		base.MD(dbConfig.Name))
 	dbInitWorker, ok := m.workers[dbConfig.Name]
 
-	collectionSet := buildCollectionIndexData(dbConfig, defaultCollectionExists)
+	collectionSet := buildCollectionIndexData(startupConfig, dbConfig, defaultCollectionExists)
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
@@ -225,10 +225,14 @@ func (m *DatabaseInitManager) cancelWorkers() {
 // customer may drop it once migration completes, at which point those indexes are vestigial and attempting to
 // build them on the missing collection would retry until the op times out and fail initialization. When
 // _default is gone (and not itself a configured data collection) it is omitted from the index set.
-func buildCollectionIndexData(config *DatabaseConfig, defaultCollectionExists bool) CollectionInitData {
+func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, defaultCollectionExists bool) CollectionInitData {
+	useSystemMetadataCollection := resolveUseSystemMetadataCollection(startup, &config.DbConfig)
 	if len(config.Scopes) == 0 {
-		// todo: only init these mobile collection indexes when required?
-		return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+		if useSystemMetadataCollection {
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+		} else {
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
+		}
 	}
 
 	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
@@ -252,8 +256,9 @@ func buildCollectionIndexData(config *DatabaseConfig, defaultCollectionExists bo
 	if defaultCollectionExists || defaultIsConfiguredCollection {
 		collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
 	}
-	// todo: only init these indexes when required?
-	collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
+	if useSystemMetadataCollection {
+		collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
+	}
 
 	return collectionInitData
 }

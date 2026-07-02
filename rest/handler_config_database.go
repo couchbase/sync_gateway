@@ -79,7 +79,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 
 	dbCreds := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds); err != nil {
 		return err
 	}
 

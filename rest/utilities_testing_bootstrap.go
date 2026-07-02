@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/google/uuid"
 )
 
@@ -38,18 +39,18 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.API.MetricsInterface = randomPort
 	config.Unsupported.DiagnosticInterface = randomPort
 
-	config.Bootstrap.Server = base.UnitTestUrl()
+	config.Bootstrap.Server = sgtest.UnitTestUrl()
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
-	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
+	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(sgtest.UnitTestUrl()))
 
 	uniqueUUID, err := uuid.NewRandom()
 	require.NoError(t, err)
 
 	if base.IsEnterpriseEdition() {
 		config.Bootstrap.ConfigGroupID = uniqueUUID.String()
-	} else if !base.UnitTestUrlIsWalrus() {
+	} else if !sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("BootstrapStartupConfigForTest requires EE support, since the config files can be read by future tests in the bucket pool")
 	}
 

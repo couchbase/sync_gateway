@@ -272,6 +272,10 @@ func (c *RosmarCluster) SetMigrationComplete(bucketName string) {
 	c.bucketsBootstrapMigrationComplete.Store(bucketName, true)
 }
 
+func (c *RosmarCluster) IsMigrationComplete(bucketName string) bool {
+	return c.bucketBootstrapMigrationComplete(bucketName)
+}
+
 // bucketBootstrapMigrationComplete reports whether bootstrap-metadata migration has been marked
 // complete for the given bucket. Absence of an entry means not-complete, so reads keep the
 // _default._default fallback.
@@ -701,8 +705,6 @@ func (c *RosmarCluster) CachedBootstrapTargets() map[string]string {
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections
 func (c *RosmarCluster) Close() {
 }
-
-func (c *RosmarCluster) SetConnectionStringServerless() error { return nil }
 
 // AsRosmarBucket returns a bucket as a rosmar.Bucket, or an error if it is not one.
 func AsRosmarBucket(bucket Bucket) (*rosmar.Bucket, error) {

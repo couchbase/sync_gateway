@@ -1815,7 +1815,7 @@ func TestSetupDbConfigCredentials(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.dbConfig.setup(base.TestCtx(t), test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil, false)
+			err := test.dbConfig.setup(base.TestCtx(t), test.dbConfig.Name, test.bootstrapConfig, test.credentialsConfig, nil)
 			require.NoError(t, err)
 			if test.expectX509 {
 				assert.Equal(t, "", test.dbConfig.Username)
@@ -1915,7 +1915,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2009,7 +2009,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2115,7 +2115,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(base.TestCtx(t), dbConfig.Name, BootstrapConfig{}, nil, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -2653,7 +2653,6 @@ func Test_validateJavascriptFunction(t *testing.T) {
 
 func TestBucketCredentialsValidation(t *testing.T) {
 	bucketCredsError := "bucket_credentials cannot use both x509 and basic auth"
-	bucketNoCredsServerless := "at least 1 bucket must be defined in bucket_credentials when running in serverless mode"
 	testCases := []struct {
 		name          string
 		startupConfig StartupConfig
@@ -2729,28 +2728,6 @@ func TestBucketCredentialsValidation(t *testing.T) {
 			},
 			expectedError: &bucketCredsError,
 		},
-		{
-			name: "Nil bucket credentials provided when running in serverless mode",
-			startupConfig: StartupConfig{
-				Unsupported: UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
-			},
-			expectedError: &bucketNoCredsServerless,
-		},
-		{
-			name: "No bucket credentials provided when running in serverless mode",
-			startupConfig: StartupConfig{
-				BucketCredentials: base.PerBucketCredentialsConfig{},
-				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
-			},
-			expectedError: &bucketNoCredsServerless,
-		},
-		{
-			name: "Bucket credentials provided when running in serverless mode",
-			startupConfig: StartupConfig{
-				Unsupported:       UnsupportedConfig{Serverless: ServerlessConfig{Enabled: base.Ptr(true)}},
-				BucketCredentials: base.PerBucketCredentialsConfig{"bucket": &base.CredentialsConfig{Username: "u", Password: "p"}},
-			},
-		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -2761,7 +2738,6 @@ func TestBucketCredentialsValidation(t *testing.T) {
 
 			} else if err != nil {
 				assert.NotContains(t, err.Error(), bucketCredsError)
-				assert.NotContains(t, err.Error(), bucketNoCredsServerless)
 			}
 		})
 	}

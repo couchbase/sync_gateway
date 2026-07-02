@@ -420,10 +420,6 @@ func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename str
 	c.dbCtx.invalRoleChannels(ctx, rolename, base.ScopeAndCollectionNames{c.ScopeAndCollectionName()}, invalSeq)
 }
 
-func (c *DatabaseCollection) useMou() bool {
-	return c.dbCtx.UseMou()
-}
-
 func (c *DatabaseCollection) ScopeAndCollectionName() base.ScopeAndCollectionName {
 	return base.NewScopeAndCollectionName(c.ScopeName, c.Name)
 }

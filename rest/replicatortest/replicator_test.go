@@ -552,7 +552,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	})
 }
 
-func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
+func TestDisableConcurrentReplicationLimitDuringReplications(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -597,7 +597,7 @@ func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
 	})
 }
 
-func TestServerlessConnectionLimitingContinuous(t *testing.T) {
+func TestConcurrentReplicationLimitContinuous(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)

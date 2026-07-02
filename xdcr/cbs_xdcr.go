@@ -74,7 +74,7 @@ func isClusterPresent(ctx context.Context, bucket *base.GocbV2Bucket) (bool, err
 
 // createCluster creates an XDCR cluster.
 func createCluster(ctx context.Context, bucket *base.GocbV2Bucket) error {
-	serverURL, err := url.Parse(base.UnitTestUrl())
+	serverURL, err := url.Parse(bucket.Spec.Server)
 	if err != nil {
 		return err
 	}

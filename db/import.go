@@ -93,7 +93,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	} else {
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattrs[base.SyncXattrName], err = base.JSONMarshal(existingDoc.SyncData)
-			if err == nil && existingDoc.MetadataOnlyUpdate != nil && db.useMou() {
+			if err == nil && existingDoc.MetadataOnlyUpdate != nil {
 				existingBucketDoc.Xattrs[base.MouXattrName], err = base.JSONMarshal(existingDoc.MetadataOnlyUpdate)
 			}
 			if existingDoc.HLV != nil {
@@ -144,20 +144,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	var newRev string
 	var alreadyImportedDoc *Document
 
-	mutationOptions := &sgbucket.MutateInOptions{}
-	if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
-		mutationOptions.PreserveExpiry = true
-	} else {
-		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
-		if expiry == nil {
-			getExpiry, getExpiryErr := db.dataStore.GetExpiry(ctx, docid)
-			if getExpiryErr != nil {
-				return nil, getExpiryErr
-			}
-			expiry = &getExpiry
-		}
-		existingDoc.Expiry = *expiry
-	}
+	mutationOptions := &sgbucket.MutateInOptions{PreserveExpiry: true}
 
 	docUpdateEvent := Import
 	// do not update rev cache for any imports (CBG-4494 and CBG-4550)
@@ -337,7 +324,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		}
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
-		if metadataOnlyUpdate && db.useMou() {
+		if metadataOnlyUpdate {
 			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.MetadataOnlyUpdate)
 		}
 
