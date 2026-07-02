@@ -41,6 +41,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -71,7 +72,6 @@ type RestTesterConfig struct {
 	useTLSServer                     bool // If true, TLS will be required for communications with CBS. Default: false
 	PersistentConfig                 bool
 	GroupID                          *string
-	serverless                       bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                 collectionConfiguration
 	numCollections                   int
 	nodeClusterCompatVersion         *base.ClusterCompatVersion // alternate cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion.
@@ -136,7 +136,7 @@ type RestTester struct {
 	metricsHandlerOnce      sync.Once
 	DiagnosticHandler       http.Handler
 	diagnosticHandlerOnce   sync.Once
-	closed                  bool
+	closed                  atomic.Bool
 }
 
 func (rt *RestTester) TB() testing.TB {
@@ -181,7 +181,7 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
-	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
+	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(sgtest.UnitTestUrl())
 	return &rt
 }
 
@@ -204,9 +204,8 @@ func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfi
 func (rt *RestTester) Bucket() base.Bucket {
 	if rt.TB() == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
-	} else if rt.closed {
-		panic("RestTester was closed!")
 	}
+	require.False(rt.TB(), rt.closed.Load(), "RestTester was closed!")
 
 	if rt.TestBucket != nil {
 		return rt.TestBucket.Bucket
@@ -259,21 +258,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
-	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
-	if rt.serverless {
-		if !rt.PersistentConfig {
-			rt.TB().Fatalf("Persistent config must be used when running in serverless mode")
-		}
-		sc.BucketCredentials = map[string]*base.CredentialsConfig{
-			testBucket.GetName(): {
-				Username: base.TestClusterUsername(),
-				Password: base.TestClusterPassword(),
-			},
-		}
-	}
 
 	if rt.RestTesterConfig.UseSystemScopeMetadataCollection != nil {
 		sc.Bootstrap.UseSystemMetadataCollection = rt.RestTesterConfig.UseSystemScopeMetadataCollection
@@ -362,7 +349,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
 		}
-		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || base.UnitTestUrlIsWalrus()) {
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || sgtest.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
@@ -674,7 +661,7 @@ func (rt *RestTester) Close() {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 	ctx := rt.Context() // capture ctx before closing rt
-	rt.closed = true
+	require.True(rt.TB(), rt.closed.CompareAndSwap(false, true), "RestTester already closed")
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close(ctx)
 	}
@@ -925,7 +912,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
 	if db.HasCachingFeedDelay(rt.TB()) {
 		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
-	} else if base.UnitTestUrlIsWalrus() && !base.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
+	} else if sgtest.UnitTestUrlIsWalrus() && !sgtest.IsRaceDetectorEnabled(rt.TB()) && os.Getenv("CI") == "" {
 		// local rosmar will never take a long time, but it is sometimes slower in jenkins/github actions
 		waitTime = 1 * time.Second
 	}
@@ -1109,7 +1096,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) {
 	timeout := 10 * time.Second
 	pollInterval := 100 * time.Millisecond
-	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+	if !sgtest.UnitTestUrlIsWalrus() || sgtest.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
 		timeout = 60 * time.Second
 		pollInterval = 500 * time.Millisecond
 	}
@@ -2346,12 +2333,14 @@ func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
 
 // RequireDocVersionEqual calls t.Fail if two document versions are not equal.
 func RequireDocVersionEqual(t testing.TB, expected, actual DocVersion) {
+	t.Helper()
 	require.Equal(t, expected.CV, actual.CV, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 	require.Equal(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 }
 
 // RequireHistoryContains fails test if rev tree does not contain all expected revIDs
 func RequireHistoryContains(t *testing.T, docHistory db.RevTree, expHistoryIDs []string) {
+	t.Helper()
 	require.Lenf(t, docHistory, len(expHistoryIDs), "Expected history to contain %d revIDs, but it had %d.  History: %v", len(expHistoryIDs), len(docHistory), docHistory)
 	for _, revID := range expHistoryIDs {
 		_, ok := docHistory[revID]
@@ -2361,6 +2350,7 @@ func RequireHistoryContains(t *testing.T, docHistory db.RevTree, expHistoryIDs [
 
 // RequireDocRevTreeEqual fails test if rev tree id's are not equal
 func RequireDocRevTreeEqual(t *testing.T, expected, actual DocVersion) {
+	t.Helper()
 	require.Equal(t, expected.RevTreeID, actual.RevTreeID)
 }
 
@@ -2407,19 +2397,6 @@ func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
-}
-
-func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
-	return sc._isDatabaseSuspended(dbName)
-}
-
-func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
-	sc._databasesLock.Lock()
-	defer sc._databasesLock.Unlock()
-
-	return sc._suspendDatabase(ctx, dbName)
 }
 
 // getRESTkeyspace returns a keyspace for REST URIs
@@ -2579,7 +2556,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 	if base.TestsDisableGSI() {
 		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
-		if !base.UnitTestUrlIsWalrus() {
+		if !sgtest.UnitTestUrlIsWalrus() {
 			config.UseViews = base.Ptr(true)
 		}
 	} else {
@@ -2597,7 +2574,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 
 	// Setup scopes.
-	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || config.useGSI()) {
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (sgtest.UnitTestUrlIsWalrus() || config.useGSI()) {
 		config.Scopes = GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, rt.numCollections, stringPtrOrNil(rt.SyncFn), stringPtrOrNil(rt.ImportFilter))
 	} else {
 		config.Sync = stringPtrOrNil(rt.SyncFn)
@@ -2695,21 +2672,21 @@ func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 
 // RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
 func RequireBucketSpecificCredentials(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
 	}
 }
 
 // RequireN1QLIndexes skips tests if N1QL indexes are required
 func RequireN1QLIndexes(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for N1QL indexes")
 	}
 }
 
 // RequireGocbDCPResync skips tests if not gocb backed buckets.
 func RequireGocbDCPResync(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
+	if !sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
 }

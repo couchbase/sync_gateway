@@ -104,7 +104,7 @@ func (h *handler) handleCreateDB() error {
 
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-		if err := config.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		if err := config.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds); err != nil {
 			return err
 		}
 
@@ -167,7 +167,7 @@ func (h *handler) handleCreateDB() error {
 		h.server._dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
-		if err := config.setup(h.ctx(), dbName, BootstrapConfig{}, nil, nil, false); err != nil {
+		if err := config.setup(h.ctx(), dbName, BootstrapConfig{}, nil, nil); err != nil {
 			return err
 		}
 
@@ -805,7 +805,7 @@ func (h *handler) updateConfigAndReloadDatabase(ctx base.NonCancellableContext, 
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds); err != nil {
 		return err
 	}
 
@@ -839,7 +839,7 @@ func (h *handler) updateNonPersistentDbConfig(ctx base.NonCancellableContext, db
 	}
 
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
+	if err := updatedDbConfig.setup(ctx.Ctx, dbName, h.server.Config.Bootstrap, dbCreds, nil); err != nil {
 		return err
 	}
 	if err := h.server.ReloadDatabaseWithConfig(ctx, *updatedDbConfig); err != nil {
@@ -993,7 +993,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		tmpConfig.cfgCas = bucketDbConfig.cfgCas
 		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+		if err := tmpConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds); err != nil {
 			return nil, err
 		}
 

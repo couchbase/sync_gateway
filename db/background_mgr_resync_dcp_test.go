@@ -566,10 +566,6 @@ func TestResyncMou(t *testing.T) {
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 
-	if !db.Bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
-		t.Skip("Test requires multi-xattr subdoc operations, CBS 7.6 or higher")
-	}
-
 	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	docBody := Body{"foo": "bar"}

@@ -496,9 +496,9 @@ func GetIndexNames(options InitializeIndexOptions, indexDefs map[SGIndexType]SGI
 
 // ShouldUseLegacySyncDocsIndex returns true if the syncDocs index should be used for queries of principal docs. Returns false if targeted users and roles indexes should be used.
 func ShouldUseLegacySyncDocsIndex(ctx context.Context, collection base.N1QLStore) bool {
-	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(context.Background(), collection)
+	onlinePrincipalIndexes, err := GetOnlinePrincipalIndexes(ctx, collection)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, falling back to using syncDocs index", err)
+		base.WarnfCtx(ctx, "Error getting online status of principal indexes: %v, will use separate users and roles indexes", err)
 		return false
 	}
 	return shouldUseLegacySyncDocsIndex(onlinePrincipalIndexes)

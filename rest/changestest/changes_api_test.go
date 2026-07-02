@@ -3507,10 +3507,7 @@ func TestTombstoneCompaction(t *testing.T) {
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 					rest.RequireStatus(t, resp, http.StatusOK)
-					err := rt.WaitForCondition(func() bool {
-						return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
-					})
-					assert.NoError(t, err)
+					_ = rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())

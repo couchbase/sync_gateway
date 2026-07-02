@@ -24,18 +24,16 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
-	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 const (
-	CBGTIndexTypeSyncGatewayImport    = "syncGateway-import-"
-	DefaultImportPartitions           = 16
-	DefaultImportPartitionsServerless = 6
-	CBGTCfgIndexDefs                  = SyncDocPrefix + "cfgindexDefs"
-	CBGTCfgNodeDefsKnown              = SyncDocPrefix + "cfgnodeDefs-known"
-	CBGTCfgNodeDefsWanted             = SyncDocPrefix + "cfgnodeDefs-wanted"
-	CBGTCfgPlanPIndexes               = SyncDocPrefix + "cfgplanPIndexes"
-	CBGTIndexTypeSyncGatewayResync    = "syncGateway-resync"
+	CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
+	DefaultImportPartitions        = 16
+	CBGTCfgIndexDefs               = SyncDocPrefix + "cfgindexDefs"
+	CBGTCfgNodeDefsKnown           = SyncDocPrefix + "cfgnodeDefs-known"
+	CBGTCfgNodeDefsWanted          = SyncDocPrefix + "cfgnodeDefs-wanted"
+	CBGTCfgPlanPIndexes            = SyncDocPrefix + "cfgplanPIndexes"
+	CBGTIndexTypeSyncGatewayResync = "syncGateway-resync"
 )
 
 // CbgtUnregisterFeedCallback is the function invoked by cbgt when a DCP feed shuts down.
@@ -405,12 +403,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	if err == nil && connStrKvBufferSize != nil && *connStrKvBufferSize > idealKvConnectionBufferSize {
 		WarnfCtx(ctx, "DCP sharded import connection string includes %s=%d, which is more than the implicit %s=%d. This will result in increased memory usage.", kvBufferSizeKey, *connStrKvBufferSize, kvBufferSizeKey, idealKvConnectionBufferSize)
 	}
-	// Disable collections if unsupported
-	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		options["disableCollectionsSupport"] = "true"
-		options["disableStreamIDs"] = "true"
-	}
-
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
 		SGCbgtMetadataVersion, // cbgt metadata version, matching 3.0 clients
@@ -915,14 +907,6 @@ func RemoveDestFactory(destKey string) {
 	cbgtDestFactoriesLock.Lock()
 	delete(cbgtDestFactories, destKey)
 	cbgtDestFactoriesLock.Unlock()
-}
-
-func GetDefaultImportPartitions(serverless bool) uint16 {
-	if serverless {
-		return DefaultImportPartitionsServerless
-	} else {
-		return DefaultImportPartitions
-	}
 }
 
 type sgMgrEventHandlers struct {

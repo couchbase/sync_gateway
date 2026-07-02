@@ -422,11 +422,9 @@ func (c *Collection) GetExpiry(ctx context.Context, k string) (expiry uint32, ge
 	}
 
 	getMetaOptions := gocbcore.GetMetaOptions{
-		Key:      []byte(k),
-		Deadline: c.Bucket.getBucketOpDeadline(),
-	}
-	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		getMetaOptions.CollectionID = c.GetCollectionID()
+		Key:          []byte(k),
+		Deadline:     c.Bucket.getBucketOpDeadline(),
+		CollectionID: c.GetCollectionID(),
 	}
 
 	wg := sync.WaitGroup{}
@@ -564,10 +562,6 @@ func (c *Collection) GetCollectionID() uint32 {
 
 // setCollectionID sets private property of kv CollectionID.
 func (c *Collection) setCollectionID() error {
-	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		c.kvCollectionID = DefaultCollectionID
-		return nil
-	}
 	// default collection has a known ID
 	if c.IsDefaultScopeCollection() {
 		c.kvCollectionID = DefaultCollectionID

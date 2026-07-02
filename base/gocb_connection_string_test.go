@@ -33,12 +33,6 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			params:  DefaultGoCBConnStringParams(),
 		},
 		{
-			name:    "default, serverless params",
-			server:  "couchbase://127.0.0.1",
-			connStr: "couchbase://127.0.0.1?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  DefaultServerlessGoCBConnStringParams(),
-		},
-		{
 			name:    "kv_pool_size=8, no params",
 			server:  "couchbase://127.0.0.1?kv_pool_size=8",
 			connStr: "couchbase://127.0.0.1?idle_http_connection_timeout=90000&kv_pool_size=8&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
@@ -48,12 +42,6 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			server:  "couchbase://127.0.0.1?kv_pool_size=8",
 			connStr: "couchbase://127.0.0.1?idle_http_connection_timeout=90000&kv_pool_size=8&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			params:  DefaultGoCBConnStringParams(),
-		},
-		{
-			name:    "kv_pool_size=8, serverless params",
-			server:  "couchbase://127.0.0.1?kv_pool_size=8",
-			connStr: "couchbase://127.0.0.1?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=8&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 		{
 			name:    "kv_buffer_size=3, no params",
@@ -67,12 +55,6 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			params:  DefaultGoCBConnStringParams(),
 		},
 		{
-			name:    "kv_buffer_size=3, serverless params",
-			server:  "couchbase://127.0.0.1?kv_buffer_size=3",
-			connStr: "couchbase://127.0.0.1?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=3&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  DefaultServerlessGoCBConnStringParams(),
-		},
-		{
 			name:    "dcp_buffer_size=3, no params",
 			server:  "couchbase://127.0.0.1?dcp_buffer_size=3",
 			connStr: "couchbase://127.0.0.1?dcp_buffer_size=3&idle_http_connection_timeout=90000&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
@@ -82,12 +64,6 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			server:  "couchbase://127.0.0.1?dcp_buffer_size=3",
 			connStr: "couchbase://127.0.0.1?dcp_buffer_size=3&idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			params:  DefaultGoCBConnStringParams(),
-		},
-		{
-			name:    "dcp_pool_size=3, serverless params",
-			server:  "couchbase://127.0.0.1?dcp_buffer_size=3",
-			connStr: "couchbase://127.0.0.1?dcp_buffer_size=3&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			params:  DefaultServerlessGoCBConnStringParams(),
 		},
 	}
 	for _, testCase := range testCases {

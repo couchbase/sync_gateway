@@ -174,7 +174,6 @@ type DatabaseContext struct {
 	RequireResync               base.ScopeAndCollectionNames      // Collections requiring resync before database can go online
 	RequireAttachmentMigration  base.ScopeAndCollectionNames      // Collections that require the attachment migration background task to run against
 	CORS                        *auth.CORSConfig                  // CORS configuration
-	EnableMou                   bool                              // Write _mou xattr when performing metadata-only update.  Set based on bucket capability on connect
 	WasInitializedSynchronously bool                              // true if the database was initialized synchronously
 	BroadcastSlowMode           atomic.Bool                       // bool to indicate if a slower ticker value should be used to notify changes feeds of changes
 	DatabaseStartupError        *DatabaseError                    // Error that occurred during database online processes startup
@@ -490,9 +489,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	cleanupFunctions = append(cleanupFunctions, func() {
 		dbContext.cancelContextFunc(errors.New("DatabaseContext failed to initialize"))
 	})
-
-	// Check if server version supports multi-xattr operations, required for mou handling
-	dbContext.EnableMou = bucket.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations)
 
 	// Initialize metadata ID and keys
 	metaKeys := base.NewMetadataKeys(options.MetadataID)
@@ -2083,10 +2079,6 @@ func (context *DatabaseContext) numIndexPartitions() uint32 {
 
 func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
-}
-
-func (context *DatabaseContext) UseMou() bool {
-	return context.EnableMou
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {

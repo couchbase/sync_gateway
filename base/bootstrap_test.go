@@ -53,8 +53,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to TestBucketPool.numBuckets
 
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-	forcePerBucketAuth := false
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), forcePerBucketAuth, perBucketCredentialsConfig, TestUseXattrs(), false, CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), perBucketCredentialsConfig, TestUseXattrs(), false, CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)
@@ -146,7 +145,7 @@ func newTestBootstrapConnection(t *testing.T) BootstrapConnection {
 		t.Cleanup(cluster.Close)
 		return cluster
 	}
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, TestUseXattrs(), false, CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), nil, TestUseXattrs(), false, CachedClusterConnections)
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 	return cluster
@@ -360,7 +359,7 @@ func newCouchbaseBootstrapDualFixture(t *testing.T, useXattrs bool) bootstrapDua
 		assert.Equal(c, int32(GTestBucketPool.numBuckets), GTestBucketPool.stats.TotalBucketInitCount.Load())
 	}, 2*time.Minute, 5*time.Millisecond)
 
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, useXattrs, true, CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), nil, useXattrs, true, CachedClusterConnections)
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 
@@ -469,7 +468,7 @@ func newCouchbaseBootstrapTwoBucketDualFixture(t *testing.T, useXattrs bool) boo
 		assert.Equal(c, int32(GTestBucketPool.numBuckets), GTestBucketPool.stats.TotalBucketInitCount.Load())
 	}, 2*time.Minute, 5*time.Millisecond)
 
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), false, nil, useXattrs, true, CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), nil, useXattrs, true, CachedClusterConnections)
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 
