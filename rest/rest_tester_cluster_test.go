@@ -9,9 +9,7 @@
 package rest
 
 import (
-	"context"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -21,137 +19,6 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
-
-// RestTesterCluster can be used to simulate a multi-node Sync Gateway cluster.
-type RestTesterCluster struct {
-	testBucket      *base.TestBucket
-	restTesters     []*RestTester
-	roundRobinCount int64
-	config          *RestTesterClusterConfig
-}
-
-// RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
-func (rtc *RestTesterCluster) RefreshClusterDbConfigs() (count int, err error) {
-	for _, rt := range rtc.restTesters {
-		c, err := rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
-		if err != nil {
-			return 0, err
-		}
-		count += c
-	}
-	return count, nil
-}
-
-func (rtc *RestTesterCluster) NumNodes() int {
-	return len(rtc.restTesters)
-}
-
-// ForEachNode runs the given function on each RestTester node.
-func (rtc *RestTesterCluster) ForEachNode(fn func(rt *RestTester)) {
-	for _, rt := range rtc.restTesters {
-		fn(rt)
-	}
-}
-
-// RoundRobin returns the next RestTester instance, cycling through all of them sequentially.
-func (rtc *RestTesterCluster) RoundRobin() *RestTester {
-	requestNum := atomic.AddInt64(&rtc.roundRobinCount, 1) % int64(len(rtc.restTesters))
-	node := requestNum % int64(len(rtc.restTesters))
-	return rtc.restTesters[node]
-}
-
-// Node returns a specific RestTester instance.
-func (rtc *RestTesterCluster) Node(i int) *RestTester {
-	return rtc.restTesters[i]
-}
-
-// Close closes all of RestTester nodes and the shared TestBucket.
-func (rtc *RestTesterCluster) Close(ctx context.Context) {
-	for _, rt := range rtc.restTesters {
-		rt.Close()
-	}
-	rtc.testBucket.Close(ctx)
-}
-
-// var _ base.BootstrapConnection = &testBootstrapConnection{}
-
-type RestTesterClusterConfig struct {
-	numNodes   uint8
-	groupID    *string
-	rtConfig   *RestTesterConfig
-	testBucket *base.TestBucket
-}
-
-func defaultRestTesterClusterConfig(t *testing.T) *RestTesterClusterConfig {
-	return &RestTesterClusterConfig{
-		numNodes:   3,
-		groupID:    base.Ptr(t.Name()),
-		rtConfig:   nil,
-		testBucket: nil,
-	}
-}
-
-func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTesterCluster {
-	if base.UnitTestUrlIsWalrus() {
-		// TODO: implementing a single bucket/mock base.BootstrapConnection might work here
-		t.Skip("Walrus not supported for RestTesterCluster")
-	}
-
-	if config == nil {
-		config = defaultRestTesterClusterConfig(t)
-	}
-
-	// Set group ID for each RestTester from cluster
-	if config.rtConfig == nil {
-		config.rtConfig = &RestTesterConfig{GroupID: config.groupID}
-	} else {
-		config.rtConfig.GroupID = config.groupID
-	}
-	// only persistent mode is supported for a RestTesterCluster
-	config.rtConfig.PersistentConfig = true
-
-	// Make all RestTesters share the same unclosable TestBucket
-	tb := config.testBucket
-	if tb == nil {
-		tb = base.GetTestBucket(t)
-	}
-	config.rtConfig.CustomTestBucket = tb.NoCloseClone()
-
-	// Start up all rest testers in parallel
-	wg := sync.WaitGroup{}
-	restTesters := make([]*RestTester, 0, config.numNodes)
-	for i := 0; i < int(config.numNodes); i++ {
-		wg.Add(1)
-		go func() {
-			rt := NewRestTester(t, config.rtConfig)
-			// initialize the RestTester before we attempt to use it
-			_ = rt.ServerContext()
-			restTesters = append(restTesters, rt)
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	return &RestTesterCluster{
-		testBucket:  tb,
-		restTesters: restTesters,
-		config:      config,
-	}
-}
-
-// dbConfigForTestBucket returns a barebones DbConfig for the given TestBucket.
-func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
-	return DbConfig{
-		BucketConfig: BucketConfig{
-			Bucket: base.Ptr(tb.GetName()),
-		},
-		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
-		},
-		UseViews:     base.Ptr(base.TestsDisableGSI()),
-		EnableXattrs: base.Ptr(base.TestUseXattrs()),
-	}
-}
 
 func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 
@@ -205,10 +72,8 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	assert.NotContains(t, string(resp.BodyBytes()), `"revs_limit":`)
 
 	// remove the db config directly from the bucket
-	docID := PersistentConfigKey(base.TestCtx(t), *rtc.config.groupID, db)
-	// metadata store
-	_, err = rtc.testBucket.DefaultDataStore(ctx).Remove(ctx, docID, 0)
-	require.NoError(t, err)
+	docID := PersistentConfigKey(base.TestCtx(t), rtc.groupID, db)
+	require.NoError(t, rtNode.GetDatabase().MetadataStore.Delete(ctx, docID))
 
 	// ensure all nodes remove the database
 	count, err = rtc.RefreshClusterDbConfigs()
