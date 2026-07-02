@@ -1659,11 +1659,10 @@ func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
 
 			if tc.casFailure {
 				leakyDS.SetUpdateCallback(attachmentMigrationCASRetryCallback(t, ctx, collection, docID))
+				defer leakyDS.SetUpdateCallback(nil)
 			}
 
 			tc.update(t, docID)
-
-			leakyDS.SetUpdateCallback(nil)
 
 			require.Empty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
 			require.Equal(t, attachmentMigrationCASRetryExpected, GetRawGlobalSyncAttachments(t, ds, docID))

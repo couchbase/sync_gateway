@@ -2904,6 +2904,7 @@ func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 						require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, cas, &syncData))
 					})
 				})
+				defer rt.LeakyBucket().SetUpdateCallback(nil)
 			}
 
 			body = `{"some":"update","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
