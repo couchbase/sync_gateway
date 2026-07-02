@@ -211,13 +211,14 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 	assert.True(t, ms.MigrationComplete(), "clean run must flip MigrationComplete so future reads skip the fallback")
 }
 
-// TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix forces the bounded-pass
-// give-up branch: an in-scope unknown-prefix doc is reported as "remaining" every pass
-// (the dispatcher classifies it as DocsUnknownPrefix and leaves it on the fallback), so
-// the orchestrator must hit maxPasses and surface a non-nil error rather than silently
-// completing. SetMigrationComplete must NOT be flipped, otherwise the dual-store wrapper
-// would start ignoring the fallback while there is still real data on it.
-func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) {
+// TestMetadataMigrationManagerCompletesWithUnknownPrefixLeftInPlace pins the policy that an
+// unrecognised `_sync:`-prefixed doc does NOT wedge the migration. The dispatcher classifies it
+// as DocsUnknownPrefix and leaves it on the fallback every pass, but unknown-prefix docs no longer
+// count toward the completion gate (only per-doc move/delete errors do). So the migration must
+// complete, flip MigrationComplete, and leave the unrecognised doc untouched on the fallback —
+// rather than retrying to maxPasses and erroring. This protects against a foreign doc (written
+// directly to the bucket, bypassing SG's public API) being able to abort an operator's upgrade.
+func TestMetadataMigrationManagerCompletesWithUnknownPrefixLeftInPlace(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -233,17 +234,16 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 	const metadataID = "test-mgr-unknown-prefix"
 	// `_sync:m_<id>:wat` is in-scope (starts with our standard-form prefix) but matches
 	// no known family, so handleMigrationKey hits the default branch and counts it as
-	// DocsUnknownPrefix every pass without removing it.
-	stuckKey := base.SyncDocPrefix + base.MetadataIdPrefix + metadataID + ":wat"
-	_, err = ms.Fallback().AddRaw(ctx, stuckKey, 0, []byte(`{"body":"stuck"}`))
+	// DocsUnknownPrefix without removing it.
+	unknownKey := base.SyncDocPrefix + base.MetadataIdPrefix + metadataID + ":wat"
+	_, err = ms.Fallback().AddRaw(ctx, unknownKey, 0, []byte(`{"body":"left-in-place"}`))
 	require.NoError(t, err, "seed in-scope unknown-prefix fallback doc")
 
 	// KV range scan reads from a per-vBucket snapshot view, so a scan issued immediately
-	// after the write can miss the seeded doc until the vBucket's scan view catches up. If this
-	// occurs and the migration's first pass doesn't see the doc, it reports remaining=0 and completes
-	// immediately instead of hitting the bounded-pass error path, flaking this test. Wait for the
-	// seed to be visible to scan before starting.
-	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{stuckKey})
+	// after the write can miss the seeded doc until the vBucket's scan view catches up. Wait
+	// for the seed to be visible to scan so we exercise the unknown-prefix path rather than a
+	// trivially-empty first pass.
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{unknownKey})
 
 	dbCtx := &DatabaseContext{
 		Name:                           "test",
@@ -256,13 +256,13 @@ func TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix(t *testing.T) 
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
 	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
-	// The manager surfaces the bounded-pass failure via the Errored terminal state.
-	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateError)
+	// Unknown-prefix docs no longer block completion — the manager reaches the Completed state.
+	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
 
-	assert.False(t, ms.MigrationComplete(), "MigrationComplete must not be flipped when the migration gave up with work outstanding")
+	assert.True(t, ms.MigrationComplete(), "MigrationComplete should be flipped — unknown-prefix docs do not block completion")
 
-	_, _, err = ms.Fallback().GetRaw(ctx, stuckKey)
-	assert.NoError(t, err, "stuck unknown-prefix doc should still be on the fallback")
+	_, _, err = ms.Fallback().GetRaw(ctx, unknownKey)
+	assert.NoError(t, err, "unrecognised doc should be left in place on the fallback (non-destructive)")
 }
 
 // TestMetadataMigrationManagerDCPCheckpointGroupIDCollisionCompletesEndToEnd is the

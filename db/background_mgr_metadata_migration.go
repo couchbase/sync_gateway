@@ -245,25 +245,33 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]a
 				return err
 			}
 
-			// Completion gates on a pass that is clean of BOTH unknown-prefix docs (remaining)
-			// AND per-doc move/delete errors. A failed in-scope move increments stats.Errors and
-			// leaves the doc on the fallback, but does not count toward remaining — so breaking on
-			// remaining == 0 alone could call SetMigrationComplete() with an un-migrated doc still
-			// on the fallback, which the wrapper would then permanently ignore (data loss). Errors
-			// are typically transient (CAS races), so a non-clean pass simply forces a retry; only
-			// a persistent failure reaches the maxPasses give-up below, which never completes.
+			// Completion gates ONLY on per-doc move/delete errors. A failed in-scope move
+			// increments stats.Errors and leaves the doc on the fallback, which the wrapper
+			// would then permanently ignore — so those must clear before we
+			// SetMigrationComplete(). Errors are typically transient (CAS races), so a non-clean
+			// pass simply forces a retry; only a persistent failure reaches the maxPasses give-up
+			// below, which never completes.
+			//
+			// Unknown-prefix docs (remaining) do NOT block completion: they are left in place on
+			// the fallback (non-destructive — nothing deletes them), so a foreign `_sync:`-rooted
+			// doc written directly to the bucket can't wedge the migration. They are still logged
+			// per-key by handleMigrationKey; we additionally warn with the count here so the
+			// completion event itself records the leftovers.
 			passErrors := stats.Errors.Load()
-			if remaining == 0 && passErrors == 0 {
+			if passErrors == 0 {
+				if remaining > 0 {
+					base.WarnfCtx(ctx, "[%s] migration completing with %d unrecognised-prefix doc(s) left on %s; see per-key warnings above", metadataMigrationLoggingID, remaining, ms.Fallback().GetName())
+				}
 				// finished successfully — fallback verified clear of in-scope metadata
 				break
 			}
 
 			if pass+1 >= maxPasses {
-				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d unknown-prefix doc(s) and %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, remaining, passErrors)
+				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, passErrors)
 				if promStats != nil {
 					promStats.AbandonedRuns.Add(1)
 				}
-				return fmt.Errorf("%s still not clear of metadata after %d passes: %d unknown-prefix doc(s), %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, remaining, passErrors)
+				return fmt.Errorf("%s still not clear of metadata after %d passes: %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, passErrors)
 			}
 		}
 
